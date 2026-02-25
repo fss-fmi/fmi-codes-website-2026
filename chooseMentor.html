@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Choose Mentor</title>
+    <style>
+        :root {
+            --bg: #060910;
+            --panel: rgba(255, 255, 255, 0.04);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --text: #e5e7eb;
+            --muted: #9ca3af;
+            --accent: #60a5fa;
+            --accent-2: #22d3ee;
+            --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.14), transparent 40%),
+                        radial-gradient(circle at 80% 0%, rgba(34, 211, 238, 0.12), transparent 36%),
+                        var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 96px 16px 60px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+        }
+        .header {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 22px;
+            box-shadow: var(--card-glow);
+        }
+        .header h1 {
+            font-size: 26px;
+            letter-spacing: 0.4px;
+            margin-bottom: 6px;
+        }
+        .header p { color: var(--muted); font-size: 14px; margin-bottom: 12px; }
+        .selection-info {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(96, 165, 250, 0.14);
+            color: #93c5fd;
+            border: 1px solid rgba(96, 165, 250, 0.35);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+        .card {
+            position: relative;
+            padding: 22px;
+            border-radius: 14px;
+            border: 1px solid var(--panel-border);
+            background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+            box-shadow: var(--card-glow);
+            overflow: hidden;
+            min-height: 220px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .card:hover { transform: translateY(-4px); border-color: rgba(96,165,250,0.35); }
+        .card.selected {
+            border-color: var(--accent);
+            background: linear-gradient(145deg, rgba(96,165,250,0.15), rgba(96,165,250,0.05));
+            box-shadow: 0 0 30px rgba(96, 165, 250, 0.3);
+        }
+        .card.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .card.disabled:hover {
+            transform: none;
+            border-color: var(--panel-border);
+        }
+        .card::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 45%);
+            pointer-events: none;
+        }
+        .card-header { display: flex; gap: 16px; align-items: center; margin-bottom: 14px; position: relative; z-index: 1; }
+        .avatar {
+            width: 80px; height: 80px;
+            border-radius: 12px;
+            border: 1px solid var(--panel-border);
+            object-fit: cover;
+            background: #111827;
+        }
+        .avatar.placeholder { display: grid; place-items: center; font-size: 26px; color: #c7d2fe; }
+        .name { font-size: 20px; font-weight: 750; margin-bottom: 4px; }
+        .workplace { color: var(--muted); font-size: 14px; }
+        .checkbox-indicator {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: 2px solid var(--panel-border);
+            background: rgba(255,255,255,0.03);
+            display: grid;
+            place-items: center;
+            font-size: 16px;
+            z-index: 2;
+            transition: all 0.2s ease;
+        }
+        .card.selected .checkbox-indicator {
+            border-color: var(--accent);
+            background: var(--accent);
+            color: #0b1021;
+        }
+        .empty {
+            text-align: center;
+            color: #cbd5e1;
+            padding: 60px 0;
+            font-size: 14px;
+        }
+        .submit-section {
+            position: sticky;
+            bottom: 0;
+            background: linear-gradient(to top, var(--bg) 85%, transparent);
+            padding: 20px 0;
+            text-align: center;
+        }
+        .submit-btn {
+            background: linear-gradient(120deg, #60a5fa, #22d3ee);
+            border: none;
+            color: #0b1021;
+            padding: 14px 40px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(96, 165, 250, 0.4);
+        }
+        .submit-btn:disabled {
+            background: rgba(156, 163, 175, 0.3);
+            color: #6b7280;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .message {
+            display: none;
+            padding: 14px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .message.show { display: block; }
+        .message.success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #86efac;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        .message.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        @media (max-width: 640px) {
+            body { padding: 92px 12px 40px; }
+            .header { padding: 18px; }
+            .card { padding: 16px; }
+        }
+        /* Navbar Styles */
+        .navbar {
+            position: fixed;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(1200px, calc(100% - 40px));
+            background: rgba(5, 6, 13, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+            overflow: hidden;
+        }
+        .navbar-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .navbar-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 80px;
+        }
+        .logo-text {
+            font-size: 20px;
+            font-weight: 800;
+            background: linear-gradient(120deg, #60a5fa, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+        }
+        .nav-links {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+            flex: 1;
+            justify-content: center;
+        }
+        .nav-link {
+            color: #e5e7eb;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s ease;
+            position: relative;
+        }
+        .nav-link:hover {
+            color: #60a5fa;
+        }
+        .nav-link::after {
+            content: "";
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(120deg, #60a5fa, #22d3ee);
+            transition: width 0.2s ease;
+        }
+        .nav-link:hover::after {
+            width: 100%;
+        }
+        .nav-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            min-width: 140px;
+            justify-content: flex-end;
+        }
+        .login-btn {
+            background: linear-gradient(120deg, #60a5fa, #22d3ee);
+            border: none;
+            color: #0b1021;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-logo"><a href="/team" class="logo-text" style="text-decoration: none;">FSS</a></div>
+            <div class="nav-links">
+                <a href="/team" class="nav-link">Home</a>
+                <a href="/teamRegulations" class="nav-link">Regulations</a>
+                <a href="/teamSchedule" class="nav-link">Schedule</a>
+                <a href="/teamMentors" class="nav-link">Mentors</a>
+                <a href="/teamRanking" class="nav-link">Ranking</a>
+                <a href="/chooseMentor" class="nav-link mentor-link">Choose Mentor</a>
+            </div>
+            <div class="nav-actions">
+                <a href="#" onclick="logout(); return false;" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>Choose Your Mentors</h1>
+            <p>Select up to 3 mentors to guide your team through the competition</p>
+            <div class="selection-info">
+                <span>Selected: <strong id="selectedCount">0</strong> / 3</span>
+            </div>
+        </div>
+
+        <div id="message" class="message"></div>
+
+        <div class="grid" id="mentorsGrid">
+            <div class="empty">Loading mentors...</div>
+        </div>
+
+        <div class="submit-section">
+            <button id="submitBtn" class="submit-btn" disabled>Submit Selection</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedMentors = [];
+        const MAX_SELECTION = 3;
+
+        async function loadMentors() {
+            try {
+                const response = await fetch('/api/mentors/available');
+                const data = await response.json();
+
+                if (!data || !data.success) {
+                    document.getElementById('mentorsGrid').innerHTML = '<div class="empty">Error loading mentors. Please try again.</div>';
+                    return;
+                }
+
+                // If the team already has selected mentors, send them to the selected mentors page
+                if (Array.isArray(data.selected) && data.selected.length > 0) {
+                    window.location.href = '/selectedMentors';
+                    return;
+                }
+
+                // Otherwise show only mentors under capacity (< 3 selections)
+                if (Array.isArray(data.available) && data.available.length > 0) {
+                    displayMentors(data.available);
+                } else {
+                    document.getElementById('mentorsGrid').innerHTML = '<div class="empty">No mentors available under capacity.</div>';
+                }
+            } catch (err) {
+                document.getElementById('mentorsGrid').innerHTML = '<div class="empty">Error loading mentors. Please try again.</div>';
+            }
+        }
+
+        function displayMentors(mentors) {
+            const grid = document.getElementById('mentorsGrid');
+            grid.innerHTML = '';
+
+            mentors.forEach(mentor => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.dataset.mentorId = mentor.id;
+
+                const avatarContent = mentor.picture_data
+                    ? `<img src="data:image/png;base64,${mentor.picture_data}" alt="${mentor.name}" class="avatar" />`
+                    : `<div class="avatar placeholder">👤</div>`;
+
+                card.innerHTML = `
+                    <div class="checkbox-indicator">✓</div>
+                    <div class="card-header">
+                        ${avatarContent}
+                        <div>
+                            <div class="name">${mentor.name} ${mentor.surname}</div>
+                            <div class="workplace">${mentor.workplace}</div>
+                        </div>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => toggleMentor(mentor.id, card));
+                grid.appendChild(card);
+            });
+        }
+
+        function toggleMentor(mentorId, cardElement) {
+            const index = selectedMentors.indexOf(mentorId);
+
+            if (index > -1) {
+                // Deselect
+                selectedMentors.splice(index, 1);
+                cardElement.classList.remove('selected');
+            } else {
+                // Select if under limit
+                if (selectedMentors.length >= MAX_SELECTION) {
+                    showMessage('You can only select up to 3 mentors', 'error');
+                    return;
+                }
+                selectedMentors.push(mentorId);
+                cardElement.classList.add('selected');
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('selectedCount').textContent = selectedMentors.length;
+            document.getElementById('submitBtn').disabled = selectedMentors.length !== MAX_SELECTION;
+
+            // Update card states
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(card => {
+                const mentorId = parseInt(card.dataset.mentorId);
+                if (selectedMentors.length >= MAX_SELECTION && !selectedMentors.includes(mentorId)) {
+                    card.classList.add('disabled');
+                } else {
+                    card.classList.remove('disabled');
+                }
+            });
+        }
+
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = `message ${type} show`;
+            setTimeout(() => message.classList.remove('show'), 4000);
+        }
+
+        document.getElementById('submitBtn').addEventListener('click', async () => {
+            if (selectedMentors.length !== MAX_SELECTION) {
+                showMessage('Please select exactly 3 mentors', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/chooseMentor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mentorIds: selectedMentors })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage('Mentors selected successfully!', 'success');
+                    setTimeout(() => window.location.href = '/team', 2000);
+                } else {
+                    showMessage(result.error || 'Failed to submit selection', 'error');
+                }
+            } catch (error) {
+                showMessage('An error occurred. Please try again.', 'error');
+            }
+        });
+
+        async function logout() {
+            try {
+                const response = await fetch('/api/logout', { method: 'POST' });
+                if (response.ok) window.location.href = '/';
+            } catch (error) {
+                console.error('Logout failed:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadMentors);
+    </script>
+        <script>
+            async function setMentorLinkBySelection() {
+                try {
+                    const res = await fetch('/api/mentors/available');
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+                    const link = document.querySelector('.nav-links .mentor-link');
+                    if (!link) return;
+                    if (selectedCount > 0) {
+                        link.textContent = 'Selected Mentors';
+                        link.href = '/selectedMentors';
+                    } else {
+                        link.textContent = 'Choose Mentor';
+                        link.href = '/chooseMentor';
+                    }
+                } catch {}
+            }
+            setMentorLinkBySelection();
+        </script>
+</body>
+</html>

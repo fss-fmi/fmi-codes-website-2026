@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Selected Mentors</title>
+  <style>
+    :root {
+      --bg: #060910;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --accent-2: #22d3ee;
+      --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at 18% 22%, rgba(96,165,250,0.12), transparent 40%),
+                  radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 96px 16px 48px;
+      display: flex;
+      justify-content: center;
+    }
+    .navbar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(1200px, calc(100% - 40px));
+      background: rgba(5, 6, 13, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+    .navbar-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
+    .logo-text { font-size: 20px; font-weight: 800; background: linear-gradient(120deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: 2px; text-decoration: none; }
+    .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
+    .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
+    .nav-link:hover { color: var(--accent); }
+    .nav-link::after { content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px; background: linear-gradient(120deg, var(--accent), var(--accent-2)); transition: width 0.2s ease; }
+    .nav-link:hover::after { width: 100%; }
+    .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
+    .login-btn { background: linear-gradient(120deg, var(--accent), var(--accent-2)); border: none; color: #0b1021; padding: 8px 18px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; text-decoration: none; display: inline-block; }
+    .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
+    .container { width: 100%; max-width: 1100px; margin-top: 10px; }
+    .header { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 16px; padding: 24px; margin-bottom: 20px; box-shadow: var(--card-glow); }
+    .header h1 { font-size: 26px; letter-spacing: 0.3px; margin-bottom: 8px; }
+    .header p { color: var(--muted); font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+    .card { position: relative; padding: 22px; border-radius: 14px; border: 1px solid var(--panel-border); background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); box-shadow: var(--card-glow); overflow: hidden; min-height: 200px; }
+    .card::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 45%); pointer-events: none; }
+    .card-header { display: flex; gap: 16px; align-items: center; margin-bottom: 14px; position: relative; z-index: 1; }
+    .avatar { width: 80px; height: 80px; border-radius: 12px; border: 1px solid var(--panel-border); object-fit: cover; background: #111827; }
+    .avatar.placeholder { display: grid; place-items: center; font-size: 26px; color: #c7d2fe; }
+    .name { font-size: 20px; font-weight: 750; margin-bottom: 4px; }
+    .workplace { color: var(--muted); font-size: 14px; }
+    .tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 13px; background: rgba(96, 165, 250, 0.14); color: #c7f9ff; border: 1px solid rgba(96,165,250,0.35); }
+    .empty { text-align: center; color: #cbd5e1; padding: 60px 0; font-size: 14px; }
+    @media (max-width: 768px) { body { padding: 92px 12px 40px; } .navbar-container { padding: 10px 16px; } }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-logo"><a href="/team" class="logo-text">FSS</a></div>
+      <div class="nav-links">
+        <a href="/team" class="nav-link">Home</a>
+        <a href="/teamRegulations" class="nav-link">Regulations</a>
+        <a href="/teamSchedule" class="nav-link">Schedule</a>
+        <a href="/teamMentors" class="nav-link">Mentors</a>
+        <a href="/teamRanking" class="nav-link">Ranking</a>
+        <a href="/selectedMentors" class="nav-link mentor-link">Selected Mentors</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#" onclick="logout(); return false;" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="header">
+      <h1>Your Selected Mentors</h1>
+      <p>View the mentors your team has chosen. Update selections from the Choose Mentor page.</p>
+    </div>
+    <div id="mentorGrid" class="grid"></div>
+    <div id="emptyState" class="empty" style="display:none;">No mentors selected yet. Go to Choose Mentor to pick three mentors.</div>
+  </div>
+
+  <script>
+    async function loadSelectedMentors() {
+      const grid = document.getElementById('mentorGrid');
+      const empty = document.getElementById('emptyState');
+      grid.innerHTML = '';
+      empty.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/mentors/available');
+        const data = await res.json();
+
+        if (!data.success) {
+          empty.textContent = data.error || 'Unable to load mentors.';
+          empty.style.display = 'block';
+          return;
+        }
+
+        const selected = Array.isArray(data.selected) ? data.selected : [];
+        if (selected.length === 0) {
+          empty.style.display = 'block';
+          return;
+        }
+
+        selected.forEach(m => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          const hasInlinePic = Boolean(m.picture_data);
+          const hasPic = Boolean(m.picture_filename) || hasInlinePic;
+          const imgSrc = hasInlinePic ? `data:image/png;base64,${m.picture_data}` : (hasPic ? `/api/mentors/${m.id}/picture` : null);
+
+          card.innerHTML = `
+            <div class="card-header">
+              ${hasPic ? `<img class="avatar" src="${imgSrc}" alt="${m.name} ${m.surname}">` : `<div class="avatar placeholder">Avatar</div>`}
+              <div>
+                <div class="name">${m.name} ${m.surname}</div>
+                <div class="workplace">${m.workplace}</div>
+              </div>
+            </div>
+            <div class="tag">${m.workplace}</div>
+          `;
+
+          grid.appendChild(card);
+        });
+      } catch (err) {
+        empty.textContent = 'Error loading mentors. Please try again.';
+        empty.style.display = 'block';
+      }
+    }
+
+    async function logout() {
+      try {
+        const response = await fetch('/api/logout', { method: 'POST' });
+        if (response.ok) window.location.href = '/';
+      } catch (error) {
+        console.error('Logout failed:', error);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadSelectedMentors);
+  </script>
+</body>
+</html>

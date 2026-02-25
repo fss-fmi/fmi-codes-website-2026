@@ -1,0 +1,22 @@
+[
+  {
+    "question": "Who can participate in the event?",
+    "answer": "Teams of 3–6 students currently enrolled in a university or college program are eligible to participate. Mixed-year teams are allowed."
+  },
+  {
+    "question": "What is the registration deadline?",
+    "answer": "Registration closes one week before the event start date, or earlier if all available team slots are filled. Late registrations are not accepted."
+  },
+  {
+    "question": "Are external tools and libraries permitted?",
+    "answer": "Yes, publicly available open-source tools and libraries are permitted, provided that licensing terms are respected and no proprietary data is used without permission."
+  },
+  {
+    "question": "How are submissions evaluated?",
+    "answer": "Submissions are evaluated based on correctness, security, code quality, and documentation. Bonus points may be awarded for innovation and defense-in-depth approaches."
+  },
+  {
+    "question": "What is the code of conduct?",
+    "answer": "All participants must maintain professionalism and respect. Harassment, cheating, plagiarism, or disruptive behavior results in disqualification at the organizers' discretion."
+  }
+]

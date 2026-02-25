@@ -1,0 +1,20 @@
+[
+  { "name": "Alice", "surname": "Johnson", "workplace": "Tech University", "picturePath": "C:\\Users\\alexs\\projects\\FSS Website\\FMI_Codes\\mentorPictures\\bulgarianFlag.png" },
+  { "name": "Bob", "surname": "Smith", "workplace": "Innovate Labs", "picturePath": "" },
+  { "name": "Carla", "surname": "Nguyen", "workplace": "AI Research Group", "picturePath": "" },
+  { "name": "David", "surname": "Lee", "workplace": "Cloud Nine Systems", "picturePath": "" },
+  { "name": "Elena", "surname": "Garcia", "workplace": "Quantum Labs", "picturePath": "" },
+  { "name": "Farid", "surname": "Hassan", "workplace": "DeepSight Analytics", "picturePath": "" },
+  { "name": "Grace", "surname": "Kim", "workplace": "Open Data Works", "picturePath": "" },
+  { "name": "Henry", "surname": "Brown", "workplace": "Northwind Robotics", "picturePath": "" },
+  { "name": "Iris", "surname": "Papadopoulos", "workplace": "Athena Tech", "picturePath": "" },
+  { "name": "Jacob", "surname": "Miller", "workplace": "NextGen Solutions", "picturePath": "" },
+  { "name": "Katerina", "surname": "Ivanova", "workplace": "Vector AI", "picturePath": "" },
+  { "name": "Liam", "surname": "O'Connor", "workplace": "Skyline Security", "picturePath": "" },
+  { "name": "Maya", "surname": "Patel", "workplace": "Civic Tech Hub", "picturePath": "" },
+  { "name": "Noah", "surname": "Schultz", "workplace": "GreenGrid Energy", "picturePath": "" },
+  { "name": "Olivia", "surname": "Martins", "workplace": "HealthSync", "picturePath": "" },
+  { "name": "Priya", "surname": "Rao", "workplace": "DataBridge", "picturePath": "" },
+  { "name": "Quentin", "surname": "Dupont", "workplace": "NeoCompute", "picturePath": "" },
+  { "name": "Rosa", "surname": "Silva", "workplace": "Atlas Mobility", "picturePath": "" }
+]
