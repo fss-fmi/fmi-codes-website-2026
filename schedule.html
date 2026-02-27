@@ -4,389 +4,335 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Schedule</title>
-    <style>
-        :root {
-            --bg: #05060d;
-            --panel: rgba(255, 255, 255, 0.04);
-            --panel-border: rgba(255, 255, 255, 0.08);
-            --text: #e5e7eb;
-            --muted: #94a3b8;
-            --accent: #60a5fa;
-            --accent-2: #22d3ee;
-            --glow: 0 30px 80px rgba(0, 0, 0, 0.45);
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background: radial-gradient(circle at 15% 20%, rgba(96,165,250,0.15), transparent 40%),
-                        radial-gradient(circle at 85% 10%, rgba(34,211,238,0.14), transparent 38%),
-                        var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 70px 16px 12px;
-            display: flex;
-            justify-content: center;
-            overflow: hidden;
-        }
-        .container { width: 100%; max-width: 900px; height: 100vh; display: flex; flex-direction: column; margin-top: 5px; }
-        .timeline {
-            position: relative;
-            padding: 0;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-around;
-        }
-        .timeline::before {
-            content: "";
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 3px;
-            height: calc(100% - 40px);
-            top: 20px;
-            background: linear-gradient(180deg, rgba(96,165,250,0.4), rgba(34,211,238,0.4), rgba(96,165,250,0.4));
-        }
-        .timeline-item {
-            margin-top: 10px;
-            margin-bottom: 0;
-            display: flex;
-            gap: 80px;
-            align-items: stretch;
-            flex: 1;
-        }
-        .timeline-item:nth-child(odd) { flex-direction: row; }
-        .timeline-item:nth-child(even) { flex-direction: row-reverse; }
-        .timeline-content {
-            width: 50%;
-        }
-        .timeline-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-            opacity: 0.6;
-            transition: opacity 0.2s ease;
-        }
-        .timeline-item:hover .timeline-icon {
-            opacity: 1;
-        }
-        .dot {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 14px;
-            height: 14px;
-            border: 3px solid #05060d;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            border-radius: 50%;
-            top: 24px;
-            z-index: 2;
-            box-shadow: 0 0 0 8px rgba(96,165,250,0.15);
-        }
-        .card {
-            position: relative;
-            border: 1px solid var(--panel-border);
-            border-radius: 14px;
-            background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-            padding: 28px;
-            box-shadow: var(--glow);
-            overflow: hidden;
-            transition: transform 0.2s ease, border-color 0.2s ease;
-        }
-        .card:hover { transform: translateY(-6px); border-color: rgba(96,165,250,0.4); }
-        .card::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at 18% 18%, rgba(96,165,250,0.12), transparent 45%);
-            pointer-events: none;
-        }
-        .label {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: rgba(34,211,238,0.12);
-            border: 1px solid rgba(34,211,238,0.3);
-            color: #c7f9ff;
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-        }
-        .card h3 { margin: 16px 0 10px; font-size: clamp(20px, 6vw, 28px); font-weight: 750; }
-        .card p { color: var(--muted); font-size: clamp(14px, 3.5vw, 16px); line-height: 1.6; }
-        .meta { margin-top: 16px; display: flex; gap: 12px; color: #cbd5e1; font-size: 14px; flex-wrap: wrap; }
-        .meta span { display: inline-flex; align-items: center; gap: 6px; }
-        .icon { color: #60a5fa; }
-        @media (max-width: 768px) {
-            .timeline::before { left: 20px; }
-            .timeline-item { flex-direction: column !important; }
-            .timeline-content { width: 100%; margin-left: 60px; }
-            .dot { left: 20px; }
-            body { padding: 24px 12px 40px; }
-            .card { padding: 24px; }
-        }
-        @media (max-width: 640px) {
-            body { padding: 20px 12px 40px; }
-            .card { padding: 20px; }
-            .card h3 { font-size: 20px; }
-        }
-        /* Navbar Styles */
-        .navbar {
-            position: fixed;
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: min(1200px, calc(100% - 40px));
-            background: rgba(5, 6, 13, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            z-index: 1000;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-            overflow: hidden;
-        }
-        .navbar-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 12px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .navbar-logo {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-width: 80px;
-        }
-        .logo-text {
-            font-size: 20px;
-            font-weight: 800;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: 2px;
-        }
-        .nav-links {
-            display: flex;
-            gap: 24px;
-            align-items: center;
-            flex: 1;
-            justify-content: center;
-        }
-        .nav-link {
-            color: #e5e7eb;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-            transition: color 0.2s ease;
-            position: relative;
-        }
-        .nav-link:hover {
-            color: #60a5fa;
-        }
-        .nav-link::after {
-            content: "";
-            position: absolute;
-            bottom: -4px;
-            left: 0;
-            width: 0;
-            height: 2px;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            transition: width 0.2s ease;
-        }
-        .nav-link:hover::after {
-            width: 100%;
-        }
-        .nav-actions {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            min-width: 140px;
-            justify-content: flex-end;
-        }
-        .settings-btn {
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 6px 10px;
-            border-radius: 6px;
-            transition: all 0.2s ease;
-        }
-        .settings-btn:hover {
-            background: rgba(96, 165, 250, 0.1);
-        }
-        .login-btn {
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            border: none;
-            color: #0b1021;
-            padding: 8px 18px;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
-        }
-        @media (max-width: 900px) {
-            .nav-links {
-                gap: 16px;
-            }
-            .nav-link {
-                font-size: 13px;
-            }
-        }
-        @media (max-width: 768px) {
-            .navbar-container {
-                padding: 10px 16px;
-            }
-            .nav-links {
-                gap: 12px;
-                font-size: 12px;
-            }
-            .nav-link {
-                font-size: 12px;
-            }
-            .login-btn {
-                padding: 6px 12px;
-                font-size: 12px;
-            }
-        }
-    </style>
 </head>
 <body>
-    <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="navbar-container">
-            <!-- Logo -->
-            <div class="navbar-logo">
-                <div class="logo-text">FSS</div>
-            </div>
+    <div id="navbar-slot"></div>
 
-            <!-- Navigation Links -->
-            <div class="nav-links">
-                <a href="/" class="nav-link">Home</a>
-                <a href="/regulations" class="nav-link">Regulations</a>
-                <a href="/schedule" class="nav-link">Schedule</a>
-                <a href="/mentors" class="nav-link">Mentors</a>
-                <a href="/ranking" class="nav-link">Ranking</a>
-            </div>
-
-            <!-- Right Side Actions -->
-            <div class="nav-actions">
-                <a href="/login" class="login-btn">Login</a>
-            </div>
+    <div class="days-line-section">
+      <div class="days-line">
+        <div class="day-node day-1">
+          <span class="day-dot"></span>
+          <span class="day-label">12 март</span>
         </div>
-    </nav>
+        <div class="day-node day-2">
+          <span class="day-dot"></span>
+          <span class="day-label">13 март</span>
+        </div>
+        <div class="day-node day-3">
+          <span class="day-dot"></span>
+          <span class="day-label">14 март</span>
+        </div>
+      </div>
+    </div>
 
-    <div class="container">
-        <div class="timeline" id="scheduleTimeline"></div>
+    <div class="day-cards-section">
+      <article class="day-card">
+        <h3>Петък</h3>
+        <ul class="activity-list">
+          <li>
+            <span class="activity-name">Регистрация</span>
+            <span class="activity-meta">⏱️17:00 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">Откриване</span>
+            <span class="activity-meta">⏱️18:00 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">Вечеря</span>
+            <span class="activity-meta">⏱️19:30 <br></M>📍Аула 1</span>
+          </li>
+        </ul>
+      </article>
+
+      <article class="day-card">
+        <h3>Събота</h3>
+        <ul class="activity-list">
+          <li>
+            <span class="activity-name">Закуска</span>
+            <span class="activity-meta">⏱️09:00 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">MenTour</span>
+            <span class="activity-meta">⏱️10:00 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">Pick Mentors</span>
+            <span class="activity-meta">⏱️12:00 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">Обяд</span>
+            <span class="activity-meta">⏱️13:00 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">Вечеря</span>
+            <span class="activity-meta">⏱️19:30 <br></M>📍Аула 1</span>
+          </li>
+        </ul>
+      </article>
+
+      <article class="day-card">
+        <h3>Неделя</h3>
+        <ul class="activity-list">
+          <li>
+            <span class="activity-name">Закуска</span>
+            <span class="activity-meta">⏱️09:00 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">Обяд</span>
+            <span class="activity-meta">⏱️13:30 <br></M>📍Аула 1</span>
+          </li>
+          <li>
+            <span class="activity-name">Тестване</span>
+            <span class="activity-meta">⏱️14:00 <br></M>📍Зала 325</span>
+          </li>
+          <li>
+            <span class="activity-name">Представяне и закриване</span>
+            <span class="activity-meta">⏱️16:00 <br></M>📍Аула 1</span>
+          </li>
+        </ul>
+      </article>
+    </div>
+
+    <div class="extra-card-section">
+      <article class="day-card extra-card">
+        <h3>Фотобутка</h3>
+        <p class="extra-card-text">📅Събота <br></M> ⏱️15:00 - 19:00 <br></M>📍Аула 1</p>
+      </article>
     </div>
 
     <script>
-        // Example events for the current day
-        const events = [
-            {
-                title: 'Morning Threat Briefing',
-                desc: 'Review overnight alerts, prioritize incidents, and assign responders for rapid containment.',
-                time: '09:00 - 10:00',
-                room: 'SOC War Room',
-                label: 'Friday'
-            },
-            {
-                title: 'Incident Response Drill',
-                desc: 'Hands-on tabletop simulating lateral movement; run playbooks and validate detection coverage.',
-                time: '11:00 - 12:30',
-                room: 'Red/Blue Lab',
-                label: 'Saturday'
-            },
-            {
-                title: 'Secure Code Review',
-                desc: 'Pair-review recent commits; check auth flows, input validation, and secrets handling.',
-                time: '14:00 - 15:30',
-                room: 'DevSec Guild',
-                label: 'Sunday'
-            }
-        ];
+      async function loadNavbar() {
+      try {
+        const res = await fetch('/navbar.html');
+        if (!res.ok) return;
+        const html = await res.text();
+        const slot = document.getElementById('navbar-slot');
+        if (slot) slot.innerHTML = html;
+      } catch {}
+    }
+    function normalizeDayCards() {
+      const cards = document.querySelectorAll('.day-card');
 
-        const timeline = document.getElementById('scheduleTimeline');
-        events.forEach((ev, idx) => {
-            const icons = ['🔒', '🛡️', '⚙️'];
-            const item = document.createElement('div');
-            item.className = 'timeline-item';
-            item.innerHTML = `
-                <div class="timeline-content">
-                    <div class="card">
-                        <div class="label">${ev.label}</div>
-                        <h3>${ev.title}</h3>
-                        <p>${ev.desc}</p>
-                        <div class="meta">
-                            <span class="icon">⏱</span><span>${ev.time}</span>
-                            <span class="icon">🛡</span><span>${ev.room}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="timeline-icon">${icons[idx % icons.length]}</div>
-                <div class="dot"></div>
-            `;
-            timeline.appendChild(item);
+      cards.forEach((card) => {
+        const list = card.querySelector('.activity-list');
+        if (!list) return;
+
+        const items = Array.from(list.querySelectorAll('li'));
+        items.forEach((item) => {
+          const name = item.querySelector('.activity-name')?.textContent?.trim() || '';
+          const meta = item.querySelector('.activity-meta')?.textContent?.trim() || '';
+          if (!name && !meta) {
+            item.remove();
+          }
         });
-    </script>
-    <script>
-            function ensureMentorLink(text, href) {
-                const navLinks = document.querySelector('.nav-links');
-                let link = document.querySelector('.nav-links .mentor-link');
-                if (!link) {
-                    link = document.createElement('a');
-                    link.className = 'nav-link mentor-link';
-                    navLinks.appendChild(link);
-                }
-                link.textContent = text;
-                link.href = href;
-            }
 
-            async function setMentorLinkBySelection() {
-                try {
-                    const res = await fetch('/api/mentors/available');
-                    if (!res.ok) return;
-                    const data = await res.json();
-                    const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-                    if (selectedCount > 0) {
-                        ensureMentorLink('Selected Mentors', '/selectedMentors');
-                    } else {
-                        ensureMentorLink('Choose Mentor', '/chooseMentor');
-                    }
-                } catch {}
-            }
+        if (list.querySelectorAll('li').length === 0) {
+          card.style.display = 'none';
+        }
+      });
+    }
 
-            function updateNavbar() {
-        const teamName = window.loggedInTeam || '';
-        const navActions = document.querySelector('.nav-actions');
-        if (teamName) {
-          navActions.innerHTML = `
-            <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
-          `;
-                    setMentorLinkBySelection();
-        }
-      }
-      async function logout() {
-        try {
-          const response = await fetch('/api/logout', { method: 'POST' });
-          if (response.ok) window.location.reload();
-        } catch (error) {
-          console.error('Logout failed:', error);
-        }
-      }
-      updateNavbar();
+    loadNavbar();
+    normalizeDayCards();
     </script>
 </body>
 </html>
+
+ <style>
+    :root {
+      --bg: #060910;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --accent-2: #22d3ee;
+      --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 40%),
+                  radial-gradient(circle at 80% 0%, rgba(34, 211, 238, 0.10), transparent 36%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 72px 16px 60px; /* room for island navbar */
+      display: flex;
+      justify-content: center;
+    }
+    /* Island Navbar */
+    .navbar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(1200px, calc(100% - 40px));
+      background: rgba(5, 6, 13, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+    .navbar-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
+    .logo-text {
+      font-size: 20px; font-weight: 800;
+      background: linear-gradient(120deg, #60a5fa, #22d3ee);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      letter-spacing: 2px;
+    }
+    .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
+    .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
+    .nav-link:hover { color: #60a5fa; }
+    .nav-link::after {
+      content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px;
+      background: linear-gradient(120deg, #60a5fa, #22d3ee); transition: width 0.2s ease;
+    }
+    .nav-link:hover::after { width: 100%; }
+    .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
+    .settings-btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 6px 10px; border-radius: 6px; transition: all 0.2s ease; }
+    .settings-btn:hover { background: rgba(96, 165, 250, 0.1); }
+    .login-btn {
+      background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021; padding: 8px 18px;
+      border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
+
+    body {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .days-line-section {
+      width: 100%;
+      max-width: 1200px;
+      margin-top: 8px;
+      display: flex;
+      justify-content: center;
+    }
+    .days-line {
+      position: relative;
+      width: min(1200px, 100%);
+      height: 150px;
+    }
+    .days-line::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50px;
+      height: 4px;
+      background: linear-gradient(90deg, rgba(96,165,250,0.85), rgba(34,211,238,0.85));
+      border-radius: 999px;
+    }
+    .day-node {
+      position: absolute;
+      top: calc(50px + (4px / 2) - (30px / 2));
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .day-1 { left: 16%; }
+    .day-2 { left: 50%; }
+    .day-3 { left: 84%; }
+    .day-dot {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: linear-gradient(120deg, #60a5fa, #22d3ee);
+      border: 2px solid rgba(255,255,255,0.2);
+      box-shadow: 0 0 0 8px rgba(96,165,250,0.18);
+    }
+    .day-label {
+      color: #dbe3ef;
+      font-size: 30px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .day-cards-section {
+      width: min(1300px, 100%);
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 28px;
+      align-items: start;
+    }
+    .day-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: var(--card-glow);
+      height: fit-content;
+    }
+    .extra-card-section {
+      width: min(1300px, 100%);
+      margin-top: 48px;
+      display: flex;
+      justify-content: center;
+    }
+    .extra-card {
+      width: min(560px, 100%);
+    }
+    .extra-card-text {
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1.45;
+    }
+    .day-card h3 {
+      margin-bottom: 14px;
+      font-size: 36px;
+      color: #dbeafe;
+    }
+    .activity-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .activity-list li {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.02);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .activity-name {
+      font-weight: 600;
+      color: #eef5ff;
+      font-size: 26px;
+    }
+    .activity-meta {
+      color: var(--muted);
+      font-size: 22px;
+    }
+
+    @media (max-width: 900px) {
+      .days-line-section {
+        display: none;
+      }
+      .day-cards-section {
+        grid-template-columns: 1fr;
+        margin-top: 40px;
+      }
+      .extra-card-section {
+        margin-top: 24px;
+      }
+    }
+
+  </style>

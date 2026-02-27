@@ -3,641 +3,348 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Registration Form</title>
+    <title>Registration</title>
     <style>
         :root {
-            --bg: #060910;
-            --panel: rgba(255, 255, 255, 0.04);
-            --panel-border: rgba(255, 255, 255, 0.08);
-            --text: #e5e7eb;
-            --muted: #9ca3af;
-            --accent: #60a5fa;
-            --accent-2: #22d3ee;
-            --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: radial-gradient(circle at 18% 22%, rgba(96,165,250,0.12), transparent 40%),
-                        radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%),
-                        var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 96px 16px 48px;
-            display: flex;
-            justify-content: center;
-        }
-
-        /* Island Navbar */
-        .navbar {
-            position: fixed;
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: min(1200px, calc(100% - 40px));
-            background: rgba(5, 6, 13, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            z-index: 1000;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-            overflow: hidden;
-        }
-        .navbar-container { max-width: 1400px; margin: 0 auto; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
-        .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
-        .logo-text { font-size: 20px; font-weight: 800; background: linear-gradient(120deg, #60a5fa, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: 2px; text-decoration: none; }
-        .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
-        .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
-        .nav-link:hover { color: #60a5fa; }
-        .nav-link::after { content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px; background: linear-gradient(120deg, #60a5fa, #22d3ee); transition: width 0.2s ease; }
-        .nav-link:hover::after { width: 100%; }
-        .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
-        .login-btn { background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021; padding: 8px 18px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; text-decoration: none; display: inline-block; }
-        .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
-
-        .container {
+      --bg: #060910;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --accent-2: #22d3ee;
+      --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at 18% 22%, rgba(96,165,250,0.12), transparent 40%),
+                  radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 96px 16px 28px; /* island navbar space, lower bottom padding */
+      display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+    }
+    .container {
+            margin-top: 24px;
             background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
             border: 1px solid var(--panel-border);
             border-radius: 16px;
             box-shadow: var(--glow);
-            padding: 36px;
-            max-width: 800px;
+            padding: 40px;
+            max-width: 1100px;
             width: 100%;
-            position: relative;
-            overflow: hidden;
         }
 
-        .container::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 45%);
-            pointer-events: none;
-        }
+        h1 { text-align: center; margin-bottom: 10px; font-size: 40px; }
+        .subtitle { text-align: center; color: var(--muted); margin-bottom: 28px; font-size: 20px; }
 
-        h1 {
-            color: var(--text);
-            margin-bottom: 10px;
-            text-align: center;
-            font-size: 28px;
-            font-weight: 800;
-            position: relative;
-            z-index: 1;
-        }
-
-        .subtitle {
-            color: var(--muted);
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 14px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--text);
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .form-group input {
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+        .full { grid-column: 1 / -1; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 18px; }
+        input, select {
             width: 100%;
-            padding: 12px 14px;
-            border: 1px solid var(--panel-border);
+            padding: 14px 16px;
             border-radius: 8px;
+            border: 1px solid var(--panel-border);
             background: rgba(255,255,255,0.04);
             color: var(--text);
-            font-size: 14px;
-            transition: border-color 0.2s, background 0.2s;
+            font-size: 18px;
         }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: var(--accent);
-            background: rgba(255,255,255,0.06);
-        }
-
-        .form-group input::placeholder {
-            color: #6b7280;
-        }
-
-        .team-info {
-            background: rgba(255,255,255,0.03);
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-            border: 1px solid var(--panel-border);
-            position: relative;
-            z-index: 1;
-        }
-
-        .team-info .form-group {
-            margin-bottom: 0;
+        .p-university option {
+            color: #000;
         }
 
         .section-title {
+            margin: 24px 0 14px;
             color: var(--accent-2);
-            font-size: 18px;
             font-weight: 700;
-            margin-bottom: 20px;
-            margin-top: 30px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid rgba(34,211,238,0.3);
-            position: relative;
-            z-index: 1;
+            font-size: 24px;
         }
 
         .participant-card {
-            background: rgba(255,255,255,0.03);
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            border-left: 4px solid var(--accent);
             border: 1px solid var(--panel-border);
-            border-left: 4px solid var(--accent);
-            position: relative;
-            z-index: 1;
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 16px;
         }
 
-        .participant-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .participant-title {
-            font-weight: 600;
-            color: var(--text);
-        }
-
-        .remove-btn {
-            background: rgba(239, 68, 68, 0.15);
-            color: #fca5a5;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s;
-        }
-
-        .remove-btn:hover {
-            background: rgba(239, 68, 68, 0.25);
-            transform: translateY(-1px);
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-
-        .form-row.full {
-            grid-template-columns: 1fr;
-        }
-
-        .button-group {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            margin-bottom: 20px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .add-btn {
-            background: rgba(34, 197, 94, 0.15);
-            color: #86efac;
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-
-        .add-btn:hover {
-            background: rgba(34, 197, 94, 0.25);
-            transform: translateY(-2px);
-        }
-
-        .add-btn:disabled {
-            background: rgba(156, 163, 175, 0.1);
-            color: #6b7280;
-            border-color: rgba(156, 163, 175, 0.2);
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .submit-btn {
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            color: #0b1021;
-            border: none;
-            padding: 14px 30px;
+        .actions { display: flex; gap: 12px; margin: 14px 0 22px; }
+        button {
+            border: 0;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 16px;
             font-weight: 700;
-            width: 100%;
-            transition: transform 0.2s, box-shadow 0.2s;
-            position: relative;
-            z-index: 1;
         }
+        .add-btn { background: rgba(34, 197, 94, 0.18); color: #86efac; padding: 13px 18px; border: 1px solid rgba(34,197,94,0.35); font-size: 18px; }
+        .remove-btn { background: rgba(239,68,68,0.15); color: #fca5a5; padding: 8px 12px; border: 1px solid rgba(239,68,68,0.35); font-size: 15px; }
+        .submit-btn { width: 100%; padding: 16px 18px; background: linear-gradient(120deg, #60a5fa, #22d3ee); color: #0b1021; font-size: 20px; }
 
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(96, 165, 250, 0.4);
-        }
-
-        .error-message {
-            color: #fca5a5;
-            font-size: 12px;
-            margin-top: 5px;
-            display: none;
-        }
-
-        .error-message.show {
-            display: block;
-        }
-
-        .success-message {
-            background: rgba(34, 197, 94, 0.15);
-            color: #86efac;
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-            position: relative;
-            z-index: 1;
-        }
-
-        .success-message.show {
-            display: block;
-        }
-
-        .participant-count {
-            background: rgba(34,211,238,0.1);
-            border: 1px solid rgba(34,211,238,0.2);
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 13px;
-            color: var(--text);
-            position: relative;
-            z-index: 1;
-        }
+        .message { margin-bottom: 16px; padding: 14px; border-radius: 8px; display: none; font-size: 18px; }
+        .message.show { display: block; }
 
         @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .container { padding: 22px; }
             body { padding: 92px 12px 36px; }
             .navbar-container { padding: 10px 16px; }
-            .container { padding: 28px 22px; }
-            .form-row { grid-template-columns: 1fr; }
-            .button-group { flex-direction: column; }
-            .button-group button { width: 100%; }
+            h1 { font-size: 32px; }
+            .subtitle { font-size: 18px; }
         }
     </style>
 </head>
 <body>
-    <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="navbar-container">
-            <div class="navbar-logo"><a href="/" class="logo-text">FSS</a></div>
-            <div class="nav-links">
-                <a href="/" class="nav-link">Home</a>
-                <a href="/regulations" class="nav-link">Regulations</a>
-                <a href="/schedule" class="nav-link">Schedule</a>
-                <a href="/mentors" class="nav-link">Mentors</a>
-                <a href="/ranking" class="nav-link">Ranking</a>
-            </div>
-            <div class="nav-actions">
-                <a href="/login" class="login-btn">Login</a>
-            </div>
-        </div>
-    </nav>
 
     <div class="container">
-        <h1>Team Registration</h1>
-        <p class="subtitle">Register your team with 3-6 participants</p>
+        <h1>Регистрация</h1>
+        <p class="subtitle">Регистрирайте своя екип с 3 до 6 участника</p>
 
-        <div id="successMessage" class="success-message"></div>
+        <div id="message" class="message"></div>
 
         <form id="registrationForm">
-            <!-- Team Information -->
-            <div class="team-info">
-                <div class="form-group">
-                    <label for="teamName">Team Name *</label>
-                    <input type="text" id="teamName" name="teamName" required placeholder="Enter your team name">
-                    <div class="error-message" id="teamNameError"></div>
+            <div class="grid">
+                <div>
+                    <label for="teamName">Име на отбор *</label>
+                    <input id="teamName" required>
                 </div>
-                <div class="form-group">
-                    <label for="teamPassword">Password *</label>
-                    <input type="password" id="teamPassword" name="teamPassword" required placeholder="Enter team password">
-                    <div class="error-message" id="teamPasswordError"></div>
+                <div>
+                    <label for="teamPassword">Парола *</label>
+                    <input id="teamPassword" type="password" required>
                 </div>
             </div>
 
-            <!-- Participants Section -->
-            <div class="section-title">Participants</div>
-            <div class="participant-count">
-                Current participants: <span id="participantCount">0</span> / 6
+            <div class="section-title">Участници</div>
+            <div id="participants"></div>
+
+            <div class="actions">
+                <button type="button" class="add-btn" id="addBtn">+ Добави Участник</button>
             </div>
 
-            <div id="participantsContainer"></div>
-
-            <!-- Button Group -->
-            <div class="button-group">
-                <button type="button" class="add-btn" id="addBtn" onclick="addParticipant()">+ Add Participant</button>
-            </div>
-
-            <!-- Submit Button -->
-            <button type="submit" class="submit-btn">Submit Registration</button>
+            <button type="submit" class="submit-btn">Регистриране</button>
         </form>
     </div>
 
     <script>
-        const MIN_PARTICIPANTS = 3;
-        const MAX_PARTICIPANTS = 6;
+        const minParticipants = 3;
+        const maxParticipants = 6;
+        const bulgarianUniversities = [
+            'Софийски университет „Св. Климент Охридски“',
+            'Пловдивски университет „Паисий Хилендарски“',
+            'Великотърновски университет „Св. св. Кирил и Методий“',
+            'Югозападен университет „Неофит Рилски“',
+            'Шуменски университет „Епископ Константин Преславски“',
+            'Русенски университет „Ангел Кънчев“',
+            'Технически университет – София',
+            'Технически университет – Варна',
+            'Технически университет – Габрово',
+            'Университет по архитектура, строителство и геодезия',
+            'Минно-геоложки университет „Св. Иван Рилски“',
+            'Химикотехнологичен и металургичен университет',
+            'Университет по хранителни технологии – Пловдив',
+            'Лесотехнически университет',
+            'Аграрен университет – Пловдив',
+            'Тракийски университет – Стара Загора',
+            'Медицински университет – София',
+            'Медицински университет – Пловдив',
+            'Медицински университет – Варна',
+            'Медицински университет – Плевен',
+            'Медицински университет „Проф. д-р Параскев Стоянов“ – Варна',
+            'Национална спортна академия „Васил Левски“',
+            'Национална художествена академия',
+            'Национална музикална академия „Проф. Панчо Владигеров“',
+            'НАТФИЗ „Кръстьо Сарафов“',
+            'УНСС',
+            'Икономически университет – Варна',
+            'Стопанска академия „Д. А. Ценов“ – Свищов',
+            'Американски университет в България',
+            'Нов български университет',
+            'Бургаски свободен университет',
+            'Варненски свободен университет „Черноризец Храбър“',
+            'Висше транспортно училище „Тодор Каблешков“',
+            'Висше училище по телекомуникации и пощи',
+            'Военна академия „Г. С. Раковски“',
+            'Национален военен университет „Васил Левски“',
+            'Висше военноморско училище „Н. Й. Вапцаров“',
+            'Академия на МВР',
+            'Академия за музикално, танцово и изобразително изкуство – Пловдив',
+            'Юридически университет (частен) / Висше училище по сигурност и икономика',
+            'Университет „Проф. д-р Асен Златаров“ – Бургас',
+            'Пернишки университет (Европейски политехнически университет)',
+            'Висше строително училище „Любен Каравелов“',
+            'Висше училище по мениджмънт',
+            'Висше училище по застраховане и финанси',
+            'Международно висше бизнес училище',
+            'Висше училище по агробизнес и развитие на регионите'
+        ];
 
-        // Initialize with 3 participants
-        function initializeForm() {
-            const container = document.getElementById('participantsContainer');
-            container.innerHTML = '';
-            for (let i = 0; i < MIN_PARTICIPANTS; i++) {
-                addParticipant();
+        function getUniversityOptions() {
+            const options = bulgarianUniversities
+                .map((name) => `<option value="${name}">${name}</option>`)
+                .join('');
+            return `<option value="">Изберете университет</option>${options}`;
+        }
+
+        function renderParticipant(index) {
+                return `
+                    <div class="participant-card" data-index="${index}">
+                    <div class="grid">
+                        <div>
+                            <label>Първо име *</label>
+                            <input class="p-first" required>
+                        </div>
+                        <div>
+                            <label>Фамилия *</label>
+                            <input class="p-last" required>
+                        </div>
+                        <div>
+                            <label>Факултетен номер *</label>
+                            <input class="p-fn" required>
+                        </div>
+                        <div>
+                            <label>Discord Username *</label>
+                            <input class="p-discord" required>
+                        </div>
+                        <div>
+                            <label>Университет *</label>
+                            <select class="p-university" required>
+                                ${getUniversityOptions()}
+                            </select>
+                        </div>
+                        <div>
+                            <label>Година *</label>
+                            <input class="p-year" required>
+                        </div>
+                        <div>
+                            <label>Специалност *</label>
+                            <input class="p-degree" required>
+                        </div>
+                    </div>
+                    ${index >= minParticipants ? '<div class="actions"><button type="button" class="remove-btn">Премахни</button></div>' : ''}
+                </div>
+            `;
+        }
+
+        function setupParticipants() {
+            const wrap = document.getElementById('participants');
+            wrap.innerHTML = '';
+            for (let i = 0; i < minParticipants; i++) {
+                wrap.insertAdjacentHTML('beforeend', renderParticipant(i));
             }
         }
 
         function addParticipant() {
-            const container = document.getElementById('participantsContainer');
-            const participantCount = container.children.length;
+            const wrap = document.getElementById('participants');
+            const count = wrap.querySelectorAll('.participant-card').length;
+            if (count >= maxParticipants) return;
+            wrap.insertAdjacentHTML('beforeend', renderParticipant(count));
+        }
 
-            if (participantCount >= MAX_PARTICIPANTS) {
-                alert(`Maximum ${MAX_PARTICIPANTS} participants allowed`);
+        function collectParticipants() {
+            return Array.from(document.querySelectorAll('.participant-card')).map((card) => ({
+                firstName: card.querySelector('.p-first').value.trim(),
+                lastName: card.querySelector('.p-last').value.trim(),
+                facultyNumber: card.querySelector('.p-fn').value.trim(),
+                discord: card.querySelector('.p-discord').value.trim(),
+                university: card.querySelector('.p-university').value.trim(),
+                year: card.querySelector('.p-year').value.trim(),
+                degree: card.querySelector('.p-degree').value.trim()
+            }));
+        }
+
+        function showMessage(text, isError = false) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            msg.classList.add('show');
+            msg.style.background = isError ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+            msg.style.color = isError ? '#fca5a5' : '#86efac';
+            msg.style.border = isError ? '1px solid rgba(239,68,68,0.35)' : '1px solid rgba(34,197,94,0.35)';
+        }
+
+        function validateRegistrationForm(participants) {
+            const teamName = document.getElementById('teamName').value.trim();
+            const password = document.getElementById('teamPassword').value.trim();
+
+            if (teamName.length < 1) {
+                return 'Team name must be at least 1 character.';
+            }
+
+            if (password.length < 8) {
+                return 'Password must be at least 8 characters.';
+            }
+
+            for (let i = 0; i < participants.length; i++) {
+                const participant = participants[i];
+                const firstNameLength = participant.firstName.length;
+                const lastNameLength = participant.lastName.length;
+
+                if (firstNameLength < 2 || firstNameLength > 50) {
+                    return `Participant ${i + 1}: First name must be between 2 and 50 characters.`;
+                }
+
+                if (lastNameLength < 2 || lastNameLength > 50) {
+                    return `Participant ${i + 1}: Surname must be between 2 and 50 characters.`;
+                }
+            }
+
+            return '';
+        }
+
+        document.getElementById('addBtn').addEventListener('click', addParticipant);
+
+        document.getElementById('participants').addEventListener('click', (e) => {
+            if (!e.target.classList.contains('remove-btn')) return;
+            const cards = document.querySelectorAll('.participant-card');
+            if (cards.length <= minParticipants) return;
+            e.target.closest('.participant-card').remove();
+        });
+
+        document.getElementById('registrationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const participants = collectParticipants();
+
+            if (participants.length < minParticipants || participants.length > maxParticipants) {
+                showMessage(`Participants must be between ${minParticipants} and ${maxParticipants}.`, true);
                 return;
             }
 
-            const participantCard = document.createElement('div');
-            participantCard.className = 'participant-card';
-            participantCard.innerHTML = `
-                <div class="participant-header">
-                    <span class="participant-title">Participant ${participantCount + 1}</span>
-                    ${participantCount >= MIN_PARTICIPANTS ? `<button type="button" class="remove-btn" onclick="removeParticipant(this)">Remove</button>` : ''}
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="firstName${participantCount}">First Name *</label>
-                        <input type="text" id="firstName${participantCount}" name="firstName${participantCount}" required placeholder="First name">
-                        <div class="error-message"></div>
-                    </div>
-                    <div class="form-group">
-                        <label for="lastName${participantCount}">Last Name *</label>
-                        <input type="text" id="lastName${participantCount}" name="lastName${participantCount}" required placeholder="Last name">
-                        <div class="error-message"></div>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="facultyNumber${participantCount}">Faculty Number *</label>
-                        <input type="text" id="facultyNumber${participantCount}" name="facultyNumber${participantCount}" required placeholder="Faculty number">
-                        <div class="error-message"></div>
-                    </div>
-                    <div class="form-group">
-                        <label for="discord${participantCount}">Discord Username *</label>
-                        <input type="text" id="discord${participantCount}" name="discord${participantCount}" required placeholder="Discord username">
-                        <div class="error-message"></div>
-                    </div>
-                </div>
-            `;
-
-            container.appendChild(participantCard);
-            updateParticipantCount();
-        }
-
-        function removeParticipant(button) {
-            const container = document.getElementById('participantsContainer');
-            const participantCount = container.children.length;
-
-            if (participantCount <= MIN_PARTICIPANTS) {
-                alert(`Minimum ${MIN_PARTICIPANTS} participants required`);
+            const validationError = validateRegistrationForm(participants);
+            if (validationError) {
+                showMessage(validationError, true);
                 return;
             }
 
-            button.closest('.participant-card').remove();
-            updateParticipantCount();
-        }
-
-        function updateParticipantCount() {
-            const container = document.getElementById('participantsContainer');
-            const count = container.children.length;
-            document.getElementById('participantCount').textContent = count;
-
-            // Update remove buttons visibility
-            const cards = container.querySelectorAll('.participant-card');
-            cards.forEach((card, index) => {
-                const removeBtn = card.querySelector('.remove-btn');
-                if (count <= MIN_PARTICIPANTS) {
-                    if (removeBtn) removeBtn.style.display = 'none';
-                } else {
-                    if (removeBtn) removeBtn.style.display = 'block';
-                }
-            });
-
-            // Update add button state
-            const addBtn = document.getElementById('addBtn');
-            addBtn.disabled = count >= MAX_PARTICIPANTS;
-        }
-
-        function validateForm() {
-            let isValid = true;
-            const form = document.getElementById('registrationForm');
-            const inputs = form.querySelectorAll('input[required]');
-
-            inputs.forEach(input => {
-                const errorDiv = input.parentElement.querySelector('.error-message');
-                if (!input.value.trim()) {
-                    errorDiv.textContent = 'This field is required';
-                    errorDiv.classList.add('show');
-                    isValid = false;
-                } else {
-                    errorDiv.classList.remove('show');
-                }
-            });
-
-            const participantCount = document.getElementById('participantsContainer').children.length;
-            if (participantCount < MIN_PARTICIPANTS || participantCount > MAX_PARTICIPANTS) {
-                alert(`Please have between ${MIN_PARTICIPANTS} and ${MAX_PARTICIPANTS} participants`);
-                isValid = false;
-            }
-
-            return isValid;
-        }
-
-        function collectFormData() {
-            const form = document.getElementById('registrationForm');
-            const container = document.getElementById('participantsContainer');
-            const participantCount = container.children.length;
-
-            const data = {
-                teamName: document.getElementById('teamName').value,
-                password: document.getElementById('teamPassword').value,
-                participants: []
+            const payload = {
+                teamName: document.getElementById('teamName').value.trim(),
+                password: document.getElementById('teamPassword').value.trim(),
+                participants
             };
 
-            for (let i = 0; i < participantCount; i++) {
-                data.participants.push({
-                    firstName: document.getElementById(`firstName${i}`).value,
-                    lastName: document.getElementById(`lastName${i}`).value,
-                    facultyNumber: document.getElementById(`facultyNumber${i}`).value,
-                    discord: document.getElementById(`discord${i}`).value
-                });
-            }
-
-            return data;
-        }
-
-        // Form submission
-        document.getElementById('registrationForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            if (!validateForm()) {
-                return;
-            }
-
-            const data = collectFormData();
-            const successMessage = document.getElementById('successMessage');
-
             try {
-                const response = await fetch('/api/register', {
+                const res = await fetch('/api/register', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(data)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    // Show success message
-                    successMessage.innerHTML = `✓ ${result.message}`;
-                    successMessage.style.background = 'rgba(34, 197, 94, 0.15)';
-                    successMessage.style.color = '#86efac';
-                    successMessage.style.border = '1px solid rgba(34, 197, 94, 0.3)';
-                    successMessage.classList.add('show');
-
-                    // Automatically log in newly registered team and redirect to team page
-                    try {
-                        const loginRes = await fetch('/api/login', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ teamName: data.teamName, password: data.password })
-                        });
-                        const loginJson = await loginRes.json();
-                        if (loginJson.success) {
-                            window.location.href = '/team';
-                            return;
-                        }
-                    } catch (e) {
-                        console.error('Auto-login after registration failed:', e);
-                    }
-
-                    // Fallback: Reset form and keep success message if auto-login fails
-                    document.getElementById('registrationForm').reset();
-                    document.getElementById('participantsContainer').innerHTML = '';
-                    initializeForm();
-
-                    // Clear success message after 5 seconds
-                    setTimeout(() => {
-                        successMessage.classList.remove('show');
-                    }, 5000);
-                } else {
-                    // Show error message
-                    successMessage.innerHTML = `✗ Error: ${result.error}`;
-                    successMessage.style.background = 'rgba(239, 68, 68, 0.15)';
-                    successMessage.style.color = '#fca5a5';
-                    successMessage.style.border = '1px solid rgba(239, 68, 68, 0.3)';
-                    successMessage.classList.add('show');
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    showMessage(data.error || 'Неуспешна регистрация.', true);
+                    return;
                 }
-
-                // Scroll to top
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-
-            } catch (error) {
-                console.error('Error:', error);
-                successMessage.innerHTML = `✗ Error: ${error.message}`;
-                successMessage.style.background = '#f8d7da';
-                successMessage.style.color = '#721c24';
-                successMessage.classList.add('show');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                showMessage(data.message || 'Регистрацията е успешна.');
+            } catch (err) {
+                showMessage('Network error while registering.', true);
             }
         });
 
-        // Initialize form on page load
-        window.addEventListener('DOMContentLoaded', initializeForm);
-    </script>
-    <script>
-            function ensureMentorLink(text, href) {
-                const navLinks = document.querySelector('.nav-links');
-                let link = document.querySelector('.nav-links .mentor-link');
-                if (!link) {
-                    link = document.createElement('a');
-                    link.className = 'nav-link mentor-link';
-                    navLinks.appendChild(link);
-                }
-                link.textContent = text;
-                link.href = href;
-            }
-
-            async function setMentorLinkBySelection() {
-                try {
-                    const res = await fetch('/api/mentors/available');
-                    if (!res.ok) return;
-                    const data = await res.json();
-                    const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-                    if (selectedCount > 0) {
-                        ensureMentorLink('Selected Mentors', '/selectedMentors');
-                    } else {
-                        ensureMentorLink('Choose Mentor', '/chooseMentor');
-                    }
-                } catch {}
-            }
-
-            function updateNavbar() {
-        const teamName = window.loggedInTeam || '';
-        const navActions = document.querySelector('.nav-actions');
-        if (teamName) {
-          navActions.innerHTML = `
-            <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
-          `;
-                    setMentorLinkBySelection();
-        }
-      }
-      async function logout() {
-        try {
-          const response = await fetch('/api/logout', { method: 'POST' });
-          if (response.ok) window.location.reload();
-        } catch (error) {
-          console.error('Logout failed:', error);
-        }
-      }
-      updateNavbar();
+        window.addEventListener('DOMContentLoaded', () => {
+            setupParticipants();
+            loadNavbar();
+        });
     </script>
 </body>
 </html>

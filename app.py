@@ -2,7 +2,7 @@
 import sqlite3
 import json
 import base64
-from flask import Flask, render_template_string, request, jsonify, session
+from flask import Flask, render_template_string, request, jsonify, session, send_from_directory
 from pathlib import Path
 from datetime import datetime
 import secrets
@@ -10,6 +10,33 @@ import secrets
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
 DB_PATH = Path(__file__).parent / "website.db"
+
+
+@app.route('/images/<path:filename>')
+def serve_images(filename):
+    """Serve local image assets from the images folder"""
+    return send_from_directory(Path(__file__).parent / 'images', filename)
+
+
+@app.route('/companyLogos/<path:filename>')
+def serve_company_logos(filename):
+    """Serve company logo assets from the companyLogos folder"""
+    return send_from_directory(Path(__file__).parent / 'companyLogos', filename)
+
+
+@app.route('/navbar.html')
+def navbar_fragment():
+    """Serve reusable navbar fragment"""
+    with open(Path(__file__).parent / 'navbar.html', 'r', encoding='utf-8') as f:
+        return f.read()
+
+
+@app.route('/mentors.json')
+def mentors_data_file():
+    """Serve mentors data JSON file"""
+    return send_from_directory(Path(__file__).parent, 'mentors.json')
+
+
 @app.route('/')
 def home():
     """Serve the home page"""
@@ -74,10 +101,10 @@ def team_ranking_page():
     html_content = html_content.replace('</body>', f'<script>window.loggedInTeam = "{team_name}";</script></body>')
     return html_content
 
-@app.route('/teamRegistration')
+@app.route('/registration')
 def team_registration_page():
     """Serve the team registration form"""
-    with open(Path(__file__).parent / 'teamRegistration.html', 'r', encoding='utf-8') as f:
+    with open(Path(__file__).parent / 'registration.html', 'r', encoding='utf-8') as f:
         html_content = f.read()
     team_name = session.get('team_name', '')
     html_content = html_content.replace('</body>', f'<script>window.loggedInTeam = "{team_name}";</script></body>')
@@ -755,4 +782,4 @@ if __name__ == '__main__':
         print(f"✓ Seeded {seeded} mentor(s) from mentors.json")
     print(f"✓ Database initialized at: {DB_PATH}")
     print(f"✓ Starting server at http://localhost:5000")
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", debug=True, port=5000)
