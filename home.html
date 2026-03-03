@@ -10,23 +10,36 @@
 
   <div class="container">
     <div class="hero">
-      <img src="/images/logo_white.png" alt="Event hero" />
+      <img src="/images/codes_logo3.svg" alt="Event hero" />
     </div>
 
-    <div class="logos-card">
-      <div class="logos">
-        <div class="logo"><img src="/companyLogos/avenga.svg" alt="Avenga" /></div>
-        <div class="logo"><img src="/companyLogos/gameloft.png" alt="Gameloft" /></div>
-        <div class="logo"><img src="/companyLogos/EnduroSat.png" alt="EnduroSat" /></div>
-        <div class="logo"><img src="/companyLogos/waracle.png" alt="Waracle" /></div>
-        <div class="logo"><img src="/companyLogos/SAP.png" alt="SAP" /></div>
-        <div class="logo"><img src="/companyLogos/Milestone.png" alt="Milestone" /></div>
-        <div class="logo"><img src="/companyLogos/astea.svg" alt="Astea" /></div>
-        <div class="logo"><img src="/companyLogos/chaos.jpg" alt="Chaos" /></div>
-        <div class="logo"><img src="/companyLogos/Dreamix.png" alt="Dreamix" /></div>
-        <div class="logo"><img src="/companyLogos/engineerAcces.png" alt="Engineer Access" /></div>
-        <div class="logo"><img src="/companyLogos/raven.svg" alt="Raven" /></div>
-        <div class="logo"><img src="/companyLogos/Experian.jpg" alt="Experian" /></div>
+    <div class="logos-card carousel-container carousel">
+      <div class="logos carousel_items carousel" id="track">
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/avenga.svg" alt="Avenga" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/gameloft.png" alt="Gameloft" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/EnduroSat.png" alt="EnduroSat" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/waracle.png" alt="Waracle" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/SAP.png" alt="SAP" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/Milestone.png" alt="Milestone" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/astea.svg" alt="Astea" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/chaos.jpg" alt="Chaos" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/Dreamix.png" alt="Dreamix" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/engineerAcces.png" alt="Engineer Access" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/raven.svg" alt="Raven" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/Experian.jpg" alt="Experian" /></div>
+
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/avenga.svg" alt="Avenga" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/gameloft.png" alt="Gameloft" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/EnduroSat.png" alt="EnduroSat" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/waracle.png" alt="Waracle" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/SAP.png" alt="SAP" /></div>
+        <div class="logo carousel_item carousel premium"><img src="/companyLogos/Milestone.png" alt="Milestone" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/astea.svg" alt="Astea" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/chaos.jpg" alt="Chaos" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/Dreamix.png" alt="Dreamix" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/engineerAcces.png" alt="Engineer Access" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/raven.svg" alt="Raven" /></div>
+        <div class="logo carousel_item carousel standart"><img src="/companyLogos/Experian.jpg" alt="Experian" /></div>
 
       </div>
     </div>
@@ -88,6 +101,42 @@
       }
     }
     loadNavbar().then(updateNavbar);
+
+    window.addEventListener('load', () => {
+      const track = document.getElementById('track');
+      const DURATION = 40000;
+
+      // Clone all 12 items so we have 24 total for seamless loop
+      Array.from(track.children).forEach(item => {
+        track.appendChild(item.cloneNode(true));
+      });
+
+      let startTime = null;
+      let scrollDistance = 0;
+
+      function measure() {
+        const items = track.querySelectorAll('.carousel_item');
+        const first = items[0].getBoundingClientRect();
+        const thirteenth = items[12].getBoundingClientRect();
+        scrollDistance = thirteenth.left - first.left;
+      }
+
+      function animate(ts) {
+        if (!startTime) startTime = ts;
+        const elapsed = (ts - startTime) % DURATION;
+        const progress = elapsed / DURATION;
+        track.style.transform = `translateX(${-progress * scrollDistance}px)`;
+        requestAnimationFrame(animate);
+      }
+
+      measure();
+      window.addEventListener('resize', () => {
+        measure();
+        startTime = null;
+      });
+
+      requestAnimationFrame(animate);
+    });
   </script>
 </body>
 </html>
@@ -174,12 +223,12 @@
 
     /* Logos strip */
     .logos-card {
-      border: 1px solid var(--panel-border);
+      /* border: 1px solid var(--panel-border); */
       border-radius: 14px;
       background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
       box-shadow: var(--glow);
       padding: 12px;
-      max-width: 1100px;
+      /* max-width: 1100px; */
       width: 100%;
       margin: 0 auto;
       margin-top: 0;
@@ -189,17 +238,24 @@
       display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; align-items: center;
     }
     .logo {
-      width: 100%; height: auto; aspect-ratio: 1 / 1; max-width: 100px; justify-self: center; border-radius: 10px; border: 1px solid var(--panel-border); background: rgba(255,255,255,0.04);
+      /* width: 100%; */ 
+      height: auto;
+      aspect-ratio: 1 / 1; 
+      /* max-width: 100px; */ 
+      justify-self: center; 
+      border-radius: 10px; 
+      border: 1px solid var(--panel-border); 
+      background: rgba(255,255,255,0.04);
       display: grid; place-items: center; overflow: hidden; filter: grayscale(20%) contrast(105%);
       transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
     }
-    .logos .logo:nth-child(-n+6) {
+    .premium {
       background: rgba(174, 129, 81, 0.28);
       border-color: rgba(235, 184, 112, 0.82);
       box-shadow: 0 0 0 1px rgba(196, 142, 96, 0.24) inset;
       filter: none;
     }
-    .logos .logo:nth-child(n+7):nth-child(-n+12) {
+    .standart {
       background: rgba(226, 232, 240, 0.24);
       border-color: rgba(226, 232, 240, 0.62);
       box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22) inset;
@@ -221,5 +277,73 @@
       .logos-card { padding: 6px; width: 100%; max-width: none; }
       .logos { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; align-items: center; }
       .logo { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+    }
+
+    .carousel-container {
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .carousel-container::before,
+    .carousel-container::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 180px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .carousel-container::before {
+      left: 0;
+      background: linear-gradient(to right, #0a0a0a 0%, transparent 100%);
+    }
+    .carousel-container::after {
+      right: 0;
+      background: linear-gradient(to left, #0a0a0a 0%, transparent 100%);
+    }
+
+    .carousel_items {
+      display: flex;
+      flex-wrap: nowrap;
+      will-change: transform;
+      
+    }
+
+    .carousel_item {
+      position: relative;
+      width: calc(100vw / 12);
+      /*height: px;*/
+      background-repeat: no-repeat;
+      background-size: cover;
+      background-position: center;
+      flex-shrink: 0;
+      border-radius: 10px;
+      margin: 8px 8px;
+      padding: 6px;
+    }
+
+    .carousel_text {
+      position: absolute;
+      bottom: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      padding: 0.4rem 0.9rem;
+      border-radius: 4px;
+      background-color: rgba(0, 0, 0, 0.75);
+      color: white;
+      text-shadow: 1px 1px black;
+      font-size: 0.95rem;
+      font-weight: bold;
+    }
+
+    .carousel {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
   </style>
