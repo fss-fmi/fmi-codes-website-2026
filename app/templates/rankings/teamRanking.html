@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Ranking</title>
+  <style>
+    :root {
+      --bg: #060910;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --accent-2: #22d3ee;
+      --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      --gold: #f59e0b;
+      --silver: #94a3b8;
+      --bronze: #b45309;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at 18% 22%, rgba(96,165,250,0.12), transparent 40%),
+                  radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 96px 16px 48px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .navbar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(1200px, calc(100% - 40px));
+      background: rgba(5, 6, 13, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+    .navbar-container { max-width: 1400px; margin: 0 auto; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
+    .logo-text { font-size: 20px; font-weight: 800; background: linear-gradient(120deg, #60a5fa, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: 2px; }
+    .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
+    .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
+    .nav-link:hover { color: #60a5fa; }
+    .nav-link::after { content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px; background: linear-gradient(120deg, #60a5fa, #22d3ee); transition: width 0.2s ease; }
+    .nav-link:hover::after { width: 100%; }
+    .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
+    .login-btn { background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021; padding: 8px 18px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; text-decoration: none; display: inline-block; }
+    .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
+
+    .container { width: 100%; max-width: 1100px; display: grid; gap: 20px; }
+
+    .podium {
+      display: grid;
+      grid-template-columns: 1fr 1.3fr 1fr;
+      gap: 20px;
+      align-items: end;
+    }
+    .podium-card {
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      box-shadow: var(--glow);
+      padding: 28px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      min-height: 280px;
+    }
+    .podium-card::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 45%); pointer-events: none; }
+    .podium-card.first { transform: translateY(-20px); border-color: rgba(245, 158, 11, 0.45); }
+    .podium-card.second { transform: translateY(-8px); border-color: rgba(148, 163, 184, 0.4); }
+    .podium-card.third { transform: translateY(-4px); border-color: rgba(180, 83, 9, 0.4); }
+
+    .badge { position: absolute; top: 12px; left: 12px; padding: 6px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
+    .badge.first { background: rgba(245, 158, 11, 0.15); color: #ffdd7d; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge.second { background: rgba(148, 163, 184, 0.15); color: #dee5f2; border: 1px solid rgba(148, 163, 184, 0.4); }
+    .badge.third { background: rgba(180, 83, 9, 0.15); color: #ffd1a3; border: 1px solid rgba(180, 83, 9, 0.4); }
+
+    .team-image { width: 140px; height: 140px; border-radius: 50%; border: 2px solid var(--panel-border); object-fit: cover; background: #111827; margin: 8px auto 12px; }
+    .team-name { font-size: 22px; font-weight: 800; letter-spacing: 0.3px; }
+    .points { margin-top: 10px; color: #cbd5e1; font-weight: 800; font-size: 16px; }
+
+    .list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .list-item {
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      box-shadow: var(--glow);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .rank { font-weight: 800; color: #94a3b8; }
+    .name { font-weight: 700; }
+
+    @media (max-width: 768px) {
+      body { padding: 92px 12px 36px; }
+      .navbar-container { padding: 10px 16px; }
+      .podium { grid-template-columns: 1fr; gap: 14px; }
+      .podium-card { min-height: 220px; padding: 22px; }
+      .podium-card.first, .podium-card.second, .podium-card.third { transform: none; }
+      .team-image { width: 110px; height: 110px; }
+      .team-name { font-size: 20px; }
+      .list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-logo"><div class="logo-text">FSS</div></div>
+      <div class="nav-links">
+        <a href="/team" class="nav-link">Home</a>
+        <a href="/teamRegulations" class="nav-link">Regulations</a>
+        <a href="/teamSchedule" class="nav-link">Schedule</a>
+        <a href="/teamMentors" class="nav-link">Mentors</a>
+        <a href="/teamRanking" class="nav-link">Ranking</a>
+        <a href="/chooseMentor" class="nav-link mentor-link">Choose Mentor</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#" onclick="logout(); return false;" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div id="podium" class="podium"></div>
+    <div id="list" class="list"></div>
+  </div>
+
+  <script>
+    function createImage(src) {
+      const img = document.createElement('img');
+      img.className = 'team-image';
+      img.src = src || 'https://images.unsplash.com/photo-1541534401786-2077eed87a72?w=256&h=256&fit=crop&crop=faces';
+      img.alt = 'Team image';
+      return img;
+    }
+
+    function podiumCard(rankClass, label, team) {
+      const card = document.createElement('div');
+      card.className = `podium-card ${rankClass}`;
+      card.innerHTML = `<div class="badge ${rankClass}">${label}</div>`;
+      card.appendChild(createImage(team.image));
+      const name = document.createElement('div');
+      name.className = 'team-name';
+      name.textContent = team.team;
+      const pts = document.createElement('div');
+      pts.className = 'points';
+      pts.textContent = `${team.points} pts`;
+      card.appendChild(name);
+      card.appendChild(pts);
+      return card;
+    }
+
+    async function loadRanking() {
+      const podium = document.getElementById('podium');
+      const list = document.getElementById('list');
+      podium.innerHTML = '';
+      list.innerHTML = '';
+
+      try {
+        const res = await fetch('/api/ranking');
+        const data = await res.json();
+        let teams = (data && data.success && Array.isArray(data.rankings)) ? data.rankings : [];
+        teams = teams.sort((a,b) => (b.points||0) - (a.points||0));
+
+        const top = teams.slice(0,3);
+        const others = teams.slice(3);
+
+        const order = [ {cls:'second', label:'2nd'}, {cls:'first', label:'1st'}, {cls:'third', label:'3rd'} ];
+        order.forEach((o, i) => {
+          const t = top[i] || { team: 'TBD', points: 0 };
+          podium.appendChild(podiumCard(o.cls, o.label, t));
+        });
+
+        others.forEach((t, idx) => {
+          const item = document.createElement('div');
+          item.className = 'list-item';
+          const left = document.createElement('div');
+          left.style.display = 'flex';
+          left.style.gap = '10px';
+          left.style.alignItems = 'center';
+
+          const rank = document.createElement('span');
+          rank.className = 'rank';
+          rank.textContent = `${idx + 4}.`;
+          const name = document.createElement('span');
+          name.className = 'name';
+          name.textContent = t.team;
+
+          left.appendChild(rank);
+          left.appendChild(name);
+
+          const pts = document.createElement('span');
+          pts.className = 'points';
+          pts.textContent = `${t.points} pts`;
+
+          item.appendChild(left);
+          item.appendChild(pts);
+          list.appendChild(item);
+        });
+      } catch (e) {
+        const err = document.createElement('div');
+        err.style.color = '#cbd5e1';
+        err.style.textAlign = 'center';
+        err.style.padding = '24px 0';
+        err.textContent = 'Error loading ranking.';
+        document.querySelector('.container').appendChild(err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadRanking);
+  </script>
+  <script>
+    async function logout() {
+      try {
+        const response = await fetch('/api/logout', { method: 'POST' });
+        if (response.ok) window.location.href = '/';
+      } catch (error) {
+        console.error('Logout failed:', error);
+      }
+    }
+    async function setMentorLinkBySelection() {
+      try {
+        const res = await fetch('/api/mentors/available');
+        if (!res.ok) return;
+        const data = await res.json();
+        const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+        const link = document.querySelector('.nav-links .mentor-link');
+        if (!link) return;
+        if (selectedCount > 0) {
+          link.textContent = 'Selected Mentors';
+          link.href = '/selectedMentors';
+        } else {
+          link.textContent = 'Choose Mentor';
+          link.href = '/chooseMentor';
+        }
+      } catch {}
+    }
+    setMentorLinkBySelection();
+  </script>
+</body>
+</html>

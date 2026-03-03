@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home</title>
+  <style>
+    :root {
+      --bg: #060910;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --accent-2: #22d3ee;
+      --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at 18% 22%, rgba(96,165,250,0.12), transparent 40%),
+                  radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 96px 16px 28px; /* island navbar space, lower bottom padding */
+      display: flex;
+      justify-content: center;
+    }
+
+    /* Island Navbar */
+    .navbar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(1200px, calc(100% - 40px));
+      background: rgba(5, 6, 13, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+    .navbar-container { max-width: 1400px; margin: 0 auto; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
+    .logo-text { font-size: 20px; font-weight: 800; background: linear-gradient(120deg, #60a5fa, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: 2px; }
+    .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
+    .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
+    .nav-link:hover { color: #60a5fa; }
+    .nav-link::after { content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px; background: linear-gradient(120deg, #60a5fa, #22d3ee); transition: width 0.2s ease; }
+    .nav-link:hover::after { width: 100%; }
+    .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
+    .settings-btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 6px 10px; border-radius: 6px; transition: all 0.2s ease; }
+    .settings-btn:hover { background: rgba(96, 165, 250, 0.1); }
+    .login-btn { background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021; padding: 8px 18px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      min-height: calc(100vh - 156px); /* body top+bottom padding */
+    }
+
+    /* Hero image card */
+    .hero {
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      box-shadow: var(--glow);
+      overflow: hidden;
+    }
+    .hero img {
+      width: 100%;
+      height: clamp(480px, 75vh, 900px);
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Logos strip */
+    .logos-card {
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      box-shadow: var(--glow);
+      padding: 12px;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      margin-top: auto; /* push to bottom */
+      margin-bottom: 0; /* sit closer to bottom */
+    }
+    .logos {
+      display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: center;
+    }
+    .logo {
+      width: 52px; height: 52px; border-radius: 10px; border: 1px solid var(--panel-border); background: rgba(255,255,255,0.04);
+      display: grid; place-items: center; overflow: hidden; filter: grayscale(20%) contrast(105%);
+      transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+    }
+    .logo:hover { transform: translateY(-3px); filter: none; box-shadow: 0 10px 22px rgba(0,0,0,0.25); }
+    .logo img { width: 78%; height: 78%; object-fit: contain; }
+
+    @media (max-width: 768px) {
+      body { padding: 92px 12px 24px; }
+      .navbar-container { padding: 10px 16px; }
+      .logo { width: 48px; height: 48px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-logo"><div class="logo-text">FSS</div></div>
+      <div class="nav-links">
+        <a href="/team" class="nav-link">Home</a>
+        <a href="/teamRegulations" class="nav-link">Regulations</a>
+        <a href="/teamSchedule" class="nav-link">Schedule</a>
+        <a href="/teamMentors" class="nav-link">Mentors</a>
+        <a href="/teamRanking" class="nav-link">Ranking</a>
+        <a href="/chooseMentor" class="nav-link mentor-link">Choose Mentor</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#" onclick="logout(); return false;" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="hero">
+      <img src="https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1600&auto=format&fit=crop" alt="Event hero" />
+    </div>
+
+    <div class="logos-card">
+      <div class="logos">
+        <div class="logo"><img src="https://logo.clearbit.com/microsoft.com" alt="Microsoft" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/google.com" alt="Google" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/amazon.com" alt="Amazon" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/ibm.com" alt="IBM" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/cisco.com" alt="Cisco" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/cloudflare.com" alt="Cloudflare" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/fortinet.com" alt="Fortinet" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/paloaltonetworks.com" alt="Palo Alto Networks" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/crowdstrike.com" alt="CrowdStrike" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/splunk.com" alt="Splunk" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/elastic.co" alt="Elastic" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/okta.com" alt="Okta" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/github.com" alt="GitHub" /></div>
+        <div class="logo"><img src="https://logo.clearbit.com/intel.com" alt="Intel" /></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    async function logout() {
+      try {
+        const response = await fetch('/api/logout', { method: 'POST' });
+        if (response.ok) window.location.href = '/';
+      } catch (error) {
+        console.error('Logout failed:', error);
+      }
+    }
+    async function setMentorLinkBySelection() {
+      try {
+        const res = await fetch('/api/mentors/available');
+        if (!res.ok) return;
+        const data = await res.json();
+        const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+        const link = document.querySelector('.nav-links .mentor-link');
+        if (!link) return;
+        if (selectedCount > 0) {
+          link.textContent = 'Selected Mentors';
+          link.href = '/selectedMentors';
+        } else {
+          link.textContent = 'Choose Mentor';
+          link.href = '/chooseMentor';
+        }
+      } catch {}
+    }
+    setMentorLinkBySelection();
+  </script>
+</body>
+</html>

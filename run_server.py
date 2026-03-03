@@ -1,32 +1,41 @@
 #!/usr/bin/env python3
-import http.server
-import socketserver
+"""Application entry point and server runner"""
 import os
-import webbrowser
 from pathlib import Path
+from app import create_app
+from app.database import init_database
+from app.services import mentor_service
 
-PORT = 8000
-DIRECTORY = Path(__file__).parent
 
-class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(DIRECTORY), **kwargs)
+def main():
+    """Create and run the Flask application"""
+    # Get environment
+    env = os.environ.get('FLASK_ENV', 'development')
+    
+    # Create app
+    app = create_app(env)
+    
+    # Load mentor data from JSON seed file if available
+    seeds_path = Path(__file__).parent / 'database' / 'seeds' / 'mentors.json'
+    if seeds_path.exists():
+        with app.app_context():
+            seeded = mentor_service.load_mentors_from_file(seeds_path)
+            if seeded:
+                print(f"✓ Seeded {seeded} mentor(s) from mentors.json")
+    
+    # Print startup info
+    db_path = app.config['DATABASE_PATH']
+    print(f"\n✓ Database: {db_path}")
+    print(f"✓ Starting server at http://localhost:5000")
+    print(f"✓ Press Ctrl+C to stop the server\n")
+    
+    # Run the app
+    app.run(
+        host=os.environ.get('FLASK_HOST', '0.0.0.0'),
+        port=int(os.environ.get('FLASK_PORT', 5000)),
+        debug=env == 'development'
+    )
 
-    def log_message(self, format, *args):
-        print(f"[{self.log_date_time_string()}] {format%args}")
 
-if __name__ == "__main__":
-    os.chdir(DIRECTORY)
-
-    with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
-        url = f"http://localhost:{PORT}/registration.html"
-        print(f"\n✓ Server running at {url}")
-        print(f"✓ Press Ctrl+C to stop the server\n")
-
-        # Open in default browser
-        webbrowser.open(url)
-
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n✓ Server stopped")
+if __name__ == '__main__':
+    main()

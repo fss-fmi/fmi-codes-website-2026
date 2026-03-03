@@ -1,0 +1,19 @@
+{
+  "name": "fmi-codes-website",
+  "version": "1.0.0",
+  "description": "FMI Codes Website",
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.2"
+  },
+  "lint-staged": {
+    "*.{html,js,json,css,md}": [
+      "prettier --write"
+    ]
+  }
+}
