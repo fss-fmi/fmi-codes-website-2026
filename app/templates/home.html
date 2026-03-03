@@ -43,10 +43,7 @@
             <img src="../static/companyLogos/Dreamix.png" alt="Dreamix" />
           </div>
           <div class="logo carousel_item carousel standart">
-            <img
-              src="../static/companyLogos/engineerAcces.png"
-              alt="Engineer Access"
-            />
+            <img src="../static/companyLogos/engineerAcces.png" alt="Engineer Access" />
           </div>
           <div class="logo carousel_item carousel standart">
             <img src="../static/companyLogos/raven.svg" alt="Raven" />
@@ -83,10 +80,7 @@
             <img src="../static/companyLogos/Dreamix.png" alt="Dreamix" />
           </div>
           <div class="logo carousel_item carousel standart">
-            <img
-              src="../static/companyLogos/engineerAcces.png"
-              alt="Engineer Access"
-            />
+            <img src="../static/companyLogos/engineerAcces.png" alt="Engineer Access" />
           </div>
           <div class="logo carousel_item carousel standart">
             <img src="../static/companyLogos/raven.svg" alt="Raven" />
@@ -99,11 +93,11 @@
     </div>
     <script>
       function ensureMentorLink(text, href) {
-        const navLinks = document.querySelector(".nav-links");
-        let link = document.querySelector(".nav-links .mentor-link");
+        const navLinks = document.querySelector('.nav-links');
+        let link = document.querySelector('.nav-links .mentor-link');
         if (!link) {
-          link = document.createElement("a");
-          link.className = "nav-link mentor-link";
+          link = document.createElement('a');
+          link.className = 'nav-link mentor-link';
           navLinks.appendChild(link);
         }
         link.textContent = text;
@@ -112,23 +106,21 @@
 
       async function setMentorLinkBySelection() {
         try {
-          const res = await fetch("/api/mentors/available");
+          const res = await fetch('/api/mentors/available');
           if (!res.ok) return;
           const data = await res.json();
-          const selectedCount = Array.isArray(data.selected)
-            ? data.selected.length
-            : 0;
+          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
           if (selectedCount > 0) {
-            ensureMentorLink("Selected Mentors", "/selectedMentors");
+            ensureMentorLink('Selected Mentors', '/selectedMentors');
           } else {
-            ensureMentorLink("Choose Mentor", "/chooseMentor");
+            ensureMentorLink('Choose Mentor', '/chooseMentor');
           }
         } catch {}
       }
 
       function updateNavbar() {
-        const teamName = window.loggedInTeam || "";
-        const navActions = document.querySelector(".nav-actions");
+        const teamName = window.loggedInTeam || '';
+        const navActions = document.querySelector('.nav-actions');
         if (!navActions) return;
         if (teamName) {
           navActions.innerHTML = `
@@ -140,26 +132,26 @@
 
       async function loadNavbar() {
         try {
-          const res = await fetch("/navbar.html");
+          const res = await fetch('/navbar.html');
           if (!res.ok) return;
           const html = await res.text();
-          const slot = document.getElementById("navbar-slot");
+          const slot = document.getElementById('navbar-slot');
           if (slot) slot.innerHTML = html;
         } catch {}
       }
       async function logout() {
         try {
-          const response = await fetch("/api/logout", { method: "POST" });
+          const response = await fetch('/api/logout', { method: 'POST' });
           if (response.ok) window.location.reload();
         } catch (error) {
-          console.error("Logout failed:", error);
+          console.error('Logout failed:', error);
         }
       }
       loadNavbar().then(updateNavbar);
 
-      window.addEventListener("load", () => {
-        const track = document.getElementById("track");
-        const DURATION = 40000;
+      window.addEventListener('load', () => {
+        const track = document.getElementById('track');
+        const DURATION = 48000;
 
         // Clone all 12 items so we have 24 total for seamless loop
         Array.from(track.children).forEach((item) => {
@@ -170,7 +162,7 @@
         let scrollDistance = 0;
 
         function measure() {
-          const items = track.querySelectorAll(".carousel_item");
+          const items = track.querySelectorAll('.carousel_item');
           const first = items[0].getBoundingClientRect();
           const thirteenth = items[12].getBoundingClientRect();
           scrollDistance = thirteenth.left - first.left;
@@ -185,7 +177,7 @@
         }
 
         measure();
-        window.addEventListener("resize", () => {
+        window.addEventListener('resize', () => {
           measure();
           startTime = null;
         });
@@ -213,19 +205,10 @@
     padding: 0;
   }
   body {
-    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background:
-      radial-gradient(
-        circle at 18% 22%,
-        rgba(96, 165, 250, 0.12),
-        transparent 40%
-      ),
-      radial-gradient(
-        circle at 82% 6%,
-        rgba(34, 211, 238, 0.12),
-        transparent 38%
-      ),
-      var(--bg);
+      radial-gradient(circle at 18% 22%, rgba(96, 165, 250, 0.12), transparent 40%),
+      radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%), var(--bg);
     color: var(--text);
     min-height: 100vh;
     padding: 96px 16px 28px; /* island navbar space, lower bottom padding */
@@ -295,7 +278,7 @@
     color: #60a5fa;
   }
   .nav-link::after {
-    content: "";
+    content: '';
     position: absolute;
     bottom: -4px;
     left: 0;
@@ -374,11 +357,7 @@
   .logos-card {
     /* border: 1px solid var(--panel-border); */
     border-radius: 14px;
-    background: linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.05),
-      rgba(255, 255, 255, 0.02)
-    );
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
     box-shadow: var(--glow);
     padding: 12px;
     /* max-width: 1100px; */
@@ -433,25 +412,25 @@
     height: 78%;
     object-fit: contain;
   }
-  .logo img[alt="Milestone"] {
+  .logo img[alt='Milestone'] {
     transform: scale(1.5);
   }
-  .logo img[alt="Astea"] {
+  .logo img[alt='Astea'] {
     transform: scale(1.2);
   }
-  .logo img[alt="Dreamix"] {
+  .logo img[alt='Dreamix'] {
     transform: scale(1.4);
   }
-  .logo img[alt="Engineer Access"] {
+  .logo img[alt='Engineer Access'] {
     transform: scale(1.15);
   }
-  .logo img[alt="Raven"] {
+  .logo img[alt='Raven'] {
     transform: scale(1.25);
   }
-  .logo img[alt="Experian"] {
+  .logo img[alt='Experian'] {
     transform: scale(1.2);
   }
-  .logo img[alt="Waracle"] {
+  .logo img[alt='Waracle'] {
     transform: scale(1.2);
   }
 
@@ -490,7 +469,7 @@
 
   .carousel-container::before,
   .carousel-container::after {
-    content: "";
+    content: '';
     position: absolute;
     top: 0;
     bottom: 0;
