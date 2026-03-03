@@ -442,20 +442,32 @@
       padding: 10px 16px;
     }
     .logos-card {
-      padding: 6px;
+      padding: 14px;
       width: 100%;
       max-width: none;
+      border-radius: 18px;
     }
     .logos {
       display: grid;
       grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 6px;
+      gap: 14px;
       align-items: center;
     }
     .logo {
       width: 100%;
       height: auto;
       aspect-ratio: 1 / 1;
+      border-radius: 14px;
+    }
+    .carousel-container::before,
+    .carousel-container::after {
+      width: 88px;
+    }
+    .carousel_item {
+      width: calc(100vw / 5.5);
+      margin: 12px 12px;
+      padding: 10px;
+      border-radius: 14px;
     }
   }
 
@@ -524,5 +536,24 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+  }
+
+  @media (max-width: 768px) {
+    .logos-card.carousel-container {
+      padding: 18px;
+      border-radius: 20px;
+    }
+
+    .carousel-container::before,
+    .carousel-container::after {
+      width: 72px;
+    }
+
+    .carousel_item {
+      width: calc(100vw / 4.2) !important;
+      margin: 14px 14px !important;
+      padding: 12px !important;
+      border-radius: 16px !important;
+    }
   }
 </style>
