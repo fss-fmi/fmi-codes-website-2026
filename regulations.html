@@ -183,12 +183,15 @@
     }
     .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
 
-    .container { width: 100%; max-width: 1700px; }
+    .container { 
+      width: 100%; 
+      /*max-width: 1700px;*/ 
+    }
     .header { margin-top: 28px; margin-bottom: 28px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .header h1 { font-size: 30px; letter-spacing: 0.3px; }
     .header p { color: var(--muted); font-size: 16px; margin-top: 8px; }
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 18px; }
     .card {
       position: relative;
       padding: 28px;
@@ -206,14 +209,15 @@
     .question { margin: 14px 0 10px; font-size: clamp(20px, 5vw, 24px); font-weight: 750; }
     .answer { color: var(--muted); font-size: clamp(14px, 3vw, 16px); line-height: 1.7; }
 
-    @media (max-width: 768px) {
+    @media (min-width: 768px) {
       body { padding: 92px 12px 40px; }
       .navbar-container { padding: 10px 16px; }
-      .grid { gap: 14px; }
+      .grid { gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .card { padding: 20px; }
     }
+
     @media (min-width: 1024px) {
-      .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .header h1 { font-size: 38px; }
       .header p { font-size: 18px; }
       .card { padding: 30px; min-height: 210px; }
