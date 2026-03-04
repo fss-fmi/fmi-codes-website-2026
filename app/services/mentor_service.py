@@ -1,125 +1,106 @@
-"""Mentor management business logic"""
-import sqlite3
+"""Mentor management business logic - PostgreSQL version"""
 import base64
 import json
+import logging
 from pathlib import Path
 from flask import current_app
-from app.database import get_db_connection
+from app.database import get_db_cursor, execute_query, execute_insert, execute_update
+import psycopg2
+
+logger = logging.getLogger(__name__)
 
 
-def mentor_exists(name: str, surname: str, workplace: str) -> bool:
+def mentor_exists(first_name: str, last_name: str, company_name: str) -> bool:
     """Check if a mentor already exists by identity fields"""
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
-    cursor.execute(
-        'SELECT 1 FROM mentors WHERE name = ? AND surname = ? AND workplace = ?',
-        (name, surname, workplace)
-    )
-    exists = cursor.fetchone() is not None
-    conn.close()
-    return exists
+    query = """
+        SELECT 1 FROM mentors
+        WHERE first_name = %s AND last_name = %s AND company_name = %s
+    """
+    result = execute_query(current_app, query, (first_name, last_name, company_name), fetch_one=True)
+    return result is not None
 
 
-def register_mentor(name: str, surname: str, workplace: str, picture_data=None, picture_filename=None) -> tuple:
+def register_mentor(first_name: str, last_name: str, company_name: str, picture_data=None, picture_filename=None) -> tuple:
     """Register a new mentor
-    
+
     Returns:
         Tuple of (success: bool, message: str, mentor_id: int or None)
     """
-    # Validation
-    if not name or not surname or not workplace:
+    if not first_name or not last_name or not company_name:
         return False, 'All fields are required', None
 
     if not picture_data:
         return False, 'Picture is required', None
 
-    # Insert into database
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
+    query = """
+        INSERT INTO mentors (first_name, last_name, company_name, picture_url, picture_filename)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+    """
 
     try:
-        cursor.execute(
-            '''INSERT INTO mentors (name, surname, workplace, picture, picture_filename)
-               VALUES (?, ?, ?, ?, ?)''',
-            (name, surname, workplace, picture_data, picture_filename)
-        )
-        conn.commit()
-        mentor_id = cursor.lastrowid
-        message = f'Mentor "{name} {surname}" registered successfully'
-        return True, message, mentor_id
+        mentor_id = execute_insert(current_app, query, (first_name, last_name, company_name, picture_data, picture_filename))
+        logger.info(f"✓ Mentor registered: {first_name} {last_name} (ID: {mentor_id})")
+        return True, f'Mentor "{first_name} {last_name}" registered successfully', mentor_id
 
-    except sqlite3.IntegrityError as e:
-        conn.rollback()
+    except psycopg2.IntegrityError as e:
+        logger.error(f"Integrity error registering mentor: {e}")
+        return False, 'Mentor already exists or constraint violated', None
+    except Exception as e:
+        logger.error(f"Error registering mentor: {e}")
         return False, str(e), None
-    finally:
-        conn.close()
 
 
 def get_all_mentors() -> list:
     """Get all registered mentors"""
+    query = """
+        SELECT id, first_name, last_name, email, phone_number, company_name, bio, status, created_at
+        FROM mentors
+        ORDER BY created_at DESC
+    """
     try:
-        conn = get_db_connection(current_app)
-        cursor = conn.cursor()
-
-        cursor.execute('SELECT id, name, surname, workplace, picture_filename, created_at FROM mentors ORDER BY created_at DESC')
-        mentors = [dict(row) for row in cursor.fetchall()]
-
-        conn.close()
-        return mentors
-
+        return execute_query(current_app, query, fetch_all=True) or []
     except Exception as e:
         raise Exception(f'Failed to get mentors: {str(e)}')
 
 
 def get_mentor_picture(mentor_id: int) -> tuple:
     """Get mentor picture and filename by ID
-    
+
     Returns:
         Tuple of (picture_data, filename) or (None, None)
     """
+    query = "SELECT picture_url, picture_filename FROM mentors WHERE id = %s"
     try:
-        conn = get_db_connection(current_app)
-        cursor = conn.cursor()
-
-        cursor.execute('SELECT picture, picture_filename FROM mentors WHERE id = ?', (mentor_id,))
-        result = cursor.fetchone()
-        conn.close()
-
-        if result and result[0]:
-            return result[0], result[1]
+        result = execute_query(current_app, query, (mentor_id,), fetch_one=True)
+        if result and result['picture_url']:
+            return result['picture_url'], result['picture_filename']
         return None, None
-
     except Exception as e:
         raise Exception(f'Failed to get mentor picture: {str(e)}')
 
 
 def delete_mentor(mentor_id: int) -> tuple:
     """Delete a mentor
-    
+
     Returns:
         Tuple of (success: bool, message: str)
     """
+    query = "DELETE FROM mentors WHERE id = %s"
     try:
-        conn = get_db_connection(current_app)
-        cursor = conn.cursor()
-
-        cursor.execute('DELETE FROM mentors WHERE id = ?', (mentor_id,))
-
-        if cursor.rowcount == 0:
+        rows = execute_update(current_app, query, (mentor_id,))
+        if rows == 0:
             return False, 'Mentor not found'
-
-        conn.commit()
-        conn.close()
-
+        logger.info(f"✓ Mentor {mentor_id} deleted")
         return True, 'Mentor deleted successfully'
-
     except Exception as e:
+        logger.error(f"Error deleting mentor: {e}")
         return False, str(e)
 
 
 def load_mentors_from_file(json_path: Path) -> int:
     """Load mentors from a JSON file into the database if not already present
-    
+
     Returns:
         Number of mentors inserted
     """
@@ -132,20 +113,18 @@ def load_mentors_from_file(json_path: Path) -> int:
     if not isinstance(mentors, list):
         return 0
 
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
     inserted = 0
 
     for mentor in mentors:
-        name = str(mentor.get('name', '')).strip()
-        surname = str(mentor.get('surname', '')).strip()
-        workplace = str(mentor.get('workplace', '')).strip()
-        picture_path = mentor.get('picturePath')
+        first_name = str(mentor.get('first_name', '')).strip()
+        last_name = str(mentor.get('last_name', '')).strip()
+        company_name = str(mentor.get('company_name', '')).strip()
+        picture_path = mentor.get('picture_url')
 
-        if not name or not surname or not workplace:
+        if not first_name or not last_name or not company_name:
             continue
 
-        if mentor_exists(name, surname, workplace):
+        if mentor_exists(first_name, last_name, company_name):
             continue
 
         picture_data = None
@@ -157,19 +136,24 @@ def load_mentors_from_file(json_path: Path) -> int:
                     picture_data = img_file.read()
                 picture_filename = resolved_path.name
 
+        query = """
+            INSERT INTO mentors (first_name, last_name, company_name, picture_url, picture_filename)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT ON CONSTRAINT uidx_mentors_identity DO NOTHING
+        """
+
         try:
-            cursor.execute(
-                '''INSERT OR IGNORE INTO mentors (name, surname, workplace, picture, picture_filename)
-                   VALUES (?, ?, ?, ?, ?)''',
-                (name, surname, workplace, picture_data, picture_filename)
-            )
-            if cursor.rowcount:
-                inserted += 1
-        except sqlite3.IntegrityError:
+            with get_db_cursor(current_app) as cursor:
+                cursor.execute(query, (first_name, last_name, company_name, picture_data, picture_filename))
+                if cursor.rowcount:
+                    inserted += 1
+        except psycopg2.IntegrityError:
+            continue
+        except Exception as e:
+            logger.error(f"Error inserting mentor {first_name} {last_name}: {e}")
             continue
 
-    conn.commit()
-    conn.close()
+    logger.info(f"✓ Loaded {inserted} mentors from {json_path}")
     return inserted
 
 
@@ -177,13 +161,13 @@ def serialize_mentor_row(row, selection_count=0) -> dict:
     """Serialize mentor row with optional picture and selection count"""
     data = {
         'id': row['id'],
-        'name': row['name'],
-        'surname': row['surname'],
-        'workplace': row['workplace'],
+        'first_name': row['first_name'],
+        'last_name': row['last_name'],
+        'company_name': row['company_name'],
         'picture_filename': row.get('picture_filename'),
         'selection_count': selection_count
     }
-    picture_blob = row.get('picture')
+    picture_blob = row.get('picture_url')
     if picture_blob:
         data['picture_data'] = base64.b64encode(picture_blob).decode('utf-8')
     else:

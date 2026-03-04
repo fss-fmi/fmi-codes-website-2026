@@ -1,267 +1,427 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mentors</title>
-</head>
-<body>
+  </head>
+  <body>
     <div id="navbar-slot"></div>
 
     <div class="container">
-        <div class="header">
-            <h1>Mentors</h1>
-            <p>Meet the mentors for this edition.</p>
-        </div>
-        <div id="mentorGrid" class="grid"></div>
-        <div id="emptyState" style="display:none; color:#cbd5e1; text-align:center; padding: 40px 0;">No mentors found.</div>
+      <div class="header">
+        <h1>Mentors</h1>
+        <p>Meet the mentors for this edition.</p>
+      </div>
+      <div id="mentorGrid" class="grid"></div>
+      <div
+        id="emptyState"
+        style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
+      >
+        No mentors found.
+      </div>
     </div>
 
     <script>
-        async function loadMentors() {
-            const grid = document.getElementById('mentorGrid');
-            const empty = document.getElementById('emptyState');
-            grid.innerHTML = '';
-            empty.style.display = 'none';
+      async function loadMentors() {
+        const grid = document.getElementById('mentorGrid');
+        const empty = document.getElementById('emptyState');
+        grid.innerHTML = '';
+        empty.style.display = 'none';
 
-            try {
-                const res = await fetch('/mentors.json');
-                const data = await res.json();
-                const list = Array.isArray(data) ? data : [];
+        try {
+          const res = await fetch('/api/mentors');
+          const data = await res.json();
+          const list = Array.isArray(data.mentors) ? data.mentors : [];
 
-                if (list.length === 0) {
-                    empty.style.display = 'block';
-                    return;
-                }
+          if (list.length === 0) {
+            empty.style.display = 'block';
+            return;
+          }
 
-                list.forEach((m) => {
-                    const card = document.createElement('div');
-                    card.className = 'card';
-                    const imgSrc = (m.image || m.picturePath || '').trim();
-                    const hasPic = Boolean(imgSrc);
-                    const description = (m.description || m.bio || '').trim() || 'Experienced mentor available for technical guidance and project feedback.';
-                    const mentorName = (m.name || `${m.name || ''} ${m.surname || ''}`.trim()).trim();
-                    const mentorCompany = (m.company || m.workplace || '').trim();
+          list.forEach((m) => {
+            const card = document.createElement('div');
+            card.className = 'card';
 
-                    card.innerHTML = `
-                        <div class="mentor-head">
-                            ${hasPic
-                                ? `<img class="avatar" src="${imgSrc}" alt="${mentorName}" onerror="this.outerHTML='<div class=\"avatar placeholder\">👤</div>'">`
-                                : `<div class="avatar placeholder">👤</div>`}
-                            <div>
-                                <div class="name">${mentorName}</div>
-                                <div class="workplace">${mentorCompany}</div>
-                            </div>
-                        </div>
-                        <div class="description">${description}</div>
-                    `;
-                    grid.appendChild(card);
-                });
-            } catch (e) {
-                empty.textContent = 'Error loading mentors. Please try again.';
-                empty.style.display = 'block';
-            }
+            const mentorName = `${m.first_name || ''} ${m.last_name || ''}`.trim();
+            const mentorCompany = (m.company_name || '').trim();
+            const description =
+              (m.bio || '').trim() ||
+              'Experienced mentor available for technical guidance and project feedback.';
+            const imgSrc = (m.picture_url || '').trim();
+            const hasPic = Boolean(imgSrc);
+
+            card.innerHTML = `
+        <div class="mentor-head">
+          ${
+            hasPic
+              ? `<img class="avatar" src="${imgSrc}" alt="${mentorName}" onerror="this.outerHTML='<div class=\\"avatar placeholder\\">👤</div>'">`
+              : `<div class="avatar placeholder">👤</div>`
+          }
+          <div>
+            <div class="name">${mentorName}</div>
+            <div class="workplace">${mentorCompany}</div>
+          </div>
+        </div>
+        <div class="description">${description}</div>
+      `;
+            grid.appendChild(card);
+          });
+        } catch (e) {
+          empty.textContent = 'Error loading mentors. Please try again.';
+          empty.style.display = 'block';
         }
+      }
 
-        function ensureMentorLink(text, href) {
-            const navLinks = document.querySelector('.nav-links');
-            if (!navLinks) return;
-            let link = document.querySelector('.nav-links .mentor-link');
-            if (!link) {
-                link = document.createElement('a');
-                link.className = 'nav-link mentor-link';
-                navLinks.appendChild(link);
-            }
-            link.textContent = text;
-            link.href = href;
+      function ensureMentorLink(text, href) {
+        const navLinks = document.querySelector('.nav-links');
+        if (!navLinks) return;
+        let link = document.querySelector('.nav-links .mentor-link');
+        if (!link) {
+          link = document.createElement('a');
+          link.className = 'nav-link mentor-link';
+          navLinks.appendChild(link);
         }
+        link.textContent = text;
+        link.href = href;
+      }
 
-        async function setMentorLinkBySelection() {
-            try {
-                const res = await fetch('/api/mentors/available');
-                if (!res.ok) return;
-                const data = await res.json();
-                const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-                if (selectedCount > 0) {
-                    ensureMentorLink('Selected Mentors', '/selectedMentors');
-                } else {
-                    ensureMentorLink('Choose Mentor', '/chooseMentor');
-                }
-            } catch {}
-        }
+      async function setMentorLinkBySelection() {
+        try {
+          const res = await fetch('/api/mentors/available');
+          if (!res.ok) return;
+          const data = await res.json();
+          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+          if (selectedCount > 0) {
+            ensureMentorLink('Selected Mentors', '/selectedMentors');
+          } else {
+            ensureMentorLink('Choose Mentor', '/chooseMentor');
+          }
+        } catch {}
+      }
 
-        function updateNavbar() {
-            const teamName = window.loggedInTeam || '';
-            const navActions = document.querySelector('.nav-actions');
-            if (!navActions) return;
-            if (teamName) {
-                navActions.innerHTML = `
+      function updateNavbar() {
+        const teamName = window.loggedInTeam || '';
+        const navActions = document.querySelector('.nav-actions');
+        if (!navActions) return;
+        if (teamName) {
+          navActions.innerHTML = `
                     <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
                 `;
-                setMentorLinkBySelection();
-            }
+          setMentorLinkBySelection();
         }
+      }
 
-        async function loadNavbar() {
-            try {
-                const res = await fetch('/navbar.html');
-                if (!res.ok) return;
-                const html = await res.text();
-                const slot = document.getElementById('navbar-slot');
-                if (slot) slot.innerHTML = html;
-            } catch {}
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (slot) slot.innerHTML = html;
+        } catch {}
+      }
+
+      async function logout() {
+        try {
+          const response = await fetch('/api/logout', { method: 'POST' });
+          if (response.ok) window.location.reload();
+        } catch (error) {
+          console.error('Logout failed:', error);
         }
+      }
 
-        async function logout() {
-            try {
-                const response = await fetch('/api/logout', { method: 'POST' });
-                if (response.ok) window.location.reload();
-            } catch (error) {
-                console.error('Logout failed:', error);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            await loadNavbar();
-            updateNavbar();
-            await loadMentors();
-        });
+      document.addEventListener('DOMContentLoaded', async () => {
+        await loadNavbar();
+        updateNavbar();
+        await loadMentors();
+      });
     </script>
-</body>
+  </body>
 </html>
 
 <style>
-        :root {
-            --bg: #060910;
-            --panel: rgba(255, 255, 255, 0.04);
-            --panel-border: rgba(255, 255, 255, 0.08);
-            --text: #e5e7eb;
-            --muted: #9ca3af;
-            --accent: #60a5fa;
-            --accent-2: #22d3ee;
-            --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 40%),
-                                    radial-gradient(circle at 80% 0%, rgba(34, 211, 238, 0.10), transparent 36%),
-                                    var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 96px 16px 60px;
-            display: flex;
-            justify-content: center;
-        }
+  :root {
+    --bg: #060910;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.12), transparent 40%),
+      radial-gradient(circle at 80% 0%, rgba(34, 211, 238, 0.1), transparent 36%), var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 96px 16px 60px;
+    display: flex;
+    justify-content: center;
+  }
 
-        .navbar {
-            position: fixed;
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: min(1200px, calc(100% - 40px));
-            background: rgba(5, 6, 13, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            z-index: 1000;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-            overflow: hidden;
-        }
-        .navbar-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 12px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
-        .logo-text {
-            font-size: 20px; font-weight: 800;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-            letter-spacing: 2px;
-        }
-        .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
-        .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
-        .nav-link:hover { color: #60a5fa; }
-        .nav-link::after {
-            content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee); transition: width 0.2s ease;
-        }
-        .nav-link:hover::after { width: 100%; }
-        .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
-        .settings-btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 6px 10px; border-radius: 6px; transition: all 0.2s ease; }
-        .settings-btn:hover { background: rgba(96, 165, 250, 0.1); }
-        .login-btn {
-            background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021; padding: 8px 18px;
-            border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
+  .navbar {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1200px, calc(100% - 40px));
+    background: rgba(5, 6, 13, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    z-index: 1000;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+  }
+  .navbar-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .navbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 80px;
+  }
+  .logo-text {
+    font-size: 20px;
+    font-weight: 800;
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 2px;
+  }
+  .nav-links {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex: 1;
+    justify-content: center;
+  }
+  .nav-link {
+    color: #e5e7eb;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.2s ease;
+    position: relative;
+  }
+  .nav-link:hover {
+    color: #60a5fa;
+  }
+  .nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    transition: width 0.2s ease;
+  }
+  .nav-link:hover::after {
+    width: 100%;
+  }
+  .nav-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    min-width: 140px;
+    justify-content: flex-end;
+  }
+  .settings-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+  }
+  .settings-btn:hover {
+    background: rgba(96, 165, 250, 0.1);
+  }
+  .login-btn {
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    border: none;
+    color: #0b1021;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
 
-        .container { width: 100%; max-width: 1700px; }
-        .header { margin-top: 28px; margin-bottom: 28px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .header h1 { font-size: 30px; letter-spacing: 0.3px; }
-        .header p { color: var(--muted); font-size: 16px; margin-top: 8px; }
+  .container {
+    width: 100%;
+    max-width: 1700px;
+  }
+  .header {
+    margin-top: 28px;
+    margin-bottom: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .header h1 {
+    font-size: 30px;
+    letter-spacing: 0.3px;
+  }
+  .header p {
+    color: var(--muted);
+    font-size: 16px;
+    margin-top: 8px;
+  }
 
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; }
-        .card {
-            position: relative;
-            padding: 34px;
-            border-radius: 14px;
-            border: 1px solid var(--panel-border);
-            background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-            box-shadow: var(--card-glow);
-            overflow: hidden;
-            transition: transform 0.2s ease, border-color 0.2s ease;
-            min-height: 280px;
-        }
-        .card:hover { transform: translateY(-4px); border-color: rgba(96,165,250,0.35); }
-        .card::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 45%); pointer-events: none; }
-        .label { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3); color: #c7f9ff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        .mentor-head { display: flex; align-items: center; gap: 18px; margin-top: 16px; }
-        .avatar {
-            width: 94px;
-            height: 94px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            object-fit: cover;
-            flex-shrink: 0;
-            background: linear-gradient(145deg, #1f2937, #111827);
-        }
-        .avatar.placeholder {
-            display: grid;
-            place-items: center;
-            font-size: 34px;
-            color: #c7d2fe;
-            background: linear-gradient(145deg, rgba(124, 58, 237, 0.2), rgba(34, 211, 238, 0.1));
-        }
-        .name { margin: 0; font-size: clamp(20px, 5vw, 24px); font-weight: 750; line-height: 1.2; }
-        .workplace { margin-top: 8px; color: var(--muted); font-size: clamp(14px, 3vw, 16px); line-height: 1.5; }
-        .description {
-            margin-top: 16px;
-            color: var(--muted);
-            font-size: 17px;
-            line-height: 1.65;
-            position: relative;
-            z-index: 1;
-        }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 24px;
+  }
+  .card {
+    position: relative;
+    padding: 34px;
+    border-radius: 14px;
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    box-shadow: var(--card-glow);
+    overflow: hidden;
+    transition:
+      transform 0.2s ease,
+      border-color 0.2s ease;
+    min-height: 280px;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(96, 165, 250, 0.35);
+  }
+  .card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.12), transparent 45%);
+    pointer-events: none;
+  }
+  .label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 13px;
+    border-radius: 999px;
+    background: rgba(34, 211, 238, 0.12);
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    color: #c7f9ff;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .mentor-head {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-top: 16px;
+  }
+  .avatar {
+    width: 94px;
+    height: 94px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    object-fit: cover;
+    flex-shrink: 0;
+    background: linear-gradient(145deg, #1f2937, #111827);
+  }
+  .avatar.placeholder {
+    display: grid;
+    place-items: center;
+    font-size: 34px;
+    color: #c7d2fe;
+    background: linear-gradient(145deg, rgba(124, 58, 237, 0.2), rgba(34, 211, 238, 0.1));
+  }
+  .name {
+    margin: 0;
+    font-size: clamp(20px, 5vw, 24px);
+    font-weight: 750;
+    line-height: 1.2;
+  }
+  .workplace {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: clamp(14px, 3vw, 16px);
+    line-height: 1.5;
+  }
+  .description {
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 17px;
+    line-height: 1.65;
+    position: relative;
+    z-index: 1;
+  }
 
-        @media (max-width: 768px) {
-            body { padding: 92px 12px 40px; }
-            .navbar-container { padding: 10px 16px; }
-            .grid { gap: 14px; }
-            .card { padding: 24px; min-height: 240px; }
-        }
-        @media (min-width: 1024px) {
-            .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-            .header h1 { font-size: 38px; }
-            .header p { font-size: 18px; }
-            .card { padding: 36px; min-height: 300px; }
-            .label { font-size: 13px; }
-            .name { font-size: 30px; }
-            .workplace { font-size: 19px; }
-            .description { font-size: 18px; }
-        }
-    </style>
+  @media (max-width: 768px) {
+    body {
+      padding: 92px 12px 40px;
+    }
+    .navbar-container {
+      padding: 10px 16px;
+    }
+    .grid {
+      gap: 14px;
+    }
+    .card {
+      padding: 24px;
+      min-height: 240px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .header h1 {
+      font-size: 38px;
+    }
+    .header p {
+      font-size: 18px;
+    }
+    .card {
+      padding: 36px;
+      min-height: 300px;
+    }
+    .label {
+      font-size: 13px;
+    }
+    .name {
+      font-size: 30px;
+    }
+    .workplace {
+      font-size: 19px;
+    }
+    .description {
+      font-size: 18px;
+    }
+  }
+</style>
