@@ -50,25 +50,3 @@ def schedule():
 def navbar_fragment():
     """Serve reusable navbar fragment"""
     return render_template('navbar.html')
-
-
-# Serve static data files (JSON)
-@pages_bp.route('/mentors.json')
-def mentors_data_file():
-    """Serve mentors data JSON file"""
-    root = Path(__file__).parent.parent.parent
-    return send_from_directory(root, 'mentors.json')
-
-
-@pages_bp.route('/rankings.json')
-def rankings_data_file():
-    """Serve rankings data JSON file"""
-    root = Path(__file__).parent.parent.parent
-    return send_from_directory(root, 'rankings.json')
-
-
-@pages_bp.route('/regulations.json')
-def regulations_data_file():
-    """Serve regulations data JSON file"""
-    root = Path(__file__).parent.parent.parent
-    return send_from_directory(root, 'regulations.json')

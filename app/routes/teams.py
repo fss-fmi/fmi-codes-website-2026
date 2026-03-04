@@ -1,7 +1,7 @@
 """Team management routes"""
 from flask import jsonify, request, render_template, session
 from app.routes import teams_bp
-from app.services import team_service
+from app.services import teams_service
 
 
 @teams_bp.route('/team', methods=['GET'])
@@ -41,7 +41,7 @@ def register_team():
         password = data.get('password', '').strip()
         participants = data.get('participants', [])
 
-        success, message, team_id = team_service.register_team(team_name, password, participants)
+        success, message, team_id = teams_service.register_team(team_name, password, participants)
 
         if success:
             return jsonify({'success': True, 'message': message}), 201
@@ -55,14 +55,14 @@ def register_team():
 @teams_bp.route('/api/teams', methods=['GET'])
 def get_teams():
     """Get all registered teams"""
-    teams = team_service.get_all_teams()
+    teams = teams_service.get_all_teams()
     return jsonify({'success': True, 'teams': teams}), 200
 
 
 @teams_bp.route('/api/teams/<team_name>', methods=['GET'])
 def get_team(team_name):
     """Get a specific team by name"""
-    team = team_service.get_team_by_name(team_name)
+    team = teams_service.get_team_by_name(team_name)
     if team:
         return jsonify({'success': True, 'team': team}), 200
     else:
@@ -73,7 +73,7 @@ def get_team(team_name):
 def delete_team(team_name):
     """Delete a team and its participants"""
     try:
-        success, message = team_service.delete_team(team_name)
+        success, message = teams_service.delete_team(team_name)
         if success:
             return jsonify({'success': True, 'message': message}), 200
         else:

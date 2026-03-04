@@ -1,155 +1,387 @@
-"""Team management business logic"""
-import sqlite3
+"""Teams management business logic - PostgreSQL version"""
+import logging
 from flask import current_app
-from app.database import get_db_connection
+from app.database import get_db_cursor, execute_query, execute_insert, execute_update
+import psycopg2
+import bcrypt
+
+logger = logging.getLogger(__name__)
 
 
-def get_team_by_name(team_name: str) -> dict:
-    """Get team details and participants by team name"""
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
+class TeamService:
+    """Service for managing hackathon teams"""
 
-    cursor.execute('SELECT * FROM teams WHERE team_name = ?', (team_name,))
-    team = cursor.fetchone()
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Hash a password using bcrypt"""
+        salt = bcrypt.gensalt(rounds=12)
+        return bcrypt.hashpw(password.encode(), salt).decode()
 
-    if team:
-        cursor.execute('SELECT * FROM participants WHERE team_id = ?', (team['id'],))
-        participants = [dict(row) for row in cursor.fetchall()]
-        team_dict = dict(team)
-        team_dict['participants'] = participants
-    else:
-        team_dict = None
+    @staticmethod
+    def verify_password(password: str, hash_value: str) -> bool:
+        """Verify a password against its hash"""
+        return bcrypt.checkpw(password.encode(), hash_value.encode())
 
-    conn.close()
-    return team_dict
+    @staticmethod
+    def get_team_by_id(team_id: int) -> dict:
+        """Get a team by ID with participant count and mentor info"""
+        query = """
+            SELECT
+                t.*,
+                COUNT(DISTINCT p.id) as participant_count,
+                COUNT(DISTINCT tm.mentor_id) as mentor_count
+            FROM teams t
+            LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
+            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
+            WHERE t.id = %s
+            GROUP BY t.id
+        """
+        return execute_query(current_app, query, (team_id,), fetch_one=True)
 
+    @staticmethod
+    def get_team_by_name(team_name: str) -> dict:
+        """Get a team by name with participant count and mentor info"""
+        query = """
+            SELECT
+                t.*,
+                COUNT(DISTINCT p.id) as participant_count,
+                COUNT(DISTINCT tm.mentor_id) as mentor_count
+            FROM teams t
+            LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
+            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
+            WHERE t.team_name = %s
+            GROUP BY t.id
+        """
+        return execute_query(current_app, query, (team_name,), fetch_one=True)
 
-def get_all_teams() -> list:
-    """Get all teams with their participants"""
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
+    @staticmethod
+    def get_all_teams(active_only=True, order_by='created_at') -> list:
+        """Get all teams with participant and mentor counts
 
-    cursor.execute('SELECT * FROM teams ORDER BY created_at DESC')
-    teams = [dict(row) for row in cursor.fetchall()]
+        Args:
+            active_only: If True, only return active teams
+            order_by: Field to order by (created_at, team_name, status)
 
-    for team in teams:
-        cursor.execute('SELECT * FROM participants WHERE team_id = ?', (team['id'],))
-        team['participants'] = [dict(row) for row in cursor.fetchall()]
+        Returns:
+            List of team dictionaries
+        """
+        query = """
+            SELECT
+                t.*,
+                COUNT(DISTINCT p.id) as participant_count,
+                COUNT(DISTINCT tm.mentor_id) as mentor_count
+            FROM teams t
+            LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
+            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
+        """
 
-    conn.close()
-    return teams
+        if active_only:
+            query += " WHERE t.status = 'active'"
 
+        valid_order_fields = ['created_at', 'team_name', 'status']
+        order_field = order_by if order_by in valid_order_fields else 'created_at'
 
-def register_team(team_name: str, password: str, participants: list) -> tuple:
-    """Register a new team with participants
-    
-    Returns:
-        Tuple of (success: bool, message: str, team_id: int or None)
-    """
-    # Validation
-    if not team_name:
-        return False, 'Team name is required', None
+        query += f" GROUP BY t.id ORDER BY t.{order_field} DESC"
 
-    if not password:
-        return False, 'Password is required', None
+        return execute_query(current_app, query, fetch_all=True) or []
 
-    if len(participants) < 3 or len(participants) > 6:
-        return False, 'Team must have 3-6 participants', None
+    @staticmethod
+    def get_team_count(active_only=True) -> int:
+        """Get total number of teams
 
-    # Check if team already exists
-    if get_team_by_name(team_name):
-        return False, f'Team name "{team_name}" is already taken. Please choose a different name.', None
+        Args:
+            active_only: If True, only count active teams
 
-    # Insert into database
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
+        Returns:
+            Number of teams
+        """
+        query = "SELECT COUNT(*) FROM teams"
 
-    try:
+        if active_only:
+            query += " WHERE status = 'active'"
+
+        try:
+            result = execute_query(current_app, query, fetch_one=True)
+            return result[0] if result else 0
+        except Exception as e:
+            logger.error(f"Error counting teams: {e}")
+            return 0
+
+    @staticmethod
+    def can_create_team() -> tuple:
+        """Check if a new team can be created (max 18 teams)
+
+        Returns:
+            Tuple (allowed: bool, message: str)
+        """
+        team_count = TeamService.get_team_count(active_only=True)
+        if team_count >= 18:
+            return False, "Maximum number of teams (18) already reached"
+        return True, "Team creation allowed"
+
+    @staticmethod
+    def create_team(team_name: str, password: str) -> tuple:
+        """Create a new team
+
+        Args:
+            team_name: Unique team name
+            password: Team password (will be hashed)
+
+        Returns:
+            Tuple (success: bool, message: str, team_id: int or None)
+        """
+        # Validation
+        if not team_name or not team_name.strip():
+            return False, "Team name is required", None
+
+        if not password or len(password) < 4:
+            return False, "Password must be at least 4 characters", None
+
+        # Check if team already exists
+        if TeamService.get_team_by_name(team_name):
+            return False, f'Team name "{team_name}" is already taken', None
+
+        # Check if we can create more teams
+        allowed, message = TeamService.can_create_team()
+        if not allowed:
+            return False, message, None
+
+        # Hash password
+        try:
+            password_hash = TeamService.hash_password(password)
+        except Exception as e:
+            logger.error(f"Error hashing password: {e}")
+            return False, "Password hashing failed", None
+
         # Insert team
-        cursor.execute(
-            'INSERT INTO teams (team_name, password, participant_count) VALUES (?, ?, ?)',
-            (team_name, password, len(participants))
-        )
-        team_id = cursor.lastrowid
+        query = """
+            INSERT INTO teams (team_name, password_hash, status)
+            VALUES (%s, %s, 'pending')
+            RETURNING id
+        """
 
-        # Insert participants
-        for participant in participants:
-            cursor.execute(
-                '''INSERT INTO participants
-                   (team_id, first_name, last_name, faculty_number, discord)
-                   VALUES (?, ?, ?, ?, ?)''',
-                (
-                    team_id,
-                    participant.get('firstName', '').strip(),
-                    participant.get('lastName', '').strip(),
-                    participant.get('facultyNumber', '').strip(),
-                    participant.get('discord', '').strip()
-                )
-            )
+        try:
+            team_id = execute_insert(current_app, query, (team_name.strip(), password_hash))
+            logger.info(f"✓ Team created: {team_name} (ID: {team_id})")
+            return True, f"Team '{team_name}' created successfully", team_id
 
-        conn.commit()
-        message = f'Team "{team_name}" registered successfully with {len(participants)} participants'
-        return True, message, team_id
+        except psycopg2.IntegrityError as e:
+            logger.error(f"Integrity error creating team: {e}")
+            return False, "Database constraint violation", None
+        except Exception as e:
+            logger.error(f"Error creating team: {e}")
+            return False, str(e), None
 
-    except sqlite3.IntegrityError as e:
-        conn.rollback()
-        return False, f'Database error: {str(e)}', None
-    finally:
-        conn.close()
+    @staticmethod
+    def activate_team(team_id: int) -> tuple:
+        """Activate a team (change status from pending to active)
 
+        Args:
+            team_id: Team ID
 
-def delete_team(team_name: str) -> tuple:
-    """Delete a team and its participants
-    
-    Returns:
-        Tuple of (success: bool, message: str)
-    """
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
-
-    try:
-        # Get team
-        cursor.execute('SELECT id FROM teams WHERE team_name = ?', (team_name,))
-        team = cursor.fetchone()
-
+        Returns:
+            Tuple (success: bool, message: str)
+        """
+        team = TeamService.get_team_by_id(team_id)
         if not team:
-            return False, 'Team not found'
+            return False, f"Team {team_id} not found"
 
-        team_id = team[0]
+        # Verify team has 3-6 participants
+        if team['participant_count'] < 3:
+            return False, f"Team must have at least 3 participants (currently {team['participant_count']})"
 
-        # Delete participants
-        cursor.execute('DELETE FROM participants WHERE team_id = ?', (team_id,))
+        if team['participant_count'] > 6:
+            return False, f"Team cannot have more than 6 participants (currently {team['participant_count']})"
 
-        # Delete team mentors
-        cursor.execute('DELETE FROM team_mentors WHERE team_id = ?', (team_id,))
+        # Update status to active
+        query = "UPDATE teams SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = %s"
 
-        # Delete team
-        cursor.execute('DELETE FROM teams WHERE id = ?', (team_id,))
+        try:
+            rows = execute_update(current_app, query, (team_id,))
+            if rows > 0:
+                logger.info(f"✓ Team {team_id} activated")
+                return True, "Team activated successfully"
+            else:
+                return False, "Failed to activate team"
 
-        conn.commit()
-        return True, f'Team "{team_name}" deleted successfully'
+        except Exception as e:
+            logger.error(f"Error activating team: {e}")
+            return False, str(e)
 
-    except Exception as e:
-        conn.rollback()
-        return False, str(e)
-    finally:
-        conn.close()
+    @staticmethod
+    def update_team_status(team_id: int, new_status: str) -> tuple:
+        """Update team status
 
+        Args:
+            team_id: Team ID
+            new_status: New status (pending, active, completed, disqualified)
 
-def verify_team_credentials(team_name: str, password: str) -> tuple:
-    """Verify team login credentials
-    
-    Returns:
-        Tuple of (success: bool, team_id: int or None)
-    """
-    conn = get_db_connection(current_app)
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT * FROM teams WHERE team_name = ? AND password = ?', (team_name, password))
-    team = cursor.fetchone()
-    conn.close()
+        Returns:
+            Tuple (success: bool, message: str)
+        """
+        valid_statuses = ['pending', 'active', 'completed', 'disqualified']
+        if new_status not in valid_statuses:
+            return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
 
-    if team:
-        return True, team['id']
-    else:
-        return False, None
+        team = TeamService.get_team_by_id(team_id)
+        if not team:
+            return False, f"Team {team_id} not found"
+
+        query = "UPDATE teams SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+
+        try:
+            rows = execute_update(current_app, query, (new_status, team_id))
+            if rows > 0:
+                logger.info(f"✓ Team {team_id} status updated to '{new_status}'")
+                return True, f"Team status updated to '{new_status}'"
+            else:
+                return False, "Failed to update team status"
+
+        except Exception as e:
+            logger.error(f"Error updating team status: {e}")
+            return False, str(e)
+
+    @staticmethod
+    def verify_team_credentials(team_name: str, password: str) -> tuple:
+        """Verify team login credentials
+
+        Args:
+            team_name: Team name
+            password: Password to verify
+
+        Returns:
+            Tuple (success: bool, team_id: int or None, message: str)
+        """
+        team = TeamService.get_team_by_name(team_name)
+        if not team:
+            return False, None, f"Team '{team_name}' not found"
+
+        try:
+            if TeamService.verify_password(password, team['password_hash']):
+                logger.info(f"✓ Team '{team_name}' login successful")
+                return True, team['id'], "Login successful"
+            else:
+                logger.warning(f"✗ Failed login attempt for team '{team_name}'")
+                return False, None, "Invalid password"
+
+        except Exception as e:
+            logger.error(f"Error verifying credentials: {e}")
+            return False, None, "Credential verification failed"
+
+    @staticmethod
+    def update_team_password(team_id: int, new_password: str) -> tuple:
+        """Update team password
+
+        Args:
+            team_id: Team ID
+            new_password: New password
+
+        Returns:
+            Tuple (success: bool, message: str)
+        """
+        if not new_password or len(new_password) < 4:
+            return False, "Password must be at least 4 characters"
+
+        team = TeamService.get_team_by_id(team_id)
+        if not team:
+            return False, f"Team {team_id} not found"
+
+        try:
+            password_hash = TeamService.hash_password(new_password)
+            query = "UPDATE teams SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+            rows = execute_update(current_app, query, (password_hash, team_id))
+
+            if rows > 0:
+                logger.info(f"✓ Team {team_id} password updated")
+                return True, "Password updated successfully"
+            else:
+                return False, "Failed to update password"
+
+        except Exception as e:
+            logger.error(f"Error updating password: {e}")
+            return False, str(e)
+
+    @staticmethod
+    def delete_team(team_id: int, force=False) -> tuple:
+        """Delete a team
+
+        Args:
+            team_id: Team ID
+            force: If True, delete even if team has participants (will remove them)
+
+        Returns:
+            Tuple (success: bool, message: str)
+        """
+        team = TeamService.get_team_by_id(team_id)
+        if not team:
+            return False, f"Team {team_id} not found"
+
+        # Check if team has participants
+        if team['participant_count'] > 0 and not force:
+            return False, f"Team has {team['participant_count']} participants. Use force=True to delete with participants."
+
+        try:
+            with get_db_cursor(current_app) as cursor:
+                # If force delete, remove participants first
+                if force:
+                    cursor.execute("DELETE FROM participants WHERE team_id = %s", (team_id,))
+
+                # Delete team_mentors
+                cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
+
+                # Delete team
+                cursor.execute("DELETE FROM teams WHERE id = %s", (team_id,))
+
+            logger.info(f"✓ Team {team_id} deleted")
+            return True, "Team deleted successfully"
+
+        except Exception as e:
+            logger.error(f"Error deleting team: {e}")
+            return False, str(e)
+
+    @staticmethod
+    def get_team_statistics() -> dict:
+        """Get aggregate statistics about teams"""
+        try:
+            with get_db_cursor(current_app) as cursor:
+                # Total teams
+                cursor.execute("SELECT COUNT(*) FROM teams WHERE status = 'active'")
+                total_teams = cursor.fetchone()[0]
+
+                # Teams by status
+                cursor.execute("""
+                    SELECT status, COUNT(*) as count FROM teams
+                    GROUP BY status
+                """)
+                by_status = dict(cursor.fetchall())
+
+                # Participant distribution
+                cursor.execute("""
+                    SELECT
+                        COUNT(DISTINCT t.id) as teams,
+                        COUNT(p.id) as total_participants,
+                        MIN(COUNT(p.id) OVER (PARTITION BY t.id)) as min_per_team,
+                        MAX(COUNT(p.id) OVER (PARTITION BY t.id)) as max_per_team,
+                        AVG(COUNT(p.id) OVER (PARTITION BY t.id))::NUMERIC(5,2) as avg_per_team
+                    FROM teams t
+                    LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
+                    WHERE t.status = 'active'
+                """)
+                dist = cursor.fetchone()
+                participant_stats = {
+                    'total_teams': dist[0],
+                    'total_participants': dist[1],
+                    'min_per_team': dist[2],
+                    'max_per_team': dist[3],
+                    'avg_per_team': dist[4]
+                }
+
+                return {
+                    'total_active_teams': total_teams,
+                    'by_status': by_status,
+                    'participant_distribution': participant_stats
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting team statistics: {e}")
+            return {}

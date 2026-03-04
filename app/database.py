@@ -1,78 +1,168 @@
-"""Database initialization and utilities"""
-import sqlite3
-from pathlib import Path
+"""PostgreSQL Database initialization and utilities"""
+import psycopg2
+from psycopg2.extras import RealDictCursor, execute_values
+import logging
+from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
 
 
 def init_database(app):
-    """Initialize the database with required tables"""
-    db_path = app.config['DATABASE_PATH']
-    
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    """Initialize PostgreSQL database connection and verify schema exists"""
+    try:
+        conn = get_db_connection(app)
+        cursor = conn.cursor()
 
-    # Create teams table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS teams (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            team_name TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            participant_count INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+        # Verify that required tables exist
+        cursor.execute("""
+            SELECT EXISTS(
+                SELECT FROM information_schema.tables
+                WHERE table_name = 'teams'
+            );
+        """)
+        tables_exist = cursor.fetchone()["exists"]
 
-    # Create participants table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS participants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            team_id INTEGER NOT NULL,
-            first_name TEXT NOT NULL,
-            last_name TEXT NOT NULL,
-            faculty_number TEXT NOT NULL,
-            discord TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (team_id) REFERENCES teams(id)
-        )
-    ''')
+        if not tables_exist:
+            logger.warning("Database schema not found. Please run schema.sql manually.")
+            logger.warning("Execute: psql -U postgres -d fmi_hackathon_2026 -f database/schema.sql")
 
-    # Create mentors table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS mentors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            surname TEXT NOT NULL,
-            workplace TEXT NOT NULL,
-            picture BLOB,
-            picture_filename TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+        cursor.close()
+        conn.close()
 
-    # Create unique index on mentors
-    cursor.execute('''
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_mentors_identity
-        ON mentors(name, surname, workplace)
-    ''')
+        logger.info("✓ PostgreSQL database connection verified")
 
-    # Create team_mentors table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS team_mentors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            team_id INTEGER NOT NULL,
-            mentor_id INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (team_id) REFERENCES teams(id),
-            FOREIGN KEY (mentor_id) REFERENCES mentors(id),
-            UNIQUE(team_id, mentor_id)
-        )
-    ''')
-
-    conn.commit()
-    conn.close()
+    except psycopg2.OperationalError as e:
+        logger.error(f"Cannot connect to PostgreSQL: {e}")
+        logger.error("Make sure PostgreSQL is running and credentials are correct")
+        raise
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+        raise
 
 
 def get_db_connection(app):
-    """Get a database connection"""
-    conn = sqlite3.connect(str(app.config['DATABASE_PATH']))
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Get a PostgreSQL database connection with RealDictCursor for dict-like row access"""
+    try:
+        conn = psycopg2.connect(app.config['DATABASE_URL'])
+        # Set to return rows as dictionaries instead of tuples
+        conn.cursor_factory = RealDictCursor
+        return conn
+    except psycopg2.OperationalError as e:
+        logger.error(f"Failed to connect to PostgreSQL: {e}")
+        raise
+
+
+@contextmanager
+def get_db_cursor(app, commit=True):
+    """Context manager for database operations
+
+    Usage:
+        with get_db_cursor(app) as cursor:
+            cursor.execute("SELECT * FROM participants")
+            results = cursor.fetchall()
+    """
+    conn = get_db_connection(app)
+    cursor = conn.cursor()
+    try:
+        yield cursor
+        if commit:
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Database transaction error: {e}")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def execute_query(app, query, params=None, fetch_one=False, fetch_all=False):
+    """Execute a query and optionally fetch results
+
+    Args:
+        app: Flask application instance
+        query: SQL query string (use %s for parameters)
+        params: Tuple or list of parameters
+        fetch_one: If True, fetch single row
+        fetch_all: If True, fetch all rows
+
+    Returns:
+        Query result or None
+    """
+    with get_db_cursor(app) as cursor:
+        cursor.execute(query, params or ())
+
+        if fetch_one:
+            return cursor.fetchone()
+        elif fetch_all:
+            return cursor.fetchall()
+        return None
+
+
+def execute_insert(app, query, params):
+    """Execute INSERT and return generated ID
+
+    Args:
+        app: Flask application instance
+        query: SQL query string with RETURNING id clause
+        params: Tuple or list of parameters
+
+    Returns:
+        Generated ID or None
+    """
+    try:
+        with get_db_cursor(app) as cursor:
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            return result['id'] if result else None
+    except psycopg2.IntegrityError as e:
+        logger.error(f"Integrity error during insert: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Insert error: {e}")
+        raise
+
+
+def execute_update(app, query, params):
+    """Execute UPDATE/DELETE and return number of affected rows
+
+    Args:
+        app: Flask application instance
+        query: SQL query string
+        params: Tuple or list of parameters
+
+    Returns:
+        Number of rows affected
+    """
+    try:
+        with get_db_cursor(app) as cursor:
+            cursor.execute(query, params)
+            return cursor.rowcount
+    except Exception as e:
+        logger.error(f"Update error: {e}")
+        raise
+
+
+def execute_batch(app, query, params_list):
+    """Execute batch INSERT operations efficiently
+
+    Args:
+        app: Flask application instance
+        query: SQL query string
+        params_list: List of parameter tuples
+
+    Returns:
+        List of generated IDs or None
+    """
+    try:
+        with get_db_cursor(app) as cursor:
+            if 'RETURNING' in query.upper():
+                execute_values(cursor, query, params_list, fetch=True)
+                return [row[0] for row in cursor.fetchall()]
+            else:
+                execute_values(cursor, query, params_list)
+                return cursor.rowcount
+    except Exception as e:
+        logger.error(f"Batch operation error: {e}")
+        raise
+
