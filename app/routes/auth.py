@@ -1,7 +1,7 @@
 """Authentication routes"""
 from flask import session, jsonify, request
 from app.routes import auth_bp
-from app.services import teams_service
+from app.services import team_service
 
 
 @auth_bp.route('/login', methods=['GET'])
@@ -29,7 +29,7 @@ def login():
         if not team_name or not password:
             return jsonify({'success': False, 'error': 'Team name and password are required'}), 400
 
-        success, team_id = teams_service.verify_team_credentials(team_name, password)
+        success, team_id = team_service.verify_team_credentials(team_name, password)
 
         if success:
             session['team_name'] = team_name

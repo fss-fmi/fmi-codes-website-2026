@@ -170,7 +170,7 @@ class ParticipantService:
             return False, f"Faculty number '{faculty_number}' is already in use", None
 
         # Check team exists and has room
-        from app.services.teams_service import TeamService
+        from app.services.team_service import TeamService
         team = TeamService.get_team_by_id(team_id)
         if not team:
             return False, f"Team with ID {team_id} not found", None
