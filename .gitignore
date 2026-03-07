@@ -63,6 +63,7 @@ pyrightconfig.json
 .pytype/
 cython_debug/
 .claude/
+/github
 
 # OS
 .DS_Store
