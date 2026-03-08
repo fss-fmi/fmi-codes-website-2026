@@ -150,3 +150,41 @@ def get_me():
     profile_dict = dict(profile)
     profile_dict['role'] = user['role']
     return jsonify({'success': True, 'user': profile_dict}), 200
+
+
+@auth_bp.route('/api/auth/change-password', methods=['PATCH'])
+@token_required
+def change_password():
+    """Change the current user's password. Requires current password verification."""
+    user = g.current_user
+    if user['role'] == 'admin':
+        return jsonify({'success': False, 'error': 'Admin password cannot be changed here'}), 403
+
+    data = request.get_json(silent=True) or {}
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+
+    if not current_password or not new_password:
+        return jsonify({'success': False, 'error': 'Current password and new password are required'}), 400
+
+    if len(new_password) < 6:
+        return jsonify({'success': False, 'error': 'New password must be at least 6 characters'}), 400
+
+    table = 'participants' if user['role'] == 'participant' else 'mentors'
+    row = execute_query(
+        current_app,
+        f"SELECT password_hash FROM {table} WHERE id = %s",
+        (user['user_id'],), fetch_one=True
+    )
+
+    if not row or not verify_password(current_password, row['password_hash']):
+        return jsonify({'success': False, 'error': 'Current password is incorrect'}), 401
+
+    new_hash = hash_password(new_password)
+    execute_query(
+        current_app,
+        f"UPDATE {table} SET password_hash = %s WHERE id = %s",
+        (new_hash, user['user_id'])
+    )
+
+    return jsonify({'success': True, 'message': 'Password changed successfully'}), 200
