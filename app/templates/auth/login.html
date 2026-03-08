@@ -1,291 +1,257 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login</title>
-  <style>
-    :root {
-      --bg: #060910;
-      --panel: rgba(255, 255, 255, 0.04);
-      --panel-border: rgba(255, 255, 255, 0.08);
-      --text: #e5e7eb;
-      --muted: #9ca3af;
-      --accent: #60a5fa;
-      --accent-2: #22d3ee;
-      --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: radial-gradient(circle at 18% 22%, rgba(96,165,250,0.12), transparent 40%),
-                  radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%),
-                  var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      padding: 96px 16px 48px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login — FMI Codes</title>
+  </head>
+  <body>
+    <div id="navbar-slot"></div>
+    <div class="container">
+      <div class="form-card">
+        <h1>Login</h1>
+        <p class="subtitle">Sign in to your account</p>
 
-    /* Island Navbar */
-    .navbar {
-      position: fixed;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: min(1200px, calc(100% - 40px));
-      background: rgba(5, 6, 13, 0.95);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      z-index: 1000;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-      overflow: hidden;
-    }
-    .navbar-container { max-width: 1400px; margin: 0 auto; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
-    .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
-    .logo-text { font-size: 20px; font-weight: 800; background: linear-gradient(120deg, #60a5fa, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: 2px; }
-    .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
-    .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
-    .nav-link:hover { color: #60a5fa; }
-    .nav-link::after { content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px; background: linear-gradient(120deg, #60a5fa, #22d3ee); transition: width 0.2s ease; }
-    .nav-link:hover::after { width: 100%; }
-    .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
-    .settings-btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 6px 10px; border-radius: 6px; transition: all 0.2s ease; text-decoration: none; color: var(--text); }
-    .settings-btn:hover { background: rgba(96, 165, 250, 0.1); }
-    .login-btn { background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021; padding: 8px 18px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; text-decoration: none; display: inline-block; }
-    .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
+        <div id="error-msg" class="error-msg" style="display: none"></div>
 
-    .login-container {
-      width: 100%;
-      max-width: 440px;
-      border: 1px solid var(--panel-border);
-      border-radius: 16px;
-      background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-      box-shadow: var(--glow);
-      padding: 36px;
-      position: relative;
-      overflow: hidden;
-    }
-    .login-container::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at 20% 20%, rgba(96,165,250,0.12), transparent 45%);
-      pointer-events: none;
-    }
+        <div class="role-toggle">
+          <button type="button" class="role-btn active" data-role="participant">Participant</button>
+          <button type="button" class="role-btn" data-role="mentor">Mentor</button>
+          <button type="button" class="role-btn" data-role="admin">Admin</button>
+        </div>
 
-    .login-header {
-      text-align: center;
-      margin-bottom: 28px;
-      position: relative;
-      z-index: 1;
-    }
-    .login-header h1 {
-      font-size: 28px;
-      font-weight: 800;
-      margin-bottom: 8px;
-      background: linear-gradient(120deg, #60a5fa, #22d3ee);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .login-header p {
-      color: var(--muted);
-      font-size: 14px;
-    }
+        <form id="loginForm" autocomplete="off">
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required placeholder="your@email.com" />
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              placeholder="Your password"
+            />
+          </div>
+          <button type="submit" class="submit-btn">Login</button>
+        </form>
 
-    .form-group {
-      margin-bottom: 20px;
-      position: relative;
-      z-index: 1;
-    }
-    .form-group label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: 600;
-      font-size: 14px;
-      color: var(--text);
-    }
-    .form-group input {
-      width: 100%;
-      padding: 12px 14px;
-      border: 1px solid var(--panel-border);
-      border-radius: 8px;
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      font-size: 14px;
-      transition: border-color 0.2s ease, background 0.2s ease;
-    }
-    .form-group input:focus {
-      outline: none;
-      border-color: var(--accent);
-      background: rgba(255,255,255,0.06);
-    }
-    .form-group input::placeholder {
-      color: #6b7280;
-    }
-
-    .submit-btn {
-      width: 100%;
-      padding: 12px;
-      background: linear-gradient(120deg, #60a5fa, #22d3ee);
-      border: none;
-      border-radius: 8px;
-      color: #0b1021;
-      font-weight: 700;
-      font-size: 15px;
-      cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      margin-top: 8px;
-    }
-    .submit-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(96, 165, 250, 0.4);
-    }
-
-    .divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin: 24px 0;
-      color: var(--muted);
-      font-size: 13px;
-      position: relative;
-      z-index: 1;
-    }
-    .divider::before,
-    .divider::after {
-      content: "";
-      flex: 1;
-      height: 1px;
-      background: var(--panel-border);
-    }
-
-    .signup-link {
-      text-align: center;
-      margin-top: 20px;
-      font-size: 14px;
-      color: var(--muted);
-      position: relative;
-      z-index: 1;
-    }
-    .signup-link a {
-      color: var(--accent);
-      text-decoration: none;
-      font-weight: 600;
-    }
-    .signup-link a:hover {
-      text-decoration: underline;
-    }
-
-    @media (max-width: 768px) {
-      .navbar-container { padding: 10px 16px; }
-      .login-container { padding: 28px 22px; }
-    }
-  </style>
-</head>
-<body>
-  <!-- Navigation Bar -->
-  <nav class="navbar">
-    <div class="navbar-container">
-      <div class="navbar-logo"><a href="/" style="text-decoration: none;"><div class="logo-text">FSS</div></a></div>
-      <div class="nav-links">
-        <a href="/" class="nav-link">Home</a>
-        <a href="/regulations" class="nav-link">Regulations</a>
-        <a href="/schedule" class="nav-link">Schedule</a>
-        <a href="/mentors" class="nav-link">Mentors</a>
-        <a href="/ranking" class="nav-link">Ranking</a>
-      </div>
-      <div class="nav-actions">
-        <a href="/login" class="login-btn">Login</a>
+        <p class="alt-action">Don't have an account? <a href="/registration">Register here</a></p>
       </div>
     </div>
-  </nav>
 
-  <div class="login-container">
-    <div class="login-header">
-      <h1>Welcome Back</h1>
-      <p>Sign in to access your account</p>
-    </div>
+    <script>
+      let selectedRole = 'participant';
 
-    <form id="loginForm">
-      <div class="form-group">
-        <label for="teamName">Team Name</label>
-        <input type="text" id="teamName" name="teamName" placeholder="Your team name" required />
-      </div>
-
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="Enter your password" required />
-      </div>
-
-      <button type="submit" class="submit-btn">Sign In</button>
-    </form>
-
-    <div class="divider">or</div>
-
-    <div class="signup-link">
-      Don't have an account? <a href="/teamRegistration">Register your team</a>
-    </div>
-  </div>
-
-  <script>
-    // Update navbar based on login state
-    function updateNavbar() {
-      const teamName = window.loggedInTeam || '';
-      const navActions = document.querySelector('.nav-actions');
-      const navLinks = document.querySelector('.nav-links');
-
-      if (teamName) {
-        navActions.innerHTML = `
-          <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
-        `;
-        if (!document.querySelector('.choose-mentor-link')) {
-          navLinks.innerHTML += `<a href="/chooseMentor" class="nav-link choose-mentor-link">Choose Mentor</a>`;
-        }
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
       }
-    }
+      loadNavbar();
 
-    async function logout() {
-      try {
-        const response = await fetch('/api/logout', { method: 'POST' });
-        if (response.ok) {
-          window.location.reload();
-        }
-      } catch (error) {
-        console.error('Logout failed:', error);
-      }
-    }
-
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const teamName = document.getElementById('teamName').value;
-      const password = document.getElementById('password').value;
-
-      try {
-        const response = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ teamName, password })
+      // Role toggle
+      document.querySelectorAll('.role-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.role-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          selectedRole = btn.dataset.role;
         });
+      });
 
-        const result = await response.json();
+      document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('error-msg');
+        errEl.style.display = 'none';
 
-        if (result.success) {
-          window.location.href = '/team';
-        } else {
-          alert(result.error || 'Login failed');
+        const body = {
+          email: document.getElementById('email').value.trim(),
+          password: document.getElementById('password').value,
+          role: selectedRole,
+        };
+
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (data.success) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('role', data.role);
+            localStorage.setItem('user_id', data.user_id);
+            if (data.role === 'admin') window.location.href = '/admin/matching';
+            else if (data.role === 'mentor') window.location.href = '/mentorDashboard';
+            else window.location.href = '/team';
+          } else {
+            errEl.textContent = data.error || 'Login failed';
+            errEl.style.display = 'block';
+          }
+        } catch (err) {
+          errEl.textContent = 'Network error. Please try again.';
+          errEl.style.display = 'block';
         }
-      } catch (error) {
-        console.error('Login error:', error);
-        alert('An error occurred during login');
-      }
-    });
-
-    updateNavbar();
-  </script>
-</body>
+      });
+    </script>
+  </body>
 </html>
+
+<style>
+  :root {
+    --bg: #060910;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background:
+      radial-gradient(circle at 18% 22%, rgba(96, 165, 250, 0.12), transparent 40%),
+      radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%), var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 16px 28px;
+  }
+  .container {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+  }
+  .form-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 40px 36px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 24px;
+    font-size: 15px;
+  }
+  .role-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  .role-btn {
+    flex: 1;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .role-btn.active {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    color: #0b1021;
+    border-color: transparent;
+  }
+  .role-btn:hover:not(.active) {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .form-group {
+    margin-bottom: 18px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus {
+    border-color: var(--accent);
+  }
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    margin-top: 8px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    border: none;
+    border-radius: 8px;
+    color: #0b1021;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+  }
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .error-msg {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .alt-action {
+    text-align: center;
+    margin-top: 20px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .alt-action a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .alt-action a:hover {
+    text-decoration: underline;
+  }
+  @media (max-width: 500px) {
+    .form-card {
+      padding: 28px 20px;
+    }
+  }
+</style>

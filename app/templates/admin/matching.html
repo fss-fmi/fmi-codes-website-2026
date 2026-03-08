@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin — Matching Dashboard</title>
+    <style>
+      :root {
+        --bg: #060910;
+        --panel: rgba(255, 255, 255, 0.04);
+        --panel-border: rgba(255, 255, 255, 0.08);
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --accent: #60a5fa;
+        --accent-2: #22d3ee;
+        --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background:
+          radial-gradient(circle at 18% 22%, rgba(96, 165, 250, 0.12), transparent 40%),
+          radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%), var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 0 16px 60px;
+      }
+      .container {
+        width: 100%;
+        max-width: 1000px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        padding: 28px 32px;
+        box-shadow: var(--glow);
+      }
+      .card h2 {
+        font-size: 22px;
+        font-weight: 700;
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 16px;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      .stat {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 18px;
+        text-align: center;
+      }
+      .stat .number {
+        font-size: 28px;
+        font-weight: 800;
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .stat .label {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      .progress-bar {
+        height: 8px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+      .progress-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.4s ease;
+      }
+      .progress-fill.complete {
+        background: linear-gradient(120deg, #22c55e, #86efac);
+      }
+      .progress-fill.partial {
+        background: linear-gradient(120deg, #eab308, #fde047);
+      }
+      .progress-fill.empty {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .list-section {
+        margin-top: 12px;
+      }
+      .list-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .list-header h3 {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .list-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .badge-done {
+        background: rgba(34, 197, 94, 0.15);
+        color: #86efac;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+      }
+      .badge-pending {
+        background: rgba(234, 179, 8, 0.15);
+        color: #fde047;
+        border: 1px solid rgba(234, 179, 8, 0.3);
+      }
+
+      .action-card {
+        text-align: center;
+        padding: 36px 24px;
+      }
+      .run-btn {
+        padding: 16px 36px;
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        border: none;
+        border-radius: 10px;
+        color: #0b1021;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+      }
+      .run-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(96, 165, 250, 0.35);
+      }
+      .run-btn:disabled {
+        background: rgba(156, 163, 175, 0.3);
+        color: #6b7280;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      .run-warning {
+        color: #fde047;
+        font-size: 14px;
+        margin-top: 12px;
+      }
+      .run-success {
+        color: #86efac;
+        font-size: 14px;
+        margin-top: 12px;
+      }
+
+      .results-section {
+        display: none;
+      }
+      .result-team {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 12px;
+      }
+      .result-team h4 {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      .result-mentor {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 8px;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+      .result-mentor img {
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        object-fit: cover;
+      }
+
+      .msg {
+        padding: 14px;
+        border-radius: 8px;
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+      .msg-error {
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+      .msg-warn {
+        background: rgba(234, 179, 8, 0.15);
+        color: #fde047;
+        border: 1px solid rgba(234, 179, 8, 0.3);
+      }
+
+      @media (max-width: 640px) {
+        body {
+          padding: 92px 12px 40px;
+        }
+        .card {
+          padding: 20px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="navbar-slot"></div>
+    <div class="container">
+      <div class="card">
+        <h2>Preference Submission Status</h2>
+        <div id="status-loading" style="color: var(--muted)">Loading...</div>
+        <div id="status-content" style="display: none">
+          <div class="stat-grid">
+            <div class="stat">
+              <div class="number" id="teams-done">0</div>
+              <div class="label">Teams submitted</div>
+            </div>
+            <div class="stat">
+              <div class="number" id="teams-total">0</div>
+              <div class="label">Active teams</div>
+            </div>
+            <div class="stat">
+              <div class="number" id="mentors-done">0</div>
+              <div class="label">Mentors submitted</div>
+            </div>
+            <div class="stat">
+              <div class="number" id="mentors-total">0</div>
+              <div class="label">Total mentors</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px">
+            <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px">
+              Team preferences
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="team-progress"></div></div>
+          </div>
+          <div style="margin-bottom: 16px">
+            <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px">
+              Mentor preferences
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="mentor-progress"></div></div>
+          </div>
+
+          <div class="list-section" id="team-list-section">
+            <div class="list-header"><h3>Teams</h3></div>
+            <div id="team-list"></div>
+          </div>
+          <div class="list-section" id="mentor-list-section" style="margin-top: 16px">
+            <div class="list-header"><h3>Mentors</h3></div>
+            <div id="mentor-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card action-card">
+        <h2>Run Matching Algorithm</h2>
+        <p style="color: var(--muted); font-size: 14px; margin-bottom: 20px">
+          Hospital-Resident Gale-Shapley (mentor-proposing, 3 mentors per team)
+        </p>
+        <div id="match-msg"></div>
+        <button class="run-btn" id="run-btn" disabled onclick="runMatching()">
+          Run Gale-Shapley Matching
+        </button>
+        <div id="match-status"></div>
+      </div>
+
+      <div class="card results-section" id="results-section">
+        <h2>Matching Results</h2>
+        <div id="results-content"></div>
+      </div>
+    </div>
+
+    <script>
+      var token = localStorage.getItem('token');
+      if (!token || localStorage.getItem('role') !== 'admin') {
+        window.location.href = '/login';
+      }
+
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
+
+      async function loadStatus() {
+        try {
+          var res = await fetch('/api/admin/preference-status', {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          if (!res.ok) {
+            document.getElementById('status-loading').textContent = 'Access denied';
+            return;
+          }
+          var data = await res.json();
+          document.getElementById('status-loading').style.display = 'none';
+          document.getElementById('status-content').style.display = 'block';
+
+          var teamsSub = data.teams_submitted || 0;
+          var teamsTotal = data.teams_total || 0;
+          var mentorsSub = data.mentors_submitted || 0;
+          var mentorsTotal = data.mentors_total || 0;
+          document.getElementById('teams-done').textContent = teamsSub;
+          document.getElementById('teams-total').textContent = teamsTotal;
+          document.getElementById('mentors-done').textContent = mentorsSub;
+          document.getElementById('mentors-total').textContent = mentorsTotal;
+
+          var teamPct = teamsTotal > 0 ? (teamsSub / teamsTotal) * 100 : 0;
+          var mentorPct = mentorsTotal > 0 ? (mentorsSub / mentorsTotal) * 100 : 0;
+          var teamBar = document.getElementById('team-progress');
+          teamBar.style.width = teamPct + '%';
+          teamBar.className =
+            'progress-fill ' + (teamPct >= 100 ? 'complete' : teamPct > 0 ? 'partial' : 'empty');
+          var mentorBar = document.getElementById('mentor-progress');
+          mentorBar.style.width = mentorPct + '%';
+          mentorBar.className =
+            'progress-fill ' +
+            (mentorPct >= 100 ? 'complete' : mentorPct > 0 ? 'partial' : 'empty');
+
+          // Team list
+          var teamList = document.getElementById('team-list');
+          teamList.innerHTML = '';
+          if (data.teams) {
+            data.teams.forEach(function (t) {
+              var item = document.createElement('div');
+              item.className = 'list-item';
+              item.innerHTML =
+                '<span>' +
+                (t.team_name || 'Team #' + t.team_id) +
+                '</span>' +
+                '<span class="badge ' +
+                (t.submitted ? 'badge-done' : 'badge-pending') +
+                '">' +
+                (t.submitted ? 'Submitted' : 'Pending') +
+                '</span>';
+              teamList.appendChild(item);
+            });
+          }
+
+          // Mentor list
+          var mentorList = document.getElementById('mentor-list');
+          mentorList.innerHTML = '';
+          if (data.mentors) {
+            data.mentors.forEach(function (m) {
+              var item = document.createElement('div');
+              item.className = 'list-item';
+              item.innerHTML =
+                '<span>' +
+                (m.name || 'Mentor #' + m.mentor_id) +
+                '</span>' +
+                '<span class="badge ' +
+                (m.submitted ? 'badge-done' : 'badge-pending') +
+                '">' +
+                (m.submitted ? 'Submitted' : 'Pending') +
+                '</span>';
+              mentorList.appendChild(item);
+            });
+          }
+
+          // Enable/disable run button
+          var allReady = data.all_submitted === true;
+          document.getElementById('run-btn').disabled = !allReady;
+          if (!allReady) {
+            document.getElementById('match-msg').innerHTML =
+              '<div class="msg msg-warn">All teams and mentors must submit preferences before running the algorithm.</div>';
+          } else {
+            document.getElementById('match-msg').innerHTML = '';
+          }
+        } catch (e) {
+          document.getElementById('status-loading').textContent = 'Error loading status';
+        }
+      }
+
+      async function loadResults() {
+        try {
+          var res = await fetch('/api/admin/matching-results', {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          if (!res.ok) return;
+          var data = await res.json();
+          if (!data.results || data.results.length === 0) return;
+
+          document.getElementById('results-section').style.display = 'block';
+          var content = document.getElementById('results-content');
+          content.innerHTML = '';
+
+          // Group by team
+          var grouped = {};
+          data.results.forEach(function (r) {
+            var key = r.team_id;
+            if (!grouped[key])
+              grouped[key] = { team_name: r.team_name || 'Team #' + key, mentors: [] };
+            grouped[key].mentors.push(r);
+          });
+
+          Object.keys(grouped).forEach(function (teamId) {
+            var g = grouped[teamId];
+            var el = document.createElement('div');
+            el.className = 'result-team';
+            var html = '<h4>' + g.team_name + '</h4>';
+            g.mentors.forEach(function (m) {
+              html +=
+                '<div class="result-mentor">' +
+                '<img src="/api/mentors/' +
+                m.mentor_id +
+                '/picture" alt="" style="width:36px;height:36px;border-radius:6px;object-fit:cover" onerror="this.style.display=\'none\'" />' +
+                '<span>' +
+                (m.mentor_name || 'Mentor #' + m.mentor_id) +
+                '</span></div>';
+            });
+            el.innerHTML = html;
+            content.appendChild(el);
+          });
+        } catch (e) {}
+      }
+
+      async function runMatching() {
+        var btn = document.getElementById('run-btn');
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+        var statusEl = document.getElementById('match-status');
+        statusEl.innerHTML = '';
+
+        try {
+          var res = await fetch('/api/admin/run-matching', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          var data = await res.json();
+          if (data.success) {
+            statusEl.innerHTML =
+              '<div class="run-success">' +
+              data.message +
+              ' (' +
+              (data.assignment_count || 0) +
+              ' assignments)</div>';
+            loadResults();
+          } else {
+            statusEl.innerHTML =
+              '<div class="run-warning">' + (data.error || 'Matching failed') + '</div>';
+          }
+        } catch (e) {
+          statusEl.innerHTML = '<div class="run-warning">Network error</div>';
+        }
+        btn.textContent = 'Run Gale-Shapley Matching';
+        btn.disabled = false;
+      }
+
+      loadNavbar();
+      loadStatus();
+      loadResults();
+    </script>
+  </body>
+</html>

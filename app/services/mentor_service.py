@@ -115,6 +115,8 @@ def load_mentors_from_file(json_path: Path) -> int:
 
     inserted = 0
 
+    from app.services.auth_service import hash_password as _hash_pw
+
     for mentor in mentors:
         first_name = str(mentor.get('first_name', '')).strip()
         last_name = str(mentor.get('last_name', '')).strip()
@@ -136,15 +138,26 @@ def load_mentors_from_file(json_path: Path) -> int:
                     picture_data = img_file.read()
                 picture_filename = resolved_path.name
 
+        email = str(mentor.get('email', '')).strip() or None
+        phone_number = str(mentor.get('phone_number', '')).strip() or None
+        bio = str(mentor.get('bio', '')).strip() or None
+        status = str(mentor.get('status', 'active')).strip()
+        raw_password = mentor.get('password', 'mentor123')
+        pw_hash = _hash_pw(raw_password)
+
         query = """
-            INSERT INTO mentors (first_name, last_name, company_name, picture_url, picture_filename)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO mentors (first_name, last_name, company_name, email, phone_number,
+                                 bio, status, picture_url, picture_filename, password_hash)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT ON CONSTRAINT uidx_mentors_identity DO NOTHING
         """
 
         try:
             with get_db_cursor(current_app) as cursor:
-                cursor.execute(query, (first_name, last_name, company_name, picture_data, picture_filename))
+                cursor.execute(query, (
+                    first_name, last_name, company_name, email, phone_number,
+                    bio, status, picture_data, picture_filename, pw_hash
+                ))
                 if cursor.rowcount:
                     inserted += 1
         except psycopg2.IntegrityError:

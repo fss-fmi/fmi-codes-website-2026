@@ -365,7 +365,8 @@ INSERT INTO specialties (name, description) VALUES
     ('Mobile Development', 'iOS, Android, Flutter, React Native'),
     ('Data Science', 'Data Analysis, Data Engineering, Business Analytics'),
     ('Cybersecurity', 'Security, Penetration Testing, Secure Development'),
-    ('Blockchain/Web3', 'Smart Contracts, Cryptocurrencies, Distributed Systems')
+    ('Blockchain/Web3', 'Smart Contracts, Cryptocurrencies, Distributed Systems'),
+    ('Software Engineering', 'Engineering and Designing Systems')
 ON CONFLICT (name) DO NOTHING;
 
 -- Sample hackathon event

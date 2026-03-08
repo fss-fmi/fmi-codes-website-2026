@@ -1,5 +1,5 @@
 """Static page routes"""
-from flask import render_template, session, send_from_directory
+from flask import render_template, send_from_directory
 from pathlib import Path
 from app.routes import pages_bp
 
@@ -7,43 +7,37 @@ from app.routes import pages_bp
 @pages_bp.route('/')
 def home():
     """Serve the home page"""
-    team_name = session.get('team_name', '')
-    return render_template('home.html', logged_in_team=team_name)
+    return render_template('home.html')
 
 
 @pages_bp.route('/ranking')
 def ranking_page():
     """Serve the ranking page"""
-    team_name = session.get('team_name', '')
-    return render_template('rankings/ranking.html', logged_in_team=team_name)
+    return render_template('rankings/ranking.html')
 
 
 @pages_bp.route('/teamRanking')
 def team_ranking_page():
     """Serve the team ranking page"""
-    team_name = session.get('team_name', '')
-    return render_template('rankings/teamRanking.html', logged_in_team=team_name)
+    return render_template('rankings/teamRanking.html')
 
 
 @pages_bp.route('/regulations')
 def regulations_page():
     """Serve the regulations page"""
-    team_name = session.get('team_name', '')
-    return render_template('regulations.html', logged_in_team=team_name)
-
-
-@pages_bp.route('/teamRegulations')
-def team_regulations_page_alt():
-    """Serve the team regulations page (alternate)"""
-    team_name = session.get('team_name', '')
-    return render_template('teams/teamRegulations.html', logged_in_team=team_name)
+    return render_template('regulations.html')
 
 
 @pages_bp.route('/schedule')
 def schedule():
     """Serve the schedule page"""
-    team_name = session.get('team_name', '')
-    return render_template('schedule.html', logged_in_team=team_name)
+    return render_template('schedule.html')
+
+
+@pages_bp.route('/admin/matching')
+def admin_matching_page():
+    """Serve the admin matching dashboard"""
+    return render_template('admin/matching.html')
 
 
 @pages_bp.route('/navbar.html')

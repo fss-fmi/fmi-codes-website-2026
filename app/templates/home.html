@@ -92,62 +92,23 @@
       </div>
     </div>
     <script>
-      function ensureMentorLink(text, href) {
-        const navLinks = document.querySelector('.nav-links');
-        let link = document.querySelector('.nav-links .mentor-link');
-        if (!link) {
-          link = document.createElement('a');
-          link.className = 'nav-link mentor-link';
-          navLinks.appendChild(link);
-        }
-        link.textContent = text;
-        link.href = href;
-      }
-
-      async function setMentorLinkBySelection() {
-        try {
-          const res = await fetch('/api/mentors/available');
-          if (!res.ok) return;
-          const data = await res.json();
-          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-          if (selectedCount > 0) {
-            ensureMentorLink('Selected Mentors', '/selectedMentors');
-          } else {
-            ensureMentorLink('Choose Mentor', '/chooseMentor');
-          }
-        } catch {}
-      }
-
-      function updateNavbar() {
-        const teamName = window.loggedInTeam || '';
-        const navActions = document.querySelector('.nav-actions');
-        if (!navActions) return;
-        if (teamName) {
-          navActions.innerHTML = `
-          <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
-        `;
-          setMentorLinkBySelection();
-        }
-      }
-
       async function loadNavbar() {
         try {
           const res = await fetch('/navbar.html');
           if (!res.ok) return;
           const html = await res.text();
           const slot = document.getElementById('navbar-slot');
-          if (slot) slot.innerHTML = html;
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
         } catch {}
       }
-      async function logout() {
-        try {
-          const response = await fetch('/api/logout', { method: 'POST' });
-          if (response.ok) window.location.reload();
-        } catch (error) {
-          console.error('Logout failed:', error);
-        }
-      }
-      loadNavbar().then(updateNavbar);
+      loadNavbar();
 
       window.addEventListener('load', () => {
         const track = document.getElementById('track');

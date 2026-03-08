@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create Team — FMI Codes</title>
+  </head>
+  <body>
+    <div id="navbar-slot"></div>
+    <div class="container">
+      <div class="form-card">
+        <h1>Create a Team</h1>
+        <p class="subtitle">Pick a name and share the invite code with your teammates</p>
+
+        <div id="error-msg" class="error-msg" style="display: none"></div>
+        <div id="success-area" style="display: none">
+          <div class="success-msg">Team created!</div>
+          <div class="code-display">
+            <span class="code-label">Your invite code:</span>
+            <span class="code-value" id="join-code"></span>
+            <button
+              class="copy-btn"
+              onclick="
+                navigator.clipboard.writeText(document.getElementById('join-code').textContent)
+              "
+            >
+              Copy
+            </button>
+          </div>
+          <p class="info-text">
+            Share this code with teammates. They can join at <a href="/joinTeam">/joinTeam</a>
+          </p>
+          <a
+            href="/team"
+            class="submit-btn"
+            style="
+              display: inline-block;
+              text-align: center;
+              text-decoration: none;
+              margin-top: 16px;
+            "
+            >Go to Team Dashboard</a
+          >
+        </div>
+
+        <form id="createForm" autocomplete="off">
+          <div class="form-group">
+            <label for="team_name">Team Name</label>
+            <input
+              type="text"
+              id="team_name"
+              name="team_name"
+              required
+              placeholder="e.g. Byte Me"
+              maxlength="100"
+            />
+          </div>
+          <button type="submit" class="submit-btn">Create Team</button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      const token = localStorage.getItem('token');
+      if (!token) window.location.href = '/login';
+
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
+      loadNavbar();
+
+      document.getElementById('createForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('error-msg');
+        errEl.style.display = 'none';
+
+        const teamName = document.getElementById('team_name').value.trim();
+        try {
+          const res = await fetch('/api/teams', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ team_name: teamName }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            document.getElementById('createForm').style.display = 'none';
+            document.getElementById('join-code').textContent =
+              data.team.join_code || data.team.join_code;
+            document.getElementById('success-area').style.display = 'block';
+          } else {
+            errEl.textContent = data.error;
+            errEl.style.display = 'block';
+          }
+        } catch {
+          errEl.textContent = 'Network error';
+          errEl.style.display = 'block';
+        }
+      });
+    </script>
+  </body>
+</html>
+
+<style>
+  :root {
+    --bg: #060910;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background:
+      radial-gradient(circle at 18% 22%, rgba(96, 165, 250, 0.12), transparent 40%),
+      radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%), var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 16px 28px;
+  }
+  .container {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .form-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 40px 36px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 24px;
+    font-size: 15px;
+  }
+  .form-group {
+    margin-bottom: 18px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus {
+    border-color: var(--accent);
+  }
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    border: none;
+    border-radius: 8px;
+    color: #0b1021;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+  }
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .error-msg {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .success-msg {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .code-display {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .code-label {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .code-value {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .copy-btn {
+    margin-left: 12px;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .copy-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .info-text {
+    color: var(--muted);
+    font-size: 14px;
+    text-align: center;
+  }
+  .info-text a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+</style>
