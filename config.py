@@ -9,6 +9,12 @@ BASE_DIR = Path(__file__).parent
 class Config:
     """Base configuration"""
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', SECRET_KEY)
+    JWT_EXPIRY_DAYS = int(os.environ.get('JWT_EXPIRY_DAYS', 3))
+
+    # Admin credentials
+    ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@fmicodes.bg')
+    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
 
     # PostgreSQL database configuration
     DB_HOST = os.environ.get('DB_HOST', 'localhost')
@@ -19,9 +25,6 @@ class Config:
 
     # Build connection string
     DATABASE_URL = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
-
-    # Legacy SQLite path (for reference/migration)
-    DATABASE_PATH = BASE_DIR / 'website.db'
 
     TEMPLATES_FOLDER = BASE_DIR / 'app' / 'templates'
     STATIC_FOLDER = BASE_DIR / 'app' / 'static'

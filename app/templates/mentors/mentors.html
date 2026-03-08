@@ -118,7 +118,14 @@
           if (!res.ok) return;
           const html = await res.text();
           const slot = document.getElementById('navbar-slot');
-          if (slot) slot.innerHTML = html;
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
         } catch {}
       }
 

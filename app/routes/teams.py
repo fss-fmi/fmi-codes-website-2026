@@ -1,82 +1,154 @@
-"""Team management routes"""
-from flask import jsonify, request, render_template, session
+"""Team management routes — JWT-protected"""
+from flask import jsonify, request, render_template, g
 from app.routes import teams_bp
-from app.services import team_service
+from app.services.team_service import TeamService
+from app.database import execute_query
+from flask import current_app
+from app.utils.auth_decorators import participant_required, captain_required, token_required
 
 
 @teams_bp.route('/team', methods=['GET'])
 def team_page():
-    """Serve the team page for logged-in users"""
-    team_name = session.get('team_name', '')
-    return render_template('teams/team.html', logged_in_team=team_name)
+    """Serve the team dashboard page"""
+    return render_template('teams/team.html')
+
+
+@teams_bp.route('/createTeam', methods=['GET'])
+def create_team_page():
+    """Serve the create team page"""
+    return render_template('teams/createTeam.html')
+
+
+@teams_bp.route('/joinTeam', methods=['GET'])
+def join_team_page():
+    """Serve the join team page"""
+    return render_template('teams/joinTeam.html')
 
 
 @teams_bp.route('/teamMentors', methods=['GET'])
 def team_mentors_page():
     """Serve the team mentors page"""
-    team_name = session.get('team_name', '')
-    return render_template('teams/teamMentors.html', logged_in_team=team_name)
+    return render_template('teams/teamMentors.html')
 
 
 @teams_bp.route('/teamSchedule', methods=['GET'])
 def team_schedule_page():
     """Serve the team schedule page"""
-    team_name = session.get('team_name', '')
-    return render_template('teams/teamSchedule.html', logged_in_team=team_name)
+    return render_template('teams/teamSchedule.html')
 
 
 @teams_bp.route('/teamRegulations', methods=['GET'])
 def team_regulations_page():
     """Serve the team regulations page"""
-    team_name = session.get('team_name', '')
-    return render_template('teams/teamRegulations.html', logged_in_team=team_name)
+    return render_template('teams/teamRegulations.html')
 
 
-@teams_bp.route('/api/register', methods=['POST'])
-def register_team():
-    """Handle team registration"""
-    try:
-        data = request.json
-        team_name = data.get('teamName', '').strip()
-        password = data.get('password', '').strip()
-        participants = data.get('participants', [])
+@teams_bp.route('/api/teams', methods=['POST'])
+@participant_required
+def create_team():
+    """Create a new team. The authenticated participant becomes captain."""
+    data = request.get_json(silent=True) or {}
+    team_name = (data.get('team_name') or '').strip()
+    if not team_name:
+        return jsonify({'success': False, 'error': 'Team name is required'}), 400
 
-        success, message, team_id = team_service.register_team(team_name, password, participants)
+    success, message, team = TeamService.create_team_with_captain(team_name, g.current_user['user_id'])
+    if success:
+        return jsonify({'success': True, 'message': message, 'team': team}), 201
+    return jsonify({'success': False, 'error': message}), 400
 
-        if success:
-            return jsonify({'success': True, 'message': message}), 201
-        else:
-            return jsonify({'success': False, 'error': message}), 400
 
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+@teams_bp.route('/api/teams/join', methods=['POST'])
+@participant_required
+def join_team():
+    """Join a team via invite code."""
+    data = request.get_json(silent=True) or {}
+    join_code = (data.get('join_code') or '').strip()
+    if not join_code:
+        return jsonify({'success': False, 'error': 'Join code is required'}), 400
+
+    success, message, team = TeamService.join_team(g.current_user['user_id'], join_code)
+    if success:
+        return jsonify({'success': True, 'message': message, 'team': team}), 200
+    return jsonify({'success': False, 'error': message}), 400
 
 
 @teams_bp.route('/api/teams', methods=['GET'])
 def get_teams():
-    """Get all registered teams"""
-    teams = team_service.get_all_teams()
-    return jsonify({'success': True, 'teams': teams}), 200
+    """Get all teams"""
+    teams = TeamService.get_all_teams()
+    teams_list = [dict(t) for t in teams]
+    # Remove sensitive fields
+    for t in teams_list:
+        t.pop('password_hash', None)
+        t.pop('join_code', None)
+    return jsonify({'success': True, 'teams': teams_list}), 200
 
 
-@teams_bp.route('/api/teams/<team_name>', methods=['GET'])
-def get_team(team_name):
-    """Get a specific team by name"""
-    team = team_service.get_team_by_name(team_name)
-    if team:
-        return jsonify({'success': True, 'team': team}), 200
-    else:
+@teams_bp.route('/api/teams/<int:team_id>', methods=['GET'])
+@token_required
+def get_team(team_id):
+    """Get a specific team with members"""
+    team = TeamService.get_team_by_id(team_id)
+    if not team:
         return jsonify({'success': False, 'error': 'Team not found'}), 404
 
+    team_dict = dict(team)
+    members = TeamService.get_team_members(team_id)
+    team_dict['members'] = [dict(m) for m in members]
 
-@teams_bp.route('/api/teams/<team_name>', methods=['DELETE'])
-def delete_team(team_name):
-    """Delete a team and its participants"""
-    try:
-        success, message = team_service.delete_team(team_name)
-        if success:
-            return jsonify({'success': True, 'message': message}), 200
-        else:
-            return jsonify({'success': False, 'error': message}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    # Fetch assigned mentors
+    mentors = execute_query(current_app, """
+        SELECT tm.mentor_id, m.first_name || ' ' || m.last_name AS mentor_name,
+               m.company_name
+        FROM team_mentors tm
+        JOIN mentors m ON tm.mentor_id = m.id
+        WHERE tm.team_id = %s AND tm.is_active = TRUE
+        ORDER BY m.last_name
+    """, (team_id,), fetch_all=True) or []
+    team_dict['mentors'] = [dict(mt) for mt in mentors]
+
+    # Only show join_code to team members
+    user = g.current_user
+    is_member = any(m['id'] == user['user_id'] for m in members) if user['role'] == 'participant' else False
+    if not is_member and user['role'] != 'admin':
+        team_dict.pop('join_code', None)
+    team_dict.pop('password_hash', None)
+
+    return jsonify({'success': True, 'team': team_dict}), 200
+
+
+@teams_bp.route('/api/teams/<int:team_id>/leave', methods=['POST'])
+@participant_required
+def leave_team(team_id):
+    """Leave the current team"""
+    success, message = TeamService.leave_team(g.current_user['user_id'])
+    if success:
+        return jsonify({'success': True, 'message': message}), 200
+    return jsonify({'success': False, 'error': message}), 400
+
+
+@teams_bp.route('/api/teams/<int:team_id>', methods=['DELETE'])
+@captain_required
+def disband_team(team_id):
+    """Disband a team (captain only)"""
+    if g.current_user.get('team_id') != team_id:
+        return jsonify({'success': False, 'error': 'You can only disband your own team'}), 403
+
+    success, message = TeamService.disband_team(team_id)
+    if success:
+        return jsonify({'success': True, 'message': message}), 200
+    return jsonify({'success': False, 'error': message}), 400
+
+
+@teams_bp.route('/api/teams/<int:team_id>/members/<int:member_id>', methods=['DELETE'])
+@captain_required
+def remove_member(team_id, member_id):
+    """Remove a member from the team (captain only)"""
+    if g.current_user.get('team_id') != team_id:
+        return jsonify({'success': False, 'error': 'You can only manage your own team'}), 403
+
+    success, message = TeamService.remove_member(team_id, member_id, g.current_user['user_id'])
+    if success:
+        return jsonify({'success': True, 'message': message}), 200
+    return jsonify({'success': False, 'error': message}), 400

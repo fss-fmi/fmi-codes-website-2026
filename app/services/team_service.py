@@ -1,9 +1,10 @@
 """Teams management business logic - PostgreSQL version"""
 import logging
+import secrets
+import string
 from flask import current_app
 from app.database import get_db_cursor, execute_query, execute_insert, execute_update
 import psycopg2
-import bcrypt
 
 logger = logging.getLogger(__name__)
 
@@ -12,24 +13,18 @@ class TeamService:
     """Service for managing hackathon teams"""
 
     @staticmethod
-    def hash_password(password: str) -> str:
-        """Hash a password using bcrypt"""
-        salt = bcrypt.gensalt(rounds=12)
-        return bcrypt.hashpw(password.encode(), salt).decode()
+    def generate_join_code(length=8):
+        """Generate a random alphanumeric join code"""
+        alphabet = string.ascii_uppercase + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
 
     @staticmethod
-    def verify_password(password: str, hash_value: str) -> bool:
-        """Verify a password against its hash"""
-        return bcrypt.checkpw(password.encode(), hash_value.encode())
-
-    @staticmethod
-    def get_team_by_id(team_id: int) -> dict:
+    def get_team_by_id(team_id):
         """Get a team by ID with participant count and mentor info"""
         query = """
-            SELECT
-                t.*,
-                COUNT(DISTINCT p.id) as participant_count,
-                COUNT(DISTINCT tm.mentor_id) as mentor_count
+            SELECT t.*,
+                   COUNT(DISTINCT p.id) as participant_count,
+                   COUNT(DISTINCT tm.mentor_id) as mentor_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
             LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
@@ -39,13 +34,12 @@ class TeamService:
         return execute_query(current_app, query, (team_id,), fetch_one=True)
 
     @staticmethod
-    def get_team_by_name(team_name: str) -> dict:
-        """Get a team by name with participant count and mentor info"""
+    def get_team_by_name(team_name):
+        """Get a team by name"""
         query = """
-            SELECT
-                t.*,
-                COUNT(DISTINCT p.id) as participant_count,
-                COUNT(DISTINCT tm.mentor_id) as mentor_count
+            SELECT t.*,
+                   COUNT(DISTINCT p.id) as participant_count,
+                   COUNT(DISTINCT tm.mentor_id) as mentor_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
             LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
@@ -55,333 +49,261 @@ class TeamService:
         return execute_query(current_app, query, (team_name,), fetch_one=True)
 
     @staticmethod
-    def get_all_teams(active_only=True, order_by='created_at') -> list:
-        """Get all teams with participant and mentor counts
+    def get_team_by_join_code(join_code):
+        """Get a team by its join code"""
+        return execute_query(current_app, "SELECT * FROM teams WHERE join_code = %s",
+                             (join_code,), fetch_one=True)
 
-        Args:
-            active_only: If True, only return active teams
-            order_by: Field to order by (created_at, team_name, status)
-
-        Returns:
-            List of team dictionaries
-        """
+    @staticmethod
+    def get_all_teams(active_only=False, order_by='created_at'):
+        """Get all teams with participant and mentor counts"""
         query = """
-            SELECT
-                t.*,
-                COUNT(DISTINCT p.id) as participant_count,
-                COUNT(DISTINCT tm.mentor_id) as mentor_count
+            SELECT t.*,
+                   COUNT(DISTINCT p.id) as participant_count,
+                   COUNT(DISTINCT tm.mentor_id) as mentor_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
             LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
         """
-
         if active_only:
             query += " WHERE t.status = 'active'"
-
         valid_order_fields = ['created_at', 'team_name', 'status']
         order_field = order_by if order_by in valid_order_fields else 'created_at'
-
         query += f" GROUP BY t.id ORDER BY t.{order_field} DESC"
-
         return execute_query(current_app, query, fetch_all=True) or []
 
     @staticmethod
-    def get_team_count(active_only=True) -> int:
-        """Get total number of teams
-
-        Args:
-            active_only: If True, only count active teams
-
-        Returns:
-            Number of teams
-        """
-        query = "SELECT COUNT(*) FROM teams"
-
+    def get_team_count(active_only=True):
+        """Get total number of teams"""
+        query = "SELECT COUNT(*) as count FROM teams"
         if active_only:
-            query += " WHERE status = 'active'"
-
-        try:
-            result = execute_query(current_app, query, fetch_one=True)
-            return result[0] if result else 0
-        except Exception as e:
-            logger.error(f"Error counting teams: {e}")
-            return 0
+            query += " WHERE status IN ('active', 'pending')"
+        result = execute_query(current_app, query, fetch_one=True)
+        return result['count'] if result else 0
 
     @staticmethod
-    def can_create_team() -> tuple:
-        """Check if a new team can be created (max 18 teams)
-
-        Returns:
-            Tuple (allowed: bool, message: str)
-        """
+    def can_create_team():
+        """Check if a new team can be created (max 18 teams)"""
         team_count = TeamService.get_team_count(active_only=True)
         if team_count >= 18:
             return False, "Maximum number of teams (18) already reached"
         return True, "Team creation allowed"
 
     @staticmethod
-    def create_team(team_name: str, password: str) -> tuple:
-        """Create a new team
-
-        Args:
-            team_name: Unique team name
-            password: Team password (will be hashed)
-
-        Returns:
-            Tuple (success: bool, message: str, team_id: int or None)
-        """
-        # Validation
+    def create_team_with_captain(team_name, captain_id):
+        """Create a new team and assign the participant as captain."""
         if not team_name or not team_name.strip():
             return False, "Team name is required", None
 
-        if not password or len(password) < 4:
-            return False, "Password must be at least 4 characters", None
-
-        # Check if team already exists
-        if TeamService.get_team_by_name(team_name):
+        if TeamService.get_team_by_name(team_name.strip()):
             return False, f'Team name "{team_name}" is already taken', None
 
-        # Check if we can create more teams
-        allowed, message = TeamService.can_create_team()
+        allowed, msg = TeamService.can_create_team()
         if not allowed:
-            return False, message, None
+            return False, msg, None
 
-        # Hash password
+        participant = execute_query(
+            current_app,
+            "SELECT id, team_id, is_captain FROM participants WHERE id = %s AND status = 'active'",
+            (captain_id,), fetch_one=True
+        )
+        if not participant:
+            return False, "Participant not found", None
+        if participant['team_id']:
+            return False, "You are already in a team. Leave it first.", None
+
+        join_code = TeamService.generate_join_code()
+        while TeamService.get_team_by_join_code(join_code):
+            join_code = TeamService.generate_join_code()
+
         try:
-            password_hash = TeamService.hash_password(password)
-        except Exception as e:
-            logger.error(f"Error hashing password: {e}")
-            return False, "Password hashing failed", None
+            with get_db_cursor(current_app) as cursor:
+                cursor.execute(
+                    """INSERT INTO teams (team_name, password_hash, join_code, status)
+                       VALUES (%s, '', %s, 'pending') RETURNING id""",
+                    (team_name.strip(), join_code)
+                )
+                team_id = cursor.fetchone()['id']
+                cursor.execute(
+                    "UPDATE participants SET team_id = %s, is_captain = TRUE WHERE id = %s",
+                    (team_id, captain_id)
+                )
+                cursor.execute(
+                    "UPDATE teams SET captain_id = %s WHERE id = %s",
+                    (captain_id, team_id)
+                )
 
-        # Insert team
-        query = """
-            INSERT INTO teams (team_name, password_hash, status)
-            VALUES (%s, %s, 'pending')
-            RETURNING id
-        """
+            team = TeamService.get_team_by_id(team_id)
+            logger.info(f"Team '{team_name}' created by captain {captain_id}")
+            return True, "Team created successfully", dict(team) if team else {'id': team_id, 'join_code': join_code}
 
-        try:
-            team_id = execute_insert(current_app, query, (team_name.strip(), password_hash))
-            logger.info(f"✓ Team created: {team_name} (ID: {team_id})")
-            return True, f"Team '{team_name}' created successfully", team_id
-
-        except psycopg2.IntegrityError as e:
-            logger.error(f"Integrity error creating team: {e}")
-            return False, "Database constraint violation", None
+        except psycopg2.IntegrityError:
+            return False, "Team name already taken", None
         except Exception as e:
             logger.error(f"Error creating team: {e}")
             return False, str(e), None
 
     @staticmethod
-    def activate_team(team_id: int) -> tuple:
-        """Activate a team (change status from pending to active)
-
-        Args:
-            team_id: Team ID
-
-        Returns:
-            Tuple (success: bool, message: str)
-        """
-        team = TeamService.get_team_by_id(team_id)
+    def join_team(participant_id, join_code):
+        """Join a team via invite code."""
+        team = TeamService.get_team_by_join_code(join_code.strip().upper())
         if not team:
-            return False, f"Team {team_id} not found"
+            return False, "Invalid join code", None
 
-        # Verify team has 3-6 participants
-        if team['participant_count'] < 3:
-            return False, f"Team must have at least 3 participants (currently {team['participant_count']})"
+        if team['status'] == 'disqualified':
+            return False, "This team has been disqualified", None
 
-        if team['participant_count'] > 6:
-            return False, f"Team cannot have more than 6 participants (currently {team['participant_count']})"
+        count_result = execute_query(
+            current_app,
+            "SELECT COUNT(*) as cnt FROM participants WHERE team_id = %s AND status = 'active'",
+            (team['id'],), fetch_one=True
+        )
+        member_count = count_result['cnt'] if count_result else 0
+        if member_count >= 6:
+            return False, "Team is full (max 6 members)", None
 
-        # Update status to active
-        query = "UPDATE teams SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+        participant = execute_query(
+            current_app,
+            "SELECT id, team_id FROM participants WHERE id = %s AND status = 'active'",
+            (participant_id,), fetch_one=True
+        )
+        if not participant:
+            return False, "Participant not found", None
+        if participant['team_id']:
+            return False, "You are already in a team. Leave it first.", None
 
         try:
-            rows = execute_update(current_app, query, (team_id,))
-            if rows > 0:
-                logger.info(f"✓ Team {team_id} activated")
-                return True, "Team activated successfully"
-            else:
-                return False, "Failed to activate team"
+            execute_update(
+                current_app,
+                "UPDATE participants SET team_id = %s WHERE id = %s",
+                (team['id'], participant_id)
+            )
+            new_count = member_count + 1
+            if new_count >= 3 and team['status'] == 'pending':
+                execute_update(
+                    current_app,
+                    "UPDATE teams SET status = 'active' WHERE id = %s",
+                    (team['id'],)
+                )
+
+            updated_team = TeamService.get_team_by_id(team['id'])
+            logger.info(f"Participant {participant_id} joined team {team['id']}")
+            return True, "Joined team successfully", dict(updated_team) if updated_team else None
 
         except Exception as e:
-            logger.error(f"Error activating team: {e}")
+            logger.error(f"Error joining team: {e}")
+            return False, str(e), None
+
+    @staticmethod
+    def leave_team(participant_id):
+        """Participant leaves their team. If captain leaves, team is disbanded."""
+        participant = execute_query(
+            current_app,
+            "SELECT id, team_id, is_captain FROM participants WHERE id = %s AND status = 'active'",
+            (participant_id,), fetch_one=True
+        )
+        if not participant or not participant['team_id']:
+            return False, "You are not in a team"
+
+        team_id = participant['team_id']
+
+        if participant['is_captain']:
+            return TeamService.disband_team(team_id)
+
+        try:
+            execute_update(current_app,
+                           "UPDATE participants SET team_id = NULL WHERE id = %s",
+                           (participant_id,))
+            count = execute_query(
+                current_app,
+                "SELECT COUNT(*) as cnt FROM participants WHERE team_id = %s AND status = 'active'",
+                (team_id,), fetch_one=True
+            )
+            if count and count['cnt'] < 3:
+                execute_update(current_app,
+                               "UPDATE teams SET status = 'pending' WHERE id = %s",
+                               (team_id,))
+
+            logger.info(f"Participant {participant_id} left team {team_id}")
+            return True, "Left team successfully"
+        except Exception as e:
+            logger.error(f"Error leaving team: {e}")
             return False, str(e)
 
     @staticmethod
-    def update_team_status(team_id: int, new_status: str) -> tuple:
-        """Update team status
-
-        Args:
-            team_id: Team ID
-            new_status: New status (pending, active, completed, disqualified)
-
-        Returns:
-            Tuple (success: bool, message: str)
-        """
-        valid_statuses = ['pending', 'active', 'completed', 'disqualified']
-        if new_status not in valid_statuses:
-            return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
-
+    def remove_member(team_id, member_id, captain_id):
+        """Captain removes a member from the team."""
         team = TeamService.get_team_by_id(team_id)
-        if not team:
-            return False, f"Team {team_id} not found"
+        if not team or team['captain_id'] != captain_id:
+            return False, "Only the captain can remove members"
 
-        query = "UPDATE teams SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+        member = execute_query(
+            current_app,
+            "SELECT id, team_id, is_captain FROM participants WHERE id = %s",
+            (member_id,), fetch_one=True
+        )
+        if not member or member['team_id'] != team_id:
+            return False, "Member not found in this team"
+        if member['is_captain']:
+            return False, "Captain cannot remove themselves. Use disband instead."
 
         try:
-            rows = execute_update(current_app, query, (new_status, team_id))
-            if rows > 0:
-                logger.info(f"✓ Team {team_id} status updated to '{new_status}'")
-                return True, f"Team status updated to '{new_status}'"
-            else:
-                return False, "Failed to update team status"
+            execute_update(current_app,
+                           "UPDATE participants SET team_id = NULL WHERE id = %s",
+                           (member_id,))
+            count = execute_query(
+                current_app,
+                "SELECT COUNT(*) as cnt FROM participants WHERE team_id = %s AND status = 'active'",
+                (team_id,), fetch_one=True
+            )
+            if count and count['cnt'] < 3:
+                execute_update(current_app,
+                               "UPDATE teams SET status = 'pending' WHERE id = %s",
+                               (team_id,))
 
+            logger.info(f"Member {member_id} removed from team {team_id}")
+            return True, "Member removed successfully"
         except Exception as e:
-            logger.error(f"Error updating team status: {e}")
+            logger.error(f"Error removing member: {e}")
             return False, str(e)
 
     @staticmethod
-    def verify_team_credentials(team_name: str, password: str) -> tuple:
-        """Verify team login credentials
-
-        Args:
-            team_name: Team name
-            password: Password to verify
-
-        Returns:
-            Tuple (success: bool, team_id: int or None, message: str)
-        """
-        team = TeamService.get_team_by_name(team_name)
-        if not team:
-            return False, None, f"Team '{team_name}' not found"
-
-        try:
-            if TeamService.verify_password(password, team['password_hash']):
-                logger.info(f"✓ Team '{team_name}' login successful")
-                return True, team['id'], "Login successful"
-            else:
-                logger.warning(f"✗ Failed login attempt for team '{team_name}'")
-                return False, None, "Invalid password"
-
-        except Exception as e:
-            logger.error(f"Error verifying credentials: {e}")
-            return False, None, "Credential verification failed"
-
-    @staticmethod
-    def update_team_password(team_id: int, new_password: str) -> tuple:
-        """Update team password
-
-        Args:
-            team_id: Team ID
-            new_password: New password
-
-        Returns:
-            Tuple (success: bool, message: str)
-        """
-        if not new_password or len(new_password) < 4:
-            return False, "Password must be at least 4 characters"
-
+    def disband_team(team_id):
+        """Disband a team - clear members and delete."""
         team = TeamService.get_team_by_id(team_id)
         if not team:
-            return False, f"Team {team_id} not found"
-
-        try:
-            password_hash = TeamService.hash_password(new_password)
-            query = "UPDATE teams SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
-            rows = execute_update(current_app, query, (password_hash, team_id))
-
-            if rows > 0:
-                logger.info(f"✓ Team {team_id} password updated")
-                return True, "Password updated successfully"
-            else:
-                return False, "Failed to update password"
-
-        except Exception as e:
-            logger.error(f"Error updating password: {e}")
-            return False, str(e)
-
-    @staticmethod
-    def delete_team(team_id: int, force=False) -> tuple:
-        """Delete a team
-
-        Args:
-            team_id: Team ID
-            force: If True, delete even if team has participants (will remove them)
-
-        Returns:
-            Tuple (success: bool, message: str)
-        """
-        team = TeamService.get_team_by_id(team_id)
-        if not team:
-            return False, f"Team {team_id} not found"
-
-        # Check if team has participants
-        if team['participant_count'] > 0 and not force:
-            return False, f"Team has {team['participant_count']} participants. Use force=True to delete with participants."
+            return False, "Team not found"
 
         try:
             with get_db_cursor(current_app) as cursor:
-                # If force delete, remove participants first
-                if force:
-                    cursor.execute("DELETE FROM participants WHERE team_id = %s", (team_id,))
-
-                # Delete team_mentors
+                cursor.execute(
+                    "UPDATE participants SET team_id = NULL, is_captain = FALSE WHERE team_id = %s",
+                    (team_id,))
+                cursor.execute("DELETE FROM team_mentor_preferences WHERE team_id = %s", (team_id,))
+                cursor.execute("DELETE FROM mentor_team_preferences WHERE team_id = %s", (team_id,))
                 cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
-
-                # Delete team
                 cursor.execute("DELETE FROM teams WHERE id = %s", (team_id,))
 
-            logger.info(f"✓ Team {team_id} deleted")
-            return True, "Team deleted successfully"
-
+            logger.info(f"Team {team_id} disbanded")
+            return True, "Team disbanded successfully"
         except Exception as e:
-            logger.error(f"Error deleting team: {e}")
+            logger.error(f"Error disbanding team: {e}")
             return False, str(e)
 
     @staticmethod
-    def get_team_statistics() -> dict:
-        """Get aggregate statistics about teams"""
-        try:
-            with get_db_cursor(current_app) as cursor:
-                # Total teams
-                cursor.execute("SELECT COUNT(*) FROM teams WHERE status = 'active'")
-                total_teams = cursor.fetchone()[0]
+    def get_team_members(team_id):
+        """Get all active members of a team"""
+        query = """
+            SELECT p.id, p.first_name, p.last_name, p.email, p.is_captain,
+                   s.name as specialty, u.name as university
+            FROM participants p
+            LEFT JOIN specialties s ON p.specialty_id = s.id
+            LEFT JOIN universities u ON p.university_id = u.id
+            WHERE p.team_id = %s AND p.status = 'active'
+            ORDER BY p.is_captain DESC, p.created_at
+        """
+        return execute_query(current_app, query, (team_id,), fetch_all=True) or []
 
-                # Teams by status
-                cursor.execute("""
-                    SELECT status, COUNT(*) as count FROM teams
-                    GROUP BY status
-                """)
-                by_status = dict(cursor.fetchall())
 
-                # Participant distribution
-                cursor.execute("""
-                    SELECT
-                        COUNT(DISTINCT t.id) as teams,
-                        COUNT(p.id) as total_participants,
-                        MIN(COUNT(p.id) OVER (PARTITION BY t.id)) as min_per_team,
-                        MAX(COUNT(p.id) OVER (PARTITION BY t.id)) as max_per_team,
-                        AVG(COUNT(p.id) OVER (PARTITION BY t.id))::NUMERIC(5,2) as avg_per_team
-                    FROM teams t
-                    LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
-                    WHERE t.status = 'active'
-                """)
-                dist = cursor.fetchone()
-                participant_stats = {
-                    'total_teams': dist[0],
-                    'total_participants': dist[1],
-                    'min_per_team': dist[2],
-                    'max_per_team': dist[3],
-                    'avg_per_team': dist[4]
-                }
-
-                return {
-                    'total_active_teams': total_teams,
-                    'by_status': by_status,
-                    'participant_distribution': participant_stats
-                }
-
-        except Exception as e:
-            logger.error(f"Error getting team statistics: {e}")
-            return {}
+# Module-level convenience instance
+team_service = TeamService()

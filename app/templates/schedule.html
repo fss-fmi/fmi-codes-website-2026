@@ -128,14 +128,21 @@
 
     <script>
       async function loadNavbar() {
-      try {
-        const res = await fetch('/navbar.html');
-        if (!res.ok) return;
-        const html = await res.text();
-        const slot = document.getElementById('navbar-slot');
-        if (slot) slot.innerHTML = html;
-      } catch {}
-    }
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach(old => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
     function normalizeDayCards() {
       const cards = document.querySelectorAll('.day-card');
 
