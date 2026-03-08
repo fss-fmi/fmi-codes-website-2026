@@ -28,8 +28,6 @@ docker compose down -v && docker compose up --build
 
 App runs at **http://localhost:5001**
 
-Default admin login: `admin@fmicodes.bg` / `admin123`
-
 ---
 
 ### Option 2 — Run locally (requires manual Postgres setup)
@@ -143,5 +141,5 @@ PostgreSQL connection management. Provides `execute_query()`, `execute_insert()`
 
 | Role         | Email                             | Password    |
 | ------------ | --------------------------------- | ----------- |
-| Admin        | `admin@fmicodes.bg`               | `admin123`  |
+| Admin        | `admin@fmicodes.bg`               | `********`  |
 | Mentor (any) | see `database/seeds/mentors.json` | `mentor123` |
