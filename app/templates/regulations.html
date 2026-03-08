@@ -4,136 +4,166 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Regulations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="navbar-slot"></div>
-
-    <div class="container">
-      <div class="header">
-        <h1>Regulations</h1>
-        <p>Frequently asked questions and official rules.</p>
-      </div>
-      <div id="regulationsGrid" class="grid"></div>
-      <div
-        id="emptyState"
-        style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
-      >
-        No regulations found.
-      </div>
+    <div class="dot-grid"></div>
+    <div class="spotlight"></div>
+    <div class="blobs">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="blob blob-3"></div>
     </div>
+    <div class="noise"></div>
+    <div class="page-wrap">
+      <div class="container">
+        <div class="header">
+          <h1>Regulations</h1>
+          <p>Frequently asked questions and official rules.</p>
+        </div>
+        <div id="regulationsGrid" class="grid"></div>
+        <div
+          id="emptyState"
+          style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
+        >
+          No regulations found.
+        </div>
+      </div>
 
-    <script>
-      async function loadRegulations() {
-        const grid = document.getElementById('regulationsGrid');
-        const empty = document.getElementById('emptyState');
-        grid.innerHTML = '';
-        empty.style.display = 'none';
+      <script>
+        async function loadRegulations() {
+          const grid = document.getElementById('regulationsGrid');
+          const empty = document.getElementById('emptyState');
+          grid.innerHTML = '';
+          empty.style.display = 'none';
 
-        try {
-          const res = await fetch('/api/regulations');
-          const data = await res.json();
-          const list =
-            data && data.success && Array.isArray(data.regulations) ? data.regulations : [];
+          try {
+            const res = await fetch('/api/regulations');
+            const data = await res.json();
+            const list =
+              data && data.success && Array.isArray(data.regulations) ? data.regulations : [];
 
-          if (list.length === 0) {
-            empty.style.display = 'block';
-            return;
-          }
+            if (list.length === 0) {
+              empty.style.display = 'block';
+              return;
+            }
 
-          list.forEach((item, idx) => {
-            const card = document.createElement('div');
-            card.className = 'card';
-            card.innerHTML = `
+            list.forEach((item, idx) => {
+              const card = document.createElement('div');
+              card.className = 'card';
+              card.innerHTML = `
             <div class="label">Regulation ${idx + 1}</div>
             <div class="question">${item.question || ''}</div>
             <div class="answer">${item.answer || ''}</div>
           `;
-            grid.appendChild(card);
-          });
-        } catch (e) {
-          empty.textContent = 'Error loading regulations. Please try again.';
-          empty.style.display = 'block';
-        }
-      }
-
-      document.addEventListener('DOMContentLoaded', loadRegulations);
-    </script>
-    <script>
-      function ensureMentorLink(text, href) {
-        const navLinks = document.querySelector('.nav-links');
-        let link = document.querySelector('.nav-links .mentor-link');
-        if (!link) {
-          link = document.createElement('a');
-          link.className = 'nav-link mentor-link';
-          navLinks.appendChild(link);
-        }
-        link.textContent = text;
-        link.href = href;
-      }
-
-      async function setMentorLinkBySelection() {
-        try {
-          const res = await fetch('/api/mentors/available');
-          if (!res.ok) return;
-          const data = await res.json();
-          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-          if (selectedCount > 0) {
-            ensureMentorLink('Selected Mentors', '/selectedMentors');
-          } else {
-            ensureMentorLink('Choose Mentor', '/chooseMentor');
+              grid.appendChild(card);
+            });
+          } catch (e) {
+            empty.textContent = 'Error loading regulations. Please try again.';
+            empty.style.display = 'block';
           }
-        } catch {}
-      }
+        }
 
-      function updateNavbar() {
-        const teamName = window.loggedInTeam || '';
-        const navActions = document.querySelector('.nav-actions');
-        if (!navActions) return;
-        if (teamName) {
-          navActions.innerHTML = `
+        document.addEventListener('DOMContentLoaded', loadRegulations);
+      </script>
+      <script>
+        function ensureMentorLink(text, href) {
+          const navLinks = document.querySelector('.nav-links');
+          let link = document.querySelector('.nav-links .mentor-link');
+          if (!link) {
+            link = document.createElement('a');
+            link.className = 'nav-link mentor-link';
+            navLinks.appendChild(link);
+          }
+          link.textContent = text;
+          link.href = href;
+        }
+
+        async function setMentorLinkBySelection() {
+          try {
+            const res = await fetch('/api/mentors/available');
+            if (!res.ok) return;
+            const data = await res.json();
+            const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+            if (selectedCount > 0) {
+              ensureMentorLink('Selected Mentors', '/selectedMentors');
+            } else {
+              ensureMentorLink('Choose Mentor', '/chooseMentor');
+            }
+          } catch {}
+        }
+
+        function updateNavbar() {
+          const teamName = window.loggedInTeam || '';
+          const navActions = document.querySelector('.nav-actions');
+          if (!navActions) return;
+          if (teamName) {
+            navActions.innerHTML = `
           <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
         `;
-          setMentorLinkBySelection();
+            setMentorLinkBySelection();
+          }
         }
-      }
-      async function loadNavbar() {
-        try {
-          const res = await fetch('/navbar.html');
-          if (!res.ok) return;
-          const html = await res.text();
-          const slot = document.getElementById('navbar-slot');
-          if (!slot) return;
-          slot.innerHTML = html;
-          slot.querySelectorAll('script').forEach((old) => {
-            const s = document.createElement('script');
-            s.textContent = old.textContent;
-            document.head.appendChild(s);
-            s.remove();
-          });
-        } catch {}
-      }
-      async function logout() {
-        try {
-          const response = await fetch('/api/logout', { method: 'POST' });
-          if (response.ok) window.location.reload();
-        } catch (error) {
-          console.error('Logout failed:', error);
+        async function loadNavbar() {
+          try {
+            const res = await fetch('/navbar.html');
+            if (!res.ok) return;
+            const html = await res.text();
+            const slot = document.getElementById('navbar-slot');
+            if (!slot) return;
+            slot.innerHTML = html;
+            slot.querySelectorAll('script').forEach((old) => {
+              const s = document.createElement('script');
+              s.textContent = old.textContent;
+              document.head.appendChild(s);
+              s.remove();
+            });
+          } catch {}
         }
-      }
-      loadNavbar().then(updateNavbar);
+        async function logout() {
+          try {
+            const response = await fetch('/api/logout', { method: 'POST' });
+            if (response.ok) window.location.reload();
+          } catch (error) {
+            console.error('Logout failed:', error);
+          }
+        }
+        loadNavbar().then(updateNavbar);
+      </script>
+    </div>
+    <!-- /page-wrap -->
+    <script>
+      document.addEventListener('mousemove', (e) => {
+        const s = document.querySelector('.spotlight');
+        if (s) {
+          s.style.setProperty('--mx', e.clientX + 'px');
+          s.style.setProperty('--my', e.clientY + 'px');
+        }
+      });
     </script>
   </body>
 </html>
 
 <style>
   :root {
-    --bg: #060910;
-    --panel: rgba(255, 255, 255, 0.04);
-    --panel-border: rgba(255, 255, 255, 0.08);
-    --text: #e5e7eb;
-    --muted: #9ca3af;
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
     --accent: #60a5fa;
     --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
     --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
   * {
@@ -142,15 +172,14 @@
     padding: 0;
   }
   body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background:
-      radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.12), transparent 40%),
-      radial-gradient(circle at 80% 0%, rgba(34, 211, 238, 0.1), transparent 36%), var(--bg);
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
     color: var(--text);
     min-height: 100vh;
-    padding: 96px 16px 60px; /* room for island navbar */
+    padding: 96px 16px 60px;
     display: flex;
     justify-content: center;
+    -webkit-font-smoothing: antialiased;
   }
 
   /* Island Navbar */
@@ -159,7 +188,7 @@
     top: 12px;
     left: 50%;
     transform: translateX(-50%);
-    width: min(1200px, calc(100% - 40px));
+    width: min(1750px, calc(100% - 28px));
     background: rgba(5, 6, 13, 0.95);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -375,5 +404,122 @@
     .answer {
       font-size: 17px;
     }
+  }
+  /* Background layers */
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .container {
+    animation: fadeSlideUp 0.7s ease both;
   }
 </style>

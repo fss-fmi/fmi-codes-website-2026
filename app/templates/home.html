@@ -396,48 +396,10 @@
           border-color 0.35s,
           box-shadow 0.35s;
       }
-      /* Animated gradient border on hover */
-      .bento-card::before {
-        content: '';
-        position: absolute;
-        inset: -1px;
-        border-radius: 21px;
-        padding: 1px;
-        z-index: -1;
-        background: conic-gradient(
-          from var(--angle, 0deg),
-          transparent 40%,
-          var(--accent),
-          var(--accent-2),
-          transparent 60%
-        );
-        mask:
-          linear-gradient(#fff 0 0) content-box,
-          linear-gradient(#fff 0 0);
-        mask-composite: exclude;
-        -webkit-mask-composite: xor;
-        opacity: 0;
-        transition: opacity 0.4s;
-        animation: rotateBorder 4s linear infinite;
-      }
-      @keyframes rotateBorder {
-        to {
-          --angle: 360deg;
-        }
-      }
-      @property --angle {
-        syntax: '<angle>';
-        initial-value: 0deg;
-        inherits: false;
-      }
-
       .bento-card:hover {
         transform: translateY(-6px);
-        border-color: transparent;
+        border-color: var(--border-glow);
         box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-      }
-      .bento-card:hover::before {
-        opacity: 1;
       }
 
       /* Inner glow on hover */
@@ -775,7 +737,7 @@
         <div class="hero-inner">
           <div class="hero-badge">
             <span class="pulse"></span>
-            Registration Open — March 2026
+            Registration Open — March 10th 2026
           </div>
           <div class="hero-logo">
             <img src="../static/images/codes_logo3.svg" alt="FMI Codes 2026" />
