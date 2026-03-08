@@ -25,86 +25,238 @@
 </nav>
 
 <script>
-(function() {
-  const token = localStorage.getItem('token');
-  const role = localStorage.getItem('role');
-  const actions = document.getElementById('nav-actions');
-  const navLinks = document.querySelector('.nav-links');
-  if (!actions) return;
+  (function () {
+    const token = localStorage.getItem('token');
+    const role = localStorage.getItem('role');
+    const actions = document.getElementById('nav-actions');
+    const navLinks = document.querySelector('.nav-links');
+    if (!actions) return;
 
-  if (token && role) {
-    // Logged in — show role-specific links + logout
-    if (role === 'participant') {
-      const teamLink = document.createElement('a');
-      teamLink.href = '/team'; teamLink.className = 'nav-link'; teamLink.textContent = 'My Team';
-      navLinks.appendChild(teamLink);
-    } else if (role === 'mentor') {
-      const dashLink = document.createElement('a');
-      dashLink.href = '/mentorDashboard'; dashLink.className = 'nav-link'; dashLink.textContent = 'Dashboard';
-      navLinks.appendChild(dashLink);
-    } else if (role === 'admin') {
-      const adminLink = document.createElement('a');
-      adminLink.href = '/admin/matching'; adminLink.className = 'nav-link'; adminLink.textContent = 'Admin';
-      navLinks.appendChild(adminLink);
-    }
+    if (token && role) {
+      // Logged in — show role-specific links + logout
+      if (role === 'participant') {
+        const teamLink = document.createElement('a');
+        teamLink.href = '/team';
+        teamLink.className = 'nav-link';
+        teamLink.textContent = 'My Team';
+        navLinks.appendChild(teamLink);
+      } else if (role === 'mentor') {
+        const dashLink = document.createElement('a');
+        dashLink.href = '/mentorDashboard';
+        dashLink.className = 'nav-link';
+        dashLink.textContent = 'Dashboard';
+        navLinks.appendChild(dashLink);
+      } else if (role === 'admin') {
+        const adminLink = document.createElement('a');
+        adminLink.href = '/admin/matching';
+        adminLink.className = 'nav-link';
+        adminLink.textContent = 'Admin';
+        navLinks.appendChild(adminLink);
+      }
 
-    actions.innerHTML = `
+      actions.innerHTML = `
+      <a href="/profile" class="profile-btn" aria-label="Profile" title="Profile">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </a>
       <button onclick="(function(){localStorage.removeItem('token');localStorage.removeItem('role');localStorage.removeItem('user_id');window.location.href='/login';})()"
         class="login-btn" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;cursor:pointer;">
         Logout
       </button>`;
-  }
-})();
+    }
+  })();
 </script>
 
 <style>
   .navbar {
-    position: relative; top: 0; left: auto; transform: none;
+    position: relative;
+    top: 0;
+    left: auto;
+    transform: none;
     width: min(1750px, calc(100% - 28px));
     margin: 12px auto 24px;
-    background: rgba(5,6,13,0.95); backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
-    z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.45); overflow: hidden;
+    background: rgba(5, 6, 13, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    z-index: 1000;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
   }
   .navbar-container {
-    max-width: 1600px; margin: 0 auto; padding: 20px 56px;
-    display: flex; align-items: center; gap: 36px;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 20px 56px;
+    display: flex;
+    align-items: center;
+    gap: 36px;
   }
-  .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 80px; }
-  .navbar-logo a { display: inline-flex; align-items: center; }
-  .navbar-logo img { height: 52px; width: auto; display: block; }
-  .nav-toggle { display: none; }
-  .mobile-toggle { display: none; font-size: 22px; color: #e5e7eb; cursor: pointer; user-select: none; }
-  .navbar-menu { flex: 1; display: flex; align-items: center; justify-content: space-between; min-width: 0; }
-  .nav-links { display: flex; gap: 40px; align-items: center; justify-content: center; flex: 1; }
+  .navbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 80px;
+  }
+  .navbar-logo a {
+    display: inline-flex;
+    align-items: center;
+  }
+  .navbar-logo img {
+    height: 52px;
+    width: auto;
+    display: block;
+  }
+  .nav-toggle {
+    display: none;
+  }
+  .mobile-toggle {
+    display: none;
+    font-size: 22px;
+    color: #e5e7eb;
+    cursor: pointer;
+    user-select: none;
+  }
+  .navbar-menu {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+  }
+  .nav-links {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+  }
   .navbar .nav-link {
-    color: #e5e7eb; text-decoration: none; font-size: 22px; font-weight: 500;
-    transition: color 0.2s; position: relative;
+    color: #e5e7eb;
+    text-decoration: none;
+    font-size: 22px;
+    font-weight: 500;
+    transition: color 0.2s;
+    position: relative;
   }
-  .nav-link:hover { color: #60a5fa; }
+  .nav-link:hover {
+    color: #60a5fa;
+  }
   .nav-link::after {
-    content: ""; position: absolute; bottom: -4px; left: 0;
-    width: 0; height: 2px; background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
     transition: width 0.2s;
   }
-  .nav-link:hover::after { width: 100%; }
-  .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
-  .navbar .login-btn {
-    background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021;
-    padding: 12px 24px; border-radius: 6px; font-weight: 600; font-size: 21px;
-    cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none;
+  .nav-link:hover::after {
+    width: 100%;
   }
-  .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96,165,250,0.3); }
-  @media (max-width: 900px) { .nav-links { gap: 16px; } .navbar .nav-link { font-size: 13px; } }
-  @media (min-width: 901px) { .navbar .nav-link { font-size: 22px !important; } .navbar .login-btn { font-size: 21px !important; } }
+  .nav-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    min-width: 140px;
+    justify-content: flex-end;
+  }
+  .navbar .login-btn {
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    border: none;
+    color: #0b1021;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 21px;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+    text-decoration: none;
+  }
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .profile-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(96, 165, 250, 0.1);
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    color: #e5e7eb;
+    transition:
+      background 0.2s,
+      border-color 0.2s,
+      color 0.2s;
+    text-decoration: none;
+  }
+  .profile-btn:hover {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: rgba(96, 165, 250, 0.5);
+    color: #60a5fa;
+  }
+  @media (max-width: 900px) {
+    .nav-links {
+      gap: 16px;
+    }
+    .navbar .nav-link {
+      font-size: 13px;
+    }
+  }
+  @media (min-width: 901px) {
+    .navbar .nav-link {
+      font-size: 22px !important;
+    }
+    .navbar .login-btn {
+      font-size: 21px !important;
+    }
+  }
   @media (max-width: 768px) {
-    .navbar-container { padding: 10px 16px; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
-    .mobile-toggle { display: block; }
-    .navbar-menu { width: 100%; display: none; flex-direction: column; align-items: stretch; gap: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); }
-    .nav-toggle:checked ~ .navbar-menu { display: flex; }
-    .nav-links { gap: 12px; flex-direction: column; align-items: flex-start; }
-    .navbar .nav-link { font-size: 16px !important; padding: 6px 0; }
-    .nav-actions { width: 100%; justify-content: center; }
-    .navbar .login-btn { width: 100%; text-align: center; font-size: 16px !important; }
+    .navbar-container {
+      padding: 10px 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+    }
+    .mobile-toggle {
+      display: block;
+    }
+    .navbar-menu {
+      width: 100%;
+      display: none;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .nav-toggle:checked ~ .navbar-menu {
+      display: flex;
+    }
+    .nav-links {
+      gap: 12px;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .navbar .nav-link {
+      font-size: 16px !important;
+      padding: 6px 0;
+    }
+    .nav-actions {
+      width: 100%;
+      justify-content: center;
+    }
+    .navbar .login-btn {
+      width: 100%;
+      text-align: center;
+      font-size: 16px !important;
+    }
   }
 </style>

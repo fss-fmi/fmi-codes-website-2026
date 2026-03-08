@@ -40,6 +40,12 @@ def admin_matching_page():
     return render_template('admin/matching.html')
 
 
+@pages_bp.route('/profile')
+def profile_page():
+    """Serve the user profile page"""
+    return render_template('auth/profile.html')
+
+
 @pages_bp.route('/navbar.html')
 def navbar_fragment():
     """Serve reusable navbar fragment"""
