@@ -1,292 +1,534 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Team Schedule</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
     <style>
-        :root {
-            --bg: #05060d;
-            --panel: rgba(255, 255, 255, 0.04);
-            --panel-border: rgba(255, 255, 255, 0.08);
-            --text: #e5e7eb;
-            --muted: #94a3b8;
-            --accent: #60a5fa;
-            --accent-2: #22d3ee;
-            --glow: 0 30px 80px rgba(0, 0, 0, 0.45);
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background: radial-gradient(circle at 15% 20%, rgba(96,165,250,0.15), transparent 40%),
-                        radial-gradient(circle at 85% 10%, rgba(34,211,238,0.14), transparent 38%),
-                        var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 70px 16px 12px;
-            display: flex;
-            justify-content: center;
-            overflow: hidden;
-        }
-        .container { width: 100%; max-width: 900px; height: 100vh; display: flex; flex-direction: column; margin-top: 5px; }
-        .timeline {
-            position: relative;
-            padding: 0;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-around;
-        }
+      :root {
+        --bg: #050816;
+        --bg-card: rgba(255, 255, 255, 0.03);
+        --border: rgba(255, 255, 255, 0.06);
+        --border-glow: rgba(96, 165, 250, 0.25);
+        --text: #e2e8f0;
+        --muted: #64748b;
+        --accent: #60a5fa;
+        --accent-2: #22d3ee;
+        --purple: #a78bfa;
+        --pink: #f472b6;
+        --panel: rgba(255, 255, 255, 0.04);
+        --panel-border: rgba(255, 255, 255, 0.08);
+        --glow: 0 30px 80px rgba(0, 0, 0, 0.45);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 70px 16px 12px;
+        display: flex;
+        justify-content: center;
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+      .container {
+        width: 100%;
+        max-width: 900px;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        margin-top: 5px;
+      }
+      .timeline {
+        position: relative;
+        padding: 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+      }
+      .timeline::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 3px;
+        height: calc(100% - 40px);
+        top: 20px;
+        background: linear-gradient(
+          180deg,
+          rgba(96, 165, 250, 0.4),
+          rgba(34, 211, 238, 0.4),
+          rgba(96, 165, 250, 0.4)
+        );
+      }
+      .timeline-item {
+        margin-top: 10px;
+        margin-bottom: 0;
+        display: flex;
+        gap: 80px;
+        align-items: stretch;
+        flex: 1;
+      }
+      .timeline-item:nth-child(odd) {
+        flex-direction: row;
+      }
+      .timeline-item:nth-child(even) {
+        flex-direction: row-reverse;
+      }
+      .timeline-content {
+        width: 50%;
+      }
+      .timeline-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        opacity: 0.6;
+        transition: opacity 0.2s ease;
+      }
+      .timeline-item:hover .timeline-icon {
+        opacity: 1;
+      }
+      .dot {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 14px;
+        height: 14px;
+        border: 3px solid #05060d;
+        background: linear-gradient(120deg, #60a5fa, #22d3ee);
+        border-radius: 50%;
+        top: 24px;
+        z-index: 2;
+        box-shadow: 0 0 0 8px rgba(96, 165, 250, 0.15);
+      }
+      .card {
+        position: relative;
+        border: 1px solid var(--panel-border);
+        border-radius: 14px;
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+        padding: 28px;
+        box-shadow: var(--glow);
+        overflow: hidden;
+        transition:
+          transform 0.2s ease,
+          border-color 0.2s ease;
+      }
+      .card:hover {
+        transform: translateY(-6px);
+        border-color: rgba(96, 165, 250, 0.4);
+      }
+      .card::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 18% 18%, rgba(96, 165, 250, 0.12), transparent 45%);
+        pointer-events: none;
+      }
+      .label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: rgba(34, 211, 238, 0.12);
+        border: 1px solid rgba(34, 211, 238, 0.3);
+        color: #c7f9ff;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+      }
+      .card h3 {
+        margin: 16px 0 10px;
+        font-size: clamp(20px, 6vw, 28px);
+        font-weight: 750;
+      }
+      .card p {
+        color: var(--muted);
+        font-size: clamp(14px, 3.5vw, 16px);
+        line-height: 1.6;
+      }
+      .meta {
+        margin-top: 16px;
+        display: flex;
+        gap: 12px;
+        color: #cbd5e1;
+        font-size: 14px;
+        flex-wrap: wrap;
+      }
+      .meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .icon {
+        color: #60a5fa;
+      }
+      @media (max-width: 768px) {
         .timeline::before {
-            content: "";
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 3px;
-            height: calc(100% - 40px);
-            top: 20px;
-            background: linear-gradient(180deg, rgba(96,165,250,0.4), rgba(34,211,238,0.4), rgba(96,165,250,0.4));
+          left: 20px;
         }
         .timeline-item {
-            margin-top: 10px;
-            margin-bottom: 0;
-            display: flex;
-            gap: 80px;
-            align-items: stretch;
-            flex: 1;
+          flex-direction: column !important;
         }
-        .timeline-item:nth-child(odd) { flex-direction: row; }
-        .timeline-item:nth-child(even) { flex-direction: row-reverse; }
-        .timeline-content { width: 50%; }
-        .timeline-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-            opacity: 0.6;
-            transition: opacity 0.2s ease;
+        .timeline-content {
+          width: 100%;
+          margin-left: 60px;
         }
-        .timeline-item:hover .timeline-icon { opacity: 1; }
         .dot {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 14px;
-            height: 14px;
-            border: 3px solid #05060d;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            border-radius: 50%;
-            top: 24px;
-            z-index: 2;
-            box-shadow: 0 0 0 8px rgba(96,165,250,0.15);
+          left: 20px;
+        }
+        body {
+          padding: 24px 12px 40px;
         }
         .card {
-            position: relative;
-            border: 1px solid var(--panel-border);
-            border-radius: 14px;
-            background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-            padding: 28px;
-            box-shadow: var(--glow);
-            overflow: hidden;
-            transition: transform 0.2s ease, border-color 0.2s ease;
+          padding: 24px;
         }
-        .card:hover { transform: translateY(-6px); border-color: rgba(96,165,250,0.4); }
-        .card::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(circle at 18% 18%, rgba(96,165,250,0.12), transparent 45%);
-            pointer-events: none;
+      }
+      @media (max-width: 640px) {
+        body {
+          padding: 20px 12px 40px;
         }
-        .label {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: rgba(34,211,238,0.12);
-            border: 1px solid rgba(34,211,238,0.3);
-            color: #c7f9ff;
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
+        .card {
+          padding: 20px;
         }
-        .card h3 { margin: 16px 0 10px; font-size: clamp(20px, 6vw, 28px); font-weight: 750; }
-        .card p { color: var(--muted); font-size: clamp(14px, 3.5vw, 16px); line-height: 1.6; }
-        .meta { margin-top: 16px; display: flex; gap: 12px; color: #cbd5e1; font-size: 14px; flex-wrap: wrap; }
-        .meta span { display: inline-flex; align-items: center; gap: 6px; }
-        .icon { color: #60a5fa; }
-        @media (max-width: 768px) {
-            .timeline::before { left: 20px; }
-            .timeline-item { flex-direction: column !important; }
-            .timeline-content { width: 100%; margin-left: 60px; }
-            .dot { left: 20px; }
-            body { padding: 24px 12px 40px; }
-            .card { padding: 24px; }
+        .card h3 {
+          font-size: 20px;
         }
-        @media (max-width: 640px) {
-            body { padding: 20px 12px 40px; }
-            .card { padding: 20px; }
-            .card h3 { font-size: 20px; }
-        }
-        /* Navbar Styles */
-        .navbar {
-            position: fixed;
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: min(1200px, calc(100% - 40px));
-            background: rgba(5, 6, 13, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            z-index: 1000;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-            overflow: hidden;
-        }
-        .navbar-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 12px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .navbar-logo {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-width: 80px;
-        }
-        .logo-text {
-            font-size: 20px;
-            font-weight: 800;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: 2px;
-        }
+      }
+      /* Navbar Styles */
+      .navbar {
+        position: fixed;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(1750px, calc(100% - 28px));
+        background: rgba(5, 6, 13, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        z-index: 1000;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
+      .navbar-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 12px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .navbar-logo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 80px;
+      }
+      .logo-text {
+        font-size: 20px;
+        font-weight: 800;
+        background: linear-gradient(120deg, #60a5fa, #22d3ee);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: 2px;
+      }
+      .nav-links {
+        display: flex;
+        gap: 24px;
+        align-items: center;
+        flex: 1;
+        justify-content: center;
+      }
+      .nav-link {
+        color: #e5e7eb;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+        transition: color 0.2s ease;
+        position: relative;
+      }
+      .nav-link:hover {
+        color: #60a5fa;
+      }
+      .nav-link::after {
+        content: '';
+        position: absolute;
+        bottom: -4px;
+        left: 0;
+        width: 0;
+        height: 2px;
+        background: linear-gradient(120deg, #60a5fa, #22d3ee);
+        transition: width 0.2s ease;
+      }
+      .nav-link:hover::after {
+        width: 100%;
+      }
+      .nav-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        min-width: 140px;
+        justify-content: flex-end;
+      }
+      .login-btn {
+        background: linear-gradient(120deg, #60a5fa, #22d3ee);
+        border: none;
+        color: #0b1021;
+        padding: 8px 18px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition:
+          transform 0.2s ease,
+          box-shadow 0.2s ease;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .login-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+      }
+      @media (max-width: 900px) {
         .nav-links {
-            display: flex;
-            gap: 24px;
-            align-items: center;
-            flex: 1;
-            justify-content: center;
+          gap: 16px;
         }
         .nav-link {
-            color: #e5e7eb;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-            transition: color 0.2s ease;
-            position: relative;
+          font-size: 13px;
         }
-        .nav-link:hover { color: #60a5fa; }
-        .nav-link::after {
-            content: "";
-            position: absolute;
-            bottom: -4px;
-            left: 0;
-            width: 0;
-            height: 2px;
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            transition: width 0.2s ease;
+      }
+      @media (max-width: 768px) {
+        .navbar-container {
+          padding: 10px 16px;
         }
-        .nav-link:hover::after { width: 100%; }
-        .nav-actions {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            min-width: 140px;
-            justify-content: flex-end;
+        .nav-links {
+          gap: 12px;
+          font-size: 12px;
+        }
+        .nav-link {
+          font-size: 12px;
         }
         .login-btn {
-            background: linear-gradient(120deg, #60a5fa, #22d3ee);
-            border: none;
-            color: #0b1021;
-            padding: 8px 18px;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            text-decoration: none;
-            display: inline-block;
+          padding: 6px 12px;
+          font-size: 12px;
         }
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+      }
+      /* Background layers */
+      .dot-grid {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+        -webkit-mask-image: radial-gradient(
+          ellipse 80% 60% at 50% 40%,
+          black 30%,
+          transparent 100%
+        );
+      }
+      .spotlight {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background: radial-gradient(
+          600px circle at var(--mx, 50%) var(--my, 30%),
+          rgba(96, 165, 250, 0.07),
+          rgba(34, 211, 238, 0.04) 40%,
+          transparent 70%
+        );
+        transition: background 0.3s ease;
+      }
+      .blobs {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .blob {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(120px);
+        opacity: 0.15;
+        will-change: transform;
+      }
+      .blob-1 {
+        width: 700px;
+        height: 700px;
+        background: #60a5fa;
+        top: -15%;
+        left: -10%;
+        animation: blobFloat1 18s ease-in-out infinite;
+      }
+      .blob-2 {
+        width: 500px;
+        height: 500px;
+        background: #22d3ee;
+        top: 40%;
+        right: -12%;
+        animation: blobFloat2 22s ease-in-out infinite;
+      }
+      .blob-3 {
+        width: 450px;
+        height: 450px;
+        background: #a78bfa;
+        bottom: -10%;
+        left: 25%;
+        animation: blobFloat3 20s ease-in-out infinite;
+      }
+      @keyframes blobFloat1 {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
         }
-        @media (max-width: 900px) {
-            .nav-links { gap: 16px; }
-            .nav-link { font-size: 13px; }
+        50% {
+          transform: translate(120px, 80px) scale(1.1);
         }
-        @media (max-width: 768px) {
-            .navbar-container { padding: 10px 16px; }
-            .nav-links { gap: 12px; font-size: 12px; }
-            .nav-link { font-size: 12px; }
-            .login-btn { padding: 6px 12px; font-size: 12px; }
+      }
+      @keyframes blobFloat2 {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
         }
+        50% {
+          transform: translate(-80px, -60px) scale(1.15);
+        }
+      }
+      @keyframes blobFloat3 {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(70px, -50px) scale(1.08);
+        }
+      }
+      .noise {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        opacity: 0.035;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        background-repeat: repeat;
+        background-size: 128px 128px;
+      }
+      .page-wrap {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+      }
+      @keyframes fadeSlideUp {
+        from {
+          opacity: 0;
+          transform: translateY(24px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .container {
+        animation: fadeSlideUp 0.7s ease both;
+      }
     </style>
-</head>
-<body>
-    <!-- Navigation Bar -->
-    <nav class="navbar">
-        <div class="navbar-container">
-            <div class="navbar-logo">
-                <div class="logo-text">FSS</div>
-            </div>
-            <div class="nav-links">
-                <a href="/team" class="nav-link">Home</a>
-                <a href="/teamRegulations" class="nav-link">Regulations</a>
-                <a href="/teamSchedule" class="nav-link">Schedule</a>
-                <a href="/teamMentors" class="nav-link">Mentors</a>
-                <a href="/teamRanking" class="nav-link">Ranking</a>
-                <a href="/chooseMentor" class="nav-link mentor-link">Choose Mentor</a>
-            </div>
-            <div class="nav-actions">
-                <a href="#" onclick="logout(); return false;" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</a>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container">
-        <div class="timeline" id="scheduleTimeline"></div>
+  </head>
+  <body>
+    <div class="dot-grid"></div>
+    <div class="spotlight"></div>
+    <div class="blobs">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="blob blob-3"></div>
     </div>
+    <div class="noise"></div>
+    <div class="page-wrap">
+      <!-- Navigation Bar -->
+      <nav class="navbar">
+        <div class="navbar-container">
+          <div class="navbar-logo">
+            <div class="logo-text">FSS</div>
+          </div>
+          <div class="nav-links">
+            <a href="/team" class="nav-link">Home</a>
+            <a href="/teamRegulations" class="nav-link">Regulations</a>
+            <a href="/teamSchedule" class="nav-link">Schedule</a>
+            <a href="/teamMentors" class="nav-link">Mentors</a>
+            <a href="/teamRanking" class="nav-link">Ranking</a>
+            <a href="/chooseMentor" class="nav-link mentor-link">Choose Mentor</a>
+          </div>
+          <div class="nav-actions">
+            <a
+              href="#"
+              onclick="
+                logout();
+                return false;
+              "
+              class="login-btn"
+              style="
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                color: #fca5a5;
+              "
+              >Logout</a
+            >
+          </div>
+        </div>
+      </nav>
 
-    <script>
+      <div class="container">
+        <div class="timeline" id="scheduleTimeline"></div>
+      </div>
+
+      <script>
         const events = [
-            {
-                title: 'Morning Threat Briefing',
-                desc: 'Review overnight alerts, prioritize incidents, and assign responders for rapid containment.',
-                time: '09:00 - 10:00',
-                room: 'SOC War Room',
-                label: 'Friday'
-            },
-            {
-                title: 'Incident Response Drill',
-                desc: 'Hands-on tabletop simulating lateral movement; run playbooks and validate detection coverage.',
-                time: '11:00 - 12:30',
-                room: 'Red/Blue Lab',
-                label: 'Saturday'
-            },
-            {
-                title: 'Secure Code Review',
-                desc: 'Pair-review recent commits; check auth flows, input validation, and secrets handling.',
-                time: '14:00 - 15:30',
-                room: 'DevSec Guild',
-                label: 'Sunday'
-            }
+          {
+            title: 'Morning Threat Briefing',
+            desc: 'Review overnight alerts, prioritize incidents, and assign responders for rapid containment.',
+            time: '09:00 - 10:00',
+            room: 'SOC War Room',
+            label: 'Friday',
+          },
+          {
+            title: 'Incident Response Drill',
+            desc: 'Hands-on tabletop simulating lateral movement; run playbooks and validate detection coverage.',
+            time: '11:00 - 12:30',
+            room: 'Red/Blue Lab',
+            label: 'Saturday',
+          },
+          {
+            title: 'Secure Code Review',
+            desc: 'Pair-review recent commits; check auth flows, input validation, and secrets handling.',
+            time: '14:00 - 15:30',
+            room: 'DevSec Guild',
+            label: 'Sunday',
+          },
         ];
 
         const timeline = document.getElementById('scheduleTimeline');
         events.forEach((ev, idx) => {
-            const icons = ['🔒', '🛡️', '⚙️'];
-            const item = document.createElement('div');
-            item.className = 'timeline-item';
-            item.innerHTML = `
+          const icons = ['🔒', '🛡️', '⚙️'];
+          const item = document.createElement('div');
+          item.className = 'timeline-item';
+          item.innerHTML = `
                 <div class="timeline-content">
                     <div class="card">
                         <div class="label">${ev.label}</div>
@@ -301,36 +543,47 @@
                 <div class="timeline-icon">${icons[idx % icons.length]}</div>
                 <div class="dot"></div>
             `;
-            timeline.appendChild(item);
+          timeline.appendChild(item);
         });
-    </script>
-    <script>
-      async function logout() {
-        try {
-          const response = await fetch('/api/logout', { method: 'POST' });
-          if (response.ok) window.location.href = '/';
-        } catch (error) {
-          console.error('Logout failed:', error);
+      </script>
+      <script>
+        async function logout() {
+          try {
+            const response = await fetch('/api/logout', { method: 'POST' });
+            if (response.ok) window.location.href = '/';
+          } catch (error) {
+            console.error('Logout failed:', error);
+          }
         }
-      }
-            async function setMentorLinkBySelection() {
-                try {
-                    const res = await fetch('/api/mentors/available');
-                    if (!res.ok) return;
-                    const data = await res.json();
-                    const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-                    const link = document.querySelector('.nav-links .mentor-link');
-                    if (!link) return;
-                    if (selectedCount > 0) {
-                        link.textContent = 'Selected Mentors';
-                        link.href = '/selectedMentors';
-                    } else {
-                        link.textContent = 'Choose Mentor';
-                        link.href = '/chooseMentor';
-                    }
-                } catch {}
+        async function setMentorLinkBySelection() {
+          try {
+            const res = await fetch('/api/mentors/available');
+            if (!res.ok) return;
+            const data = await res.json();
+            const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+            const link = document.querySelector('.nav-links .mentor-link');
+            if (!link) return;
+            if (selectedCount > 0) {
+              link.textContent = 'Selected Mentors';
+              link.href = '/selectedMentors';
+            } else {
+              link.textContent = 'Choose Mentor';
+              link.href = '/chooseMentor';
             }
-            setMentorLinkBySelection();
+          } catch {}
+        }
+        setMentorLinkBySelection();
+      </script>
+    </div>
+    <!-- /page-wrap -->
+    <script>
+      document.addEventListener('mousemove', (e) => {
+        const s = document.querySelector('.spotlight');
+        if (s) {
+          s.style.setProperty('--mx', e.clientX + 'px');
+          s.style.setProperty('--my', e.clientY + 'px');
+        }
+      });
     </script>
-</body>
+  </body>
 </html>

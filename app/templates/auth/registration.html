@@ -4,102 +4,432 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Register — FMI Codes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #050816;
+        --bg-card: rgba(255, 255, 255, 0.03);
+        --border: rgba(255, 255, 255, 0.06);
+        --border-glow: rgba(96, 165, 250, 0.25);
+        --text: #e2e8f0;
+        --muted: #64748b;
+        --accent: #60a5fa;
+        --accent-2: #22d3ee;
+        --purple: #a78bfa;
+        --pink: #f472b6;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .dot-grid {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+        -webkit-mask-image: radial-gradient(
+          ellipse 80% 60% at 50% 40%,
+          black 30%,
+          transparent 100%
+        );
+      }
+      .spotlight {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background: radial-gradient(
+          600px circle at var(--mx, 50%) var(--my, 30%),
+          rgba(96, 165, 250, 0.07),
+          rgba(34, 211, 238, 0.04) 40%,
+          transparent 70%
+        );
+        transition: background 0.3s ease;
+      }
+      .blobs {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .blob {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(120px);
+        opacity: 0.15;
+        will-change: transform;
+      }
+      .blob-1 {
+        width: 700px;
+        height: 700px;
+        background: #60a5fa;
+        top: -15%;
+        left: -10%;
+        animation: blobFloat1 18s ease-in-out infinite;
+      }
+      .blob-2 {
+        width: 500px;
+        height: 500px;
+        background: #22d3ee;
+        top: 40%;
+        right: -12%;
+        animation: blobFloat2 22s ease-in-out infinite;
+      }
+      .blob-3 {
+        width: 450px;
+        height: 450px;
+        background: #a78bfa;
+        bottom: -10%;
+        left: 25%;
+        animation: blobFloat3 20s ease-in-out infinite;
+      }
+      @keyframes blobFloat1 {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(120px, 80px) scale(1.1);
+        }
+      }
+      @keyframes blobFloat2 {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(-80px, -60px) scale(1.15);
+        }
+      }
+      @keyframes blobFloat3 {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(70px, -50px) scale(1.08);
+        }
+      }
+      .noise {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        opacity: 0.035;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        background-repeat: repeat;
+        background-size: 128px 128px;
+      }
+      .page-wrap {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+      }
+
+      @keyframes fadeSlideUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .container {
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 120px 16px 60px;
+      }
+      .form-card {
+        position: relative;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 40px 36px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(12px);
+        animation: fadeSlideUp 0.8s ease both;
+        overflow: hidden;
+      }
+      h1 {
+        font-size: 28px;
+        font-weight: 700;
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 8px;
+      }
+      .subtitle {
+        color: var(--muted);
+        margin-bottom: 24px;
+        font-size: 15px;
+      }
+      .form-row {
+        display: flex;
+        gap: 16px;
+      }
+      .form-row .form-group {
+        flex: 1;
+      }
+      .form-group {
+        margin-bottom: 18px;
+      }
+      .form-group label {
+        display: block;
+        font-size: 14px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .form-group input,
+      .form-group select {
+        width: 100%;
+        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 15px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .form-group input:focus,
+      .form-group select:focus {
+        border-color: var(--accent);
+      }
+      .form-group select option {
+        background: #0b1021;
+        color: var(--text);
+      }
+      .submit-btn {
+        width: 100%;
+        padding: 14px;
+        margin-top: 8px;
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        border: none;
+        border-radius: 8px;
+        color: #0b1021;
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+        position: relative;
+        overflow: hidden;
+      }
+      .submit-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+      }
+      .submit-btn::after {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -60%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(
+          120deg,
+          transparent 30%,
+          rgba(255, 255, 255, 0.15) 50%,
+          transparent 70%
+        );
+        transform: rotate(25deg);
+        transition: left 0.6s ease;
+      }
+      .submit-btn:hover::after {
+        left: 120%;
+      }
+      .error-msg {
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #fca5a5;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 14px;
+      }
+      .success-msg {
+        background: rgba(34, 197, 94, 0.15);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        color: #86efac;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 14px;
+      }
+      .alt-action {
+        text-align: center;
+        margin-top: 20px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .alt-action a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .alt-action a:hover {
+        text-decoration: underline;
+      }
+      @media (max-width: 500px) {
+        .form-row {
+          flex-direction: column;
+          gap: 0;
+        }
+        .form-card {
+          padding: 28px 20px;
+        }
+        .container {
+          padding: 100px 12px 40px;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="navbar-slot"></div>
-    <div class="container">
-      <div class="form-card">
-        <h1>Participant Registration</h1>
-        <p class="subtitle">Create your account to join the hackathon</p>
+    <div class="dot-grid"></div>
+    <div class="spotlight" id="spotlight"></div>
+    <div class="blobs">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="blob blob-3"></div>
+    </div>
+    <div class="noise"></div>
 
-        <div id="error-msg" class="error-msg" style="display: none"></div>
-        <div id="success-msg" class="success-msg" style="display: none"></div>
+    <div class="page-wrap">
+      <div id="navbar-slot"></div>
+      <div class="container">
+        <div class="form-card">
+          <h1>Participant Registration</h1>
+          <p class="subtitle">Create your account to join the hackathon</p>
 
-        <form id="registerForm" autocomplete="off">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="first_name">First Name</label>
-              <input type="text" id="first_name" name="first_name" required placeholder="Ivan" />
+          <div id="error-msg" class="error-msg" style="display: none"></div>
+          <div id="success-msg" class="success-msg" style="display: none"></div>
+
+          <form id="registerForm" autocomplete="off">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="first_name">First Name</label>
+                <input type="text" id="first_name" name="first_name" required placeholder="Ivan" />
+              </div>
+              <div class="form-group">
+                <label for="last_name">Last Name</label>
+                <input type="text" id="last_name" name="last_name" required placeholder="Ivanov" />
+              </div>
             </div>
+
             <div class="form-group">
-              <label for="last_name">Last Name</label>
-              <input type="text" id="last_name" name="last_name" required placeholder="Ivanov" />
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required placeholder="ivan@example.com" />
             </div>
-          </div>
 
-          <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" required placeholder="ivan@example.com" />
-          </div>
-
-          <div class="form-group">
-            <label for="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              required
-              minlength="6"
-              placeholder="Min 6 characters"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="phone_number">Phone Number</label>
-            <input
-              type="tel"
-              id="phone_number"
-              name="phone_number"
-              required
-              placeholder="+359..."
-            />
-          </div>
-
-          <div class="form-row">
             <div class="form-group">
-              <label for="faculty_number">Faculty Number</label>
+              <label for="password">Password</label>
               <input
-                type="text"
-                id="faculty_number"
-                name="faculty_number"
+                type="password"
+                id="password"
+                name="password"
                 required
-                placeholder="e.g. 1MI0700123"
+                minlength="6"
+                placeholder="Min 6 characters"
               />
             </div>
+
             <div class="form-group">
-              <label for="course">Course Year</label>
-              <select id="course" name="course" required>
-                <option value="">Select</option>
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
+              <label for="phone_number">Phone Number</label>
+              <input
+                type="tel"
+                id="phone_number"
+                name="phone_number"
+                required
+                placeholder="+359..."
+              />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="faculty_number">Faculty Number</label>
+                <input
+                  type="text"
+                  id="faculty_number"
+                  name="faculty_number"
+                  required
+                  placeholder="e.g. 1MI0700123"
+                />
+              </div>
+              <div class="form-group">
+                <label for="course">Course Year</label>
+                <select id="course" name="course" required>
+                  <option value="">Select</option>
+                  <option value="1">1st Year</option>
+                  <option value="2">2nd Year</option>
+                  <option value="3">3rd Year</option>
+                  <option value="4">4th Year</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="university_id">University</label>
+              <select id="university_id" name="university_id" required>
+                <option value="">Loading...</option>
               </select>
             </div>
-          </div>
 
-          <div class="form-group">
-            <label for="university_id">University</label>
-            <select id="university_id" name="university_id" required>
-              <option value="">Loading...</option>
-            </select>
-          </div>
+            <div class="form-group">
+              <label for="specialty_id">Specialty</label>
+              <select id="specialty_id" name="specialty_id" required>
+                <option value="">Loading...</option>
+              </select>
+            </div>
 
-          <div class="form-group">
-            <label for="specialty_id">Specialty</label>
-            <select id="specialty_id" name="specialty_id" required>
-              <option value="">Loading...</option>
-            </select>
-          </div>
+            <button type="submit" class="submit-btn">Register</button>
+          </form>
 
-          <button type="submit" class="submit-btn">Register</button>
-        </form>
-
-        <p class="alt-action">Already have an account? <a href="/login">Login here</a></p>
+          <p class="alt-action">Already have an account? <a href="/login">Login here</a></p>
+        </div>
       </div>
     </div>
+    <!-- /page-wrap -->
 
     <script>
+      /* Spotlight tracking */
+      document.addEventListener('mousemove', (e) => {
+        const s = document.getElementById('spotlight');
+        if (s) {
+          s.style.setProperty('--mx', e.clientX + 'px');
+          s.style.setProperty('--my', e.clientY + 'px');
+        }
+      });
+
       async function loadNavbar() {
         try {
           const res = await fetch('/navbar.html');
@@ -195,149 +525,3 @@
     </script>
   </body>
 </html>
-
-<style>
-  :root {
-    --bg: #060910;
-    --panel: rgba(255, 255, 255, 0.04);
-    --panel-border: rgba(255, 255, 255, 0.08);
-    --text: #e5e7eb;
-    --muted: #9ca3af;
-    --accent: #60a5fa;
-    --accent-2: #22d3ee;
-  }
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background:
-      radial-gradient(circle at 18% 22%, rgba(96, 165, 250, 0.12), transparent 40%),
-      radial-gradient(circle at 82% 6%, rgba(34, 211, 238, 0.12), transparent 38%), var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    padding: 0 16px 28px;
-  }
-  .container {
-    width: 100%;
-    max-width: 560px;
-    margin: 0 auto;
-  }
-  .form-card {
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 16px;
-    padding: 40px 36px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  }
-  h1 {
-    font-size: 28px;
-    font-weight: 700;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 8px;
-  }
-  .subtitle {
-    color: var(--muted);
-    margin-bottom: 24px;
-    font-size: 15px;
-  }
-  .form-row {
-    display: flex;
-    gap: 16px;
-  }
-  .form-row .form-group {
-    flex: 1;
-  }
-  .form-group {
-    margin-bottom: 18px;
-  }
-  .form-group label {
-    display: block;
-    font-size: 14px;
-    color: var(--muted);
-    margin-bottom: 6px;
-  }
-  .form-group input,
-  .form-group select {
-    width: 100%;
-    padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--panel-border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 15px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .form-group input:focus,
-  .form-group select:focus {
-    border-color: var(--accent);
-  }
-  .form-group select option {
-    background: #0b1021;
-    color: var(--text);
-  }
-  .submit-btn {
-    width: 100%;
-    padding: 14px;
-    margin-top: 8px;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
-    border: none;
-    border-radius: 8px;
-    color: #0b1021;
-    font-size: 16px;
-    font-weight: 700;
-    cursor: pointer;
-    transition:
-      transform 0.2s,
-      box-shadow 0.2s;
-  }
-  .submit-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
-  }
-  .error-msg {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #fca5a5;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    font-size: 14px;
-  }
-  .success-msg {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    color: #86efac;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    font-size: 14px;
-  }
-  .alt-action {
-    text-align: center;
-    margin-top: 20px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-  .alt-action a {
-    color: var(--accent);
-    text-decoration: none;
-  }
-  .alt-action a:hover {
-    text-decoration: underline;
-  }
-  @media (max-width: 500px) {
-    .form-row {
-      flex-direction: column;
-      gap: 0;
-    }
-    .form-card {
-      padding: 28px 20px;
-    }
-  }
-</style>
