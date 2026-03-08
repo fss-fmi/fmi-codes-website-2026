@@ -44,13 +44,18 @@ pip install -r requirements.txt
 
 **2. Set up the database**
 
-Connect to your local Postgres instance and run the SQL files in order:
+Connect to your local Postgres instance and run the schema file:
 
 ```bash
 psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026_dev;"
 psql -U postgres -d fmi_hackathon_2026_dev -f database/schema.sql
-psql -U postgres -d fmi_hackathon_2026_dev -f database/migrations/002_auth_and_preferences.sql
 ```
+
+> **Upgrading an existing install?** If you already have a database from a previous version (before auth was added), also run the migration:
+>
+> ```bash
+> psql -U postgres -d fmi_hackathon_2026_dev -f database/migrations/002_auth_and_preferences.sql
+> ```
 
 **3. Configure environment (optional)**
 

@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS teams (
     id BIGSERIAL PRIMARY KEY,
     team_name VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
+    join_code VARCHAR(20) UNIQUE,
     status VARCHAR(20) DEFAULT 'pending'
         CHECK (status IN ('pending', 'active', 'completed', 'disqualified')),
     participant_count INTEGER DEFAULT 0 CHECK (participant_count >= 0),
@@ -121,6 +122,7 @@ CREATE TABLE IF NOT EXISTS mentors (
     picture_url VARCHAR(500),
     picture_filename VARCHAR(255),
     bio TEXT,
+    password_hash VARCHAR(255),
     status VARCHAR(20) DEFAULT 'active'
         CHECK (status IN ('active', 'inactive', 'archived')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -136,7 +138,7 @@ CREATE INDEX IF NOT EXISTS idx_mentors_created_at ON mentors(created_at);
 -- Participants table
 CREATE TABLE IF NOT EXISTS participants (
     id BIGSERIAL PRIMARY KEY,
-    team_id BIGINT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    team_id BIGINT REFERENCES teams(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -145,6 +147,8 @@ CREATE TABLE IF NOT EXISTS participants (
     course INTEGER NOT NULL CHECK (course BETWEEN 1 AND 4),
     specialty_id BIGINT NOT NULL REFERENCES specialties(id) ON DELETE RESTRICT,
     university_id BIGINT NOT NULL REFERENCES universities(id) ON DELETE RESTRICT,
+    password_hash VARCHAR(255),
+    is_captain BOOLEAN DEFAULT FALSE,
     status VARCHAR(20) DEFAULT 'active'
         CHECK (status IN ('active', 'inactive', 'removed')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -162,8 +166,13 @@ CREATE INDEX IF NOT EXISTS idx_participants_status ON participants(status);
 CREATE INDEX IF NOT EXISTS idx_participants_created_at ON participants(created_at);
 CREATE INDEX IF NOT EXISTS idx_participants_team_course ON participants(team_id, course);
 
+-- Add captain_id to teams (references participants — defined after participants to avoid circular FK)
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS captain_id BIGINT REFERENCES participants(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_teams_captain_id ON teams(captain_id);
+CREATE INDEX IF NOT EXISTS idx_teams_join_code ON teams(join_code);
+
 -- ============================================================================
--- SECTION 3: JUNCTION TABLE (Many-to-Many Relationship)
+-- SECTION 3: JUNCTION TABLES (Many-to-Many Relationships)
 -- ============================================================================
 
 -- Team-Mentors association table (N:M relationship)
@@ -181,6 +190,32 @@ CREATE INDEX IF NOT EXISTS idx_team_mentors_mentor_id ON team_mentors(mentor_id)
 CREATE INDEX IF NOT EXISTS idx_team_mentors_assigned_at ON team_mentors(assigned_at);
 CREATE INDEX IF NOT EXISTS idx_team_mentors_is_active ON team_mentors(is_active);
 CREATE INDEX IF NOT EXISTS idx_team_mentors_active_teams ON team_mentors(team_id) WHERE is_active = TRUE;
+
+-- Team-Mentor preferences (captain ranks mentors for Gale-Shapley matching)
+CREATE TABLE IF NOT EXISTS team_mentor_preferences (
+    team_id BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    mentor_id BIGINT NOT NULL REFERENCES mentors(id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL CHECK (rank BETWEEN 1 AND 3),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (team_id, mentor_id),
+    UNIQUE (team_id, rank)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tmp_team_id ON team_mentor_preferences(team_id);
+CREATE INDEX IF NOT EXISTS idx_tmp_mentor_id ON team_mentor_preferences(mentor_id);
+
+-- Mentor-Team preferences (mentor ranks teams for Gale-Shapley matching)
+CREATE TABLE IF NOT EXISTS mentor_team_preferences (
+    mentor_id BIGINT NOT NULL REFERENCES mentors(id) ON DELETE CASCADE,
+    team_id BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL CHECK (rank BETWEEN 1 AND 3),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (mentor_id, team_id),
+    UNIQUE (mentor_id, rank)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mtp_mentor_id ON mentor_team_preferences(mentor_id);
+CREATE INDEX IF NOT EXISTS idx_mtp_team_id ON mentor_team_preferences(team_id);
 
 -- ============================================================================
 -- SECTION 4: TRIGGER FUNCTIONS FOR DATA INTEGRITY
@@ -206,14 +241,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function: Update team participant count on participant insert/delete
+-- Function: Update team participant count on participant insert/update/delete
 CREATE OR REPLACE FUNCTION update_team_participant_count()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'INSERT' THEN
+    IF TG_OP = 'INSERT' AND NEW.team_id IS NOT NULL THEN
         UPDATE teams SET participant_count = participant_count + 1 WHERE id = NEW.team_id;
-    ELSIF TG_OP = 'DELETE' THEN
+    ELSIF TG_OP = 'DELETE' AND OLD.team_id IS NOT NULL THEN
         UPDATE teams SET participant_count = GREATEST(participant_count - 1, 0) WHERE id = OLD.team_id;
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.team_id IS NOT NULL AND (NEW.team_id IS NULL OR NEW.team_id != OLD.team_id) THEN
+            UPDATE teams SET participant_count = GREATEST(participant_count - 1, 0) WHERE id = OLD.team_id;
+        END IF;
+        IF NEW.team_id IS NOT NULL AND (OLD.team_id IS NULL OR NEW.team_id != OLD.team_id) THEN
+            UPDATE teams SET participant_count = participant_count + 1 WHERE id = NEW.team_id;
+        END IF;
     END IF;
     RETURN NULL;
 END;
@@ -254,10 +296,8 @@ BEFORE DELETE ON teams
 FOR EACH ROW EXECUTE FUNCTION prevent_team_deletion_with_participants();
 
 CREATE TRIGGER trig_update_participant_count
-AFTER INSERT OR DELETE ON participants
-FOR EACH ROW
-WHEN (NEW.status = 'active' OR OLD.status = 'active')
-EXECUTE FUNCTION update_team_participant_count();
+AFTER INSERT OR UPDATE OF team_id OR DELETE ON participants
+FOR EACH ROW EXECUTE FUNCTION update_team_participant_count();
 
 -- ============================================================================
 -- SECTION 6: VIEWS FOR REPORTING
