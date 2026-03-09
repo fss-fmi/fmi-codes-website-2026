@@ -1,0 +1,248 @@
+[
+  {
+    "name": "Софийски университет \"Св. Климент Охридски\" / Sofia University \"St. Kliment Ohridski\"",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Технически университет - София / Technical University of Sofia",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Пловдивски университет \"Паисий Хилендарски\" / University of Plovdiv",
+    "city": "Plovdiv",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Нов български университет / New Bulgarian University",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Американски университет в България / American University in Bulgaria",
+    "city": "Blagoevgrad",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Университет по библиотекознание и информационни технологии / University of Library Studies and Information Technologies",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Русенски университет \"Ангел Кънчев\" / University of Ruse",
+    "city": "Ruse",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Югозападен университет \"Неофит Рилски\" / South-West University \"Neofit Rilski\"",
+    "city": "Blagoevgrad",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Шуменски университет \"Епископ Константин Преславски\" / Shumen University",
+    "city": "Shumen",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Великотърновски университет \"Св. св. Кирил и Методий\" / St. Cyril and St. Methodius University of Veliko Tarnovo",
+    "city": "Veliko Tarnovo",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Икономически университет - Варна / University of Economics - Varna",
+    "city": "Varna",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Университет за национално и световно стопанство / University of National and World Economy",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Технически университет - Варна / Technical University of Varna",
+    "city": "Varna",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Технически университет - Габрово / Technical University of Gabrovo",
+    "city": "Gabrovo",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Минно-геоложки университет \"Св. Иван Рилски\" / University of Mining and Geology",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Химикотехнологичен и металургичен университет / University of Chemical Technology and Metallurgy",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Лесотехнически университет / University of Forestry",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Университет по архитектура, строителство и геодезия / University of Architecture, Civil Engineering and Geodesy",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Университет по хранителни технологии - Пловдив / University of Food Technologies - Plovdiv",
+    "city": "Plovdiv",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Медицински университет - София / Medical University - Sofia",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Медицински университет - Пловдив / Medical University - Plovdiv",
+    "city": "Plovdiv",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Медицински университет - Варна / Medical University - Varna",
+    "city": "Varna",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Медицински университет - Плевен / Medical University - Pleven",
+    "city": "Pleven",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Тракийски университет / Trakia University",
+    "city": "Stara Zagora",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Аграрен университет - Пловдив / Agricultural University - Plovdiv",
+    "city": "Plovdiv",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Национална спортна академия \"Васил Левски\" / National Sports Academy",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Национална музикална академия \"Проф. Панчо Владигеров\" / National Academy of Music",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Национална художествена академия / National Academy of Art",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Национален военен университет \"Васил Левски\" / Vasil Levski National Military University",
+    "city": "Veliko Tarnovo",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Висше военноморско училище \"Н. Й. Вапцаров\" / Nikola Vaptsarov Naval Academy",
+    "city": "Varna",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Военна академия \"Г. С. Раковски\" / Rakovski National Defence College",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Академия на МВР / Academy of the Ministry of Interior",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Бургаски свободен университет / Burgas Free University",
+    "city": "Burgas",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Варненски свободен университет \"Черноризец Храбър\" / Varna Free University",
+    "city": "Varna",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Европейски политехнически университет / European Polytechnical University",
+    "city": "Pernik",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Международно висше бизнес училище / International University College",
+    "city": "Botevgrad",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Висше училище по телекомуникации и пощи / University of Telecommunications and Post",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "НАТФИЗ \"Кръстьо Сарафов\" / National Academy for Theatre and Film Arts",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Висше училище по застраховане и финанси / Higher School of Insurance and Finance",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Висше строително училище \"Любен Каравелов\" / Higher School of Civil Engineering",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "is_seed": true
+  },
+  {
+    "name": "Университет \"Проф. д-р Асен Златаров\" / Prof. Dr. Asen Zlatarov University",
+    "city": "Burgas",
+    "country": "Bulgaria",
+    "is_seed": true
+  }
+]
