@@ -24,19 +24,41 @@
     <div class="page-wrap">
       <div class="container">
         <div class="header">
-          <h1>Mentors</h1>
-          <p>Meet the mentors for this edition.</p>
+          <div>
+            <h1>Mentors</h1>
+            <p>Meet the mentors for this edition.</p>
+          </div>
         </div>
         <div id="mentorGrid" class="grid"></div>
-        <div
-          id="emptyState"
-          style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
-        >
-          No mentors found.
-        </div>
+        <div id="emptyState" class="empty-state">No mentors found.</div>
       </div>
 
       <script>
+        const PILL_COLORS = [
+          { bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.35)',  text: '#93c5fd', glow: 'rgba(96,165,250,0.25)'  },
+          { bg: 'rgba(34,211,238,0.12)',  border: 'rgba(34,211,238,0.35)',  text: '#67e8f9', glow: 'rgba(34,211,238,0.25)'  },
+          { bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.35)', text: '#c4b5fd', glow: 'rgba(167,139,250,0.25)' },
+          { bg: 'rgba(244,114,182,0.12)', border: 'rgba(244,114,182,0.35)', text: '#f9a8d4', glow: 'rgba(244,114,182,0.25)' },
+          { bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.35)',  text: '#6ee7b7', glow: 'rgba(52,211,153,0.25)'  },
+          { bg: 'rgba(251,191,36,0.12)',  border: 'rgba(251,191,36,0.35)',  text: '#fcd34d', glow: 'rgba(251,191,36,0.25)'  },
+        ];
+
+        function escapeHtml(str) {
+          const d = document.createElement('div');
+          d.textContent = str;
+          return d.innerHTML;
+        }
+
+        function buildTechPills(technologies) {
+          if (!Array.isArray(technologies) || technologies.length === 0) return '';
+          return '<div class="tech-pills">' +
+            technologies.map((tech, i) => {
+              const c = PILL_COLORS[i % PILL_COLORS.length];
+              return `<span class="tech-pill" style="--pill-bg:${c.bg};--pill-border:${c.border};--pill-text:${c.text};--pill-glow:${c.glow};animation-delay:${i * 0.07}s">${escapeHtml(tech)}</span>`;
+            }).join('') +
+          '</div>';
+        }
+
         async function loadMentors() {
           const grid = document.getElementById('mentorGrid');
           const empty = document.getElementById('emptyState');
@@ -53,32 +75,36 @@
               return;
             }
 
-            list.forEach((m) => {
+            list.forEach((m, idx) => {
               const card = document.createElement('div');
               card.className = 'card';
+              card.style.animationDelay = `${idx * 0.08}s`;
 
-              const mentorName = `${m.first_name || ''} ${m.last_name || ''}`.trim();
-              const mentorCompany = (m.company_name || '').trim();
-              const description =
+              const mentorName = escapeHtml(`${m.first_name || ''} ${m.last_name || ''}`.trim());
+              const mentorCompany = escapeHtml((m.company_name || '').trim());
+              const description = escapeHtml(
                 (m.bio || '').trim() ||
-                'Experienced mentor available for technical guidance and project feedback.';
+                'Experienced mentor available for technical guidance and project feedback.'
+              );
               const imgSrc = (m.picture_url || '').trim();
               const hasPic = Boolean(imgSrc);
+              const techPills = buildTechPills(m.technologies);
 
               card.innerHTML = `
-        <div class="mentor-head">
-          ${
-            hasPic
-              ? `<img class="avatar" src="${imgSrc}" alt="${mentorName}" onerror="this.outerHTML='<div class=\\"avatar placeholder\\">👤</div>'">`
-              : `<div class="avatar placeholder">👤</div>`
-          }
-          <div>
-            <div class="name">${mentorName}</div>
-            <div class="workplace">${mentorCompany}</div>
-          </div>
-        </div>
-        <div class="description">${description}</div>
-      `;
+                <div class="mentor-head">
+                  ${
+                    hasPic
+                      ? '<img class="avatar" src="' + escapeHtml(imgSrc) + '" alt="' + mentorName + '" onerror="this.outerHTML=\'<div class=\\"avatar placeholder\\">&#x1f464;</div>\'">'
+                      : '<div class="avatar placeholder">&#x1f464;</div>'
+                  }
+                  <div>
+                    <div class="name">${mentorName}</div>
+                    <div class="workplace">${mentorCompany}</div>
+                  </div>
+                </div>
+                <div class="description">${description}</div>
+                ${techPills}
+              `;
               grid.appendChild(card);
             });
           } catch (e) {
@@ -120,8 +146,8 @@
           if (!navActions) return;
           if (teamName) {
             navActions.innerHTML = `
-                    <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
-                `;
+              <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
+            `;
             setMentorLinkBySelection();
           }
         }
@@ -312,6 +338,7 @@
   .container {
     width: 100%;
     max-width: 1700px;
+    animation: fadeSlideUp 0.7s ease both;
   }
   .header {
     margin-top: 28px;
@@ -331,6 +358,12 @@
     font-size: 16px;
     margin-top: 8px;
   }
+  .empty-state {
+    display: none;
+    color: #cbd5e1;
+    text-align: center;
+    padding: 40px 0;
+  }
 
   .grid {
     display: grid;
@@ -346,13 +379,16 @@
     box-shadow: var(--card-glow);
     overflow: hidden;
     transition:
-      transform 0.2s ease,
-      border-color 0.2s ease;
+      transform 0.25s ease,
+      border-color 0.25s ease,
+      box-shadow 0.25s ease;
     min-height: 280px;
+    animation: cardAppear 0.5s ease both;
   }
   .card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-6px);
     border-color: rgba(96, 165, 250, 0.35);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 40px rgba(96, 165, 250, 0.08);
   }
   .card::after {
     content: '';
@@ -361,25 +397,20 @@
     background: radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.12), transparent 45%);
     pointer-events: none;
   }
-  .label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 13px;
-    border-radius: 999px;
-    background: rgba(34, 211, 238, 0.12);
-    border: 1px solid rgba(34, 211, 238, 0.3);
-    color: #c7f9ff;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  @keyframes cardAppear {
+    from {
+      opacity: 0;
+      transform: translateY(30px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
   .mentor-head {
     display: flex;
     align-items: center;
     gap: 18px;
-    margin-top: 16px;
   }
   .avatar {
     width: 94px;
@@ -418,6 +449,47 @@
     z-index: 1;
   }
 
+  /* ══ TECHNOLOGY PILLS ══ */
+  .tech-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+    position: relative;
+    z-index: 1;
+  }
+  .tech-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    background: var(--pill-bg);
+    border: 1px solid var(--pill-border);
+    color: var(--pill-text);
+    box-shadow: 0 0 12px var(--pill-glow), inset 0 0 8px rgba(255,255,255,0.03);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    animation: pillAppear 0.4s ease both;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .tech-pill:hover {
+    transform: translateY(-3px) scale(1.06);
+    box-shadow: 0 0 22px var(--pill-glow), 0 4px 16px var(--pill-glow), inset 0 0 8px rgba(255,255,255,0.05);
+  }
+  @keyframes pillAppear {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
   @media (max-width: 768px) {
     body {
       padding: 92px 12px 40px;
@@ -431,6 +503,10 @@
     .card {
       padding: 24px;
       min-height: 240px;
+    }
+    .tech-pill {
+      font-size: 11px;
+      padding: 4px 11px;
     }
   }
   @media (min-width: 1024px) {
@@ -447,9 +523,6 @@
       padding: 36px;
       min-height: 300px;
     }
-    .label {
-      font-size: 13px;
-    }
     .name {
       font-size: 30px;
     }
@@ -460,6 +533,7 @@
       font-size: 18px;
     }
   }
+
   /* Background layers */
   .dot-grid {
     position: fixed;
@@ -573,8 +647,5 @@
       opacity: 1;
       transform: translateY(0);
     }
-  }
-  .container {
-    animation: fadeSlideUp 0.7s ease both;
   }
 </style>

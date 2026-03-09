@@ -12,8 +12,10 @@ from app.utils.auth_decorators import (
 
 @mentors_bp.route('/mentors', methods=['GET'])
 def mentors_page():
-    """Serve the public mentors listing page"""
-    return render_template('mentors/mentors.html')
+    """Serve the public mentors listing page (or stay-tuned placeholder)"""
+    if current_app.config.get('MENTORS_STAY_TUNED'):
+        return render_template('mentors/mentorsStayTuned.html')
+    return render_template('mentors/mentorsStayTuned.html')
 
 
 @mentors_bp.route('/chooseMentor', methods=['GET'])

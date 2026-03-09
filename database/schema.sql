@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS mentors (
     picture_url VARCHAR(500),
     picture_filename VARCHAR(255),
     bio TEXT,
+    technologies TEXT[] DEFAULT '{}',
     password_hash VARCHAR(255),
     status VARCHAR(20) DEFAULT 'active'
         CHECK (status IN ('active', 'inactive', 'archived')),
@@ -138,6 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_mentors_email ON mentors(email);
 CREATE INDEX IF NOT EXISTS idx_mentors_status ON mentors(status);
 CREATE INDEX IF NOT EXISTS idx_mentors_lastname ON mentors(last_name);
 CREATE INDEX IF NOT EXISTS idx_mentors_created_at ON mentors(created_at);
+CREATE INDEX IF NOT EXISTS idx_mentors_technologies ON mentors USING GIN (technologies);
 
 -- Participants table
 CREATE TABLE IF NOT EXISTS participants (

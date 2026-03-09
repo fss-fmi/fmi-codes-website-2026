@@ -23,11 +23,15 @@ class Config:
     DB_USER = os.environ.get('DB_USER', 'postgres')
     DB_PASSWORD = os.environ.get('DB_PASSWORD', 'postgres')
 
-    # Build connection string
-    DATABASE_URL = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+    # Build connection string — prefer DATABASE_URL if set (e.g. Railway injects this automatically)
+    DATABASE_URL = os.environ.get(
+        'DATABASE_URL',
+        f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+    )
 
     TEMPLATES_FOLDER = BASE_DIR / 'app' / 'templates'
     STATIC_FOLDER = BASE_DIR / 'app' / 'static'
+    MENTORS_STAY_TUNED = os.environ.get('MENTORS_STAY_TUNED', 'false').lower() == 'true'
     DEBUG = False
     TESTING = False
 
@@ -37,7 +41,10 @@ class DevelopmentConfig(Config):
     DEBUG = True
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-12345')
     DB_NAME = os.environ.get('DB_NAME', 'fmi_hackathon_2026_dev')
-    DATABASE_URL = f'postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}'
+    DATABASE_URL = os.environ.get(
+        'DATABASE_URL',
+        f'postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}'
+    )
 
 
 class ProductionConfig(Config):
@@ -45,7 +52,10 @@ class ProductionConfig(Config):
     DEBUG = False
     SECRET_KEY = os.environ.get('SECRET_KEY')  # Must be set in environment
     DB_NAME = os.environ.get('DB_NAME', 'fmi_hackathon_2026')
-    DATABASE_URL = f'postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}'
+    DATABASE_URL = os.environ.get(
+        'DATABASE_URL',
+        f'postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}'
+    )
 
 
 class TestingConfig(Config):
@@ -53,7 +63,10 @@ class TestingConfig(Config):
     TESTING = True
     SECRET_KEY = 'test-secret-key'
     DB_NAME = 'fmi_hackathon_2026_test'
-    DATABASE_URL = f'postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}'
+    DATABASE_URL = os.environ.get(
+        'DATABASE_URL',
+        f'postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}'
+    )
 
 
 def get_config(config_name='development'):
