@@ -49,23 +49,27 @@ CREATE TABLE IF NOT EXISTS universities (
     name VARCHAR(255) NOT NULL UNIQUE,
     country VARCHAR(100),
     city VARCHAR(100),
+    is_seed BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_universities_name ON universities(name);
 CREATE INDEX IF NOT EXISTS idx_universities_country ON universities(country);
+CREATE INDEX IF NOT EXISTS idx_universities_is_seed ON universities(is_seed);
 
 -- Specialties lookup table
 CREATE TABLE IF NOT EXISTS specialties (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
+    is_seed BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_specialties_name ON specialties(name);
+CREATE INDEX IF NOT EXISTS idx_specialties_is_seed ON specialties(is_seed);
 
 -- ============================================================================
 -- SECTION 2: CORE ENTITY TABLES

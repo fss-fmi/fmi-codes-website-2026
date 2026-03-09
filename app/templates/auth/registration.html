@@ -404,11 +404,37 @@
               </select>
             </div>
 
+            <!-- Hidden fields for "Other" university -->
+            <div id="other-uni-fields" style="display: none">
+              <div class="form-group">
+                <label for="other_uni_name">University Name</label>
+                <input type="text" id="other_uni_name" placeholder="e.g. My University" />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="other_uni_city">City</label>
+                  <input type="text" id="other_uni_city" placeholder="e.g. Sofia" />
+                </div>
+                <div class="form-group">
+                  <label for="other_uni_country">Country</label>
+                  <input type="text" id="other_uni_country" placeholder="e.g. Bulgaria" />
+                </div>
+              </div>
+            </div>
+
             <div class="form-group">
               <label for="specialty_id">Specialty</label>
               <select id="specialty_id" name="specialty_id" required>
                 <option value="">Loading...</option>
               </select>
+            </div>
+
+            <!-- Hidden field for "Other" specialty -->
+            <div id="other-spec-fields" style="display: none">
+              <div class="form-group">
+                <label for="other_spec_name">Specialty Name</label>
+                <input type="text" id="other_spec_name" placeholder="e.g. Robotics" />
+              </div>
             </div>
 
             <button type="submit" class="submit-btn">Register</button>
@@ -448,37 +474,54 @@
       }
       loadNavbar();
 
-      // TODO: update this later to fetch from a new api endpoint to reflect new additions to the db in runtime
-      // Load dropdowns (universities & specialties are seed data)
+      // Load dropdowns from API (only seed data shown)
       (async () => {
-        // We'll fetch from a simple endpoint. For now, hardcode the seed data options.
-        const unis = [
-          { id: 1, name: 'Sofia University "St. Kliment Ohridski"' },
-          { id: 2, name: 'Technical University of Sofia' },
-          { id: 3, name: 'University of Plovdiv "Paisii Hilendarski"' },
-          { id: 4, name: 'Vasil Levski Military Academy' },
-          { id: 5, name: 'American University in Bulgaria' },
-          { id: 6, name: 'New Bulgarian University' },
-        ];
-        const specs = [
-          { id: 1, name: 'Web Development' },
-          { id: 2, name: 'AI/Machine Learning' },
-          { id: 3, name: 'DevOps/Cloud' },
-          { id: 4, name: 'Mobile Development' },
-          { id: 5, name: 'Data Science' },
-          { id: 6, name: 'Cybersecurity' },
-          { id: 7, name: 'Blockchain/Web3' },
-          { id: 8, name: 'Software Engineering' },
-        ];
-        const uniSel = document.getElementById('university_id');
-        uniSel.innerHTML =
-          '<option value="">Select university</option>' +
-          unis.map((u) => `<option value="${u.id}">${u.name}</option>`).join('');
-        const specSel = document.getElementById('specialty_id');
-        specSel.innerHTML =
-          '<option value="">Select specialty</option>' +
-          specs.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+        try {
+          const [uniRes, specRes] = await Promise.all([
+            fetch('/api/universities').then((r) => r.json()),
+            fetch('/api/specialties').then((r) => r.json()),
+          ]);
+
+          const uniSel = document.getElementById('university_id');
+          if (uniRes.success) {
+            uniSel.innerHTML =
+              '<option value="">Select university</option>' +
+              uniRes.universities
+                .map((u) => `<option value="${u.id}">${u.name}</option>`)
+                .join('') +
+              '<option value="other">Other (add your own)</option>';
+          } else {
+            uniSel.innerHTML = '<option value="">Failed to load</option>';
+          }
+
+          const specSel = document.getElementById('specialty_id');
+          if (specRes.success) {
+            specSel.innerHTML =
+              '<option value="">Select specialty</option>' +
+              specRes.specialties
+                .map((s) => `<option value="${s.id}">${s.name}</option>`)
+                .join('') +
+              '<option value="other">Other (add your own)</option>';
+          } else {
+            specSel.innerHTML = '<option value="">Failed to load</option>';
+          }
+        } catch {
+          document.getElementById('university_id').innerHTML =
+            '<option value="">Failed to load</option>';
+          document.getElementById('specialty_id').innerHTML =
+            '<option value="">Failed to load</option>';
+        }
       })();
+
+      // Toggle "Other" fields visibility
+      document.getElementById('university_id').addEventListener('change', (e) => {
+        document.getElementById('other-uni-fields').style.display =
+          e.target.value === 'other' ? 'block' : 'none';
+      });
+      document.getElementById('specialty_id').addEventListener('change', (e) => {
+        document.getElementById('other-spec-fields').style.display =
+          e.target.value === 'other' ? 'block' : 'none';
+      });
 
       document.getElementById('registerForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -487,19 +530,68 @@
         errEl.style.display = 'none';
         sucEl.style.display = 'none';
 
-        const body = {
-          first_name: document.getElementById('first_name').value.trim(),
-          last_name: document.getElementById('last_name').value.trim(),
-          email: document.getElementById('email').value.trim(),
-          password: document.getElementById('password').value,
-          phone_number: document.getElementById('phone_number').value.trim(),
-          faculty_number: document.getElementById('faculty_number').value.trim(),
-          course: document.getElementById('course').value,
-          university_id: document.getElementById('university_id').value,
-          specialty_id: document.getElementById('specialty_id').value,
-        };
+        let universityId = document.getElementById('university_id').value;
+        let specialtyId = document.getElementById('specialty_id').value;
 
         try {
+          // Handle "Other" university — create it first
+          if (universityId === 'other') {
+            const uniName = document.getElementById('other_uni_name').value.trim();
+            const uniCity = document.getElementById('other_uni_city').value.trim();
+            const uniCountry = document.getElementById('other_uni_country').value.trim();
+            if (!uniName || !uniCity || !uniCountry) {
+              errEl.textContent = 'Please fill in the university name, city, and country.';
+              errEl.style.display = 'block';
+              return;
+            }
+            const uniRes = await fetch('/api/universities', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: uniName, city: uniCity, country: uniCountry }),
+            });
+            const uniData = await uniRes.json();
+            if (!uniData.success) {
+              errEl.textContent = uniData.error || 'Failed to create university';
+              errEl.style.display = 'block';
+              return;
+            }
+            universityId = uniData.id;
+          }
+
+          // Handle "Other" specialty — create it first
+          if (specialtyId === 'other') {
+            const specName = document.getElementById('other_spec_name').value.trim();
+            if (!specName) {
+              errEl.textContent = 'Please fill in the specialty name.';
+              errEl.style.display = 'block';
+              return;
+            }
+            const specRes = await fetch('/api/specialties', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: specName }),
+            });
+            const specData = await specRes.json();
+            if (!specData.success) {
+              errEl.textContent = specData.error || 'Failed to create specialty';
+              errEl.style.display = 'block';
+              return;
+            }
+            specialtyId = specData.id;
+          }
+
+          const body = {
+            first_name: document.getElementById('first_name').value.trim(),
+            last_name: document.getElementById('last_name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value,
+            phone_number: document.getElementById('phone_number').value.trim(),
+            faculty_number: document.getElementById('faculty_number').value.trim(),
+            course: document.getElementById('course').value,
+            university_id: universityId,
+            specialty_id: specialtyId,
+          };
+
           const res = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

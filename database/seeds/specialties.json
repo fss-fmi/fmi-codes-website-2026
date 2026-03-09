@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Software Engineering",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Computer Science",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Informatics",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Information Systems",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Information Technologies",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Computer Engineering",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Applied Mathematics and Informatics",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Data Science",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Cybersecurity",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Artificial Intelligence",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Mathematics",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Statistics",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Telecommunications",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Electronics",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Automation",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Mechatronics",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Business Informatics",
+    "description": null,
+    "is_seed": true
+  },
+  {
+    "name": "Multimedia and Computer Graphics",
+    "description": null,
+    "is_seed": true
+  }
+]
