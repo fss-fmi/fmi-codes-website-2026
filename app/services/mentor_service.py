@@ -54,7 +54,7 @@ def register_mentor(first_name: str, last_name: str, company_name: str, picture_
 def get_all_mentors() -> list:
     """Get all registered mentors"""
     query = """
-        SELECT id, first_name, last_name, email, phone_number, company_name, bio, status, created_at
+        SELECT id, first_name, last_name, email, phone_number, company_name, bio, status, technologies, created_at
         FROM mentors
         ORDER BY created_at DESC
     """
@@ -142,13 +142,16 @@ def load_mentors_from_file(json_path: Path) -> int:
         phone_number = str(mentor.get('phone_number', '')).strip() or None
         bio = str(mentor.get('bio', '')).strip() or None
         status = str(mentor.get('status', 'active')).strip()
+        technologies = mentor.get('technologies', [])
+        if not isinstance(technologies, list):
+            technologies = []
         raw_password = mentor.get('password', 'mentor123')
         pw_hash = _hash_pw(raw_password)
 
         query = """
             INSERT INTO mentors (first_name, last_name, company_name, email, phone_number,
-                                 bio, status, picture_url, picture_filename, password_hash)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                 bio, status, picture_url, picture_filename, password_hash, technologies)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT ON CONSTRAINT uidx_mentors_identity DO NOTHING
         """
 
@@ -156,7 +159,7 @@ def load_mentors_from_file(json_path: Path) -> int:
             with get_db_cursor(current_app) as cursor:
                 cursor.execute(query, (
                     first_name, last_name, company_name, email, phone_number,
-                    bio, status, picture_data, picture_filename, pw_hash
+                    bio, status, picture_data, picture_filename, pw_hash, technologies
                 ))
                 if cursor.rowcount:
                     inserted += 1
@@ -178,6 +181,7 @@ def serialize_mentor_row(row, selection_count=0) -> dict:
         'last_name': row['last_name'],
         'company_name': row['company_name'],
         'picture_filename': row.get('picture_filename'),
+        'technologies': row.get('technologies') or [],
         'selection_count': selection_count
     }
     picture_blob = row.get('picture_url')

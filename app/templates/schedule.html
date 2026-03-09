@@ -18,17 +18,20 @@
 
     <div class="days-line-section">
       <div class="days-line">
-        <div class="day-node day-1">
-          <span class="day-dot"></span>
-          <span class="day-label">13 март</span>
-        </div>
-        <div class="day-node day-2">
+        <div class="days-track"></div>
+        <div class="days-fill" id="daysFill"></div>
+        <div class="days-cursor" id="daysCursor"></div>
+        <div class="day-node day-1" data-threshold="0">
           <span class="day-dot"></span>
           <span class="day-label">14 март</span>
         </div>
-        <div class="day-node day-3">
+        <div class="day-node day-2" data-threshold="0.5">
           <span class="day-dot"></span>
           <span class="day-label">15 март</span>
+        </div>
+        <div class="day-node day-3" data-threshold="1">
+          <span class="day-dot"></span>
+          <span class="day-label">16 март</span>
         </div>
       </div>
     </div>
@@ -173,8 +176,59 @@
       });
     }
 
+    function initProgress() {
+      const START = new Date(2026, 2, 14, 17, 0, 0);  // Mar 14 17:00
+      const END   = new Date(2026, 2, 16, 23, 59, 59); // Mar 16 23:59
+      const TOTAL = END - START;
+
+      // Node positions on the bar (left %)
+      const NODE_LEFT = { 1: 16, 2: 50, 3: 84 };
+      // Timestamps each node represents
+      const NODE_TIME = {
+        1: new Date(2026, 2, 14, 17, 0, 0),
+        2: new Date(2026, 2, 15, 0, 0, 0),
+        3: new Date(2026, 2, 16, 0, 0, 0),
+      };
+
+      const fill   = document.getElementById('daysFill');
+      const cursor = document.getElementById('daysCursor');
+      const nodes  = document.querySelectorAll('.day-node');
+
+      function update() {
+        const now = new Date();
+        const elapsed = now - START;
+        const ratio = Math.max(0, Math.min(1, elapsed / TOTAL));
+
+        // Map ratio to visual % across the bar (16% to 84% range)
+        const barStart = 16;
+        const barEnd = 84;
+        const fillPct = barStart + ratio * (barEnd - barStart);
+
+        fill.style.width = fillPct + '%';
+
+        // Cursor position
+        cursor.style.left = fillPct + '%';
+        cursor.style.opacity = (ratio > 0 && ratio < 1) ? '1' : '0';
+
+        // Light up nodes we've passed
+        nodes.forEach(node => {
+          const idx = node.classList.contains('day-1') ? 1
+                    : node.classList.contains('day-2') ? 2 : 3;
+          if (now >= NODE_TIME[idx]) {
+            node.classList.add('reached');
+          } else {
+            node.classList.remove('reached');
+          }
+        });
+      }
+
+      update();
+      setInterval(update, 30000); // refresh every 30s
+    }
+
     loadNavbar();
     normalizeDayCards();
+    initProgress();
     </script>
     </div><!-- /page-wrap -->
     <script>document.addEventListener('mousemove',e=>{const s=document.querySelector('.spotlight');if(s){s.style.setProperty('--mx',e.clientX+'px');s.style.setProperty('--my',e.clientY+'px');}});</script>
@@ -272,15 +326,41 @@
       width: min(1200px, 100%);
       height: 150px;
     }
-    .days-line::before {
-      content: "";
+    /* Track (background rail) */
+    .days-track {
       position: absolute;
-      left: 0;
-      right: 0;
-      top: 50px;
+      left: 0; right: 0; top: 50px;
       height: 4px;
-      background: linear-gradient(90deg, rgba(96,165,250,0.85), rgba(34,211,238,0.85));
+      background: rgba(255,255,255,0.08);
       border-radius: 999px;
+    }
+    /* Progress fill */
+    .days-fill {
+      position: absolute;
+      left: 0; top: 50px;
+      height: 4px;
+      width: 16%;          /* JS overrides this */
+      border-radius: 999px;
+      background: linear-gradient(90deg, #60a5fa, #22d3ee);
+      box-shadow: 0 0 12px rgba(96,165,250,0.45), 0 0 30px rgba(34,211,238,0.2);
+      transition: width 1s ease;
+    }
+    /* Pulsing cursor at the progress tip */
+    .days-cursor {
+      position: absolute;
+      top: calc(50px + 2px);
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #22d3ee;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 10px #22d3ee, 0 0 24px rgba(34,211,238,0.5);
+      opacity: 0;
+      transition: left 1s ease, opacity 0.4s ease;
+      animation: cursorPulse 2s ease-in-out infinite;
+    }
+    @keyframes cursorPulse {
+      0%, 100% { box-shadow: 0 0 10px #22d3ee, 0 0 24px rgba(34,211,238,0.4); transform: translate(-50%,-50%) scale(1); }
+      50%  { box-shadow: 0 0 18px #22d3ee, 0 0 40px rgba(34,211,238,0.6); transform: translate(-50%,-50%) scale(1.35); }
     }
     .day-node {
       position: absolute;
@@ -298,15 +378,25 @@
       width: 30px;
       height: 30px;
       border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(255,255,255,0.15);
+      box-shadow: none;
+      transition: all 0.6s ease;
+    }
+    .day-node.reached .day-dot {
       background: linear-gradient(120deg, #60a5fa, #22d3ee);
-      border: 2px solid rgba(255,255,255,0.2);
-      box-shadow: 0 0 0 8px rgba(96,165,250,0.18);
+      border-color: rgba(255,255,255,0.25);
+      box-shadow: 0 0 0 8px rgba(96,165,250,0.18), 0 0 20px rgba(34,211,238,0.3);
     }
     .day-label {
-      color: #dbe3ef;
+      color: rgba(219,227,239,0.4);
       font-size: 30px;
       font-weight: 600;
       white-space: nowrap;
+      transition: color 0.6s ease;
+    }
+    .day-node.reached .day-label {
+      color: #dbe3ef;
     }
 
     .day-cards-section {

@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: fmi_hackathon_2026
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       # Persistent storage — data survives container restarts
       - postgres_data:/var/lib/postgresql/data
@@ -31,11 +31,11 @@ services:
       DB_PORT: 5432
       DB_NAME: fmi_hackathon_2026
       DB_USER: postgres
-      DB_PASSWORD: postgres
-      SECRET_KEY: change-me-before-sharing
-      JWT_SECRET_KEY: change-me-before-sharing
-      ADMIN_EMAIL: admin@fmicodes.bg
-      ADMIN_PASSWORD: admin123
+      DB_PASSWORD: ${DB_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     depends_on:
       db:
         condition: service_healthy # App won't start until Postgres is ready
