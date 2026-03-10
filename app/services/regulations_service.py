@@ -1,8 +1,10 @@
 """Regulations data management — cached in memory to avoid file I/O on every request"""
+
 import json
 import threading
 import time
 from pathlib import Path
+
 from flask import current_app
 
 _cache_lock = threading.Lock()
@@ -35,8 +37,8 @@ def get_regulations() -> list:
 def _load_regulations() -> list:
     try:
         possible_paths = [
-            Path(current_app.root_path).parent / 'regulations.json',
-            Path(current_app.root_path).parent / 'database' / 'seeds' / 'regulations.json',
+            Path(current_app.root_path).parent / "regulations.json",
+            Path(current_app.root_path).parent / "database" / "seeds" / "regulations.json",
         ]
 
         path = None
@@ -48,7 +50,7 @@ def _load_regulations() -> list:
         if not path:
             return []
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         if not isinstance(data, list):
@@ -56,12 +58,12 @@ def _load_regulations() -> list:
 
         normalized = []
         for item in data:
-            q = str(item.get('question', '')).strip()
-            a = str(item.get('answer', '')).strip()
+            q = str(item.get("question", "")).strip()
+            a = str(item.get("answer", "")).strip()
             if q or a:
-                normalized.append({'question': q, 'answer': a})
+                normalized.append({"question": q, "answer": a})
 
         return normalized
 
     except Exception as e:
-        raise Exception(f'Failed to load regulations: {str(e)}')
+        raise Exception(f"Failed to load regulations: {str(e)}") from e

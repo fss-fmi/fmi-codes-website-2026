@@ -371,23 +371,51 @@
     <div class="container">
       <div class="card">
         <h2>Preference Submission Status</h2>
-        <div id="status-loading" style="color: var(--muted)">Loading...</div>
-        <div id="status-content" style="display: none">
+        <div
+          id="status-loading"
+          style="color: var(--muted)"
+        >
+          Loading...
+        </div>
+        <div
+          id="status-content"
+          style="display: none"
+        >
           <div class="stat-grid">
             <div class="stat">
-              <div class="number" id="teams-done">0</div>
+              <div
+                class="number"
+                id="teams-done"
+              >
+                0
+              </div>
               <div class="label">Teams submitted</div>
             </div>
             <div class="stat">
-              <div class="number" id="teams-total">0</div>
+              <div
+                class="number"
+                id="teams-total"
+              >
+                0
+              </div>
               <div class="label">Active teams</div>
             </div>
             <div class="stat">
-              <div class="number" id="mentors-done">0</div>
+              <div
+                class="number"
+                id="mentors-done"
+              >
+                0
+              </div>
               <div class="label">Mentors submitted</div>
             </div>
             <div class="stat">
-              <div class="number" id="mentors-total">0</div>
+              <div
+                class="number"
+                id="mentors-total"
+              >
+                0
+              </div>
               <div class="label">Total mentors</div>
             </div>
           </div>
@@ -396,20 +424,37 @@
             <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px">
               Team preferences
             </div>
-            <div class="progress-bar"><div class="progress-fill" id="team-progress"></div></div>
+            <div class="progress-bar">
+              <div
+                class="progress-fill"
+                id="team-progress"
+              ></div>
+            </div>
           </div>
           <div style="margin-bottom: 16px">
             <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px">
               Mentor preferences
             </div>
-            <div class="progress-bar"><div class="progress-fill" id="mentor-progress"></div></div>
+            <div class="progress-bar">
+              <div
+                class="progress-fill"
+                id="mentor-progress"
+              ></div>
+            </div>
           </div>
 
-          <div class="list-section" id="team-list-section">
+          <div
+            class="list-section"
+            id="team-list-section"
+          >
             <div class="list-header"><h3>Teams</h3></div>
             <div id="team-list"></div>
           </div>
-          <div class="list-section" id="mentor-list-section" style="margin-top: 16px">
+          <div
+            class="list-section"
+            id="mentor-list-section"
+            style="margin-top: 16px"
+          >
             <div class="list-header"><h3>Mentors</h3></div>
             <div id="mentor-list"></div>
           </div>
@@ -422,13 +467,21 @@
           Hospital-Resident Gale-Shapley (mentor-proposing, 3 mentors per team)
         </p>
         <div id="match-msg"></div>
-        <button class="run-btn" id="run-btn" disabled onclick="runMatching()">
+        <button
+          class="run-btn"
+          id="run-btn"
+          disabled
+          onclick="runMatching()"
+        >
           Run Gale-Shapley Matching
         </button>
         <div id="match-status"></div>
       </div>
 
-      <div class="card results-section" id="results-section">
+      <div
+        class="card results-section"
+        id="results-section"
+      >
         <h2>Matching Results</h2>
         <div id="results-content"></div>
       </div>

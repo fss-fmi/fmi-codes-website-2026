@@ -17,8 +17,16 @@
           <p>Meet the mentors for this edition.</p>
         </div>
       </div>
-      <div id="mentorGrid" class="grid"></div>
-      <div id="emptyState" class="empty-state">No mentors found.</div>
+      <div
+        id="mentorGrid"
+        class="grid"
+      ></div>
+      <div
+        id="emptyState"
+        class="empty-state"
+      >
+        No mentors found.
+      </div>
     </div>
 
     <script>
@@ -106,7 +114,7 @@
             const mentorCompany = escapeHtml((m.company_name || '').trim());
             const description = escapeHtml(
               (m.bio || '').trim() ||
-                'Experienced mentor available for technical guidance and project feedback.'
+                'Experienced mentor available for technical guidance and project feedback.',
             );
             const imgSrc = (m.picture_url || '').trim();
             const hasPic = Boolean(imgSrc);

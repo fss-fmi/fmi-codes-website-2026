@@ -450,30 +450,55 @@
       <div class="header">
         <h1>Mentor Dashboard</h1>
         <p>Select and rank 3 teams you'd prefer to mentor</p>
-        <div class="step-indicator" id="step-badge"></div>
+        <div
+          class="step-indicator"
+          id="step-badge"
+        ></div>
       </div>
-      <div id="message" class="message"></div>
+      <div
+        id="message"
+        class="message"
+      ></div>
 
       <!-- Already submitted -->
-      <div id="submitted-section" style="display: none">
+      <div
+        id="submitted-section"
+        style="display: none"
+      >
         <p style="text-align: center; color: var(--muted); margin-bottom: 18px">
           Your preferences have been submitted:
         </p>
-        <div class="current-prefs" id="current-prefs"></div>
+        <div
+          class="current-prefs"
+          id="current-prefs"
+        ></div>
         <div class="submit-section">
-          <button class="back-btn" onclick="resetToSelect()">Change Preferences</button>
+          <button
+            class="back-btn"
+            onclick="resetToSelect()"
+          >
+            Change Preferences
+          </button>
         </div>
       </div>
 
       <!-- Phase 1: Team selection grid -->
       <div id="select-section">
-        <div class="grid" id="teams-grid">
+        <div
+          class="grid"
+          id="teams-grid"
+        >
           <div style="color: var(--muted); text-align: center; grid-column: 1/-1; padding: 40px">
             Loading teams...
           </div>
         </div>
         <div class="submit-section">
-          <button class="submit-btn" id="proceed-btn" disabled onclick="goToRanking()">
+          <button
+            class="submit-btn"
+            id="proceed-btn"
+            disabled
+            onclick="goToRanking()"
+          >
             Proceed to Ranking &rarr;
           </button>
         </div>
@@ -481,16 +506,28 @@
 
       <!-- Phase 2: Drag & drop ranking -->
       <div id="rank-section">
-        <div class="rank-slots" id="rank-slots">
-          <div class="rank-slot" data-rank="1">
+        <div
+          class="rank-slots"
+          id="rank-slots"
+        >
+          <div
+            class="rank-slot"
+            data-rank="1"
+          >
             <div class="rank-number r1">1st</div>
             <div class="rank-placeholder">Drag your top choice here</div>
           </div>
-          <div class="rank-slot" data-rank="2">
+          <div
+            class="rank-slot"
+            data-rank="2"
+          >
             <div class="rank-number r2">2nd</div>
             <div class="rank-placeholder">Drag your second choice here</div>
           </div>
-          <div class="rank-slot" data-rank="3">
+          <div
+            class="rank-slot"
+            data-rank="3"
+          >
             <div class="rank-number r3">3rd</div>
             <div class="rank-placeholder">Drag your third choice here</div>
           </div>
@@ -499,8 +536,18 @@
           Drag teams between slots to reorder
         </p>
         <div class="submit-section">
-          <button class="back-btn" onclick="backToSelect()">&#8592; Back</button>
-          <button class="submit-btn" id="submit-btn" disabled onclick="submitPreferences()">
+          <button
+            class="back-btn"
+            onclick="backToSelect()"
+          >
+            &#8592; Back
+          </button>
+          <button
+            class="submit-btn"
+            id="submit-btn"
+            disabled
+            onclick="submitPreferences()"
+          >
             Submit Preferences
           </button>
         </div>

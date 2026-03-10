@@ -298,6 +298,84 @@
   .alt-action a:hover {
     text-decoration: underline;
   }
+  /* Forgot-password / reset section */
+  .forgot-link {
+    text-align: center;
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  .forgot-link a {
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .forgot-link a:hover {
+    text-decoration: underline;
+  }
+  .reset-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .reset-section h2 {
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--purple), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 6px;
+  }
+  .reset-section .subtitle {
+    margin-bottom: 16px;
+  }
+  .reset-btn {
+    width: 100%;
+    padding: 12px;
+    margin-top: 6px;
+    background: linear-gradient(120deg, var(--purple), var(--pink));
+    border: none;
+    border-radius: 8px;
+    color: #0b1021;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+  }
+  .reset-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(167, 139, 250, 0.3);
+  }
+  .reset-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+  .success-msg {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .back-link {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 14px;
+  }
+  .back-link a {
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .back-link a:hover {
+    text-decoration: underline;
+  }
   @media (max-width: 500px) {
     .form-card {
       padding: 28px 20px;
@@ -310,7 +388,10 @@
 {% endblock %} {% block body %}
 <body>
   <div class="dot-grid"></div>
-  <div class="spotlight" id="spotlight"></div>
+  <div
+    class="spotlight"
+    id="spotlight"
+  ></div>
   <div class="blobs">
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
@@ -325,18 +406,49 @@
         <h1>Login</h1>
         <p class="subtitle">Sign in to your account</p>
 
-        <div id="error-msg" class="error-msg" style="display: none"></div>
+        <div
+          id="error-msg"
+          class="error-msg"
+          style="display: none"
+        ></div>
 
         <div class="role-toggle">
-          <button type="button" class="role-btn active" data-role="participant">Participant</button>
-          <button type="button" class="role-btn" data-role="mentor">Mentor</button>
-          <button type="button" class="role-btn" data-role="admin">Admin</button>
+          <button
+            type="button"
+            class="role-btn active"
+            data-role="participant"
+          >
+            Participant
+          </button>
+          <button
+            type="button"
+            class="role-btn"
+            data-role="mentor"
+          >
+            Mentor
+          </button>
+          <button
+            type="button"
+            class="role-btn"
+            data-role="admin"
+          >
+            Admin
+          </button>
         </div>
 
-        <form id="loginForm" autocomplete="off">
+        <form
+          id="loginForm"
+          autocomplete="off"
+        >
           <div class="form-group">
             <label for="email">Email</label>
-            <input type="email" id="email" name="email" required placeholder="your@email.com" />
+            <input
+              type="email"
+              id="email"
+              name="email"
+              required
+              placeholder="your@email.com"
+            />
           </div>
           <div class="form-group">
             <label for="password">Password</label>
@@ -348,8 +460,57 @@
               placeholder="Your password"
             />
           </div>
-          <button type="submit" class="submit-btn">Login</button>
+          <button
+            type="submit"
+            class="submit-btn"
+          >
+            Login
+          </button>
         </form>
+
+        <p
+          class="forgot-link"
+          id="forgot-link"
+        >
+          <a onclick="toggleResetSection(true)">Forgot password?</a>
+        </p>
+
+        <div
+          class="reset-section"
+          id="reset-section"
+          style="display: none"
+        >
+          <h2>Reset Password</h2>
+          <p class="subtitle">We’ll send a new password to your email.</p>
+          <div
+            id="reset-error"
+            class="error-msg"
+            style="display: none"
+          ></div>
+          <div
+            id="reset-success"
+            class="success-msg"
+            style="display: none"
+          ></div>
+          <div class="form-group">
+            <label for="reset-email">Email</label>
+            <input
+              type="email"
+              id="reset-email"
+              required
+              placeholder="your@email.com"
+            />
+          </div>
+          <button
+            type="button"
+            class="reset-btn"
+            id="reset-btn"
+            onclick="submitReset()"
+          >
+            Send new password
+          </button>
+          <p class="back-link"><a onclick="toggleResetSection(false)">← Back to login</a></p>
+        </div>
 
         <p class="alt-action">Don't have an account? <a href="/registration">Register here</a></p>
       </div>
@@ -390,11 +551,103 @@
     // Role toggle
     document.querySelectorAll('.role-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        const prevRole = selectedRole;
         document.querySelectorAll('.role-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         selectedRole = btn.dataset.role;
+
+        const forgotLink = document.getElementById('forgot-link');
+        const resetSection = document.getElementById('reset-section');
+        const loginForm = document.getElementById('loginForm');
+        const resetVisible = resetSection.style.display !== 'none';
+
+        if (selectedRole === 'admin') {
+          // Always revert to login form for admin — no reset available
+          forgotLink.style.display = 'none';
+          resetSection.style.display = 'none';
+          loginForm.style.display = '';
+        } else if (resetVisible && prevRole === 'admin') {
+          // Coming back from admin: reset section was hidden, show login form
+          resetSection.style.display = 'none';
+          loginForm.style.display = '';
+          forgotLink.style.display = '';
+        } else if (resetVisible) {
+          // Switching between participant ↔ mentor while reset is open: stay in reset view
+          forgotLink.style.display = 'none';
+          loginForm.style.display = 'none';
+        } else {
+          forgotLink.style.display = '';
+        }
       });
     });
+
+    function toggleResetSection(show) {
+      const resetSection = document.getElementById('reset-section');
+      const loginForm = document.getElementById('loginForm');
+      const forgotLink = document.getElementById('forgot-link');
+      if (show) {
+        resetSection.style.display = '';
+        loginForm.style.display = 'none';
+        forgotLink.style.display = 'none';
+        // Pre-fill from login email field
+        const loginEmail = document.getElementById('email').value.trim();
+        if (loginEmail) document.getElementById('reset-email').value = loginEmail;
+        // Clear previous status messages
+        document.getElementById('reset-error').style.display = 'none';
+        document.getElementById('reset-success').style.display = 'none';
+        document.getElementById('reset-btn').disabled = false;
+        document.getElementById('reset-btn').textContent = 'Send new password';
+        document.getElementById('reset-email').disabled = false;
+      } else {
+        resetSection.style.display = 'none';
+        loginForm.style.display = '';
+        forgotLink.style.display = '';
+      }
+    }
+
+    async function submitReset() {
+      const errEl = document.getElementById('reset-error');
+      const successEl = document.getElementById('reset-success');
+      const btn = document.getElementById('reset-btn');
+      const emailInput = document.getElementById('reset-email');
+      errEl.style.display = 'none';
+      successEl.style.display = 'none';
+
+      const email = emailInput.value.trim();
+      if (!email) {
+        errEl.textContent = 'Please enter your email address.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, role: selectedRole }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          successEl.textContent = data.message;
+          successEl.style.display = 'block';
+          emailInput.disabled = true;
+          btn.textContent = 'Sent!';
+        } else {
+          errEl.textContent = data.error || 'Something went wrong.';
+          errEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Send new password';
+        }
+      } catch (err) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Send new password';
+      }
+    }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();

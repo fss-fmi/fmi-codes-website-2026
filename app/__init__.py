@@ -1,10 +1,13 @@
 """Flask application factory and initialization"""
-from flask import Flask, jsonify
+
+import logging
+from importlib import import_module
+
+from flask import Flask
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from pathlib import Path
+
 from config import get_config
-import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -18,20 +21,23 @@ limiter = Limiter(
 )
 
 
-def create_app(config_name='development'):
+def create_app(config_name="development"):
     """Create and configure Flask application"""
     config = get_config(config_name)
 
-    app = Flask(__name__,
-                template_folder=str(config.TEMPLATES_FOLDER),
-                static_folder=str(config.STATIC_FOLDER))
+    app = Flask(
+        __name__,
+        template_folder=str(config.TEMPLATES_FOLDER),
+        static_folder=str(config.STATIC_FOLDER),
+    )
     app.config.from_object(config)
 
     # Attach rate limiter
     limiter.init_app(app)
 
     # Initialize database connection pool
-    from app.database import init_database, close_pool
+    from app.database import close_pool, init_database
+
     try:
         init_database(app)
         logger.info(f"✓ Database initialized successfully ({config_name} mode)")
@@ -41,10 +47,21 @@ def create_app(config_name='development'):
 
     # Ensure pool is cleaned up when the app shuts down
     import atexit
+
     atexit.register(close_pool)
 
+    # Import route modules explicitly so their decorators register endpoints.
+    for module in (
+        "app.routes.api_routes",
+        "app.routes.auth",
+        "app.routes.mentors",
+        "app.routes.pages",
+        "app.routes.teams",
+    ):
+        import_module(module)
+
     # Register blueprints
-    from app.routes import auth_bp, mentors_bp, teams_bp, pages_bp, api_bp
+    from app.routes import api_bp, auth_bp, mentors_bp, pages_bp, teams_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(mentors_bp)

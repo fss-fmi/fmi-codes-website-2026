@@ -459,7 +459,10 @@
 {% endblock %} {% block body %}
 <body>
   <div class="dot-grid"></div>
-  <div class="spotlight" id="spotlight"></div>
+  <div
+    class="spotlight"
+    id="spotlight"
+  ></div>
   <div class="blobs">
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
@@ -470,34 +473,67 @@
   <div class="page-wrap">
     <div id="navbar-slot"></div>
 
-    <div class="container" id="no-team" style="display: none">
+    <div
+      class="container"
+      id="no-team"
+      style="display: none"
+    >
       <div class="card no-team">
         <h1>You're not on a team yet</h1>
         <p>Create a new team or join one with an invite code</p>
         <div class="btn-row">
-          <a href="/createTeam" class="btn-primary">Create Team</a>
-          <a href="/joinTeam" class="btn-secondary">Join Team</a>
+          <a
+            href="/createTeam"
+            class="btn-primary"
+            >Create Team</a
+          >
+          <a
+            href="/joinTeam"
+            class="btn-secondary"
+            >Join Team</a
+          >
         </div>
       </div>
     </div>
 
-    <div class="container" id="dashboard" style="display: none">
+    <div
+      class="container"
+      id="dashboard"
+      style="display: none"
+    >
       <div class="card">
         <div class="card-header">
           <h2 id="team-name"></h2>
           <div>
-            <span class="badge" id="team-status"></span>
-            <span id="member-count" class="info-text" style="margin-left: 12px"></span>
+            <span
+              class="badge"
+              id="team-status"
+            ></span>
+            <span
+              id="member-count"
+              class="info-text"
+              style="margin-left: 12px"
+            ></span>
           </div>
         </div>
-        <div id="status-warn" class="status-msg msg-warn" style="display: none">
+        <div
+          id="status-warn"
+          class="status-msg msg-warn"
+          style="display: none"
+        >
           Your team needs at least 3 members to be eligible for the hackathon.
         </div>
-        <div id="join-code-area" style="display: none">
+        <div
+          id="join-code-area"
+          style="display: none"
+        >
           <div class="code-box">
             <div class="label">Invite Code</div>
             <div>
-              <span class="code" id="join-code"></span
+              <span
+                class="code"
+                id="join-code"
+              ></span
               ><button
                 class="copy-btn"
                 onclick="
@@ -514,30 +550,66 @@
 
       <div class="card">
         <div class="card-header"><h2>Members</h2></div>
-        <div class="members-list" id="members-list"></div>
+        <div
+          class="members-list"
+          id="members-list"
+        ></div>
       </div>
 
-      <div class="card" id="choose-mentors-card" style="display: none">
+      <div
+        class="card"
+        id="choose-mentors-card"
+        style="display: none"
+      >
         <div class="card-header"><h2>Mentor Preferences</h2></div>
-        <p class="info-text" style="margin-bottom: 18px">
+        <p
+          class="info-text"
+          style="margin-bottom: 18px"
+        >
           Your team is active! As captain, you can now rank your preferred mentors so the matching
           algorithm can assign the best fit.
         </p>
-        <a href="/chooseMentor" class="btn-primary" style="display: inline-block">
+        <a
+          href="/chooseMentor"
+          class="btn-primary"
+          style="display: inline-block"
+        >
           Choose &amp; Rank Mentors →
         </a>
       </div>
 
-      <div class="card" id="mentors-card" style="display: none">
+      <div
+        class="card"
+        id="mentors-card"
+        style="display: none"
+      >
         <div class="card-header"><h2>Assigned Mentors</h2></div>
-        <div id="mentors-list" style="display: flex; flex-direction: column; gap: 10px"></div>
+        <div
+          id="mentors-list"
+          style="display: flex; flex-direction: column; gap: 10px"
+        ></div>
       </div>
 
-      <div class="card danger-zone" id="danger-zone" style="display: none">
+      <div
+        class="card danger-zone"
+        id="danger-zone"
+        style="display: none"
+      >
         <div class="card-header"><h2>Danger Zone</h2></div>
         <div style="display: flex; gap: 12px; flex-wrap: wrap">
-          <button class="btn-danger" id="leave-btn" onclick="leaveTeam()">Leave Team</button>
-          <button class="btn-danger" id="disband-btn" style="display: none" onclick="disbandTeam()">
+          <button
+            class="btn-danger"
+            id="leave-btn"
+            onclick="leaveTeam()"
+          >
+            Leave Team
+          </button>
+          <button
+            class="btn-danger"
+            id="disband-btn"
+            style="display: none"
+            onclick="disbandTeam()"
+          >
             Disband Team
           </button>
         </div>
@@ -735,7 +807,7 @@
       if (!confirm('Disband this team? This cannot be undone!')) return;
       if (
         !confirm(
-          'Are you absolutely sure? All members will be removed and the team will be permanently deleted. There is no going back.'
+          'Are you absolutely sure? All members will be removed and the team will be permanently deleted. There is no going back.',
         )
       )
         return;

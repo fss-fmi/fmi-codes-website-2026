@@ -14,6 +14,10 @@
   "lint-staged": {
     "*.{html,js,json,css,md}": [
       "prettier --write"
+    ],
+    "*.py": [
+      "ruff check --fix",
+      "ruff format"
     ]
   }
 }

@@ -11,17 +11,44 @@
   <div class="noise"></div>
 
   <!-- Modal Overlay -->
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal-panel" id="modalPanel">
-      <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
-      <div class="modal-accent-stripe" id="modalStripe"></div>
+  <div
+    class="modal-overlay"
+    id="modalOverlay"
+  >
+    <div
+      class="modal-panel"
+      id="modalPanel"
+    >
+      <button
+        class="modal-close"
+        id="modalClose"
+        aria-label="Close"
+      >
+        &times;
+      </button>
+      <div
+        class="modal-accent-stripe"
+        id="modalStripe"
+      ></div>
       <div class="modal-header">
-        <span class="modal-icon" id="modalIcon"></span>
-        <span class="modal-label" id="modalLabel"></span>
+        <span
+          class="modal-icon"
+          id="modalIcon"
+        ></span>
+        <span
+          class="modal-label"
+          id="modalLabel"
+        ></span>
       </div>
-      <h2 class="modal-question" id="modalQuestion"></h2>
+      <h2
+        class="modal-question"
+        id="modalQuestion"
+      ></h2>
       <div class="modal-divider"></div>
-      <p class="modal-answer" id="modalAnswer"></p>
+      <p
+        class="modal-answer"
+        id="modalAnswer"
+      ></p>
     </div>
   </div>
 
@@ -33,7 +60,10 @@
           <p>Frequently asked questions and official rules.</p>
         </div>
       </div>
-      <div id="regulationsGrid" class="bento-grid"></div>
+      <div
+        id="regulationsGrid"
+        class="bento-grid"
+      ></div>
       <div
         id="emptyState"
         style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
@@ -171,7 +201,7 @@
                 }
               });
             },
-            { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+            { threshold: 0.1, rootMargin: '0px 0px -40px 0px' },
           );
 
           grid.querySelectorAll('.bento-card').forEach(function (card, i) {

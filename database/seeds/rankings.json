@@ -1,7 +1,19 @@
 [
-  { "team": "Cyber Falcons", "points": 98, "image": "https://images.unsplash.com/photo-1541534401786-2077eed87a72?w=256&h=256&fit=crop&crop=faces" },
-  { "team": "Quantum Shield", "points": 92, "image": "https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=256&h=256&fit=crop&crop=faces" },
-  { "team": "Blue Sentinel", "points": 89, "image": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=256&h=256&fit=crop&crop=faces" },
+  {
+    "team": "Cyber Falcons",
+    "points": 98,
+    "image": "https://images.unsplash.com/photo-1541534401786-2077eed87a72?w=256&h=256&fit=crop&crop=faces"
+  },
+  {
+    "team": "Quantum Shield",
+    "points": 92,
+    "image": "https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=256&h=256&fit=crop&crop=faces"
+  },
+  {
+    "team": "Blue Sentinel",
+    "points": 89,
+    "image": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=256&h=256&fit=crop&crop=faces"
+  },
   { "team": "Red Team Rising", "points": 85 },
   { "team": "Hash Crackers", "points": 82 },
   { "team": "Phish Guards", "points": 78 },

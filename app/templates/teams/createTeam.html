@@ -322,7 +322,10 @@
 {% endblock %} {% block body %}
 <body>
   <div class="dot-grid"></div>
-  <div class="spotlight" id="spotlight"></div>
+  <div
+    class="spotlight"
+    id="spotlight"
+  ></div>
   <div class="blobs">
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
@@ -337,12 +340,22 @@
         <h1>Create a Team</h1>
         <p class="subtitle">Pick a name and share the invite code with your teammates</p>
 
-        <div id="error-msg" class="error-msg" style="display: none"></div>
-        <div id="success-area" style="display: none">
+        <div
+          id="error-msg"
+          class="error-msg"
+          style="display: none"
+        ></div>
+        <div
+          id="success-area"
+          style="display: none"
+        >
           <div class="success-msg">Team created!</div>
           <div class="code-display">
             <span class="code-label">Your invite code:</span>
-            <span class="code-value" id="join-code"></span>
+            <span
+              class="code-value"
+              id="join-code"
+            ></span>
             <button
               class="copy-btn"
               onclick="
@@ -368,7 +381,10 @@
           >
         </div>
 
-        <form id="createForm" autocomplete="off">
+        <form
+          id="createForm"
+          autocomplete="off"
+        >
           <div class="form-group">
             <label for="team_name">Team Name</label>
             <input
@@ -380,7 +396,12 @@
               maxlength="100"
             />
           </div>
-          <button type="submit" class="submit-btn">Create Team</button>
+          <button
+            type="submit"
+            class="submit-btn"
+          >
+            Create Team
+          </button>
         </form>
       </div>
     </div>

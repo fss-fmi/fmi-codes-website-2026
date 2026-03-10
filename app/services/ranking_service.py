@@ -1,8 +1,10 @@
 """Ranking data management — cached in memory to avoid file I/O on every request"""
+
 import json
 import threading
 import time
 from pathlib import Path
+
 from flask import current_app
 
 _cache_lock = threading.Lock()
@@ -37,8 +39,8 @@ def get_rankings() -> list:
 def _load_rankings() -> list:
     try:
         possible_paths = [
-            Path(current_app.root_path).parent / 'rankings.json',
-            Path(current_app.root_path).parent / 'database' / 'seeds' / 'rankings.json',
+            Path(current_app.root_path).parent / "rankings.json",
+            Path(current_app.root_path).parent / "database" / "seeds" / "rankings.json",
         ]
 
         path = None
@@ -50,7 +52,7 @@ def _load_rankings() -> list:
         if not path:
             return []
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         if not isinstance(data, list):
@@ -58,18 +60,18 @@ def _load_rankings() -> list:
 
         normalized = []
         for item in data:
-            team = str(item.get('team', '')).strip()
-            pts = item.get('points', 0)
-            img = item.get('image')
+            team = str(item.get("team", "")).strip()
+            pts = item.get("points", 0)
+            img = item.get("image")
             if team:
                 try:
                     pts = int(pts)
                 except Exception:
                     pts = 0
-                normalized.append({'team': team, 'points': pts, 'image': img})
+                normalized.append({"team": team, "points": pts, "image": img})
 
-        normalized.sort(key=lambda x: x['points'], reverse=True)
+        normalized.sort(key=lambda x: x["points"], reverse=True)
         return normalized
 
     except Exception as e:
-        raise Exception(f'Failed to load rankings: {str(e)}')
+        raise Exception(f"Failed to load rankings: {str(e)}") from e
