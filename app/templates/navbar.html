@@ -18,6 +18,7 @@
         <a href="/mentors" class="nav-link">Mentors</a>
       </div>
       <div class="nav-actions" id="nav-actions">
+        <a href="/login" class="login-btn ghost-btn">Login</a>
         <a href="/registration" class="login-btn">Register</a>
       </div>
     </div>
@@ -285,6 +286,19 @@
       0 0 60px rgba(96, 165, 250, 0.12),
       inset 0 1px 0 rgba(255, 255, 255, 0.2);
     filter: brightness(1.1);
+  }
+  .ghost-btn {
+    background: transparent !important;
+    border: 1.5px solid rgba(96, 165, 250, 0.4) !important;
+    color: #93c5fd !important;
+    box-shadow: none !important;
+  }
+  .ghost-btn:hover {
+    background: rgba(96, 165, 250, 0.1) !important;
+    border-color: rgba(96, 165, 250, 0.75) !important;
+    color: #60a5fa !important;
+    box-shadow: 0 4px 20px rgba(96, 165, 250, 0.15) !important;
+    filter: none !important;
   }
   .logout-btn {
     background: rgba(239, 68, 68, 0.12) !important;
