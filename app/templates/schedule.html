@@ -1,510 +1,916 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Schedule</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-</head>
-<body>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
     <div id="navbar-slot"></div>
     <div class="dot-grid"></div>
     <div class="spotlight"></div>
-    <div class="blobs"><div class="blob blob-1"></div><div class="blob blob-2"></div><div class="blob blob-3"></div></div>
+    <div class="blobs">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="blob blob-3"></div>
+    </div>
     <div class="noise"></div>
     <div class="page-wrap">
-
-    <div class="days-line-section">
-      <div class="days-line">
-        <div class="days-track"></div>
-        <div class="days-fill" id="daysFill"></div>
-        <div class="days-cursor" id="daysCursor"></div>
-        <div class="day-node day-1" data-threshold="0">
-          <span class="day-dot"></span>
-          <span class="day-label">13 март</span>
-        </div>
-        <div class="day-node day-2" data-threshold="0.5">
-          <span class="day-dot"></span>
-          <span class="day-label">14 март</span>
-        </div>
-        <div class="day-node day-3" data-threshold="1">
-          <span class="day-dot"></span>
-          <span class="day-label">15 март</span>
+      <!-- Progress Bar (untouched logic) -->
+      <div class="days-line-section">
+        <div class="days-line">
+          <div class="days-track"></div>
+          <div class="days-fill" id="daysFill"></div>
+          <div class="days-cursor" id="daysCursor"></div>
+          <div class="day-node day-1" data-threshold="0">
+            <span class="day-dot"></span>
+            <span class="day-label">13 март</span>
+          </div>
+          <div class="day-node day-2" data-threshold="0.5">
+            <span class="day-dot"></span>
+            <span class="day-label">14 март</span>
+          </div>
+          <div class="day-node day-3" data-threshold="1">
+            <span class="day-dot"></span>
+            <span class="day-label">15 март</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="day-cards-section">
-      <article class="day-card">
-        <h3>Петък</h3>
-        <ul class="activity-list">
-          <li>
-            <span class="activity-name">Регистрация</span>
-            <span class="activity-meta">⏱️17:00 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Откриване</span>
-            <span class="activity-meta">⏱️18:00 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Вечеря</span>
-            <span class="activity-meta">⏱️19:30 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-        </ul>
-      </article>
+      <!-- Day Cards -->
+      <div class="day-cards-section">
+        <article
+          class="day-card sched-card"
+          style="--day-accent: #60a5fa; --day-accent-dim: rgba(96, 165, 250, 0.12)"
+        >
+          <div class="sched-accent-stripe"></div>
+          <div class="sched-glow-orb"></div>
+          <div class="sched-inner">
+            <h3 class="sched-heading">Петък</h3>
+            <ul class="activity-list">
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">17:00</span>
+                <span class="activity-name">Регистрация</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">18:00</span>
+                <span class="activity-name">Откриване</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">19:30</span>
+                <span class="activity-name">Вечеря</span>
+              </li>
+            </ul>
+          </div>
+        </article>
 
-      <article class="day-card">
-        <h3>Събота</h3>
-        <ul class="activity-list">
-          <li>
-            <span class="activity-name">Закуска</span>
-            <span class="activity-meta">⏱️09:00 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">MenTour</span>
-            <span class="activity-meta">⏱️10:00 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Pick Mentors</span>
-            <span class="activity-meta">⏱️12:00 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Обяд</span>
-            <span class="activity-meta">⏱️13:00 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Вечеря</span>
-            <span class="activity-meta">⏱️19:30 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-        </ul>
-      </article>
+        <article
+          class="day-card sched-card"
+          style="--day-accent: #22d3ee; --day-accent-dim: rgba(34, 211, 238, 0.12)"
+        >
+          <div class="sched-accent-stripe"></div>
+          <div class="sched-glow-orb"></div>
+          <div class="sched-inner">
+            <h3 class="sched-heading">Събота</h3>
+            <ul class="activity-list">
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">09:00</span>
+                <span class="activity-name">Закуска</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">10:00</span>
+                <span class="activity-name">MenTour</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">12:00</span>
+                <span class="activity-name">Pick Mentors</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">13:00</span>
+                <span class="activity-name">Обяд</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">19:30</span>
+                <span class="activity-name">Вечеря</span>
+              </li>
+            </ul>
+          </div>
+        </article>
 
-      <article class="day-card">
-        <h3>Неделя</h3>
-        <ul class="activity-list">
-          <li>
-            <span class="activity-name">Закуска</span>
-            <span class="activity-meta">⏱️09:00 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Обяд</span>
-            <span class="activity-meta">⏱️13:30 <br>
-            <!--</M>📍Аула 1-->
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Тестване</span>
-            <span class="activity-meta">⏱️14:00 <br>
-            </M>📍325
-            </span>
-          </li>
-          <li>
-            <span class="activity-name">Представяне и закриване</span>
-            <span class="activity-meta">⏱️16:00 <br>
-            </M>📍325
-            </span>
-          </li>
-        </ul>
-      </article>
-    </div>
+        <article
+          class="day-card sched-card"
+          style="--day-accent: #a78bfa; --day-accent-dim: rgba(167, 139, 250, 0.12)"
+        >
+          <div class="sched-accent-stripe"></div>
+          <div class="sched-glow-orb"></div>
+          <div class="sched-inner">
+            <h3 class="sched-heading">Неделя</h3>
+            <ul class="activity-list">
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">09:00</span>
+                <span class="activity-name">Закуска</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">13:30</span>
+                <span class="activity-name">Обяд</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">14:00</span>
+                <span class="activity-name">Тестване</span>
+              </li>
+              <li class="act-row">
+                <span class="act-dot"></span>
+                <span class="act-time">16:00</span>
+                <span class="activity-name">Представяне и закриване</span>
+              </li>
+            </ul>
+          </div>
+        </article>
+      </div>
 
-    <div class="extra-card-section">
-      <article class="day-card extra-card">
-        <h3>Фотобутка</h3>
-        <p class="extra-card-text">📅Събота <br></M> ⏱️15:00 - 19:00 <br>
-            <!--</M>📍Аула 1-->
-            </p>
-      </article>
-    </div>
+      <!-- Photo Booth -->
+      <div class="extra-card-section">
+        <article
+          class="sched-card extra-card"
+          style="--day-accent: #f472b6; --day-accent-dim: rgba(244, 114, 182, 0.12)"
+        >
+          <div class="sched-accent-stripe"></div>
+          <div class="sched-glow-orb"></div>
+          <div class="sched-inner">
+            <h3 class="sched-heading">📸 Фотобутка</h3>
+            <div class="extra-details">
+              <span class="act-time extra-time">Събота</span>
+              <span class="act-time extra-time">15:00 – 19:00</span>
+            </div>
+          </div>
+        </article>
+      </div>
 
-    <script>
-      async function loadNavbar() {
-        try {
-          const res = await fetch('/navbar.html');
-          if (!res.ok) return;
-          const html = await res.text();
-          const slot = document.getElementById('navbar-slot');
-          if (!slot) return;
-          slot.innerHTML = html;
-          slot.querySelectorAll('script').forEach(old => {
-            const s = document.createElement('script');
-            s.textContent = old.textContent;
-            document.head.appendChild(s);
-            s.remove();
-          });
-        } catch {}
-      }
-    function normalizeDayCards() {
-      const cards = document.querySelectorAll('.day-card');
+      <script>
+        async function loadNavbar() {
+          try {
+            const res = await fetch('/navbar.html');
+            if (!res.ok) return;
+            const html = await res.text();
+            const slot = document.getElementById('navbar-slot');
+            if (!slot) return;
+            slot.innerHTML = html;
+            slot.querySelectorAll('script').forEach((old) => {
+              const s = document.createElement('script');
+              s.textContent = old.textContent;
+              document.head.appendChild(s);
+              s.remove();
+            });
+          } catch {}
+        }
 
-      cards.forEach((card) => {
-        const list = card.querySelector('.activity-list');
-        if (!list) return;
+        function initProgress() {
+          const START = new Date(2026, 2, 13, 17, 0, 0); // Mar 13 17:00
+          const END = new Date(2026, 2, 15, 23, 59, 59); // Mar 15 23:59:59
+          const TOTAL = END - START;
 
-        const items = Array.from(list.querySelectorAll('li'));
-        items.forEach((item) => {
-          const name = item.querySelector('.activity-name')?.textContent?.trim() || '';
-          const meta = item.querySelector('.activity-meta')?.textContent?.trim() || '';
-          if (!name && !meta) {
-            item.remove();
+          const NODE_LEFT = { 1: 16, 2: 50, 3: 84 };
+          const NODE_TIME = {
+            1: new Date(2026, 2, 13, 17, 0, 0),
+            2: new Date(2026, 2, 14, 0, 0, 0),
+            3: new Date(2026, 2, 15, 0, 0, 0),
+          };
+
+          const fill = document.getElementById('daysFill');
+          const cursor = document.getElementById('daysCursor');
+          const nodes = document.querySelectorAll('.day-node');
+
+          function update() {
+            const now = new Date();
+            const elapsed = now - START;
+            const ratio = Math.max(0, Math.min(1, elapsed / TOTAL));
+
+            const barStart = 16;
+            const barEnd = 84;
+            const fillPct = barStart + ratio * (barEnd - barStart);
+
+            fill.style.width = fillPct + '%';
+            cursor.style.left = fillPct + '%';
+            cursor.style.opacity = ratio > 0 && ratio < 1 ? '1' : '0';
+
+            nodes.forEach((node) => {
+              const idx = node.classList.contains('day-1')
+                ? 1
+                : node.classList.contains('day-2')
+                  ? 2
+                  : 3;
+              if (now >= NODE_TIME[idx]) {
+                node.classList.add('reached');
+              } else {
+                node.classList.remove('reached');
+              }
+            });
           }
-        });
 
-        if (list.querySelectorAll('li').length === 0) {
-          card.style.display = 'none';
+          update();
+          setInterval(update, 30000);
+        }
+
+        // Staggered scroll-triggered entrance
+        function initScrollReveal() {
+          var cards = document.querySelectorAll('.sched-card');
+          var observer = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('visible');
+                  observer.unobserve(entry.target);
+                }
+              });
+            },
+            { threshold: 0.15, rootMargin: '0px 0px -30px 0px' }
+          );
+
+          cards.forEach(function (card, i) {
+            card.style.transitionDelay = i * 120 + 'ms';
+            observer.observe(card);
+          });
+        }
+
+        loadNavbar();
+        initProgress();
+        initScrollReveal();
+      </script>
+    </div>
+    <!-- /page-wrap -->
+    <script>
+      document.addEventListener('mousemove', (e) => {
+        const s = document.querySelector('.spotlight');
+        if (s) {
+          s.style.setProperty('--mx', e.clientX + 'px');
+          s.style.setProperty('--my', e.clientY + 'px');
         }
       });
-    }
-
-    function initProgress() {
-      const START = new Date(2026, 2, 13, 17, 0, 0);   // Mar 13 17:00
-      const END   = new Date(2026, 2, 15, 23, 59, 59); // Mar 15 23:59:59
-      const TOTAL = END - START;
-      
-      // Node positions on the bar (left %)
-      const NODE_LEFT = { 1: 16, 2: 50, 3: 84 };
-      // Timestamps each node represents
-      const NODE_TIME = {
-        1: new Date(2026, 2, 13, 17, 0, 0), // 13 mart
-        2: new Date(2026, 2, 14, 0, 0, 0),  // 14 mart
-        3: new Date(2026, 2, 15, 0, 0, 0),  // 15 mart
-      };
-
-      const fill   = document.getElementById('daysFill');
-      const cursor = document.getElementById('daysCursor');
-      const nodes  = document.querySelectorAll('.day-node');
-
-      function update() {
-        const now = new Date();
-        const elapsed = now - START;
-        const ratio = Math.max(0, Math.min(1, elapsed / TOTAL));
-
-        // Map ratio to visual % across the bar (16% to 84% range)
-        const barStart = 16;
-        const barEnd = 84;
-        const fillPct = barStart + ratio * (barEnd - barStart);
-
-        fill.style.width = fillPct + '%';
-
-        // Cursor position
-        cursor.style.left = fillPct + '%';
-        cursor.style.opacity = (ratio > 0 && ratio < 1) ? '1' : '0';
-
-        // Light up nodes we've passed
-        nodes.forEach(node => {
-          const idx = node.classList.contains('day-1') ? 1
-                    : node.classList.contains('day-2') ? 2 : 3;
-          if (now >= NODE_TIME[idx]) {
-            node.classList.add('reached');
-          } else {
-            node.classList.remove('reached');
-          }
-        });
-      }
-
-      update();
-      setInterval(update, 30000); // refresh every 30s
-    }
-
-    loadNavbar();
-    normalizeDayCards();
-    initProgress();
     </script>
-    </div><!-- /page-wrap -->
-    <script>document.addEventListener('mousemove',e=>{const s=document.querySelector('.spotlight');if(s){s.style.setProperty('--mx',e.clientX+'px');s.style.setProperty('--my',e.clientY+'px');}});</script>
-</body>
+  </body>
 </html>
 
- <style>
-    :root {
-      --bg: #050816;
-      --bg-card: rgba(255,255,255,0.03);
-      --border: rgba(255,255,255,0.06);
-      --border-glow: rgba(96,165,250,0.25);
-      --text: #e2e8f0;
-      --muted: #64748b;
-      --accent: #60a5fa;
-      --accent-2: #22d3ee;
-      --purple: #a78bfa;
-      --pink: #f472b6;
-      --panel: rgba(255, 255, 255, 0.04);
-      --panel-border: rgba(255, 255, 255, 0.08);
-      --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 60px 16px 60px;
+    display: flex;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Navbar */
+  .navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(5, 6, 13, 0.6);
+    backdrop-filter: blur(20px) saturate(1.8);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    border: none;
+    border-radius: 0;
+    z-index: 1000;
+    box-shadow: none;
+    transition:
+      background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .navbar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      #60a5fa 20%,
+      #22d3ee 40%,
+      #a78bfa 60%,
+      #f472b6 80%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: navGradientFlow 6s linear infinite;
+    opacity: 0.5;
+  }
+  @keyframes navGradientFlow {
+    0% {
+      background-position: 100% 0;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Inter', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      padding: 60px 16px 60px;
-      display: flex;
-      justify-content: center;
-      -webkit-font-smoothing: antialiased;
+    100% {
+      background-position: -100% 0;
     }
-    /* Island Navbar */
-    .navbar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      background: rgba(5, 6, 13, 0.6);
-      backdrop-filter: blur(20px) saturate(1.8);
-      -webkit-backdrop-filter: blur(20px) saturate(1.8);
-      border: none;
-      border-radius: 0;
-      z-index: 1000;
-      box-shadow: none;
-      transition: background 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-    }
-    .navbar::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent 0%, #60a5fa 20%, #22d3ee 40%, #a78bfa 60%, #f472b6 80%, transparent 100%);
-      background-size: 200% 100%;
-      animation: navGradientFlow 6s linear infinite;
-      opacity: 0.5;
-    }
-    @keyframes navGradientFlow {
-      0% { background-position: 100% 0; }
-      100% { background-position: -100% 0; }
-    }
-    .navbar-container {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 16px 48px;
-      display: flex;
-      align-items: center;
-      gap: 36px;
-    }
-    .navbar-logo { display: flex; align-items: center; gap: 8px; min-width: 60px; }
-    .navbar-logo a { display: inline-flex; align-items: center; transition: filter 0.3s; }
-    .navbar-logo a:hover { filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.4)); }
-    .navbar-logo img { height: 44px; width: auto; display: block; }
-    .logo-text {
-      font-size: 20px; font-weight: 800;
-      background: linear-gradient(120deg, #60a5fa, #22d3ee);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-      letter-spacing: 2px;
-    }
-    .nav-links { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: center; }
-    .nav-link { color: #e5e7eb; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s ease; position: relative; }
-    .nav-link:hover { color: #60a5fa; }
-    .nav-link::after {
-      content: ""; position: absolute; bottom: -4px; left: 0; width: 0; height: 2px;
-      background: linear-gradient(120deg, #60a5fa, #22d3ee); transition: width 0.2s ease;
-    }
-    .nav-link:hover::after { width: 100%; }
-    .nav-actions { display: flex; gap: 12px; align-items: center; min-width: 140px; justify-content: flex-end; }
-    .settings-btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 6px 10px; border-radius: 6px; transition: all 0.2s ease; }
-    .settings-btn:hover { background: rgba(96, 165, 250, 0.1); }
-    .login-btn {
-      background: linear-gradient(120deg, #60a5fa, #22d3ee); border: none; color: #0b1021; padding: 8px 18px;
-      border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3); }
+  }
+  .navbar-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px 48px;
+    display: flex;
+    align-items: center;
+    gap: 36px;
+  }
+  .navbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 60px;
+  }
+  .navbar-logo a {
+    display: inline-flex;
+    align-items: center;
+    transition: filter 0.3s;
+  }
+  .navbar-logo a:hover {
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.4));
+  }
+  .navbar-logo img {
+    height: 44px;
+    width: auto;
+    display: block;
+  }
+  .logo-text {
+    font-size: 20px;
+    font-weight: 800;
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 2px;
+  }
+  .nav-links {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex: 1;
+    justify-content: center;
+  }
+  .nav-link {
+    color: #e5e7eb;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.2s ease;
+    position: relative;
+  }
+  .nav-link:hover {
+    color: #60a5fa;
+  }
+  .nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    transition: width 0.2s ease;
+  }
+  .nav-link:hover::after {
+    width: 100%;
+  }
+  .nav-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    min-width: 140px;
+    justify-content: flex-end;
+  }
+  .settings-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+  }
+  .settings-btn:hover {
+    background: rgba(96, 165, 250, 0.1);
+  }
+  .login-btn {
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    border: none;
+    color: #0b1021;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
 
-    body {
-      flex-direction: column;
-      align-items: center;
-    }
+  body {
+    flex-direction: column;
+    align-items: center;
+  }
 
+  /* ─── Progress Bar ─── */
+  .days-line-section {
+    width: 100%;
+    max-width: 1200px;
+    margin-top: 8px;
+    display: flex;
+    justify-content: center;
+    animation: fadeSlideUp 0.7s ease both;
+  }
+  .days-line {
+    position: relative;
+    width: min(1200px, 100%);
+    height: 150px;
+  }
+  .days-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+  }
+  .days-fill {
+    position: absolute;
+    left: 0;
+    top: 50px;
+    height: 4px;
+    width: 16%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #60a5fa, #22d3ee);
+    box-shadow:
+      0 0 12px rgba(96, 165, 250, 0.45),
+      0 0 30px rgba(34, 211, 238, 0.2);
+    transition: width 1s ease;
+  }
+  .days-cursor {
+    position: absolute;
+    top: calc(50px + 2px);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #22d3ee;
+    transform: translate(-50%, -50%);
+    box-shadow:
+      0 0 10px #22d3ee,
+      0 0 24px rgba(34, 211, 238, 0.5);
+    opacity: 0;
+    transition:
+      left 1s ease,
+      opacity 0.4s ease;
+    animation: cursorPulse 2s ease-in-out infinite;
+  }
+  @keyframes cursorPulse {
+    0%,
+    100% {
+      box-shadow:
+        0 0 10px #22d3ee,
+        0 0 24px rgba(34, 211, 238, 0.4);
+      transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+      box-shadow:
+        0 0 18px #22d3ee,
+        0 0 40px rgba(34, 211, 238, 0.6);
+      transform: translate(-50%, -50%) scale(1.35);
+    }
+  }
+  .day-node {
+    position: absolute;
+    top: calc(50px + (4px / 2) - (30px / 2));
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .day-1 {
+    left: 16%;
+  }
+  .day-2 {
+    left: 50%;
+  }
+  .day-3 {
+    left: 84%;
+  }
+  .day-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    box-shadow: none;
+    transition: all 0.6s ease;
+  }
+  .day-node.reached .day-dot {
+    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow:
+      0 0 0 8px rgba(96, 165, 250, 0.18),
+      0 0 20px rgba(34, 211, 238, 0.3);
+  }
+  .day-label {
+    color: rgba(219, 227, 239, 0.4);
+    font-size: 30px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: color 0.6s ease;
+  }
+  .day-node.reached .day-label {
+    color: #dbe3ef;
+  }
+
+  /* ─── Day Card Grid ─── */
+  .day-cards-section {
+    width: min(1300px, 100%);
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ─── Schedule Card (glassmorphic panel) ─── */
+  .sched-card {
+    --day-accent: #60a5fa;
+    --day-accent-dim: rgba(96, 165, 250, 0.12);
+    position: relative;
+    border-radius: 18px;
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(
+      165deg,
+      rgba(255, 255, 255, 0.055) 0%,
+      rgba(255, 255, 255, 0.02) 50%,
+      rgba(255, 255, 255, 0.008) 100%
+    );
+    box-shadow: var(--card-glow);
+    overflow: hidden;
+    /* Scroll animation initial state */
+    opacity: 0;
+    transform: translateY(30px);
+    transition:
+      opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.3s ease,
+      box-shadow 0.3s ease;
+  }
+  .sched-card.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .sched-card:hover {
+    border-color: color-mix(in srgb, var(--day-accent) 45%, transparent);
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.45),
+      0 0 35px color-mix(in srgb, var(--day-accent) 12%, transparent);
+  }
+  .sched-card.visible:hover {
+    transform: translateY(-5px);
+  }
+
+  /* Top accent stripe */
+  .sched-accent-stripe {
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      var(--day-accent),
+      color-mix(in srgb, var(--day-accent) 35%, transparent)
+    );
+    flex-shrink: 0;
+  }
+
+  /* Corner glow orb */
+  .sched-glow-orb {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--day-accent), transparent 70%);
+    opacity: 0.06;
+    pointer-events: none;
+    transform: translate(30%, -30%);
+    transition: opacity 0.3s ease;
+  }
+  .sched-card:hover .sched-glow-orb {
+    opacity: 0.13;
+  }
+
+  /* Card inner content */
+  .sched-inner {
+    padding: 26px 26px 22px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Day heading — gradient text */
+  .sched-heading {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    margin-bottom: 20px;
+    background: linear-gradient(
+      135deg,
+      var(--day-accent),
+      color-mix(in srgb, var(--day-accent) 60%, #e2e8f0)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ─── Activity Row ─── */
+  .activity-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .act-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.02);
+    transition:
+      transform 0.25s ease,
+      background 0.25s ease,
+      border-color 0.25s ease;
+    cursor: default;
+  }
+  .act-row:hover {
+    transform: translateX(6px);
+    background: var(--day-accent-dim);
+    border-color: color-mix(in srgb, var(--day-accent) 20%, transparent);
+  }
+
+  /* Accent dot */
+  .act-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--day-accent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--day-accent) 50%, transparent);
+    transition:
+      box-shadow 0.25s ease,
+      transform 0.25s ease;
+  }
+  .act-row:hover .act-dot {
+    box-shadow: 0 0 12px var(--day-accent);
+    transform: scale(1.3);
+  }
+
+  /* Time pill */
+  .act-time {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--day-accent) 15%, transparent);
+    color: var(--day-accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Event name */
+  .activity-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #eef5ff;
+  }
+
+  /* ─── Extra Card (Photo Booth) ─── */
+  .extra-card-section {
+    width: min(1300px, 100%);
+    margin-top: 32px;
+    display: flex;
+    justify-content: center;
+  }
+  .extra-card {
+    width: min(480px, 100%);
+    text-align: center;
+  }
+  .extra-card .sched-heading {
+    font-size: 28px;
+  }
+  .extra-details {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .extra-time {
+    font-size: 15px;
+    padding: 6px 14px;
+    border-radius: 8px;
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 900px) {
     .days-line-section {
-      width: 100%;
-      max-width: 1200px;
-      margin-top: 8px;
-      display: flex;
-      justify-content: center;
+      display: none;
     }
-    .days-line {
-      position: relative;
-      width: min(1200px, 100%);
-      height: 150px;
-    }
-    /* Track (background rail) */
-    .days-track {
-      position: absolute;
-      left: 0; right: 0; top: 50px;
-      height: 4px;
-      background: rgba(255,255,255,0.08);
-      border-radius: 999px;
-    }
-    /* Progress fill */
-    .days-fill {
-      position: absolute;
-      left: 0; top: 50px;
-      height: 4px;
-      width: 16%;          /* JS overrides this */
-      border-radius: 999px;
-      background: linear-gradient(90deg, #60a5fa, #22d3ee);
-      box-shadow: 0 0 12px rgba(96,165,250,0.45), 0 0 30px rgba(34,211,238,0.2);
-      transition: width 1s ease;
-    }
-    /* Pulsing cursor at the progress tip */
-    .days-cursor {
-      position: absolute;
-      top: calc(50px + 2px);
-      width: 12px; height: 12px;
-      border-radius: 50%;
-      background: #22d3ee;
-      transform: translate(-50%, -50%);
-      box-shadow: 0 0 10px #22d3ee, 0 0 24px rgba(34,211,238,0.5);
-      opacity: 0;
-      transition: left 1s ease, opacity 0.4s ease;
-      animation: cursorPulse 2s ease-in-out infinite;
-    }
-    @keyframes cursorPulse {
-      0%, 100% { box-shadow: 0 0 10px #22d3ee, 0 0 24px rgba(34,211,238,0.4); transform: translate(-50%,-50%) scale(1); }
-      50%  { box-shadow: 0 0 18px #22d3ee, 0 0 40px rgba(34,211,238,0.6); transform: translate(-50%,-50%) scale(1.35); }
-    }
-    .day-node {
-      position: absolute;
-      top: calc(50px + (4px / 2) - (30px / 2));
-      transform: translateX(-50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-    }
-    .day-1 { left: 16%; }
-    .day-2 { left: 50%; }
-    .day-3 { left: 84%; }
-    .day-dot {
-      width: 30px;
-      height: 30px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.08);
-      border: 2px solid rgba(255,255,255,0.15);
-      box-shadow: none;
-      transition: all 0.6s ease;
-    }
-    .day-node.reached .day-dot {
-      background: linear-gradient(120deg, #60a5fa, #22d3ee);
-      border-color: rgba(255,255,255,0.25);
-      box-shadow: 0 0 0 8px rgba(96,165,250,0.18), 0 0 20px rgba(34,211,238,0.3);
-    }
-    .day-label {
-      color: rgba(219,227,239,0.4);
-      font-size: 30px;
-      font-weight: 600;
-      white-space: nowrap;
-      transition: color 0.6s ease;
-    }
-    .day-node.reached .day-label {
-      color: #dbe3ef;
-    }
-
     .day-cards-section {
-      width: min(1300px, 100%);
-      margin-top: 18px;
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 28px;
-      align-items: start;
-    }
-    .day-card {
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
-      border-radius: 16px;
-      padding: 28px;
-      box-shadow: var(--card-glow);
-      height: fit-content;
-    }
-    .extra-card-section {
-      width: min(1300px, 100%);
-      margin-top: 48px;
-      display: flex;
-      justify-content: center;
-    }
-    .extra-card {
-      width: min(560px, 100%);
-    }
-    .extra-card-text {
-      color: var(--muted);
-      font-size: 20px;
-      line-height: 1.45;
-    }
-    .day-card h3 {
-      margin-bottom: 14px;
-      font-size: 36px;
-      color: #dbeafe;
-    }
-    .activity-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
+      grid-template-columns: 1fr;
+      margin-top: 40px;
       gap: 18px;
     }
-    .activity-list li {
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
-      padding: 18px;
-      background: rgba(255, 255, 255, 0.02);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+    .extra-card-section {
+      margin-top: 18px;
+    }
+    .sched-heading {
+      font-size: 28px;
     }
     .activity-name {
-      font-weight: 600;
-      color: #eef5ff;
-      font-size: 26px;
+      font-size: 15px;
     }
-    .activity-meta {
-      color: var(--muted);
-      font-size: 22px;
-    }
+  }
 
-    @media (max-width: 900px) {
-      .days-line-section {
-        display: none;
-      }
-      .day-cards-section {
-        grid-template-columns: 1fr;
-        margin-top: 40px;
-      }
-      .extra-card-section {
-        margin-top: 24px;
-      }
+  @media (min-width: 1024px) {
+    .sched-heading {
+      font-size: 36px;
     }
-    /* Background layers */
-    .dot-grid { position: fixed; inset: 0; z-index: 0; pointer-events: none; background-image: radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px); background-size: 32px 32px; mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%); -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%); }
-    .spotlight { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(600px circle at var(--mx,50%) var(--my,30%), rgba(96,165,250,0.07), rgba(34,211,238,0.04) 40%, transparent 70%); transition: background 0.3s ease; }
-    .blobs { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-    .blob { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.15; will-change: transform; }
-    .blob-1 { width: 700px; height: 700px; background: #60a5fa; top: -15%; left: -10%; animation: blobFloat1 18s ease-in-out infinite; }
-    .blob-2 { width: 500px; height: 500px; background: #22d3ee; top: 40%; right: -12%; animation: blobFloat2 22s ease-in-out infinite; }
-    .blob-3 { width: 450px; height: 450px; background: #a78bfa; bottom: -10%; left: 25%; animation: blobFloat3 20s ease-in-out infinite; }
-    @keyframes blobFloat1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(120px,80px) scale(1.1); } }
-    @keyframes blobFloat2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-80px,-60px) scale(1.15); } }
-    @keyframes blobFloat3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(70px,-50px) scale(1.08); } }
-    .noise { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.035; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); background-repeat: repeat; background-size: 128px 128px; }
-    .page-wrap { position: relative; z-index: 2; width: 100%; display: flex; flex-direction: column; align-items: center; }
-    @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-    .days-line-section { animation: fadeSlideUp 0.7s ease both; }
-    .day-cards-section { animation: fadeSlideUp 0.7s 0.15s ease both; }
+    .sched-inner {
+      padding: 30px 30px 26px;
+    }
+    .act-row {
+      padding: 16px 18px;
+      gap: 14px;
+    }
+    .activity-name {
+      font-size: 17px;
+    }
+    .act-time {
+      font-size: 14px;
+    }
+  }
 
-  </style>
+  /* ─── Background Layers ─── */
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>
