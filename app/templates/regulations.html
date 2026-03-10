@@ -230,16 +230,29 @@
   .navbar-container {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 12px 24px;
+    padding: 16px 48px;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 36px;
   }
   .navbar-logo {
     display: flex;
     align-items: center;
     gap: 8px;
-    min-width: 80px;
+    min-width: 60px;
+  }
+  .navbar-logo a {
+    display: inline-flex;
+    align-items: center;
+    transition: filter 0.3s;
+  }
+  .navbar-logo a:hover {
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.4));
+  }
+  .navbar-logo img {
+    height: 44px;
+    width: auto;
+    display: block;
   }
   .logo-text {
     font-size: 20px;
@@ -398,9 +411,6 @@
   @media (min-width: 768px) {
     body {
       padding: 76px 12px 40px;
-    }
-    .navbar-container {
-      padding: 10px 16px;
     }
     .grid {
       gap: 14px;
