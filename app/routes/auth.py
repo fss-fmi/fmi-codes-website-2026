@@ -25,7 +25,6 @@ def registration_page():
 
 
 @auth_bp.route('/api/auth/register', methods=['POST'])
-# are these limits per user?
 @limiter.limit("10 per minute")
 def register_participant():
     """Register a new participant and return JWT.
