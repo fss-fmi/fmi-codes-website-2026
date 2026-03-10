@@ -36,7 +36,7 @@
         background: var(--bg);
         color: var(--text);
         min-height: 100vh;
-        padding: 70px 16px 12px;
+        padding: 60px 16px 12px;
         display: flex;
         justify-content: center;
         overflow: hidden;
@@ -212,17 +212,47 @@
       /* Navbar Styles */
       .navbar {
         position: fixed;
-        top: 12px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: min(1750px, calc(100% - 28px));
-        background: rgba(5, 6, 13, 0.95);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background: rgba(5, 6, 13, 0.6);
+        backdrop-filter: blur(20px) saturate(1.8);
+        -webkit-backdrop-filter: blur(20px) saturate(1.8);
+        border: none;
+        border-radius: 0;
         z-index: 1000;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-        overflow: hidden;
+        box-shadow: none;
+        transition:
+          background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+          box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .navbar::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          #60a5fa 20%,
+          #22d3ee 40%,
+          #a78bfa 60%,
+          #f472b6 80%,
+          transparent 100%
+        );
+        background-size: 200% 100%;
+        animation: navGradientFlow 6s linear infinite;
+        opacity: 0.5;
+      }
+      @keyframes navGradientFlow {
+        0% {
+          background-position: 100% 0;
+        }
+        100% {
+          background-position: -100% 0;
+        }
       }
       .navbar-container {
         max-width: 1400px;

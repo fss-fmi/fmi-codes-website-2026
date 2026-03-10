@@ -1,5 +1,5 @@
 <!-- Navigation Bar — JWT-aware -->
-<nav class="navbar">
+<nav class="navbar" id="mainNavbar">
   <div class="navbar-container">
     <div class="navbar-logo">
       <a href="/" aria-label="Go to home">
@@ -23,6 +23,19 @@
     </div>
   </div>
 </nav>
+<div class="navbar-spacer"></div>
+
+<!-- Floating geometric shapes (global decoration) -->
+<div class="geo-shapes" aria-hidden="true">
+  <div class="geo-shape geo-hex-1"></div>
+  <div class="geo-shape geo-circle-1"></div>
+  <div class="geo-shape geo-diamond-1"></div>
+  <div class="geo-shape geo-ring-1"></div>
+  <div class="geo-shape geo-triangle-1"></div>
+  <div class="geo-shape geo-dot-1"></div>
+  <div class="geo-shape geo-hex-2"></div>
+  <div class="geo-shape geo-circle-2"></div>
+</div>
 
 <script>
   (function () {
@@ -33,7 +46,6 @@
     if (!actions) return;
 
     if (token && role) {
-      // Logged in — show role-specific links + logout
       if (role === 'participant') {
         const teamLink = document.createElement('a');
         teamLink.href = '/team';
@@ -62,33 +74,105 @@
         </svg>
       </a>
       <button onclick="(function(){localStorage.removeItem('token');localStorage.removeItem('role');localStorage.removeItem('user_id');window.location.href='/login';})()"
-        class="login-btn" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;cursor:pointer;">
+        class="login-btn logout-btn">
         Logout
       </button>`;
     }
   })();
+
+  /* Scroll-aware navbar enhancement */
+  (function () {
+    var nav = document.getElementById('mainNavbar');
+    if (!nav) return;
+    var ticking = false;
+    window.addEventListener('scroll', function () {
+      if (!ticking) {
+        requestAnimationFrame(function () {
+          if (window.scrollY > 20) {
+            nav.classList.add('scrolled');
+          } else {
+            nav.classList.remove('scrolled');
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    });
+  })();
 </script>
 
 <style>
+  /* ═══════════════════════════════════════════
+     NAVBAR — Fixed Glassmorphism
+     ═══════════════════════════════════════════ */
   .navbar {
-    position: relative;
+    position: fixed;
     top: 0;
-    left: auto;
-    transform: none;
-    width: min(1750px, calc(100% - 28px));
-    margin: 12px auto 24px;
-    background: rgba(5, 6, 13, 0.95);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    background: rgba(5, 6, 13, 0.6);
+    backdrop-filter: blur(20px) saturate(1.8);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    border: none;
+    border-radius: 0;
     z-index: 1000;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-    overflow: hidden;
+    box-shadow: none;
+    transition:
+      background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   }
+
+  /* Animated gradient line at bottom */
+  .navbar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      #60a5fa 20%,
+      #22d3ee 40%,
+      #a78bfa 60%,
+      #f472b6 80%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: navGradientFlow 6s linear infinite;
+    opacity: 0.5;
+  }
+
+  @keyframes navGradientFlow {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: -100% 0;
+    }
+  }
+
+  /* Scrolled state */
+  .navbar.scrolled {
+    background: rgba(5, 6, 13, 0.92);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.03);
+  }
+  .navbar.scrolled::after {
+    opacity: 0.7;
+  }
+
+  .navbar-spacer {
+    height: 76px;
+  }
+
   .navbar-container {
-    max-width: 1600px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: 20px 56px;
+    padding: 16px 48px;
     display: flex;
     align-items: center;
     gap: 36px;
@@ -97,14 +181,18 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-width: 80px;
+    min-width: 60px;
   }
   .navbar-logo a {
     display: inline-flex;
     align-items: center;
+    transition: filter 0.3s;
+  }
+  .navbar-logo a:hover {
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.4));
   }
   .navbar-logo img {
-    height: 52px;
+    height: 44px;
     width: auto;
     display: block;
   }
@@ -127,100 +215,311 @@
   }
   .nav-links {
     display: flex;
-    gap: 40px;
+    gap: 36px;
     align-items: center;
     justify-content: center;
     flex: 1;
   }
   .navbar .nav-link {
-    color: #e5e7eb;
+    color: #94a3b8;
     text-decoration: none;
-    font-size: 22px;
+    font-size: 15px;
     font-weight: 500;
-    transition: color 0.2s;
+    transition:
+      color 0.25s,
+      text-shadow 0.3s;
     position: relative;
+    letter-spacing: 0.02em;
   }
   .nav-link:hover {
-    color: #60a5fa;
+    color: #fff;
+    text-shadow: 0 0 24px rgba(96, 165, 250, 0.35);
   }
   .nav-link::after {
     content: '';
     position: absolute;
-    bottom: -4px;
-    left: 0;
+    bottom: -6px;
+    left: 50%;
     width: 0;
     height: 2px;
-    background: linear-gradient(120deg, #60a5fa, #22d3ee);
-    transition: width 0.2s;
+    background: linear-gradient(90deg, #60a5fa, #22d3ee);
+    border-radius: 1px;
+    transition:
+      width 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+      left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .nav-link:hover::after {
     width: 100%;
+    left: 0;
   }
   .nav-actions {
     display: flex;
     gap: 12px;
     align-items: center;
-    min-width: 140px;
+    min-width: 120px;
     justify-content: flex-end;
   }
   .navbar .login-btn {
-    background: linear-gradient(120deg, #60a5fa, #22d3ee);
+    background: linear-gradient(135deg, #60a5fa, #22d3ee);
     border: none;
     color: #0b1021;
-    padding: 12px 24px;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 21px;
+    padding: 10px 28px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 14px;
     cursor: pointer;
     transition:
-      transform 0.2s,
-      box-shadow 0.2s;
+      transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.35s,
+      filter 0.25s;
     text-decoration: none;
+    box-shadow:
+      0 0 20px rgba(96, 165, 250, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    letter-spacing: 0.01em;
   }
   .login-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+    transform: translateY(-2px) scale(1.03);
+    box-shadow:
+      0 6px 28px rgba(96, 165, 250, 0.4),
+      0 0 60px rgba(96, 165, 250, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    filter: brightness(1.1);
+  }
+  .logout-btn {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border: 1px solid rgba(239, 68, 68, 0.25) !important;
+    color: #fca5a5 !important;
+    box-shadow: none !important;
+    cursor: pointer;
+  }
+  .logout-btn:hover {
+    background: rgba(239, 68, 68, 0.2) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15) !important;
+    filter: none !important;
   }
   .profile-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    background: rgba(96, 165, 250, 0.1);
-    border: 1px solid rgba(96, 165, 250, 0.25);
-    color: #e5e7eb;
-    transition:
-      background 0.2s,
-      border-color 0.2s,
-      color 0.2s;
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    color: #94a3b8;
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
     text-decoration: none;
   }
   .profile-btn:hover {
-    background: rgba(96, 165, 250, 0.2);
+    background: rgba(96, 165, 250, 0.15);
     border-color: rgba(96, 165, 250, 0.5);
     color: #60a5fa;
+    box-shadow: 0 0 20px rgba(96, 165, 250, 0.15);
+    transform: scale(1.08);
+  }
+
+  /* ═══════════════════════════════════════════
+     FLOATING GEOMETRIC SHAPES
+     ═══════════════════════════════════════════ */
+  .geo-shapes {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .geo-shape {
+    position: absolute;
+    will-change: transform;
+  }
+  .geo-hex-1 {
+    width: 140px;
+    height: 140px;
+    top: 12%;
+    left: 5%;
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.06), rgba(167, 139, 250, 0.06));
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    animation: geoFloat1 28s ease-in-out infinite;
+  }
+  .geo-circle-1 {
+    width: 90px;
+    height: 90px;
+    top: 55%;
+    right: 6%;
+    border-radius: 50%;
+    border: 1.5px solid rgba(34, 211, 238, 0.07);
+    animation: geoFloat2 22s ease-in-out infinite;
+  }
+  .geo-diamond-1 {
+    width: 70px;
+    height: 70px;
+    top: 35%;
+    left: 72%;
+    background: linear-gradient(135deg, rgba(244, 114, 182, 0.05), rgba(167, 139, 250, 0.05));
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    animation: geoFloat3 25s ease-in-out infinite;
+  }
+  .geo-ring-1 {
+    width: 110px;
+    height: 110px;
+    top: 22%;
+    right: 18%;
+    border-radius: 50%;
+    border: 1px solid rgba(167, 139, 250, 0.06);
+    animation: geoFloat4 20s ease-in-out infinite;
+  }
+  .geo-triangle-1 {
+    width: 80px;
+    height: 80px;
+    bottom: 18%;
+    left: 12%;
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    background: linear-gradient(180deg, rgba(96, 165, 250, 0.05), rgba(34, 211, 238, 0.03));
+    animation: geoFloat5 30s ease-in-out infinite;
+  }
+  .geo-dot-1 {
+    width: 8px;
+    height: 8px;
+    top: 68%;
+    left: 42%;
+    border-radius: 50%;
+    background: rgba(34, 211, 238, 0.12);
+    box-shadow: 0 0 12px rgba(34, 211, 238, 0.2);
+    animation: geoFloat6 18s ease-in-out infinite;
+  }
+  .geo-hex-2 {
+    width: 100px;
+    height: 100px;
+    bottom: 30%;
+    right: 10%;
+    background: linear-gradient(135deg, rgba(34, 211, 238, 0.04), rgba(96, 165, 250, 0.04));
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    animation: geoFloat7 32s ease-in-out infinite;
+  }
+  .geo-circle-2 {
+    width: 50px;
+    height: 50px;
+    top: 78%;
+    left: 68%;
+    border-radius: 50%;
+    border: 1px solid rgba(244, 114, 182, 0.06);
+    animation: geoFloat8 24s ease-in-out infinite;
+  }
+
+  @keyframes geoFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    33% {
+      transform: translate(25px, -30px) rotate(20deg);
+    }
+    66% {
+      transform: translate(-15px, 20px) rotate(-10deg);
+    }
+  }
+  @keyframes geoFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-20px, -25px) scale(1.1);
+    }
+  }
+  @keyframes geoFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    50% {
+      transform: translate(15px, -20px) rotate(45deg);
+    }
+  }
+  @keyframes geoFloat4 {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    33% {
+      transform: translate(-20px, 15px) rotate(-15deg);
+    }
+    66% {
+      transform: translate(10px, -10px) rotate(15deg);
+    }
+  }
+  @keyframes geoFloat5 {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    50% {
+      transform: translate(20px, -30px) rotate(30deg);
+    }
+  }
+  @keyframes geoFloat6 {
+    0%,
+    100% {
+      transform: translate(0, 0);
+      opacity: 0.12;
+    }
+    50% {
+      transform: translate(30px, -15px);
+      opacity: 0.3;
+    }
+  }
+  @keyframes geoFloat7 {
+    0%,
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    33% {
+      transform: translate(-10px, 20px) rotate(15deg);
+    }
+    66% {
+      transform: translate(20px, -10px) rotate(-15deg);
+    }
+  }
+  @keyframes geoFloat8 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-15px, 15px) scale(0.9);
+    }
+  }
+
+  /* ═══════════════════════════════════════════
+     RESPONSIVE NAVBAR
+     ═══════════════════════════════════════════ */
+  @media (min-width: 901px) {
+    .navbar .nav-link {
+      font-size: 16px !important;
+    }
+    .navbar .login-btn {
+      font-size: 15px !important;
+    }
   }
   @media (max-width: 900px) {
     .nav-links {
       gap: 16px;
     }
     .navbar .nav-link {
-      font-size: 13px;
+      font-size: 14px;
     }
-  }
-  @media (min-width: 901px) {
-    .navbar .nav-link {
-      font-size: 22px !important;
+    .navbar-container {
+      padding: 14px 24px;
     }
-    .navbar .login-btn {
-      font-size: 21px !important;
+    .navbar-spacer {
+      height: 68px;
     }
   }
   @media (max-width: 768px) {
     .navbar-container {
-      padding: 10px 16px;
+      padding: 12px 16px;
       flex-wrap: wrap;
       gap: 12px;
       justify-content: space-between;
@@ -234,20 +533,20 @@
       flex-direction: column;
       align-items: stretch;
       gap: 12px;
-      padding-top: 8px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
     }
     .nav-toggle:checked ~ .navbar-menu {
       display: flex;
     }
     .nav-links {
-      gap: 12px;
+      gap: 8px;
       flex-direction: column;
       align-items: flex-start;
     }
     .navbar .nav-link {
-      font-size: 16px !important;
-      padding: 6px 0;
+      font-size: 15px !important;
+      padding: 8px 0;
     }
     .nav-actions {
       width: 100%;
@@ -256,7 +555,17 @@
     .navbar .login-btn {
       width: 100%;
       text-align: center;
-      font-size: 16px !important;
+      font-size: 15px !important;
+    }
+    .navbar-spacer {
+      height: 60px;
+    }
+    /* Hide some shapes on mobile */
+    .geo-hex-2,
+    .geo-circle-2,
+    .geo-ring-1,
+    .geo-diamond-1 {
+      display: none;
     }
   }
 </style>
