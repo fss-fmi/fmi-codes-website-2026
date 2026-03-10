@@ -54,7 +54,7 @@ def register_mentor(first_name: str, last_name: str, company_name: str, picture_
 def get_all_mentors() -> list:
     """Get all registered mentors"""
     query = """
-        SELECT id, first_name, last_name, email, phone_number, company_name, bio, status, technologies, created_at
+        SELECT id, first_name, last_name, email, phone_number, company_name, bio, status, technologies, picture_url, created_at
         FROM mentors
         ORDER BY created_at DESC
     """
@@ -129,14 +129,17 @@ def load_mentors_from_file(json_path: Path) -> int:
         if mentor_exists(first_name, last_name, company_name):
             continue
 
+        # picture_url is stored as a URL string (e.g. /static/mentorPictures/alice.jpg)
+        # If the value is a bare filename, normalise it to the expected static path.
         picture_data = None
         picture_filename = None
         if picture_path:
-            resolved_path = (json_path.parent / picture_path).resolve()
-            if resolved_path.exists():
-                with open(resolved_path, 'rb') as img_file:
-                    picture_data = img_file.read()
-                picture_filename = resolved_path.name
+            p = str(picture_path).strip()
+            if p.startswith(('http://', 'https://', '/')):
+                picture_data = p  # already a full URL or absolute path
+            else:
+                picture_data = f'/static/mentorPictures/{p}'
+            picture_filename = Path(p).name
 
         email = str(mentor.get('email', '')).strip() or None
         phone_number = str(mentor.get('phone_number', '')).strip() or None
