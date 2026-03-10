@@ -35,12 +35,42 @@
 
       <script>
         const PILL_COLORS = [
-          { bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.35)',  text: '#93c5fd', glow: 'rgba(96,165,250,0.25)'  },
-          { bg: 'rgba(34,211,238,0.12)',  border: 'rgba(34,211,238,0.35)',  text: '#67e8f9', glow: 'rgba(34,211,238,0.25)'  },
-          { bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.35)', text: '#c4b5fd', glow: 'rgba(167,139,250,0.25)' },
-          { bg: 'rgba(244,114,182,0.12)', border: 'rgba(244,114,182,0.35)', text: '#f9a8d4', glow: 'rgba(244,114,182,0.25)' },
-          { bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.35)',  text: '#6ee7b7', glow: 'rgba(52,211,153,0.25)'  },
-          { bg: 'rgba(251,191,36,0.12)',  border: 'rgba(251,191,36,0.35)',  text: '#fcd34d', glow: 'rgba(251,191,36,0.25)'  },
+          {
+            bg: 'rgba(96,165,250,0.12)',
+            border: 'rgba(96,165,250,0.35)',
+            text: '#93c5fd',
+            glow: 'rgba(96,165,250,0.25)',
+          },
+          {
+            bg: 'rgba(34,211,238,0.12)',
+            border: 'rgba(34,211,238,0.35)',
+            text: '#67e8f9',
+            glow: 'rgba(34,211,238,0.25)',
+          },
+          {
+            bg: 'rgba(167,139,250,0.12)',
+            border: 'rgba(167,139,250,0.35)',
+            text: '#c4b5fd',
+            glow: 'rgba(167,139,250,0.25)',
+          },
+          {
+            bg: 'rgba(244,114,182,0.12)',
+            border: 'rgba(244,114,182,0.35)',
+            text: '#f9a8d4',
+            glow: 'rgba(244,114,182,0.25)',
+          },
+          {
+            bg: 'rgba(52,211,153,0.12)',
+            border: 'rgba(52,211,153,0.35)',
+            text: '#6ee7b7',
+            glow: 'rgba(52,211,153,0.25)',
+          },
+          {
+            bg: 'rgba(251,191,36,0.12)',
+            border: 'rgba(251,191,36,0.35)',
+            text: '#fcd34d',
+            glow: 'rgba(251,191,36,0.25)',
+          },
         ];
 
         function escapeHtml(str) {
@@ -51,12 +81,16 @@
 
         function buildTechPills(technologies) {
           if (!Array.isArray(technologies) || technologies.length === 0) return '';
-          return '<div class="tech-pills">' +
-            technologies.map((tech, i) => {
-              const c = PILL_COLORS[i % PILL_COLORS.length];
-              return `<span class="tech-pill" style="--pill-bg:${c.bg};--pill-border:${c.border};--pill-text:${c.text};--pill-glow:${c.glow};animation-delay:${i * 0.07}s">${escapeHtml(tech)}</span>`;
-            }).join('') +
-          '</div>';
+          return (
+            '<div class="tech-pills">' +
+            technologies
+              .map((tech, i) => {
+                const c = PILL_COLORS[i % PILL_COLORS.length];
+                return `<span class="tech-pill" style="--pill-bg:${c.bg};--pill-border:${c.border};--pill-text:${c.text};--pill-glow:${c.glow};animation-delay:${i * 0.07}s">${escapeHtml(tech)}</span>`;
+              })
+              .join('') +
+            '</div>'
+          );
         }
 
         async function loadMentors() {
@@ -84,7 +118,7 @@
               const mentorCompany = escapeHtml((m.company_name || '').trim());
               const description = escapeHtml(
                 (m.bio || '').trim() ||
-                'Experienced mentor available for technical guidance and project feedback.'
+                  'Experienced mentor available for technical guidance and project feedback.'
               );
               const imgSrc = (m.picture_url || '').trim();
               const hasPic = Boolean(imgSrc);
@@ -94,7 +128,11 @@
                 <div class="mentor-head">
                   ${
                     hasPic
-                      ? '<img class="avatar" src="' + escapeHtml(imgSrc) + '" alt="' + mentorName + '" onerror="this.outerHTML=\'<div class=\\"avatar placeholder\\">&#x1f464;</div>\'">'
+                      ? '<img class="avatar" src="' +
+                        escapeHtml(imgSrc) +
+                        '" alt="' +
+                        mentorName +
+                        '" onerror="this.outerHTML=\'<div class=\\"avatar placeholder\\">&#x1f464;</div>\'">'
                       : '<div class="avatar placeholder">&#x1f464;</div>'
                   }
                   <div>
@@ -224,7 +262,7 @@
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
-    padding: 96px 16px 60px;
+    padding: 80px 16px 60px;
     display: flex;
     justify-content: center;
     -webkit-font-smoothing: antialiased;
@@ -232,17 +270,47 @@
 
   .navbar {
     position: fixed;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: min(1750px, calc(100% - 28px));
-    background: rgba(5, 6, 13, 0.95);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(5, 6, 13, 0.6);
+    backdrop-filter: blur(20px) saturate(1.8);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    border: none;
+    border-radius: 0;
     z-index: 1000;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-    overflow: hidden;
+    box-shadow: none;
+    transition:
+      background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .navbar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      #60a5fa 20%,
+      #22d3ee 40%,
+      #a78bfa 60%,
+      #f472b6 80%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: navGradientFlow 6s linear infinite;
+    opacity: 0.5;
+  }
+  @keyframes navGradientFlow {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: -100% 0;
+    }
   }
   .navbar-container {
     max-width: 1400px;
@@ -388,7 +456,9 @@
   .card:hover {
     transform: translateY(-6px);
     border-color: rgba(96, 165, 250, 0.35);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 40px rgba(96, 165, 250, 0.08);
+    box-shadow:
+      0 24px 70px rgba(0, 0, 0, 0.5),
+      0 0 40px rgba(96, 165, 250, 0.08);
   }
   .card::after {
     content: '';
@@ -469,15 +539,22 @@
     background: var(--pill-bg);
     border: 1px solid var(--pill-border);
     color: var(--pill-text);
-    box-shadow: 0 0 12px var(--pill-glow), inset 0 0 8px rgba(255,255,255,0.03);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow:
+      0 0 12px var(--pill-glow),
+      inset 0 0 8px rgba(255, 255, 255, 0.03);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
     animation: pillAppear 0.4s ease both;
     cursor: default;
     white-space: nowrap;
   }
   .tech-pill:hover {
     transform: translateY(-3px) scale(1.06);
-    box-shadow: 0 0 22px var(--pill-glow), 0 4px 16px var(--pill-glow), inset 0 0 8px rgba(255,255,255,0.05);
+    box-shadow:
+      0 0 22px var(--pill-glow),
+      0 4px 16px var(--pill-glow),
+      inset 0 0 8px rgba(255, 255, 255, 0.05);
   }
   @keyframes pillAppear {
     from {
@@ -492,7 +569,7 @@
 
   @media (max-width: 768px) {
     body {
-      padding: 92px 12px 40px;
+      padding: 76px 12px 40px;
     }
     .navbar-container {
       padding: 10px 16px;
