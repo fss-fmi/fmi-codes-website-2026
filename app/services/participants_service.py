@@ -79,17 +79,21 @@ class ParticipantService:
         return execute_query(current_app, query, (team_id,), fetch_all=True) or []
 
     @staticmethod
-    def get_participants_by_course(course: int) -> list:
+    def get_participants_by_course(course: str) -> list:
         """Get all participants in a specific course year
 
         Args:
-            course: Course number (1-4)
+            course: Course label (e.g. 'Bachelor 1', 'Masters 3')
 
         Returns:
             List of participant dictionaries
         """
-        if not 1 <= course <= 4:
-            logger.error(f"Invalid course number: {course}")
+        valid_courses = {
+            'Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year',
+            'Masters 1st Year', 'Masters 2nd Year', 'Masters 3rd Year', 'Masters 4th Year', 'Masters 5th Year', 'Masters 6th Year',
+        }
+        if course not in valid_courses:
+            logger.error(f"Invalid course: {course}")
             return []
 
         query = """
@@ -137,7 +141,7 @@ class ParticipantService:
     @staticmethod
     def create_participant(team_id: int, first_name: str, last_name: str,
                           email: str, phone_number: str, faculty_number: str,
-                          course: int, specialty_id: int, university_id: int) -> tuple:
+                          course: str, specialty_id: int, university_id: int) -> tuple:
         """Create a new participant
 
         Args:
@@ -147,7 +151,7 @@ class ParticipantService:
             email: Email (must be unique)
             phone_number: Phone number
             faculty_number: Faculty number (must be unique)
-            course: Course year (1-4)
+            course: Course label (e.g. 'Bachelor 1', 'Masters 3')
             specialty_id: Specialty ID
             university_id: University ID
 
@@ -158,8 +162,12 @@ class ParticipantService:
         if not all([first_name, last_name, email, phone_number, faculty_number]):
             return False, "All fields are required", None
 
-        if not 1 <= course <= 4:
-            return False, f"Course must be between 1 and 4, got {course}", None
+        valid_courses = {
+            'Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year',
+            'Masters 1st Year', 'Masters 2nd Year', 'Masters 3rd Year', 'Masters 4th Year', 'Masters 5th Year', 'Masters 6th Year',
+        }
+        if course not in valid_courses:
+            return False, f"Invalid course: {course}", None
 
         # Check if email already exists
         if ParticipantService.get_participant_by_email(email):

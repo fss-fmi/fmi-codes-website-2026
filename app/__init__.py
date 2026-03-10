@@ -1,5 +1,7 @@
 """Flask application factory and initialization"""
-from flask import Flask
+from flask import Flask, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from pathlib import Path
 from config import get_config
 import logging
@@ -7,6 +9,13 @@ import logging
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Module-level limiter — attached to app in create_app()
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per minute"],
+    storage_uri="memory://",
+)
 
 
 def create_app(config_name='development'):
@@ -17,6 +26,9 @@ def create_app(config_name='development'):
                 template_folder=str(config.TEMPLATES_FOLDER),
                 static_folder=str(config.STATIC_FOLDER))
     app.config.from_object(config)
+
+    # Attach rate limiter
+    limiter.init_app(app)
 
     # Initialize database connection pool
     from app.database import init_database, close_pool

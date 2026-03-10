@@ -150,7 +150,10 @@ CREATE TABLE IF NOT EXISTS participants (
     email VARCHAR(255) NOT NULL UNIQUE,
     phone_number VARCHAR(20) NOT NULL,
     faculty_number VARCHAR(20) NOT NULL UNIQUE,
-    course INTEGER NOT NULL CHECK (course BETWEEN 1 AND 4),
+    course VARCHAR(30) NOT NULL CHECK (course IN (
+        'Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year',
+        'Masters 1st Year', 'Masters 2nd Year', 'Masters 3rd Year', 'Masters 4th Year', 'Masters 5th Year', 'Masters 6th Year'
+    )),
     specialty_id BIGINT NOT NULL REFERENCES specialties(id) ON DELETE RESTRICT,
     university_id BIGINT NOT NULL REFERENCES universities(id) ON DELETE RESTRICT,
     password_hash VARCHAR(255),
@@ -377,10 +380,9 @@ SELECT
     t.id as team_id,
     t.team_name,
     COUNT(*) as total_participants,
-    COUNT(CASE WHEN p.course = 1 THEN 1 END) as course_1_count,
-    COUNT(CASE WHEN p.course = 2 THEN 1 END) as course_2_count,
-    COUNT(CASE WHEN p.course = 3 THEN 1 END) as course_3_count,
-    COUNT(CASE WHEN p.course = 4 THEN 1 END) as course_4_count,
+    COUNT(CASE WHEN p.course LIKE 'Bachelor%' THEN 1 END) as bachelor_count,
+    COUNT(CASE WHEN p.course LIKE 'Masters%' THEN 1 END) as masters_count,
+    STRING_AGG(DISTINCT p.course, ', ' ORDER BY p.course) as courses,
     STRING_AGG(DISTINCT u.name, ', ') as universities,
     t.status,
     t.created_at
