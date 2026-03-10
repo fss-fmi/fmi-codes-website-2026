@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+
 def main():
     """Create and run the Flask application"""
     # Load environment before importing modules that read config at import time.
