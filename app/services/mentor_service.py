@@ -176,6 +176,89 @@ def load_mentors_from_file(json_path: Path) -> int:
     return inserted
 
 
+def load_specialties_from_file(json_path: Path) -> int:
+    """Load specialties from a JSON file into the database if not already present
+
+    Returns:
+        Number of specialties inserted
+    """
+    if not json_path.exists():
+        return 0
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        specialties = json.load(f)
+
+    if not isinstance(specialties, list):
+        return 0
+
+    inserted = 0
+
+    for item in specialties:
+        name = str(item.get('name', '')).strip()
+        if not name:
+            continue
+        description = item.get('description') or None
+
+        query = """
+            INSERT INTO specialties (name, description, is_seed)
+            VALUES (%s, %s, TRUE)
+            ON CONFLICT (name) DO NOTHING
+        """
+        try:
+            with get_db_cursor(current_app) as cursor:
+                cursor.execute(query, (name, description))
+                if cursor.rowcount:
+                    inserted += 1
+        except Exception as e:
+            logger.error(f"Error inserting specialty '{name}': {e}")
+            continue
+
+    logger.info(f"✓ Loaded {inserted} specialties from {json_path}")
+    return inserted
+
+
+def load_universities_from_file(json_path: Path) -> int:
+    """Load universities from a JSON file into the database if not already present
+
+    Returns:
+        Number of universities inserted
+    """
+    if not json_path.exists():
+        return 0
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        universities = json.load(f)
+
+    if not isinstance(universities, list):
+        return 0
+
+    inserted = 0
+
+    for item in universities:
+        name = str(item.get('name', '')).strip()
+        if not name:
+            continue
+        city = str(item.get('city', '')).strip() or None
+        country = str(item.get('country', '')).strip() or None
+
+        query = """
+            INSERT INTO universities (name, city, country, is_seed)
+            VALUES (%s, %s, %s, TRUE)
+            ON CONFLICT (name) DO NOTHING
+        """
+        try:
+            with get_db_cursor(current_app) as cursor:
+                cursor.execute(query, (name, city, country))
+                if cursor.rowcount:
+                    inserted += 1
+        except Exception as e:
+            logger.error(f"Error inserting university '{name}': {e}")
+            continue
+
+    logger.info(f"✓ Loaded {inserted} universities from {json_path}")
+    return inserted
+
+
 def serialize_mentor_row(row, selection_count=0) -> dict:
     """Serialize mentor row with optional picture and selection count"""
     data = {

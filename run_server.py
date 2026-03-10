@@ -15,13 +15,18 @@ def main():
     # Create app
     app = create_app(env)
 
-    # Load mentor data from JSON seed file if available
-    seeds_path = Path(__file__).parent / 'database' / 'seeds' / 'mentors.json'
-    if seeds_path.exists():
-        with app.app_context():
-            seeded = mentor_service.load_mentors_from_file(seeds_path)
-            if seeded:
-                print(f"✓ Seeded {seeded} mentor(s) from mentors.json")
+    # Seed all lookup/data tables from JSON seed files if available (idempotent)
+    seeds_dir = Path(__file__).parent / 'database' / 'seeds'
+    with app.app_context():
+        seeded = mentor_service.load_universities_from_file(seeds_dir / 'universities.json')
+        if seeded:
+            print(f"✓ Seeded {seeded} university(s) from universities.json")
+        seeded = mentor_service.load_specialties_from_file(seeds_dir / 'specialties.json')
+        if seeded:
+            print(f"✓ Seeded {seeded} specialty(s) from specialties.json")
+        seeded = mentor_service.load_mentors_from_file(seeds_dir / 'mentors.json')
+        if seeded:
+            print(f"✓ Seeded {seeded} mentor(s) from mentors.json")
 
     # Print startup info
     print(f"\n✓ Database: {app.config.get('DATABASE_URL', 'configured')}")

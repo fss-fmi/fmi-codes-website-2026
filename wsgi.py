@@ -7,8 +7,9 @@ from app.services import mentor_service
 
 app = create_app(os.environ.get('FLASK_ENV', 'production'))
 
-# Seed mentors on startup (idempotent)
-seeds_path = Path(__file__).parent / 'database' / 'seeds' / 'mentors.json'
-if seeds_path.exists():
-    with app.app_context():
-        mentor_service.load_mentors_from_file(seeds_path)
+# Seed all lookup/data tables on startup (idempotent)
+seeds_dir = Path(__file__).parent / 'database' / 'seeds'
+with app.app_context():
+    mentor_service.load_universities_from_file(seeds_dir / 'universities.json')
+    mentor_service.load_specialties_from_file(seeds_dir / 'specialties.json')
+    mentor_service.load_mentors_from_file(seeds_dir / 'mentors.json')
