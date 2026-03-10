@@ -396,25 +396,25 @@ GROUP BY t.id, t.team_name, t.status, t.created_at;
 -- ============================================================================
 
 -- Universities seed data
-INSERT INTO universities (name, country, city) VALUES
-    ('Sofia University "St. Kliment Ohridski"', 'Bulgaria', 'Sofia'),
-    ('Technical University of Sofia', 'Bulgaria', 'Sofia'),
-    ('University of Plovdiv "Paisii Hilendarski"', 'Bulgaria', 'Plovdiv'),
-    ('Vasil Levski Military Academy', 'Bulgaria', 'Sofia'),
-    ('American University in Bulgaria', 'Bulgaria', 'Blagoevgrad'),
-    ('New Bulgarian University', 'Bulgaria', 'Sofia')
+INSERT INTO universities (name, country, city, is_seed) VALUES
+    ('Sofia University "St. Kliment Ohridski"', 'Bulgaria', 'Sofia', TRUE),
+    ('Technical University of Sofia', 'Bulgaria', 'Sofia', TRUE),
+    ('University of Plovdiv "Paisii Hilendarski"', 'Bulgaria', 'Plovdiv', TRUE),
+    ('Vasil Levski Military Academy', 'Bulgaria', 'Sofia', TRUE),
+    ('American University in Bulgaria', 'Bulgaria', 'Blagoevgrad', TRUE),
+    ('New Bulgarian University', 'Bulgaria', 'Sofia', TRUE)
 ON CONFLICT (name) DO NOTHING;
 
 -- Specialties seed data
-INSERT INTO specialties (name, description) VALUES
-    ('Web Development', 'Frontend, Backend, Full-Stack development'),
-    ('AI/Machine Learning', 'Machine Learning, Deep Learning, NLP, Computer Vision'),
-    ('DevOps/Cloud', 'Cloud Architecture, Containerization, CI/CD, Infrastructure'),
-    ('Mobile Development', 'iOS, Android, Flutter, React Native'),
-    ('Data Science', 'Data Analysis, Data Engineering, Business Analytics'),
-    ('Cybersecurity', 'Security, Penetration Testing, Secure Development'),
-    ('Blockchain/Web3', 'Smart Contracts, Cryptocurrencies, Distributed Systems'),
-    ('Software Engineering', 'Engineering and Designing Systems')
+INSERT INTO specialties (name, description, is_seed) VALUES
+    ('Web Development', 'Frontend, Backend, Full-Stack development', TRUE),
+    ('AI/Machine Learning', 'Machine Learning, Deep Learning, NLP, Computer Vision', TRUE),
+    ('DevOps/Cloud', 'Cloud Architecture, Containerization, CI/CD, Infrastructure', TRUE),
+    ('Mobile Development', 'iOS, Android, Flutter, React Native', TRUE),
+    ('Data Science', 'Data Analysis, Data Engineering, Business Analytics', TRUE),
+    ('Cybersecurity', 'Security, Penetration Testing, Secure Development', TRUE),
+    ('Blockchain/Web3', 'Smart Contracts, Cryptocurrencies, Distributed Systems', TRUE),
+    ('Software Engineering', 'Engineering and Designing Systems', TRUE)
 ON CONFLICT (name) DO NOTHING;
 
 -- Sample hackathon event
