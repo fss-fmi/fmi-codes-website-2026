@@ -391,6 +391,7 @@
         background: var(--bg-card);
         border: 1px solid var(--border);
         overflow: hidden;
+        text-align: center;
         transition:
           transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
           border-color 0.35s,
@@ -744,7 +745,7 @@
           </div>
           <h1 class="hero-title">Build. <span class="gradient-text">Compete.</span> Innovate.</h1>
           <p class="hero-subtitle">
-            Sofia University's biggest hackathon is back. 48 hours to turn your boldest ideas into
+            Sofia University's biggest hackathon is back. 2 days to turn your boldest ideas into
             real, working projects.
           </p>
           <div class="hero-actions">
@@ -789,8 +790,8 @@
           </div>
           <div class="bento-card" style="transition-delay: 0.3s">
             <span class="bento-icon">&#9201;</span>
-            <div class="bento-label">Duration</div>
-            <div class="bento-value">48 hours</div>
+            <div class="bento-label">Starts In</div>
+            <div class="bento-value" id="countdown">--:--:--</div>
           </div>
         </div>
       </section>
@@ -888,6 +889,34 @@
     </div>
 
     <script>
+      /* ═══ Countdown timer ═══ */
+      (function () {
+        const target = new Date('2026-03-13T18:00:00');
+        const el = document.getElementById('countdown');
+        function tick() {
+          const diff = target - Date.now();
+          if (!el) return;
+          if (diff <= 0) {
+            el.textContent = 'Started!';
+            return;
+          }
+          const d = Math.floor(diff / 86400000);
+          const h = Math.floor((diff % 86400000) / 3600000);
+          const m = Math.floor((diff % 3600000) / 60000);
+          const s = Math.floor((diff % 60000) / 1000);
+          el.textContent =
+            (d > 0 ? d + 'd ' : '') +
+            String(h).padStart(2, '0') +
+            'h ' +
+            String(m).padStart(2, '0') +
+            'm ' +
+            String(s).padStart(2, '0') +
+            's';
+        }
+        tick();
+        setInterval(tick, 1000);
+      })();
+
       /* ═══ Navbar loader ═══ */
       async function loadNavbar() {
         try {
