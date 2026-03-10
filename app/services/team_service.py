@@ -1,4 +1,8 @@
-"""Teams management business logic - PostgreSQL version"""
+"""Teams management business logic - PostgreSQL version
+
+All mutating operations run inside a single transaction with row-level locks
+(SELECT ... FOR UPDATE) to prevent race conditions under concurrent access.
+"""
 import logging
 import secrets
 import string
@@ -7,6 +11,10 @@ from app.database import get_db_cursor, execute_query, execute_insert, execute_u
 import psycopg2
 
 logger = logging.getLogger(__name__)
+
+MAX_TEAM_MEMBERS = 6
+MAX_TEAMS = 18
+ACTIVE_THRESHOLD = 3  # members required to activate a team
 
 
 class TeamService:
@@ -85,54 +93,82 @@ class TeamService:
     def can_create_team():
         """Check if a new team can be created (max 18 teams)"""
         team_count = TeamService.get_team_count(active_only=True)
-        if team_count >= 18:
-            return False, "Maximum number of teams (18) already reached"
+        if team_count >= MAX_TEAMS:
+            return False, f"Maximum number of teams ({MAX_TEAMS}) already reached"
         return True, "Team creation allowed"
+
+    # ── Atomic mutating operations ─────────────────────────────────
 
     @staticmethod
     def create_team_with_captain(team_name, captain_id):
-        """Create a new team and assign the participant as captain."""
+        """Create a new team and assign the participant as captain.
+
+        Entire operation runs in ONE transaction with an advisory lock on the
+        team-count to prevent two concurrent creates from exceeding MAX_TEAMS.
+        """
         if not team_name or not team_name.strip():
             return False, "Team name is required", None
 
-        if TeamService.get_team_by_name(team_name.strip()):
-            return False, f'Team name "{team_name}" is already taken', None
-
-        allowed, msg = TeamService.can_create_team()
-        if not allowed:
-            return False, msg, None
-
-        participant = execute_query(
-            current_app,
-            "SELECT id, team_id, is_captain FROM participants WHERE id = %s AND status = 'active'",
-            (captain_id,), fetch_one=True
-        )
-        if not participant:
-            return False, "Participant not found", None
-        if participant['team_id']:
-            return False, "You are already in a team. Leave it first.", None
-
-        join_code = TeamService.generate_join_code()
-        while TeamService.get_team_by_join_code(join_code):
-            join_code = TeamService.generate_join_code()
+        team_name = team_name.strip()
 
         try:
-            with get_db_cursor(current_app) as cursor:
+            with get_db_cursor() as cursor:
+                # Advisory lock so concurrent creates serialize on the count check.
+                # Key 1 = arbitrary namespace for "team creation".
+                cursor.execute("SELECT pg_advisory_xact_lock(1)")
+
+                # Count check inside the lock
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM teams WHERE status IN ('active', 'pending')"
+                )
+                if cursor.fetchone()['cnt'] >= MAX_TEAMS:
+                    return False, f"Maximum number of teams ({MAX_TEAMS}) already reached", None
+
+                # Name uniqueness (DB UNIQUE will also catch races)
+                cursor.execute("SELECT 1 FROM teams WHERE team_name = %s", (team_name,))
+                if cursor.fetchone():
+                    return False, f'Team name "{team_name}" is already taken', None
+
+                # Lock the participant row to prevent double-team assignment
+                cursor.execute(
+                    "SELECT id, team_id, is_captain FROM participants "
+                    "WHERE id = %s AND status = 'active' FOR UPDATE",
+                    (captain_id,),
+                )
+                participant = cursor.fetchone()
+                if not participant:
+                    return False, "Participant not found", None
+                if participant['team_id']:
+                    return False, "You are already in a team. Leave it first.", None
+
+                # Generate a unique join code inside the same txn
+                for _ in range(10):
+                    join_code = TeamService.generate_join_code()
+                    cursor.execute("SELECT 1 FROM teams WHERE join_code = %s", (join_code,))
+                    if not cursor.fetchone():
+                        break
+                else:
+                    return False, "Could not generate unique join code, try again", None
+
+                # Insert team
                 cursor.execute(
                     """INSERT INTO teams (team_name, password_hash, join_code, status)
                        VALUES (%s, '', %s, 'pending') RETURNING id""",
-                    (team_name.strip(), join_code)
+                    (team_name, join_code),
                 )
                 team_id = cursor.fetchone()['id']
+
+                # Mark participant as captain
                 cursor.execute(
                     "UPDATE participants SET team_id = %s, is_captain = TRUE WHERE id = %s",
-                    (team_id, captain_id)
+                    (team_id, captain_id),
                 )
                 cursor.execute(
                     "UPDATE teams SET captain_id = %s WHERE id = %s",
-                    (captain_id, team_id)
+                    (captain_id, team_id),
                 )
 
+            # Fetch full team info outside the lock
             team = TeamService.get_team_by_id(team_id)
             logger.info(f"Team '{team_name}' created by captain {captain_id}")
             return True, "Team created successfully", dict(team) if team else {'id': team_id, 'join_code': join_code}
@@ -145,46 +181,60 @@ class TeamService:
 
     @staticmethod
     def join_team(participant_id, join_code):
-        """Join a team via invite code."""
-        team = TeamService.get_team_by_join_code(join_code.strip().upper())
-        if not team:
-            return False, "Invalid join code", None
+        """Join a team via invite code.
 
-        if team['status'] == 'disqualified':
-            return False, "This team has been disqualified", None
-
-        count_result = execute_query(
-            current_app,
-            "SELECT COUNT(*) as cnt FROM participants WHERE team_id = %s AND status = 'active'",
-            (team['id'],), fetch_one=True
-        )
-        member_count = count_result['cnt'] if count_result else 0
-        if member_count >= 6:
-            return False, "Team is full (max 6 members)", None
-
-        participant = execute_query(
-            current_app,
-            "SELECT id, team_id FROM participants WHERE id = %s AND status = 'active'",
-            (participant_id,), fetch_one=True
-        )
-        if not participant:
-            return False, "Participant not found", None
-        if participant['team_id']:
-            return False, "You are already in a team. Leave it first.", None
-
+        Single transaction with FOR UPDATE on the team row so concurrent
+        joins correctly serialize and never exceed MAX_TEAM_MEMBERS.
+        """
         try:
-            execute_update(
-                current_app,
-                "UPDATE participants SET team_id = %s WHERE id = %s",
-                (team['id'], participant_id)
-            )
-            new_count = member_count + 1
-            if new_count >= 3 and team['status'] == 'pending':
-                execute_update(
-                    current_app,
-                    "UPDATE teams SET status = 'active' WHERE id = %s",
-                    (team['id'],)
+            with get_db_cursor() as cursor:
+                # Lock the team row and get current info
+                cursor.execute(
+                    "SELECT * FROM teams WHERE join_code = %s FOR UPDATE",
+                    (join_code.strip().upper(),),
                 )
+                team = cursor.fetchone()
+                if not team:
+                    return False, "Invalid join code", None
+
+                if team['status'] == 'disqualified':
+                    return False, "This team has been disqualified", None
+
+                # Count inside the same txn (row lock guarantees no one else is changing it)
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM participants "
+                    "WHERE team_id = %s AND status = 'active'",
+                    (team['id'],),
+                )
+                member_count = cursor.fetchone()['cnt']
+                if member_count >= MAX_TEAM_MEMBERS:
+                    return False, f"Team is full (max {MAX_TEAM_MEMBERS} members)", None
+
+                # Lock the participant row
+                cursor.execute(
+                    "SELECT id, team_id FROM participants "
+                    "WHERE id = %s AND status = 'active' FOR UPDATE",
+                    (participant_id,),
+                )
+                participant = cursor.fetchone()
+                if not participant:
+                    return False, "Participant not found", None
+                if participant['team_id']:
+                    return False, "You are already in a team. Leave it first.", None
+
+                # Assign to team
+                cursor.execute(
+                    "UPDATE participants SET team_id = %s WHERE id = %s",
+                    (team['id'], participant_id),
+                )
+
+                # Auto-activate at threshold
+                new_count = member_count + 1
+                if new_count >= ACTIVE_THRESHOLD and team['status'] == 'pending':
+                    cursor.execute(
+                        "UPDATE teams SET status = 'active' WHERE id = %s",
+                        (team['id'],),
+                    )
 
             updated_team = TeamService.get_team_by_id(team['id'])
             logger.info(f"Participant {participant_id} joined team {team['id']}")
@@ -196,99 +246,136 @@ class TeamService:
 
     @staticmethod
     def leave_team(participant_id):
-        """Participant leaves their team. If captain leaves, team is disbanded."""
-        participant = execute_query(
-            current_app,
-            "SELECT id, team_id, is_captain FROM participants WHERE id = %s AND status = 'active'",
-            (participant_id,), fetch_one=True
-        )
-        if not participant or not participant['team_id']:
-            return False, "You are not in a team"
+        """Participant leaves their team.  If captain leaves, team is disbanded.
 
-        team_id = participant['team_id']
-
-        if participant['is_captain']:
-            return TeamService.disband_team(team_id)
-
+        Single transaction with FOR UPDATE to prevent stale member-count reads.
+        """
         try:
-            execute_update(current_app,
-                           "UPDATE participants SET team_id = NULL WHERE id = %s",
-                           (participant_id,))
-            count = execute_query(
-                current_app,
-                "SELECT COUNT(*) as cnt FROM participants WHERE team_id = %s AND status = 'active'",
-                (team_id,), fetch_one=True
-            )
-            if count and count['cnt'] < 3:
-                execute_update(current_app,
-                               "UPDATE teams SET status = 'pending' WHERE id = %s",
-                               (team_id,))
+            with get_db_cursor() as cursor:
+                # Lock participant row
+                cursor.execute(
+                    "SELECT id, team_id, is_captain FROM participants "
+                    "WHERE id = %s AND status = 'active' FOR UPDATE",
+                    (participant_id,),
+                )
+                participant = cursor.fetchone()
+                if not participant or not participant['team_id']:
+                    return False, "You are not in a team"
+
+                team_id = participant['team_id']
+
+                if participant['is_captain']:
+                    # Captain leaving → disband (inside same txn)
+                    return TeamService._disband_team_in_cursor(cursor, team_id)
+
+                # Regular member — detach
+                cursor.execute(
+                    "UPDATE participants SET team_id = NULL WHERE id = %s",
+                    (participant_id,),
+                )
+
+                # Recount inside the same txn
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM participants "
+                    "WHERE team_id = %s AND status = 'active'",
+                    (team_id,),
+                )
+                remaining = cursor.fetchone()['cnt']
+                if remaining < ACTIVE_THRESHOLD:
+                    cursor.execute(
+                        "UPDATE teams SET status = 'pending' WHERE id = %s AND status = 'active'",
+                        (team_id,),
+                    )
 
             logger.info(f"Participant {participant_id} left team {team_id}")
             return True, "Left team successfully"
+
         except Exception as e:
             logger.error(f"Error leaving team: {e}")
             return False, str(e)
 
     @staticmethod
     def remove_member(team_id, member_id, captain_id):
-        """Captain removes a member from the team."""
-        team = TeamService.get_team_by_id(team_id)
-        if not team or team['captain_id'] != captain_id:
-            return False, "Only the captain can remove members"
-
-        member = execute_query(
-            current_app,
-            "SELECT id, team_id, is_captain FROM participants WHERE id = %s",
-            (member_id,), fetch_one=True
-        )
-        if not member or member['team_id'] != team_id:
-            return False, "Member not found in this team"
-        if member['is_captain']:
-            return False, "Captain cannot remove themselves. Use disband instead."
-
+        """Captain removes a member. Single transaction with row locks."""
         try:
-            execute_update(current_app,
-                           "UPDATE participants SET team_id = NULL WHERE id = %s",
-                           (member_id,))
-            count = execute_query(
-                current_app,
-                "SELECT COUNT(*) as cnt FROM participants WHERE team_id = %s AND status = 'active'",
-                (team_id,), fetch_one=True
-            )
-            if count and count['cnt'] < 3:
-                execute_update(current_app,
-                               "UPDATE teams SET status = 'pending' WHERE id = %s",
-                               (team_id,))
+            with get_db_cursor() as cursor:
+                # Lock team row
+                cursor.execute(
+                    "SELECT * FROM teams WHERE id = %s FOR UPDATE",
+                    (team_id,),
+                )
+                team = cursor.fetchone()
+                if not team or team['captain_id'] != captain_id:
+                    return False, "Only the captain can remove members"
+
+                # Lock member row
+                cursor.execute(
+                    "SELECT id, team_id, is_captain FROM participants "
+                    "WHERE id = %s FOR UPDATE",
+                    (member_id,),
+                )
+                member = cursor.fetchone()
+                if not member or member['team_id'] != team_id:
+                    return False, "Member not found in this team"
+                if member['is_captain']:
+                    return False, "Captain cannot remove themselves. Use disband instead."
+
+                cursor.execute(
+                    "UPDATE participants SET team_id = NULL WHERE id = %s",
+                    (member_id,),
+                )
+
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM participants "
+                    "WHERE team_id = %s AND status = 'active'",
+                    (team_id,),
+                )
+                remaining = cursor.fetchone()['cnt']
+                if remaining < ACTIVE_THRESHOLD:
+                    cursor.execute(
+                        "UPDATE teams SET status = 'pending' WHERE id = %s AND status = 'active'",
+                        (team_id,),
+                    )
 
             logger.info(f"Member {member_id} removed from team {team_id}")
             return True, "Member removed successfully"
+
         except Exception as e:
             logger.error(f"Error removing member: {e}")
             return False, str(e)
 
     @staticmethod
     def disband_team(team_id):
-        """Disband a team - clear members and delete."""
-        team = TeamService.get_team_by_id(team_id)
-        if not team:
-            return False, "Team not found"
-
+        """Disband a team — clear members and delete. Single transaction."""
         try:
-            with get_db_cursor(current_app) as cursor:
+            with get_db_cursor() as cursor:
                 cursor.execute(
-                    "UPDATE participants SET team_id = NULL, is_captain = FALSE WHERE team_id = %s",
-                    (team_id,))
-                cursor.execute("DELETE FROM team_mentor_preferences WHERE team_id = %s", (team_id,))
-                cursor.execute("DELETE FROM mentor_team_preferences WHERE team_id = %s", (team_id,))
-                cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
-                cursor.execute("DELETE FROM teams WHERE id = %s", (team_id,))
+                    "SELECT * FROM teams WHERE id = %s FOR UPDATE",
+                    (team_id,),
+                )
+                team = cursor.fetchone()
+                if not team:
+                    return False, "Team not found"
 
-            logger.info(f"Team {team_id} disbanded")
-            return True, "Team disbanded successfully"
+                return TeamService._disband_team_in_cursor(cursor, team_id)
+
         except Exception as e:
             logger.error(f"Error disbanding team: {e}")
             return False, str(e)
+
+    @staticmethod
+    def _disband_team_in_cursor(cursor, team_id):
+        """Internal helper — disbands inside an already-open cursor/transaction."""
+        cursor.execute(
+            "UPDATE participants SET team_id = NULL, is_captain = FALSE WHERE team_id = %s",
+            (team_id,),
+        )
+        cursor.execute("DELETE FROM team_mentor_preferences WHERE team_id = %s", (team_id,))
+        cursor.execute("DELETE FROM mentor_team_preferences WHERE team_id = %s", (team_id,))
+        cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
+        cursor.execute("DELETE FROM teams WHERE id = %s", (team_id,))
+        logger.info(f"Team {team_id} disbanded")
+        return True, "Team disbanded successfully"
 
     @staticmethod
     def get_team_members(team_id):

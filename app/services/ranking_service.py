@@ -1,28 +1,52 @@
-"""Ranking data management"""
+"""Ranking data management — cached in memory to avoid file I/O on every request"""
 import json
+import threading
+import time
 from pathlib import Path
 from flask import current_app
 
+_cache_lock = threading.Lock()
+_cached_rankings = None
+_cache_ts = 0
+_CACHE_TTL = 60  # seconds
+
 
 def get_rankings() -> list:
-    """Get rankings from rankings.json sorted by points descending
-    
-    Returns:
-        List of ranking dicts with 'team', 'points', 'image' keys
+    """Get rankings from rankings.json sorted by points descending.
+
+    Results are cached in memory for up to 60 seconds so 500 concurrent
+    requests don't each open + parse the file independently.
     """
+    global _cached_rankings, _cache_ts
+
+    now = time.monotonic()
+    if _cached_rankings is not None and (now - _cache_ts) < _CACHE_TTL:
+        return _cached_rankings
+
+    with _cache_lock:
+        # Double-check inside the lock
+        if _cached_rankings is not None and (time.monotonic() - _cache_ts) < _CACHE_TTL:
+            return _cached_rankings
+
+        result = _load_rankings()
+        _cached_rankings = result
+        _cache_ts = time.monotonic()
+        return result
+
+
+def _load_rankings() -> list:
     try:
-        # Look for rankings.json in the root or database/seeds folder
         possible_paths = [
             Path(current_app.root_path).parent / 'rankings.json',
             Path(current_app.root_path).parent / 'database' / 'seeds' / 'rankings.json',
         ]
-        
+
         path = None
         for p in possible_paths:
             if p.exists():
                 path = p
                 break
-        
+
         if not path:
             return []
 

@@ -25,7 +25,8 @@ class Config:
 
     # Connection pool sizing (per worker process)
     DB_POOL_MIN = int(os.environ.get('DB_POOL_MIN', 2))
-    DB_POOL_MAX = int(os.environ.get('DB_POOL_MAX', 10))
+    DB_POOL_MAX = int(os.environ.get('DB_POOL_MAX', 20))
+    DB_POOL_TIMEOUT = int(os.environ.get('DB_POOL_TIMEOUT', 5))
 
     # Build connection string — prefer DATABASE_URL if set (e.g. Railway injects this automatically)
     DATABASE_URL = os.environ.get(

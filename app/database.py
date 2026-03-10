@@ -9,14 +9,17 @@ logger = logging.getLogger(__name__)
 
 # Module-level pool — one per worker process (safe with gunicorn prefork)
 _pool = None
+# How long to wait for a pooled connection before giving up (seconds)
+_pool_timeout = 5
 
 
 def init_database(app):
     """Initialize a ThreadedConnectionPool and verify the schema exists."""
-    global _pool
+    global _pool, _pool_timeout
     try:
         min_conn = app.config.get('DB_POOL_MIN', 2)
-        max_conn = app.config.get('DB_POOL_MAX', 10)
+        max_conn = app.config.get('DB_POOL_MAX', 20)
+        _pool_timeout = app.config.get('DB_POOL_TIMEOUT', 5)
 
         _pool = ThreadedConnectionPool(
             min_conn, max_conn,
@@ -63,10 +66,21 @@ def close_pool():
 
 
 def get_db_connection(app=None):
-    """Get a connection from the pool (app param kept for back-compat)."""
+    """Get a connection from the pool with a timeout.
+
+    Raises psycopg2.pool.PoolError if no connection is available within the timeout.
+    """
     if _pool is None:
         raise RuntimeError("Connection pool not initialized — call init_database first")
-    return _pool.getconn()
+    import time
+    deadline = time.monotonic() + _pool_timeout
+    while True:
+        try:
+            return _pool.getconn()
+        except psycopg2.pool.PoolError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
 
 
 def return_db_connection(conn):

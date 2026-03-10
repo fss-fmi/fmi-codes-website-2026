@@ -228,6 +228,12 @@
         background: #0b1021;
         color: var(--text);
       }
+      .form-group select optgroup {
+        background: #0b1021;
+        color: var(--accent);
+        font-style: normal;
+        font-weight: 600;
+      }
       .submit-btn {
         width: 100%;
         padding: 14px;
@@ -389,10 +395,20 @@
                 <label for="course">Course Year</label>
                 <select id="course" name="course" required>
                   <option value="">Select</option>
-                  <option value="1">1st Year</option>
-                  <option value="2">2nd Year</option>
-                  <option value="3">3rd Year</option>
-                  <option value="4">4th Year</option>
+                  <optgroup label="Bachelor">
+                    <option value="Bachelor 1st Year">Bachelor 1st Year</option>
+                    <option value="Bachelor 2nd Year">Bachelor 2nd Year</option>
+                    <option value="Bachelor 3rd Year">Bachelor 3rd Year</option>
+                    <option value="Bachelor 4th Year">Bachelor 4th Year</option>
+                  </optgroup>
+                  <optgroup label="Masters">
+                    <option value="Masters 1st Year">Masters 1st Year</option>
+                    <option value="Masters 2nd Year">Masters 2nd Year</option>
+                    <option value="Masters 3rd Year">Masters 3rd Year</option>
+                    <option value="Masters 4th Year">Masters 4th Year</option>
+                    <option value="Masters 5th Year">Masters 5th Year</option>
+                    <option value="Masters 6th Year">Masters 6th Year</option>
+                  </optgroup>
                 </select>
               </div>
             </div>

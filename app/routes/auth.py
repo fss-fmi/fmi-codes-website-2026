@@ -4,6 +4,7 @@ from app.routes import auth_bp
 from app.services.auth_service import hash_password, verify_password, generate_token
 from app.database import execute_query, execute_insert, get_db_cursor
 from app.utils.auth_decorators import token_required
+from app import limiter
 from flask import g
 import psycopg2
 import logging
@@ -24,6 +25,8 @@ def registration_page():
 
 
 @auth_bp.route('/api/auth/register', methods=['POST'])
+# are these limits per user?
+@limiter.limit("10 per minute")
 def register_participant():
     """Register a new participant and return JWT.
 
@@ -42,9 +45,13 @@ def register_participant():
     email = data['email'].strip().lower()
     fac = data['faculty_number'].strip()
 
-    course = int(data['course'])
-    if not 1 <= course <= 4:
-        return jsonify({'success': False, 'error': 'Course must be between 1 and 4'}), 400
+    course = data['course'].strip()
+    valid_courses = {
+        'Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year',
+        'Masters 1st Year', 'Masters 2nd Year', 'Masters 3rd Year', 'Masters 4th Year', 'Masters 5th Year', 'Masters 6th Year',
+    }
+    if course not in valid_courses:
+        return jsonify({'success': False, 'error': 'Invalid course selection'}), 400
 
     # CPU-heavy work first — no DB connection held, doesn't block the pool
     pw_hash = hash_password(data['password'])
@@ -93,8 +100,12 @@ def register_participant():
 
 
 @auth_bp.route('/api/auth/login', methods=['POST'])
+@limiter.limit("15 per minute")
 def login():
-    """Login for participants, mentors, or admin. Returns JWT."""
+    """Login for participants, mentors, or admin. Returns JWT.
+
+    Optimised: DB connection is released BEFORE bcrypt.checkpw runs (~300ms CPU).
+    """
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
     password = data.get('password', '')
@@ -103,7 +114,7 @@ def login():
     if not email or not password:
         return jsonify({'success': False, 'error': 'Email and password are required'}), 400
 
-    # Admin login
+    # Admin login — no DB needed
     if role == 'admin':
         admin_email = current_app.config.get('ADMIN_EMAIL', '')
         admin_password = current_app.config.get('ADMIN_PASSWORD', '')
@@ -112,24 +123,21 @@ def login():
             return jsonify({'success': True, 'token': token, 'user_id': 0, 'role': 'admin'}), 200
         return jsonify({'success': False, 'error': 'Invalid admin credentials'}), 401
 
-    if role == 'participant':
-        user = execute_query(
-            current_app,
-            "SELECT id, password_hash FROM participants WHERE email = %s AND status = 'active'",
-            (email,), fetch_one=True
-        )
-    elif role == 'mentor':
-        user = execute_query(
-            current_app,
-            "SELECT id, password_hash FROM mentors WHERE email = %s AND status = 'active'",
-            (email,), fetch_one=True
-        )
-    else:
+    if role not in ('participant', 'mentor'):
         return jsonify({'success': False, 'error': 'Invalid role'}), 400
+
+    # Fetch hash from DB then RELEASE the connection before the expensive bcrypt check
+    table = 'participants' if role == 'participant' else 'mentors'
+    user = execute_query(
+        current_app,
+        f"SELECT id, password_hash FROM {table} WHERE email = %s AND status = 'active'",
+        (email,), fetch_one=True
+    )
 
     if not user or not user.get('password_hash'):
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
+    # CPU-heavy — no DB connection held
     if not verify_password(password, user['password_hash']):
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
