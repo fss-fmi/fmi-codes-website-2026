@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS mentors (
     bio TEXT,
     technologies TEXT[] DEFAULT '{}',
     password_hash VARCHAR(255),
+    password_reset_requested_at TIMESTAMPTZ DEFAULT NULL,
     status VARCHAR(20) DEFAULT 'active'
         CHECK (status IN ('active', 'inactive', 'archived')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -140,6 +141,8 @@ CREATE INDEX IF NOT EXISTS idx_mentors_status ON mentors(status);
 CREATE INDEX IF NOT EXISTS idx_mentors_lastname ON mentors(last_name);
 CREATE INDEX IF NOT EXISTS idx_mentors_created_at ON mentors(created_at);
 CREATE INDEX IF NOT EXISTS idx_mentors_technologies ON mentors USING GIN (technologies);
+CREATE INDEX IF NOT EXISTS idx_mentors_reset_requested_at ON mentors (password_reset_requested_at)
+    WHERE password_reset_requested_at IS NOT NULL;
 
 -- Participants table
 CREATE TABLE IF NOT EXISTS participants (
@@ -157,6 +160,7 @@ CREATE TABLE IF NOT EXISTS participants (
     specialty_id BIGINT NOT NULL REFERENCES specialties(id) ON DELETE RESTRICT,
     university_id BIGINT NOT NULL REFERENCES universities(id) ON DELETE RESTRICT,
     password_hash VARCHAR(255),
+    password_reset_requested_at TIMESTAMPTZ DEFAULT NULL,
     is_captain BOOLEAN DEFAULT FALSE,
     status VARCHAR(20) DEFAULT 'active'
         CHECK (status IN ('active', 'inactive', 'removed')),
@@ -173,6 +177,8 @@ CREATE INDEX IF NOT EXISTS idx_participants_specialty_id ON participants(special
 CREATE INDEX IF NOT EXISTS idx_participants_university_id ON participants(university_id);
 CREATE INDEX IF NOT EXISTS idx_participants_status ON participants(status);
 CREATE INDEX IF NOT EXISTS idx_participants_created_at ON participants(created_at);
+CREATE INDEX IF NOT EXISTS idx_participants_reset_requested_at ON participants (password_reset_requested_at)
+    WHERE password_reset_requested_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_participants_team_course ON participants(team_id, course);
 
 -- Add captain_id to teams (references participants — defined after participants to avoid circular FK)

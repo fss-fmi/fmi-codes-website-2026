@@ -239,25 +239,45 @@
     {% include 'navbar.html' %}
 
     <div class="profile-container">
-      <div class="loading-spinner" id="loading">Loading profile…</div>
+      <div
+        class="loading-spinner"
+        id="loading"
+      >
+        Loading profile…
+      </div>
 
-      <div id="profile-content" style="display: none">
+      <div
+        id="profile-content"
+        style="display: none"
+      >
         <div class="profile-header">
           <h1 id="profile-name"></h1>
-          <span class="role-badge" id="profile-role"></span>
+          <span
+            class="role-badge"
+            id="profile-role"
+          ></span>
         </div>
 
         <!-- Profile Info Card -->
         <div class="card">
           <h2>Account Information</h2>
-          <div class="info-grid" id="info-grid"></div>
+          <div
+            class="info-grid"
+            id="info-grid"
+          ></div>
         </div>
 
         <!-- Password Change Card -->
         <div class="card">
           <h2>Change Password</h2>
-          <div class="alert alert-error" id="pw-error"></div>
-          <div class="alert alert-success" id="pw-success"></div>
+          <div
+            class="alert alert-error"
+            id="pw-error"
+          ></div>
+          <div
+            class="alert alert-success"
+            id="pw-success"
+          ></div>
           <form id="password-form">
             <div class="form-group">
               <label for="current-password">Current Password</label>
@@ -288,7 +308,13 @@
                 required
               />
             </div>
-            <button type="submit" class="btn-primary" id="pw-btn">Change Password</button>
+            <button
+              type="submit"
+              class="btn-primary"
+              id="pw-btn"
+            >
+              Change Password
+            </button>
           </form>
         </div>
       </div>

@@ -285,7 +285,10 @@
 {% endblock %} {% block body %}
 <body>
   <div class="dot-grid"></div>
-  <div class="spotlight" id="spotlight"></div>
+  <div
+    class="spotlight"
+    id="spotlight"
+  ></div>
   <div class="blobs">
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
@@ -300,8 +303,15 @@
         <h1>Join a Team</h1>
         <p class="subtitle">Enter the invite code you received from your team captain</p>
 
-        <div id="error-msg" class="error-msg" style="display: none"></div>
-        <div id="success-area" style="display: none">
+        <div
+          id="error-msg"
+          class="error-msg"
+          style="display: none"
+        ></div>
+        <div
+          id="success-area"
+          style="display: none"
+        >
           <div class="success-msg">You joined the team!</div>
           <a
             href="/team"
@@ -316,7 +326,10 @@
           >
         </div>
 
-        <form id="joinForm" autocomplete="off">
+        <form
+          id="joinForm"
+          autocomplete="off"
+        >
           <div class="form-group">
             <label for="join_code">Invite Code</label>
             <input
@@ -335,7 +348,12 @@
               "
             />
           </div>
-          <button type="submit" class="submit-btn">Join Team</button>
+          <button
+            type="submit"
+            class="submit-btn"
+          >
+            Join Team
+          </button>
         </form>
 
         <p class="alt-action">Don't have a code? <a href="/createTeam">Create your own team</a></p>

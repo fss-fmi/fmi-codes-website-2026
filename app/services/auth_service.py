@@ -1,6 +1,7 @@
 """Authentication service — JWT token management and password hashing"""
+
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -30,15 +31,15 @@ def generate_token(user_id: int, role: str) -> str:
     Returns:
         Encoded JWT string.
     """
-    expiry_days = current_app.config.get('JWT_EXPIRY_DAYS', 3)
+    expiry_days = current_app.config.get("JWT_EXPIRY_DAYS", 3)
     payload = {
-        'user_id': user_id,
-        'role': role,
-        'iat': datetime.now(timezone.utc),
-        'exp': datetime.now(timezone.utc) + timedelta(days=expiry_days),
+        "user_id": user_id,
+        "role": role,
+        "iat": datetime.now(UTC),
+        "exp": datetime.now(UTC) + timedelta(days=expiry_days),
     }
-    secret = current_app.config['JWT_SECRET_KEY']
-    return jwt.encode(payload, secret, algorithm='HS256')
+    secret = current_app.config["JWT_SECRET_KEY"]
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 
 def decode_token(token: str) -> dict:
@@ -51,5 +52,5 @@ def decode_token(token: str) -> dict:
         jwt.ExpiredSignatureError: If token expired.
         jwt.InvalidTokenError: If token is invalid.
     """
-    secret = current_app.config['JWT_SECRET_KEY']
-    return jwt.decode(token, secret, algorithms=['HS256'])
+    secret = current_app.config["JWT_SECRET_KEY"]
+    return jwt.decode(token, secret, algorithms=["HS256"])

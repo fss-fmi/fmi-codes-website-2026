@@ -1,8 +1,11 @@
 """Participants management business logic - PostgreSQL version"""
+
 import logging
-from flask import current_app
-from app.database import get_db_cursor, execute_query, execute_insert, execute_update
+
 import psycopg2
+from flask import current_app
+
+from app.database import execute_insert, execute_query, execute_update, get_db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +92,16 @@ class ParticipantService:
             List of participant dictionaries
         """
         valid_courses = {
-            'Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year',
-            'Masters 1st Year', 'Masters 2nd Year', 'Masters 3rd Year', 'Masters 4th Year', 'Masters 5th Year', 'Masters 6th Year',
+            "Bachelor 1st Year",
+            "Bachelor 2nd Year",
+            "Bachelor 3rd Year",
+            "Bachelor 4th Year",
+            "Masters 1st Year",
+            "Masters 2nd Year",
+            "Masters 3rd Year",
+            "Masters 4th Year",
+            "Masters 5th Year",
+            "Masters 6th Year",
         }
         if course not in valid_courses:
             logger.error(f"Invalid course: {course}")
@@ -139,9 +150,17 @@ class ParticipantService:
         return execute_query(current_app, query, (university_id,), fetch_all=True) or []
 
     @staticmethod
-    def create_participant(team_id: int, first_name: str, last_name: str,
-                          email: str, phone_number: str, faculty_number: str,
-                          course: str, specialty_id: int, university_id: int) -> tuple:
+    def create_participant(
+        team_id: int,
+        first_name: str,
+        last_name: str,
+        email: str,
+        phone_number: str,
+        faculty_number: str,
+        course: str,
+        specialty_id: int,
+        university_id: int,
+    ) -> tuple:
         """Create a new participant
 
         Args:
@@ -163,8 +182,16 @@ class ParticipantService:
             return False, "All fields are required", None
 
         valid_courses = {
-            'Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year',
-            'Masters 1st Year', 'Masters 2nd Year', 'Masters 3rd Year', 'Masters 4th Year', 'Masters 5th Year', 'Masters 6th Year',
+            "Bachelor 1st Year",
+            "Bachelor 2nd Year",
+            "Bachelor 3rd Year",
+            "Bachelor 4th Year",
+            "Masters 1st Year",
+            "Masters 2nd Year",
+            "Masters 3rd Year",
+            "Masters 4th Year",
+            "Masters 5th Year",
+            "Masters 6th Year",
         }
         if course not in valid_courses:
             return False, f"Invalid course: {course}", None
@@ -179,11 +206,12 @@ class ParticipantService:
 
         # Check team exists and has room
         from app.services.team_service import TeamService
+
         team = TeamService.get_team_by_id(team_id)
         if not team:
             return False, f"Team with ID {team_id} not found", None
 
-        if team['participant_count'] >= 6:
+        if team["participant_count"] >= 6:
             return False, "Team is already full (max 6 participants)", None
 
         # Insert participant
@@ -196,11 +224,21 @@ class ParticipantService:
         """
 
         try:
-            participant_id = execute_insert(current_app, query, (
-                team_id, first_name.strip(), last_name.strip(),
-                email.strip(), phone_number.strip(), faculty_number.strip(),
-                course, specialty_id, university_id
-            ))
+            participant_id = execute_insert(
+                current_app,
+                query,
+                (
+                    team_id,
+                    first_name.strip(),
+                    last_name.strip(),
+                    email.strip(),
+                    phone_number.strip(),
+                    faculty_number.strip(),
+                    course,
+                    specialty_id,
+                    university_id,
+                ),
+            )
 
             logger.info(f"✓ Participant created: {first_name} {last_name} (ID: {participant_id})")
             return True, "Participant registered successfully", participant_id
@@ -234,7 +272,7 @@ class ParticipantService:
         param_count = 1
 
         for field, value in kwargs.items():
-            if field not in ['team_id']:  # Don't allow changing team via this method
+            if field not in ["team_id"]:  # Don't allow changing team via this method
                 update_fields.append(f"{field} = %s")
                 params.append(value)
                 param_count += 1
@@ -352,10 +390,10 @@ class ParticipantService:
                 by_university = dict(cursor.fetchall())
 
                 return {
-                    'total_active': total_active,
-                    'by_course': by_course,
-                    'by_specialty': by_specialty,
-                    'by_university': by_university
+                    "total_active": total_active,
+                    "by_course": by_course,
+                    "by_specialty": by_specialty,
+                    "by_university": by_university,
                 }
 
         except Exception as e:

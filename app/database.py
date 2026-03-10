@@ -1,9 +1,11 @@
 """PostgreSQL Database initialization and utilities — connection-pooled"""
+
+import logging
+from contextlib import contextmanager
+
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
 from psycopg2.pool import ThreadedConnectionPool
-import logging
-from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +19,14 @@ def init_database(app):
     """Initialize a ThreadedConnectionPool and verify the schema exists."""
     global _pool, _pool_timeout
     try:
-        min_conn = app.config.get('DB_POOL_MIN', 2)
-        max_conn = app.config.get('DB_POOL_MAX', 20)
-        _pool_timeout = app.config.get('DB_POOL_TIMEOUT', 5)
+        min_conn = app.config.get("DB_POOL_MIN", 2)
+        max_conn = app.config.get("DB_POOL_MAX", 20)
+        _pool_timeout = app.config.get("DB_POOL_TIMEOUT", 5)
 
         _pool = ThreadedConnectionPool(
-            min_conn, max_conn,
-            app.config['DATABASE_URL'],
+            min_conn,
+            max_conn,
+            app.config["DATABASE_URL"],
             cursor_factory=RealDictCursor,
         )
 
@@ -40,7 +43,9 @@ def init_database(app):
             tables_exist = cursor.fetchone()["exists"]
             if not tables_exist:
                 logger.warning("Database schema not found. Please run schema.sql manually.")
-                logger.warning("Execute: psql -U postgres -d fmi_hackathon_2026 -f database/schema.sql")
+                logger.warning(
+                    "Execute: psql -U postgres -d fmi_hackathon_2026 -f database/schema.sql"
+                )
             cursor.close()
         finally:
             _pool.putconn(conn)
@@ -73,6 +78,7 @@ def get_db_connection(app=None):
     if _pool is None:
         raise RuntimeError("Connection pool not initialized — call init_database first")
     import time
+
     deadline = time.monotonic() + _pool_timeout
     while True:
         try:
@@ -151,7 +157,7 @@ def execute_insert(app, query, params):
         with get_db_cursor(app) as cursor:
             cursor.execute(query, params)
             result = cursor.fetchone()
-            return result['id'] if result else None
+            return result["id"] if result else None
     except psycopg2.IntegrityError as e:
         logger.error(f"Integrity error during insert: {e}")
         raise
@@ -193,7 +199,7 @@ def execute_batch(app, query, params_list):
     """
     try:
         with get_db_cursor(app) as cursor:
-            if 'RETURNING' in query.upper():
+            if "RETURNING" in query.upper():
                 execute_values(cursor, query, params_list, fetch=True)
                 return [row[0] for row in cursor.fetchall()]
             else:
@@ -202,4 +208,3 @@ def execute_batch(app, query, params_list):
     except Exception as e:
         logger.error(f"Batch operation error: {e}")
         raise
-

@@ -1,0 +1,30 @@
+# Ruff — Python linter/formatter config
+# Run:  ruff check . --fix   (lint + auto-fix)
+#       ruff format .         (format, replaces black)
+
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = [
+  "E",   # pycodestyle errors (trailing whitespace, blank lines, etc.)
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes (unused imports F401, undefined names, etc.)
+  "I",   # isort (import ordering)
+  "UP",  # pyupgrade (modernise syntax)
+  "B",   # flake8-bugbear (common bugs and design issues)
+  "C4",  # flake8-comprehensions (simplify comprehensions)
+  "N",   # pep8-naming
+]
+ignore = [
+  "E501",  # line too long — handled by formatter
+  "B008",  # do not perform function calls in default arguments (Flask patterns use this)
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["F401"]  # test helpers may import for side-effects
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

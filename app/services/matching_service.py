@@ -7,8 +7,11 @@ Uses mentor-proposing algorithm:
   3. Rejected mentors propose to their next choice.
   4. Repeat until no unmatched mentor has remaining teams to propose to.
 """
+
 import logging
+
 from flask import current_app
+
 from app.database import execute_query, get_db_cursor
 from app.services.mentor_selection_service import get_preference_submission_status
 
@@ -26,37 +29,51 @@ def run_gale_shapley():
     """
     # Check all preferences are submitted
     status = get_preference_submission_status()
-    if not status['all_submitted']:
+    if not status["all_submitted"]:
         return False, "Not all preferences have been submitted yet", []
 
     # Load mentor preferences: mentor_id -> [team_id ordered by rank]
-    mentor_prefs_rows = execute_query(current_app, """
+    mentor_prefs_rows = (
+        execute_query(
+            current_app,
+            """
         SELECT mentor_id, team_id FROM mentor_team_preferences
         ORDER BY mentor_id, rank
-    """, fetch_all=True) or []
+    """,
+            fetch_all=True,
+        )
+        or []
+    )
 
     mentor_pref_lists = {}
     for row in mentor_prefs_rows:
-        mentor_pref_lists.setdefault(row['mentor_id'], []).append(row['team_id'])
+        mentor_pref_lists.setdefault(row["mentor_id"], []).append(row["team_id"])
 
     # Load team preferences: team_id -> {mentor_id: rank}
-    team_prefs_rows = execute_query(current_app, """
+    team_prefs_rows = (
+        execute_query(
+            current_app,
+            """
         SELECT team_id, mentor_id, rank FROM team_mentor_preferences
         ORDER BY team_id, rank
-    """, fetch_all=True) or []
+    """,
+            fetch_all=True,
+        )
+        or []
+    )
 
     team_pref_ranks = {}
     for row in team_prefs_rows:
-        team_pref_ranks.setdefault(row['team_id'], {})[row['mentor_id']] = row['rank']
+        team_pref_ranks.setdefault(row["team_id"], {})[row["mentor_id"]] = row["rank"]
 
     all_mentors = list(mentor_pref_lists.keys())
     all_teams = list(team_pref_ranks.keys())
 
     # Initialize
     # mentor_proposal_index: which preference index mentor proposes to next
-    mentor_proposal_index = {m: 0 for m in all_mentors}
+    mentor_proposal_index = dict.fromkeys(all_mentors, 0)
     # mentor_match: mentor_id -> team_id or None
-    mentor_match = {m: None for m in all_mentors}
+    mentor_match = dict.fromkeys(all_mentors)
     # team_matches: team_id -> list of mentor_ids currently held
     team_matches = {t: [] for t in all_teams}
 
@@ -86,9 +103,9 @@ def run_gale_shapley():
             # Team is full — check if this mentor is preferred over the worst held
             # "Worst" = the held mentor with the highest rank number (least preferred)
             # If mentor is not in team's preference list, treat as rank infinity
-            mentor_rank = team_ranking.get(mentor_id, float('inf'))
-            worst_held = max(current_holders, key=lambda m: team_ranking.get(m, float('inf')))
-            worst_rank = team_ranking.get(worst_held, float('inf'))
+            mentor_rank = team_ranking.get(mentor_id, float("inf"))
+            worst_held = max(current_holders, key=lambda m: team_ranking.get(m, float("inf")))
+            worst_rank = team_ranking.get(worst_held, float("inf"))
 
             if mentor_rank < worst_rank:
                 # Replace worst with this mentor
@@ -124,7 +141,7 @@ def save_matching_results(assignments):
             for team_id, mentor_id in assignments:
                 cursor.execute(
                     "INSERT INTO team_mentors (team_id, mentor_id, is_active) VALUES (%s, %s, TRUE)",
-                    (team_id, mentor_id)
+                    (team_id, mentor_id),
                 )
         logger.info(f"Saved {len(assignments)} matching results")
     except Exception as e:

@@ -1,11 +1,14 @@
 """Mentor management business logic - PostgreSQL version"""
+
 import base64
 import json
 import logging
 from pathlib import Path
-from flask import current_app
-from app.database import get_db_cursor, execute_query, execute_insert, execute_update
+
 import psycopg2
+from flask import current_app
+
+from app.database import execute_insert, execute_query, execute_update, get_db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -16,21 +19,25 @@ def mentor_exists(first_name: str, last_name: str, company_name: str) -> bool:
         SELECT 1 FROM mentors
         WHERE first_name = %s AND last_name = %s AND company_name = %s
     """
-    result = execute_query(current_app, query, (first_name, last_name, company_name), fetch_one=True)
+    result = execute_query(
+        current_app, query, (first_name, last_name, company_name), fetch_one=True
+    )
     return result is not None
 
 
-def register_mentor(first_name: str, last_name: str, company_name: str, picture_data=None, picture_filename=None) -> tuple:
+def register_mentor(
+    first_name: str, last_name: str, company_name: str, picture_data=None, picture_filename=None
+) -> tuple:
     """Register a new mentor
 
     Returns:
         Tuple of (success: bool, message: str, mentor_id: int or None)
     """
     if not first_name or not last_name or not company_name:
-        return False, 'All fields are required', None
+        return False, "All fields are required", None
 
     if not picture_data:
-        return False, 'Picture is required', None
+        return False, "Picture is required", None
 
     query = """
         INSERT INTO mentors (first_name, last_name, company_name, picture_url, picture_filename)
@@ -39,13 +46,17 @@ def register_mentor(first_name: str, last_name: str, company_name: str, picture_
     """
 
     try:
-        mentor_id = execute_insert(current_app, query, (first_name, last_name, company_name, picture_data, picture_filename))
+        mentor_id = execute_insert(
+            current_app,
+            query,
+            (first_name, last_name, company_name, picture_data, picture_filename),
+        )
         logger.info(f"✓ Mentor registered: {first_name} {last_name} (ID: {mentor_id})")
         return True, f'Mentor "{first_name} {last_name}" registered successfully', mentor_id
 
     except psycopg2.IntegrityError as e:
         logger.error(f"Integrity error registering mentor: {e}")
-        return False, 'Mentor already exists or constraint violated', None
+        return False, "Mentor already exists or constraint violated", None
     except Exception as e:
         logger.error(f"Error registering mentor: {e}")
         return False, str(e), None
@@ -61,7 +72,7 @@ def get_all_mentors() -> list:
     try:
         return execute_query(current_app, query, fetch_all=True) or []
     except Exception as e:
-        raise Exception(f'Failed to get mentors: {str(e)}')
+        raise Exception(f"Failed to get mentors: {str(e)}") from e
 
 
 def get_mentor_picture(mentor_id: int) -> tuple:
@@ -73,11 +84,11 @@ def get_mentor_picture(mentor_id: int) -> tuple:
     query = "SELECT picture_url, picture_filename FROM mentors WHERE id = %s"
     try:
         result = execute_query(current_app, query, (mentor_id,), fetch_one=True)
-        if result and result['picture_url']:
-            return result['picture_url'], result['picture_filename']
+        if result and result["picture_url"]:
+            return result["picture_url"], result["picture_filename"]
         return None, None
     except Exception as e:
-        raise Exception(f'Failed to get mentor picture: {str(e)}')
+        raise Exception(f"Failed to get mentor picture: {str(e)}") from e
 
 
 def delete_mentor(mentor_id: int) -> tuple:
@@ -90,9 +101,9 @@ def delete_mentor(mentor_id: int) -> tuple:
     try:
         rows = execute_update(current_app, query, (mentor_id,))
         if rows == 0:
-            return False, 'Mentor not found'
+            return False, "Mentor not found"
         logger.info(f"✓ Mentor {mentor_id} deleted")
-        return True, 'Mentor deleted successfully'
+        return True, "Mentor deleted successfully"
     except Exception as e:
         logger.error(f"Error deleting mentor: {e}")
         return False, str(e)
@@ -107,7 +118,7 @@ def load_mentors_from_file(json_path: Path) -> int:
     if not json_path.exists():
         return 0
 
-    with open(json_path, 'r', encoding='utf-8') as f:
+    with open(json_path, encoding="utf-8") as f:
         mentors = json.load(f)
 
     if not isinstance(mentors, list):
@@ -118,10 +129,10 @@ def load_mentors_from_file(json_path: Path) -> int:
     from app.services.auth_service import hash_password as _hash_pw
 
     for mentor in mentors:
-        first_name = str(mentor.get('first_name', '')).strip()
-        last_name = str(mentor.get('last_name', '')).strip()
-        company_name = str(mentor.get('company_name', '')).strip()
-        picture_path = mentor.get('picture_url')
+        first_name = str(mentor.get("first_name", "")).strip()
+        last_name = str(mentor.get("last_name", "")).strip()
+        company_name = str(mentor.get("company_name", "")).strip()
+        picture_path = mentor.get("picture_url")
 
         if not first_name or not last_name or not company_name:
             continue
@@ -135,20 +146,20 @@ def load_mentors_from_file(json_path: Path) -> int:
         picture_filename = None
         if picture_path:
             p = str(picture_path).strip()
-            if p.startswith(('http://', 'https://', '/')):
+            if p.startswith(("http://", "https://", "/")):
                 picture_data = p  # already a full URL or absolute path
             else:
-                picture_data = f'/static/mentorPictures/{p}'
+                picture_data = f"/static/mentorPictures/{p}"
             picture_filename = Path(p).name
 
-        email = str(mentor.get('email', '')).strip() or None
-        phone_number = str(mentor.get('phone_number', '')).strip() or None
-        bio = str(mentor.get('bio', '')).strip() or None
-        status = str(mentor.get('status', 'active')).strip()
-        technologies = mentor.get('technologies', [])
+        email = str(mentor.get("email", "")).strip() or None
+        phone_number = str(mentor.get("phone_number", "")).strip() or None
+        bio = str(mentor.get("bio", "")).strip() or None
+        status = str(mentor.get("status", "active")).strip()
+        technologies = mentor.get("technologies", [])
         if not isinstance(technologies, list):
             technologies = []
-        raw_password = mentor.get('password', 'mentor123')
+        raw_password = mentor.get("password", "mentor123")
         pw_hash = _hash_pw(raw_password)
 
         query = """
@@ -160,10 +171,22 @@ def load_mentors_from_file(json_path: Path) -> int:
 
         try:
             with get_db_cursor(current_app) as cursor:
-                cursor.execute(query, (
-                    first_name, last_name, company_name, email, phone_number,
-                    bio, status, picture_data, picture_filename, pw_hash, technologies
-                ))
+                cursor.execute(
+                    query,
+                    (
+                        first_name,
+                        last_name,
+                        company_name,
+                        email,
+                        phone_number,
+                        bio,
+                        status,
+                        picture_data,
+                        picture_filename,
+                        pw_hash,
+                        technologies,
+                    ),
+                )
                 if cursor.rowcount:
                     inserted += 1
         except psycopg2.IntegrityError:
@@ -185,7 +208,7 @@ def load_specialties_from_file(json_path: Path) -> int:
     if not json_path.exists():
         return 0
 
-    with open(json_path, 'r', encoding='utf-8') as f:
+    with open(json_path, encoding="utf-8") as f:
         specialties = json.load(f)
 
     if not isinstance(specialties, list):
@@ -194,10 +217,10 @@ def load_specialties_from_file(json_path: Path) -> int:
     inserted = 0
 
     for item in specialties:
-        name = str(item.get('name', '')).strip()
+        name = str(item.get("name", "")).strip()
         if not name:
             continue
-        description = item.get('description') or None
+        description = item.get("description") or None
 
         query = """
             INSERT INTO specialties (name, description, is_seed)
@@ -226,7 +249,7 @@ def load_universities_from_file(json_path: Path) -> int:
     if not json_path.exists():
         return 0
 
-    with open(json_path, 'r', encoding='utf-8') as f:
+    with open(json_path, encoding="utf-8") as f:
         universities = json.load(f)
 
     if not isinstance(universities, list):
@@ -235,11 +258,11 @@ def load_universities_from_file(json_path: Path) -> int:
     inserted = 0
 
     for item in universities:
-        name = str(item.get('name', '')).strip()
+        name = str(item.get("name", "")).strip()
         if not name:
             continue
-        city = str(item.get('city', '')).strip() or None
-        country = str(item.get('country', '')).strip() or None
+        city = str(item.get("city", "")).strip() or None
+        country = str(item.get("country", "")).strip() or None
 
         query = """
             INSERT INTO universities (name, city, country, is_seed)
@@ -262,17 +285,17 @@ def load_universities_from_file(json_path: Path) -> int:
 def serialize_mentor_row(row, selection_count=0) -> dict:
     """Serialize mentor row with optional picture and selection count"""
     data = {
-        'id': row['id'],
-        'first_name': row['first_name'],
-        'last_name': row['last_name'],
-        'company_name': row['company_name'],
-        'picture_filename': row.get('picture_filename'),
-        'technologies': row.get('technologies') or [],
-        'selection_count': selection_count
+        "id": row["id"],
+        "first_name": row["first_name"],
+        "last_name": row["last_name"],
+        "company_name": row["company_name"],
+        "picture_filename": row.get("picture_filename"),
+        "technologies": row.get("technologies") or [],
+        "selection_count": selection_count,
     }
-    picture_blob = row.get('picture_url')
+    picture_blob = row.get("picture_url")
     if picture_blob:
-        data['picture_data'] = base64.b64encode(picture_blob).decode('utf-8')
+        data["picture_data"] = base64.b64encode(picture_blob).decode("utf-8")
     else:
-        data['picture_data'] = None
+        data["picture_data"] = None
     return data
