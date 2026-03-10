@@ -23,15 +23,15 @@
         <div class="days-cursor" id="daysCursor"></div>
         <div class="day-node day-1" data-threshold="0">
           <span class="day-dot"></span>
-          <span class="day-label">14 март</span>
+          <span class="day-label">13 март</span>
         </div>
         <div class="day-node day-2" data-threshold="0.5">
           <span class="day-dot"></span>
-          <span class="day-label">15 март</span>
+          <span class="day-label">14 март</span>
         </div>
         <div class="day-node day-3" data-threshold="1">
           <span class="day-dot"></span>
-          <span class="day-label">16 март</span>
+          <span class="day-label">15 март</span>
         </div>
       </div>
     </div>
@@ -177,17 +177,17 @@
     }
 
     function initProgress() {
-      const START = new Date(2026, 2, 14, 17, 0, 0);  // Mar 14 17:00
-      const END   = new Date(2026, 2, 16, 23, 59, 59); // Mar 16 23:59
+      const START = new Date(2026, 2, 13, 17, 0, 0);   // Mar 13 17:00
+      const END   = new Date(2026, 2, 15, 23, 59, 59); // Mar 15 23:59:59
       const TOTAL = END - START;
-
+      
       // Node positions on the bar (left %)
       const NODE_LEFT = { 1: 16, 2: 50, 3: 84 };
       // Timestamps each node represents
       const NODE_TIME = {
-        1: new Date(2026, 2, 14, 17, 0, 0),
-        2: new Date(2026, 2, 15, 0, 0, 0),
-        3: new Date(2026, 2, 16, 0, 0, 0),
+        1: new Date(2026, 2, 13, 17, 0, 0), // 13 mart
+        2: new Date(2026, 2, 14, 0, 0, 0),  // 14 mart
+        3: new Date(2026, 2, 15, 0, 0, 0),  // 15 mart
       };
 
       const fill   = document.getElementById('daysFill');
