@@ -18,14 +18,18 @@ def create_app(config_name='development'):
                 static_folder=str(config.STATIC_FOLDER))
     app.config.from_object(config)
 
-    # Initialize database connection
-    from app.database import init_database
+    # Initialize database connection pool
+    from app.database import init_database, close_pool
     try:
         init_database(app)
         logger.info(f"✓ Database initialized successfully ({config_name} mode)")
     except Exception as e:
         logger.error(f"✗ Database initialization failed: {e}")
         raise
+
+    # Ensure pool is cleaned up when the app shuts down
+    import atexit
+    atexit.register(close_pool)
 
     # Register blueprints
     from app.routes import auth_bp, mentors_bp, teams_bp, pages_bp, api_bp
