@@ -21,13 +21,31 @@
       <div class="blob blob-3"></div>
     </div>
     <div class="noise"></div>
+
+    <!-- Modal Overlay -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-panel" id="modalPanel">
+        <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+        <div class="modal-accent-stripe" id="modalStripe"></div>
+        <div class="modal-header">
+          <span class="modal-icon" id="modalIcon"></span>
+          <span class="modal-label" id="modalLabel"></span>
+        </div>
+        <h2 class="modal-question" id="modalQuestion"></h2>
+        <div class="modal-divider"></div>
+        <p class="modal-answer" id="modalAnswer"></p>
+      </div>
+    </div>
+
     <div class="page-wrap">
       <div class="container">
         <div class="header">
-          <h1>Regulations</h1>
-          <p>Frequently asked questions and official rules.</p>
+          <div>
+            <h1>Regulations</h1>
+            <p>Frequently asked questions and official rules.</p>
+          </div>
         </div>
-        <div id="regulationsGrid" class="grid"></div>
+        <div id="regulationsGrid" class="bento-grid"></div>
         <div
           id="emptyState"
           style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
@@ -37,6 +55,56 @@
       </div>
 
       <script>
+        const CARD_META = [
+          { icon: '🎯', label: 'The Event', size: 'hero', accent: '#60a5fa' },
+          { icon: '🎓', label: 'Eligibility', size: 'normal', accent: '#22d3ee' },
+          { icon: '📝', label: 'Registration', size: 'normal', accent: '#a78bfa' },
+          { icon: '👥', label: 'Teams', size: 'normal', accent: '#f472b6' },
+          { icon: '💻', label: 'Development', size: 'wide', accent: '#60a5fa' },
+          { icon: '🏢', label: 'Venue', size: 'normal', accent: '#22d3ee' },
+          { icon: '⚖️', label: 'Responsibility', size: 'normal', accent: '#a78bfa' },
+          { icon: '🚫', label: 'Disqualification', size: 'normal', accent: '#f472b6' },
+          { icon: '🧑‍🏫', label: 'Mentors', size: 'normal', accent: '#60a5fa' },
+          { icon: '🎤', label: 'Presentations', size: 'normal', accent: '#22d3ee' },
+          { icon: '📊', label: 'Scoring', size: 'wide', accent: '#a78bfa' },
+          { icon: '🏆', label: 'Prizes', size: 'hero', accent: '#f472b6' },
+          { icon: '🔒', label: 'Privacy', size: 'normal', accent: '#60a5fa' },
+        ];
+
+        function escapeHtml(str) {
+          const div = document.createElement('div');
+          div.textContent = str;
+          return div.innerHTML;
+        }
+
+        function openModal(item, meta) {
+          const overlay = document.getElementById('modalOverlay');
+          const panel = document.getElementById('modalPanel');
+          document.getElementById('modalStripe').style.background =
+            'linear-gradient(90deg, ' + meta.accent + ', ' + meta.accent + '44)';
+          document.getElementById('modalIcon').textContent = meta.icon;
+          document.getElementById('modalLabel').textContent = meta.label;
+          document.getElementById('modalLabel').style.color = meta.accent;
+          document.getElementById('modalQuestion').textContent = item.question || '';
+          document.getElementById('modalAnswer').textContent = item.answer || '';
+          overlay.classList.add('active');
+          document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+          const overlay = document.getElementById('modalOverlay');
+          overlay.classList.remove('active');
+          document.body.style.overflow = '';
+        }
+
+        document.getElementById('modalClose').addEventListener('click', closeModal);
+        document.getElementById('modalOverlay').addEventListener('click', function (e) {
+          if (e.target === this) closeModal();
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') closeModal();
+        });
+
         async function loadRegulations() {
           const grid = document.getElementById('regulationsGrid');
           const empty = document.getElementById('emptyState');
@@ -55,14 +123,72 @@
             }
 
             list.forEach((item, idx) => {
+              const meta = CARD_META[idx] || {
+                icon: '📄',
+                label: 'Info',
+                size: 'normal',
+                accent: '#60a5fa',
+              };
+
               const card = document.createElement('div');
-              card.className = 'card';
-              card.innerHTML = `
-            <div class="label">Regulation ${idx + 1}</div>
-            <div class="question">${item.question || ''}</div>
-            <div class="answer">${item.answer || ''}</div>
-          `;
+              card.className = 'bento-card bento-' + meta.size;
+              card.style.setProperty('--card-accent', meta.accent);
+              card.setAttribute('tabindex', '0');
+              card.setAttribute('role', 'button');
+
+              card.innerHTML =
+                '<div class="card-accent-stripe"></div>' +
+                '<div class="card-inner">' +
+                '<div class="card-badge">' +
+                '<span class="badge-icon">' +
+                meta.icon +
+                '</span>' +
+                '<span class="badge-label">' +
+                escapeHtml(meta.label) +
+                '</span>' +
+                '</div>' +
+                '<div class="card-question">' +
+                escapeHtml(item.question || '') +
+                '</div>' +
+                '<div class="card-answer">' +
+                escapeHtml(item.answer || '') +
+                '</div>' +
+                '<div class="card-hint">' +
+                '<span class="hint-text">Click to read more</span>' +
+                '<svg class="hint-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+                '</div>' +
+                '</div>' +
+                '<div class="card-glow-orb"></div>';
+
+              card.addEventListener('click', function () {
+                openModal(item, meta);
+              });
+              card.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  openModal(item, meta);
+                }
+              });
+
               grid.appendChild(card);
+            });
+
+            // Staggered scroll-triggered entrance
+            const observer = new IntersectionObserver(
+              function (entries) {
+                entries.forEach(function (entry) {
+                  if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                  }
+                });
+              },
+              { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+            );
+
+            grid.querySelectorAll('.bento-card').forEach(function (card, i) {
+              card.style.transitionDelay = i * 80 + 'ms';
+              observer.observe(card);
             });
           } catch (e) {
             empty.textContent = 'Error loading regulations. Please try again.';
@@ -182,7 +308,7 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Island Navbar */
+  /* Navbar */
   .navbar {
     position: fixed;
     top: 0;
@@ -331,120 +457,439 @@
     box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
   }
 
+  /* Page Layout */
   .container {
     width: 100%;
-    /*max-width: 1700px;*/
   }
   .header {
     margin-top: 28px;
-    margin-bottom: 28px;
+    margin-bottom: 36px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-end;
     gap: 12px;
     flex-wrap: wrap;
   }
   .header h1 {
     font-size: 30px;
-    letter-spacing: 0.3px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
   .header p {
     color: var(--muted);
     font-size: 16px;
-    margin-top: 8px;
+    margin-top: 6px;
   }
 
-  .grid {
+  /* ─── Bento Grid ─── */
+  .bento-grid {
     display: grid;
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-    gap: 18px;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    grid-auto-flow: dense;
   }
-  .card {
+
+  /* ─── Bento Card ─── */
+  .bento-card {
+    --card-accent: #60a5fa;
     position: relative;
-    padding: 28px;
-    border-radius: 14px;
+    border-radius: 16px;
     border: 1px solid var(--panel-border);
-    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    background: linear-gradient(
+      165deg,
+      rgba(255, 255, 255, 0.055) 0%,
+      rgba(255, 255, 255, 0.02) 50%,
+      rgba(255, 255, 255, 0.01) 100%
+    );
     box-shadow: var(--card-glow);
     overflow: hidden;
+    cursor: pointer;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    /* Scroll animation initial state */
+    opacity: 0;
+    transform: translateY(30px);
     transition:
-      transform 0.2s ease,
-      border-color 0.2s ease;
-    min-height: 190px;
+      opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.3s ease,
+      box-shadow 0.3s ease;
   }
-  .card:hover {
-    transform: translateY(-4px);
-    border-color: rgba(96, 165, 250, 0.35);
+  .bento-card.visible {
+    opacity: 1;
+    transform: translateY(0);
   }
-  .card::after {
-    content: '';
+  .bento-card:hover {
+    transform: translateY(-6px);
+    border-color: var(--card-accent);
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.45),
+      0 0 30px color-mix(in srgb, var(--card-accent) 15%, transparent);
+  }
+  .bento-card.visible:hover {
+    transform: translateY(-6px);
+  }
+  .bento-card:focus-visible {
+    outline: 2px solid var(--card-accent);
+    outline-offset: 2px;
+  }
+
+  /* Accent stripe */
+  .card-accent-stripe {
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      var(--card-accent),
+      color-mix(in srgb, var(--card-accent) 40%, transparent)
+    );
+    flex-shrink: 0;
+  }
+
+  /* Inner glow orb */
+  .card-glow-orb {
     position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.12), transparent 45%);
+    top: 0;
+    right: 0;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--card-accent), transparent 70%);
+    opacity: 0.06;
     pointer-events: none;
+    transform: translate(30%, -30%);
+    transition: opacity 0.3s ease;
   }
-  .label {
+  .bento-card:hover .card-glow-orb {
+    opacity: 0.12;
+  }
+  .bento-hero .card-glow-orb {
+    width: 280px;
+    height: 280px;
+    opacity: 0.08;
+  }
+  .bento-hero:hover .card-glow-orb {
+    opacity: 0.15;
+  }
+
+  /* Card inner content */
+  .card-inner {
+    padding: 24px 24px 20px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Badge (icon + label) */
+  .card-badge {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 7px 13px;
-    border-radius: 999px;
-    background: rgba(34, 211, 238, 0.12);
-    border: 1px solid rgba(34, 211, 238, 0.3);
-    color: #c7f9ff;
+    margin-bottom: 14px;
+  }
+  .badge-icon {
+    font-size: 22px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--card-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--card-accent) 25%, transparent);
+    flex-shrink: 0;
+  }
+  .badge-label {
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .question {
-    margin: 14px 0 10px;
-    font-size: clamp(20px, 5vw, 24px);
-    font-weight: 750;
-  }
-  .answer {
-    color: var(--muted);
-    font-size: clamp(14px, 3vw, 16px);
-    line-height: 1.7;
+    letter-spacing: 1px;
+    color: var(--card-accent);
   }
 
+  /* Question text */
+  .card-question {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Answer preview */
+  .card-answer {
+    margin-top: 10px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--muted);
+    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Click hint */
+  .card-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    opacity: 0;
+    transform: translateY(4px);
+    transition:
+      opacity 0.25s ease,
+      transform 0.25s ease;
+  }
+  .bento-card:hover .card-hint {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .hint-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }
+  .hint-arrow {
+    color: var(--card-accent);
+    transition: transform 0.2s ease;
+  }
+  .bento-card:hover .hint-arrow {
+    transform: translateX(3px);
+  }
+
+  /* ─── Card Sizes ─── */
+  /* Hero: spans 2 columns, taller */
+  .bento-hero {
+    min-height: 240px;
+  }
+  .bento-hero .card-question {
+    font-size: 22px;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .bento-hero .card-answer {
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    font-size: 15px;
+  }
+  .bento-hero .badge-icon {
+    width: 44px;
+    height: 44px;
+    font-size: 26px;
+    border-radius: 12px;
+  }
+  .bento-hero .badge-label {
+    font-size: 13px;
+  }
+
+  /* Wide: spans 2 columns */
+  .bento-wide {
+    min-height: 200px;
+  }
+  .bento-wide .card-question {
+    font-size: 20px;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .bento-wide .card-answer {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    font-size: 15px;
+  }
+
+  /* ─── Modal ─── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.3s ease,
+      visibility 0.3s ease;
+  }
+  .modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+  }
+  .modal-panel {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    max-height: 85vh;
+    overflow-y: auto;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(170deg, rgba(15, 18, 35, 0.97) 0%, rgba(8, 10, 22, 0.98) 100%);
+    box-shadow:
+      0 40px 100px rgba(0, 0, 0, 0.6),
+      0 0 60px rgba(96, 165, 250, 0.08);
+    transform: scale(0.95) translateY(10px);
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .modal-overlay.active .modal-panel {
+    transform: scale(1) translateY(0);
+  }
+  .modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    font-size: 22px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background 0.2s,
+      color 0.2s;
+    z-index: 1;
+    line-height: 1;
+  }
+  .modal-close:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .modal-accent-stripe {
+    height: 4px;
+    border-radius: 20px 20px 0 0;
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 24px 28px 0;
+  }
+  .modal-icon {
+    font-size: 28px;
+    line-height: 1;
+  }
+  .modal-label {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .modal-question {
+    padding: 14px 28px 0;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.35;
+    color: var(--text);
+  }
+  .modal-divider {
+    margin: 18px 28px;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1) 20%,
+      rgba(255, 255, 255, 0.1) 80%,
+      transparent
+    );
+  }
+  .modal-answer {
+    padding: 0 28px 28px;
+    font-size: 16px;
+    line-height: 1.8;
+    color: #94a3b8;
+  }
+
+  /* ─── Responsive ─── */
   @media (min-width: 768px) {
     body {
-      padding: 76px 12px 40px;
+      padding: 76px 24px 40px;
     }
-    .grid {
-      gap: 14px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+    .bento-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
     }
-    .card {
-      padding: 20px;
+    .bento-hero,
+    .bento-wide {
+      grid-column: span 2;
+    }
+    .header h1 {
+      font-size: 36px;
+    }
+    .header p {
+      font-size: 17px;
     }
   }
 
   @media (min-width: 1024px) {
-    .grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+    body {
+      padding: 76px 40px 40px;
+    }
+    .bento-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .bento-hero,
+    .bento-wide {
+      grid-column: span 2;
+    }
+    .bento-hero {
+      min-height: 270px;
+    }
+    .bento-hero .card-question {
+      font-size: 26px;
+    }
+    .card-question {
+      font-size: 20px;
     }
     .header h1 {
-      font-size: 38px;
+      font-size: 42px;
     }
     .header p {
       font-size: 18px;
     }
-    .card {
-      padding: 30px;
-      min-height: 210px;
+    .card-inner {
+      padding: 28px 28px 22px;
     }
-    .label {
-      font-size: 13px;
+    .modal-question {
+      font-size: 28px;
     }
-    .question {
-      font-size: 26px;
-    }
-    .answer {
+    .modal-answer {
       font-size: 17px;
     }
   }
+
+  @media (min-width: 1400px) {
+    .bento-grid {
+      max-width: 1360px;
+      margin: 0 auto;
+    }
+  }
+
   /* Background layers */
   .dot-grid {
     position: fixed;
