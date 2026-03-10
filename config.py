@@ -23,6 +23,10 @@ class Config:
     DB_USER = os.environ.get('DB_USER', 'postgres')
     DB_PASSWORD = os.environ.get('DB_PASSWORD', 'postgres')
 
+    # Connection pool sizing (per worker process)
+    DB_POOL_MIN = int(os.environ.get('DB_POOL_MIN', 2))
+    DB_POOL_MAX = int(os.environ.get('DB_POOL_MAX', 10))
+
     # Build connection string — prefer DATABASE_URL if set (e.g. Railway injects this automatically)
     DATABASE_URL = os.environ.get(
         'DATABASE_URL',

@@ -2,9 +2,10 @@
 from flask import jsonify, request, render_template, current_app
 from app.routes import auth_bp
 from app.services.auth_service import hash_password, verify_password, generate_token
-from app.database import execute_query, execute_insert
+from app.database import execute_query, execute_insert, get_db_cursor
 from app.utils.auth_decorators import token_required
 from flask import g
+import psycopg2
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,13 @@ def registration_page():
 
 @auth_bp.route('/api/auth/register', methods=['POST'])
 def register_participant():
-    """Register a new participant and return JWT."""
+    """Register a new participant and return JWT.
+
+    Optimised for concurrent load:
+    - bcrypt hash runs BEFORE any DB connection is acquired
+    - uniqueness checks + insert happen in a single pooled transaction
+    - DB UNIQUE constraints are the real guard against races
+    """
     data = request.get_json(silent=True) or {}
     required = ['first_name', 'last_name', 'email', 'password', 'phone_number',
                 'faculty_number', 'course', 'specialty_id', 'university_id']
@@ -33,34 +40,50 @@ def register_participant():
         return jsonify({'success': False, 'error': f'Missing fields: {", ".join(missing)}'}), 400
 
     email = data['email'].strip().lower()
-    existing = execute_query(current_app, "SELECT id FROM participants WHERE email = %s", (email,), fetch_one=True)
-    if existing:
-        return jsonify({'success': False, 'error': 'Email already registered'}), 409
-
     fac = data['faculty_number'].strip()
-    existing_fac = execute_query(current_app, "SELECT id FROM participants WHERE faculty_number = %s", (fac,), fetch_one=True)
-    if existing_fac:
-        return jsonify({'success': False, 'error': 'Faculty number already registered'}), 409
 
     course = int(data['course'])
     if not 1 <= course <= 4:
         return jsonify({'success': False, 'error': 'Course must be between 1 and 4'}), 400
 
+    # CPU-heavy work first — no DB connection held, doesn't block the pool
     pw_hash = hash_password(data['password'])
 
-    query = """
-        INSERT INTO participants
-            (first_name, last_name, email, phone_number, faculty_number,
-             course, specialty_id, university_id, password_hash, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
-        RETURNING id
-    """
     try:
-        pid = execute_insert(current_app, query, (
-            data['first_name'].strip(), data['last_name'].strip(), email,
-            data['phone_number'].strip(), fac, course,
-            int(data['specialty_id']), int(data['university_id']), pw_hash
-        ))
+        with get_db_cursor() as cursor:
+            # Single query checks both uniqueness constraints at once
+            cursor.execute(
+                """SELECT
+                       EXISTS(SELECT 1 FROM participants WHERE email = %s)          AS email_taken,
+                       EXISTS(SELECT 1 FROM participants WHERE faculty_number = %s) AS fac_taken""",
+                (email, fac),
+            )
+            check = cursor.fetchone()
+            if check['email_taken']:
+                return jsonify({'success': False, 'error': 'Email already registered'}), 409
+            if check['fac_taken']:
+                return jsonify({'success': False, 'error': 'Faculty number already registered'}), 409
+
+            # Insert in the same transaction — DB UNIQUE constraints guard against races
+            cursor.execute(
+                """INSERT INTO participants
+                       (first_name, last_name, email, phone_number, faculty_number,
+                        course, specialty_id, university_id, password_hash, status)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
+                   RETURNING id""",
+                (data['first_name'].strip(), data['last_name'].strip(), email,
+                 data['phone_number'].strip(), fac, course,
+                 int(data['specialty_id']), int(data['university_id']), pw_hash),
+            )
+            pid = cursor.fetchone()['id']
+
+    except psycopg2.IntegrityError as e:
+        err = str(e).lower()
+        if 'email' in err:
+            return jsonify({'success': False, 'error': 'Email already registered'}), 409
+        if 'faculty_number' in err:
+            return jsonify({'success': False, 'error': 'Faculty number already registered'}), 409
+        return jsonify({'success': False, 'error': 'Registration failed (duplicate data)'}), 409
     except Exception as e:
         logger.error(f"Registration error: {e}")
         return jsonify({'success': False, 'error': 'Registration failed'}), 500

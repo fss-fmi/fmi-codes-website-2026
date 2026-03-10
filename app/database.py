@@ -1,35 +1,48 @@
-"""PostgreSQL Database initialization and utilities"""
+"""PostgreSQL Database initialization and utilities — connection-pooled"""
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
+from psycopg2.pool import ThreadedConnectionPool
 import logging
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
+# Module-level pool — one per worker process (safe with gunicorn prefork)
+_pool = None
+
 
 def init_database(app):
-    """Initialize PostgreSQL database connection and verify schema exists"""
+    """Initialize a ThreadedConnectionPool and verify the schema exists."""
+    global _pool
     try:
-        conn = get_db_connection(app)
-        cursor = conn.cursor()
+        min_conn = app.config.get('DB_POOL_MIN', 2)
+        max_conn = app.config.get('DB_POOL_MAX', 10)
 
-        # Verify that required tables exist
-        cursor.execute("""
-            SELECT EXISTS(
-                SELECT FROM information_schema.tables
-                WHERE table_name = 'teams'
-            );
-        """)
-        tables_exist = cursor.fetchone()["exists"]
+        _pool = ThreadedConnectionPool(
+            min_conn, max_conn,
+            app.config['DATABASE_URL'],
+            cursor_factory=RealDictCursor,
+        )
 
-        if not tables_exist:
-            logger.warning("Database schema not found. Please run schema.sql manually.")
-            logger.warning("Execute: psql -U postgres -d fmi_hackathon_2026 -f database/schema.sql")
+        # Quick schema check using a pooled connection
+        conn = _pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT EXISTS(
+                    SELECT FROM information_schema.tables
+                    WHERE table_name = 'teams'
+                );
+            """)
+            tables_exist = cursor.fetchone()["exists"]
+            if not tables_exist:
+                logger.warning("Database schema not found. Please run schema.sql manually.")
+                logger.warning("Execute: psql -U postgres -d fmi_hackathon_2026 -f database/schema.sql")
+            cursor.close()
+        finally:
+            _pool.putconn(conn)
 
-        cursor.close()
-        conn.close()
-
-        logger.info("✓ PostgreSQL database connection verified")
+        logger.info(f"✓ PostgreSQL connection pool ready (min={min_conn}, max={max_conn})")
 
     except psycopg2.OperationalError as e:
         logger.error(f"Cannot connect to PostgreSQL: {e}")
@@ -40,28 +53,38 @@ def init_database(app):
         raise
 
 
-def get_db_connection(app):
-    """Get a PostgreSQL database connection with RealDictCursor for dict-like row access"""
-    try:
-        conn = psycopg2.connect(app.config['DATABASE_URL'])
-        # Set to return rows as dictionaries instead of tuples
-        conn.cursor_factory = RealDictCursor
-        return conn
-    except psycopg2.OperationalError as e:
-        logger.error(f"Failed to connect to PostgreSQL: {e}")
-        raise
+def close_pool():
+    """Shut down the connection pool (call on app teardown)."""
+    global _pool
+    if _pool is not None:
+        _pool.closeall()
+        _pool = None
+        logger.info("Connection pool closed")
+
+
+def get_db_connection(app=None):
+    """Get a connection from the pool (app param kept for back-compat)."""
+    if _pool is None:
+        raise RuntimeError("Connection pool not initialized — call init_database first")
+    return _pool.getconn()
+
+
+def return_db_connection(conn):
+    """Return a connection to the pool."""
+    if _pool is not None and conn is not None:
+        _pool.putconn(conn)
 
 
 @contextmanager
-def get_db_cursor(app, commit=True):
-    """Context manager for database operations
+def get_db_cursor(app=None, commit=True):
+    """Context manager for database operations using pooled connections.
 
     Usage:
-        with get_db_cursor(app) as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("SELECT * FROM participants")
             results = cursor.fetchall()
     """
-    conn = get_db_connection(app)
+    conn = get_db_connection()
     cursor = conn.cursor()
     try:
         yield cursor
@@ -73,14 +96,14 @@ def get_db_cursor(app, commit=True):
         raise
     finally:
         cursor.close()
-        conn.close()
+        return_db_connection(conn)
 
 
 def execute_query(app, query, params=None, fetch_one=False, fetch_all=False):
     """Execute a query and optionally fetch results
 
     Args:
-        app: Flask application instance
+        app: Flask application instance (kept for back-compat, pool is module-level)
         query: SQL query string (use %s for parameters)
         params: Tuple or list of parameters
         fetch_one: If True, fetch single row
