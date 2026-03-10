@@ -1,500 +1,480 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Selected Mentors</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #050816;
-        --bg-card: rgba(255, 255, 255, 0.03);
-        --border: rgba(255, 255, 255, 0.06);
-        --border-glow: rgba(96, 165, 250, 0.25);
-        --text: #e2e8f0;
-        --muted: #64748b;
-        --accent: #60a5fa;
-        --accent-2: #22d3ee;
-        --purple: #a78bfa;
-        --pink: #f472b6;
-        --panel: rgba(255, 255, 255, 0.04);
-        --panel-border: rgba(255, 255, 255, 0.08);
-        --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-      }
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        font-family: 'Inter', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        padding: 80px 16px 48px;
-        display: flex;
-        justify-content: center;
-        -webkit-font-smoothing: antialiased;
-      }
-      .navbar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        background: rgba(5, 6, 13, 0.6);
-        backdrop-filter: blur(20px) saturate(1.8);
-        -webkit-backdrop-filter: blur(20px) saturate(1.8);
-        border: none;
-        border-radius: 0;
-        z-index: 1000;
-        box-shadow: none;
-        transition:
-          background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-          box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-      }
-      .navbar::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 1px;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          #60a5fa 20%,
-          #22d3ee 40%,
-          #a78bfa 60%,
-          #f472b6 80%,
-          transparent 100%
-        );
-        background-size: 200% 100%;
-        animation: navGradientFlow 6s linear infinite;
-        opacity: 0.5;
-      }
-      @keyframes navGradientFlow {
-        0% {
-          background-position: 100% 0;
-        }
-        100% {
-          background-position: -100% 0;
-        }
-      }
-      .navbar-container {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 16px 48px;
-        display: flex;
-        align-items: center;
-        gap: 36px;
-      }
-      .navbar-logo {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-width: 60px;
-      }
-      .navbar-logo a {
-        display: inline-flex;
-        align-items: center;
-        transition: filter 0.3s;
-      }
-      .navbar-logo a:hover {
-        filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.4));
-      }
-      .navbar-logo img {
-        height: 44px;
-        width: auto;
-        display: block;
-      }
-      .logo-text {
-        font-size: 20px;
-        font-weight: 800;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        letter-spacing: 2px;
-        text-decoration: none;
-      }
-      .nav-links {
-        display: flex;
-        gap: 24px;
-        align-items: center;
-        flex: 1;
-        justify-content: center;
-      }
-      .nav-link {
-        color: #e5e7eb;
-        text-decoration: none;
-        font-size: 14px;
-        font-weight: 500;
-        transition: color 0.2s ease;
-        position: relative;
-      }
-      .nav-link:hover {
-        color: var(--accent);
-      }
-      .nav-link::after {
-        content: '';
-        position: absolute;
-        bottom: -4px;
-        left: 0;
-        width: 0;
-        height: 2px;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        transition: width 0.2s ease;
-      }
-      .nav-link:hover::after {
-        width: 100%;
-      }
-      .nav-actions {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        min-width: 140px;
-        justify-content: flex-end;
-      }
-      .login-btn {
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        border: none;
-        color: #0b1021;
-        padding: 8px 18px;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 14px;
-        cursor: pointer;
-        transition:
-          transform 0.2s ease,
-          box-shadow 0.2s ease;
-        text-decoration: none;
-        display: inline-block;
-      }
-      .login-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
-      }
-      .container {
-        width: 100%;
-        max-width: 1100px;
-        margin-top: 10px;
-      }
-      .header {
-        background: var(--panel);
-        border: 1px solid var(--panel-border);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 20px;
-        box-shadow: var(--card-glow);
-      }
-      .header h1 {
-        font-size: 26px;
-        letter-spacing: 0.3px;
-        margin-bottom: 8px;
-      }
-      .header p {
-        color: var(--muted);
-        font-size: 14px;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 18px;
-      }
-      .card {
-        position: relative;
-        padding: 22px;
-        border-radius: 14px;
-        border: 1px solid var(--panel-border);
-        background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-        box-shadow: var(--card-glow);
-        overflow: hidden;
-        min-height: 200px;
-      }
-      .card::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.12), transparent 45%);
-        pointer-events: none;
-      }
-      .card-header {
-        display: flex;
-        gap: 16px;
-        align-items: center;
-        margin-bottom: 14px;
-        position: relative;
-        z-index: 1;
-      }
-      .avatar {
-        width: 80px;
-        height: 80px;
-        border-radius: 12px;
-        border: 1px solid var(--panel-border);
-        object-fit: cover;
-        background: #111827;
-      }
-      .avatar.placeholder {
-        display: grid;
-        place-items: center;
-        font-size: 26px;
-        color: #c7d2fe;
-      }
-      .name {
-        font-size: 20px;
-        font-weight: 750;
-        margin-bottom: 4px;
-      }
-      .workplace {
-        color: var(--muted);
-        font-size: 14px;
-      }
-      .tag {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        font-size: 13px;
-        background: rgba(96, 165, 250, 0.14);
-        color: #c7f9ff;
-        border: 1px solid rgba(96, 165, 250, 0.35);
-      }
-      .empty {
-        text-align: center;
-        color: #cbd5e1;
-        padding: 60px 0;
-        font-size: 14px;
-      }
-      @media (max-width: 768px) {
-        body {
-          padding: 76px 12px 40px;
-        }
-        .navbar-container {
-          padding: 10px 16px;
-        }
-      }
-      /* Background layers */
-      .dot-grid {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-        background-size: 32px 32px;
-        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-        -webkit-mask-image: radial-gradient(
-          ellipse 80% 60% at 50% 40%,
-          black 30%,
-          transparent 100%
-        );
-      }
-      .spotlight {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background: radial-gradient(
-          600px circle at var(--mx, 50%) var(--my, 30%),
-          rgba(96, 165, 250, 0.07),
-          rgba(34, 211, 238, 0.04) 40%,
-          transparent 70%
-        );
-        transition: background 0.3s ease;
-      }
-      .blobs {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      .blob {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(120px);
-        opacity: 0.15;
-        will-change: transform;
-      }
-      .blob-1 {
-        width: 700px;
-        height: 700px;
-        background: #60a5fa;
-        top: -15%;
-        left: -10%;
-        animation: blobFloat1 18s ease-in-out infinite;
-      }
-      .blob-2 {
-        width: 500px;
-        height: 500px;
-        background: #22d3ee;
-        top: 40%;
-        right: -12%;
-        animation: blobFloat2 22s ease-in-out infinite;
-      }
-      .blob-3 {
-        width: 450px;
-        height: 450px;
-        background: #a78bfa;
-        bottom: -10%;
-        left: 25%;
-        animation: blobFloat3 20s ease-in-out infinite;
-      }
-      @keyframes blobFloat1 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(120px, 80px) scale(1.1);
-        }
-      }
-      @keyframes blobFloat2 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(-80px, -60px) scale(1.15);
-        }
-      }
-      @keyframes blobFloat3 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(70px, -50px) scale(1.08);
-        }
-      }
-      .noise {
-        position: fixed;
-        inset: 0;
-        z-index: 1;
-        pointer-events: none;
-        opacity: 0.035;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-repeat: repeat;
-        background-size: 128px 128px;
-      }
-      .page-wrap {
-        position: relative;
-        z-index: 2;
-        width: 100%;
-      }
-      @keyframes fadeSlideUp {
-        from {
-          opacity: 0;
-          transform: translateY(24px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      .container {
-        animation: fadeSlideUp 0.7s ease both;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="dot-grid"></div>
-    <div class="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
-    <div class="page-wrap">
-      <nav class="navbar">
-        <div class="navbar-container">
-          <div class="navbar-logo">
-            <a href="/team"
-              ><img src="/static/images/FSS_logo_vector_trans_white.svg" alt="FSS"
-            /></a>
-          </div>
-          <div class="nav-links">
-            <a href="/team" class="nav-link">Home</a>
-            <a href="/teamRegulations" class="nav-link">Regulations</a>
-            <a href="/teamSchedule" class="nav-link">Schedule</a>
-            <a href="/teamMentors" class="nav-link">Mentors</a>
-            <a href="/teamRanking" class="nav-link">Ranking</a>
-            <a href="/selectedMentors" class="nav-link mentor-link">Selected Mentors</a>
-          </div>
-          <div class="nav-actions">
-            <a
-              href="#"
-              onclick="
-                logout();
-                return false;
-              "
-              class="login-btn"
-              style="
-                background: rgba(239, 68, 68, 0.15);
-                border: 1px solid rgba(239, 68, 68, 0.3);
-                color: #fca5a5;
-              "
-              >Logout</a
-            >
-          </div>
+{% extends "base.html" %} {% block title %}Selected Mentors{% endblock %} {% block head %}
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 80px 16px 48px;
+    display: flex;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+  .navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(5, 6, 13, 0.6);
+    backdrop-filter: blur(20px) saturate(1.8);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    border: none;
+    border-radius: 0;
+    z-index: 1000;
+    box-shadow: none;
+    transition:
+      background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .navbar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      #60a5fa 20%,
+      #22d3ee 40%,
+      #a78bfa 60%,
+      #f472b6 80%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: navGradientFlow 6s linear infinite;
+    opacity: 0.5;
+  }
+  @keyframes navGradientFlow {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: -100% 0;
+    }
+  }
+  .navbar-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 16px 48px;
+    display: flex;
+    align-items: center;
+    gap: 36px;
+  }
+  .navbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 60px;
+  }
+  .navbar-logo a {
+    display: inline-flex;
+    align-items: center;
+    transition: filter 0.3s;
+  }
+  .navbar-logo a:hover {
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.4));
+  }
+  .navbar-logo img {
+    height: 44px;
+    width: auto;
+    display: block;
+  }
+  .logo-text {
+    font-size: 20px;
+    font-weight: 800;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 2px;
+    text-decoration: none;
+  }
+  .nav-links {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex: 1;
+    justify-content: center;
+  }
+  .nav-link {
+    color: #e5e7eb;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.2s ease;
+    position: relative;
+  }
+  .nav-link:hover {
+    color: var(--accent);
+  }
+  .nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    transition: width 0.2s ease;
+  }
+  .nav-link:hover::after {
+    width: 100%;
+  }
+  .nav-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    min-width: 140px;
+    justify-content: flex-end;
+  }
+  .login-btn {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    border: none;
+    color: #0b1021;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .container {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 10px;
+  }
+  .header {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--card-glow);
+  }
+  .header h1 {
+    font-size: 26px;
+    letter-spacing: 0.3px;
+    margin-bottom: 8px;
+  }
+  .header p {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px;
+  }
+  .card {
+    position: relative;
+    padding: 22px;
+    border-radius: 14px;
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    box-shadow: var(--card-glow);
+    overflow: hidden;
+    min-height: 200px;
+  }
+  .card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.12), transparent 45%);
+    pointer-events: none;
+  }
+  .card-header {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 14px;
+    position: relative;
+    z-index: 1;
+  }
+  .avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    border: 1px solid var(--panel-border);
+    object-fit: cover;
+    background: #111827;
+  }
+  .avatar.placeholder {
+    display: grid;
+    place-items: center;
+    font-size: 26px;
+    color: #c7d2fe;
+  }
+  .name {
+    font-size: 20px;
+    font-weight: 750;
+    margin-bottom: 4px;
+  }
+  .workplace {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    background: rgba(96, 165, 250, 0.14);
+    color: #c7f9ff;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+  }
+  .empty {
+    text-align: center;
+    color: #cbd5e1;
+    padding: 60px 0;
+    font-size: 14px;
+  }
+  @media (max-width: 768px) {
+    body {
+      padding: 76px 12px 40px;
+    }
+    .navbar-container {
+      padding: 10px 16px;
+    }
+  }
+  /* Background layers */
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .container {
+    animation: fadeSlideUp 0.7s ease both;
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div class="dot-grid"></div>
+  <div class="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
+  <div class="page-wrap">
+    <nav class="navbar">
+      <div class="navbar-container">
+        <div class="navbar-logo">
+          <a href="/team"><img src="/static/images/FSS_logo_vector_trans_white.svg" alt="FSS" /></a>
         </div>
-      </nav>
-
-      <div class="container">
-        <div class="header">
-          <h1>Your Selected Mentors</h1>
-          <p>
-            View the mentors your team has chosen. Update selections from the Choose Mentor page.
-          </p>
+        <div class="nav-links">
+          <a href="/team" class="nav-link">Home</a>
+          <a href="/teamRegulations" class="nav-link">Regulations</a>
+          <a href="/teamSchedule" class="nav-link">Schedule</a>
+          <a href="/teamMentors" class="nav-link">Mentors</a>
+          <a href="/teamRanking" class="nav-link">Ranking</a>
+          <a href="/selectedMentors" class="nav-link mentor-link">Selected Mentors</a>
         </div>
-        <div id="mentorGrid" class="grid"></div>
-        <div id="emptyState" class="empty" style="display: none">
-          No mentors selected yet. Go to Choose Mentor to pick three mentors.
+        <div class="nav-actions">
+          <a
+            href="#"
+            onclick="
+              logout();
+              return false;
+            "
+            class="login-btn"
+            style="
+              background: rgba(239, 68, 68, 0.15);
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              color: #fca5a5;
+            "
+            >Logout</a
+          >
         </div>
       </div>
+    </nav>
 
-      <script>
-        async function loadSelectedMentors() {
-          const grid = document.getElementById('mentorGrid');
-          const empty = document.getElementById('emptyState');
-          grid.innerHTML = '';
-          empty.style.display = 'none';
+    <div class="container">
+      <div class="header">
+        <h1>Your Selected Mentors</h1>
+        <p>View the mentors your team has chosen. Update selections from the Choose Mentor page.</p>
+      </div>
+      <div id="mentorGrid" class="grid"></div>
+      <div id="emptyState" class="empty" style="display: none">
+        No mentors selected yet. Go to Choose Mentor to pick three mentors.
+      </div>
+    </div>
 
-          try {
-            const res = await fetch('/api/mentors/available');
-            const data = await res.json();
+    <script>
+      async function loadSelectedMentors() {
+        const grid = document.getElementById('mentorGrid');
+        const empty = document.getElementById('emptyState');
+        grid.innerHTML = '';
+        empty.style.display = 'none';
 
-            if (!data.success) {
-              empty.textContent = data.error || 'Unable to load mentors.';
-              empty.style.display = 'block';
-              return;
-            }
+        try {
+          const res = await fetch('/api/mentors/available');
+          const data = await res.json();
 
-            const selected = Array.isArray(data.selected) ? data.selected : [];
-            if (selected.length === 0) {
-              empty.style.display = 'block';
-              return;
-            }
+          if (!data.success) {
+            empty.textContent = data.error || 'Unable to load mentors.';
+            empty.style.display = 'block';
+            return;
+          }
 
-            selected.forEach((m) => {
-              const card = document.createElement('div');
-              card.className = 'card';
-              const hasInlinePic = Boolean(m.picture_data);
-              const hasPic = Boolean(m.picture_filename) || hasInlinePic;
-              const imgSrc = hasInlinePic
-                ? `data:image/png;base64,${m.picture_data}`
-                : hasPic
-                  ? `/api/mentors/${m.id}/picture`
-                  : null;
+          const selected = Array.isArray(data.selected) ? data.selected : [];
+          if (selected.length === 0) {
+            empty.style.display = 'block';
+            return;
+          }
 
-              card.innerHTML = `
+          selected.forEach((m) => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            const hasInlinePic = Boolean(m.picture_data);
+            const hasPic = Boolean(m.picture_filename) || hasInlinePic;
+            const imgSrc = hasInlinePic
+              ? `data:image/png;base64,${m.picture_data}`
+              : hasPic
+                ? `/api/mentors/${m.id}/picture`
+                : null;
+
+            card.innerHTML = `
             <div class="card-header">
               ${hasPic ? `<img class="avatar" src="${imgSrc}" alt="${m.name} ${m.surname}">` : `<div class="avatar placeholder">Avatar</div>`}
               <div>
@@ -505,35 +485,35 @@
             <div class="tag">${m.workplace}</div>
           `;
 
-              grid.appendChild(card);
-            });
-          } catch (err) {
-            empty.textContent = 'Error loading mentors. Please try again.';
-            empty.style.display = 'block';
-          }
+            grid.appendChild(card);
+          });
+        } catch (err) {
+          empty.textContent = 'Error loading mentors. Please try again.';
+          empty.style.display = 'block';
         }
+      }
 
-        async function logout() {
-          try {
-            const response = await fetch('/api/logout', { method: 'POST' });
-            if (response.ok) window.location.href = '/';
-          } catch (error) {
-            console.error('Logout failed:', error);
-          }
+      async function logout() {
+        try {
+          const response = await fetch('/api/logout', { method: 'POST' });
+          if (response.ok) window.location.href = '/';
+        } catch (error) {
+          console.error('Logout failed:', error);
         }
+      }
 
-        document.addEventListener('DOMContentLoaded', loadSelectedMentors);
-      </script>
-    </div>
-    <!-- /page-wrap -->
-    <script>
-      document.addEventListener('mousemove', (e) => {
-        const s = document.querySelector('.spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
-        }
-      });
+      document.addEventListener('DOMContentLoaded', loadSelectedMentors);
     </script>
-  </body>
-</html>
+  </div>
+  <!-- /page-wrap -->
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
+{% endblock %}

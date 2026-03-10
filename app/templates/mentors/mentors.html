@@ -1,131 +1,118 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mentors</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body>
-    <div id="navbar-slot"></div>
-    <div class="dot-grid"></div>
-    <div class="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
-    <div class="page-wrap">
-      <div class="container">
-        <div class="header">
-          <div>
-            <h1>Mentors</h1>
-            <p>Meet the mentors for this edition.</p>
-          </div>
+{% extends "base.html" %} {% block title %}Mentors{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+  <div class="dot-grid"></div>
+  <div class="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
+  <div class="page-wrap">
+    <div class="container">
+      <div class="header">
+        <div>
+          <h1>Mentors</h1>
+          <p>Meet the mentors for this edition.</p>
         </div>
-        <div id="mentorGrid" class="grid"></div>
-        <div id="emptyState" class="empty-state">No mentors found.</div>
       </div>
+      <div id="mentorGrid" class="grid"></div>
+      <div id="emptyState" class="empty-state">No mentors found.</div>
+    </div>
 
-      <script>
-        const PILL_COLORS = [
-          {
-            bg: 'rgba(96,165,250,0.12)',
-            border: 'rgba(96,165,250,0.35)',
-            text: '#93c5fd',
-            glow: 'rgba(96,165,250,0.25)',
-          },
-          {
-            bg: 'rgba(34,211,238,0.12)',
-            border: 'rgba(34,211,238,0.35)',
-            text: '#67e8f9',
-            glow: 'rgba(34,211,238,0.25)',
-          },
-          {
-            bg: 'rgba(167,139,250,0.12)',
-            border: 'rgba(167,139,250,0.35)',
-            text: '#c4b5fd',
-            glow: 'rgba(167,139,250,0.25)',
-          },
-          {
-            bg: 'rgba(244,114,182,0.12)',
-            border: 'rgba(244,114,182,0.35)',
-            text: '#f9a8d4',
-            glow: 'rgba(244,114,182,0.25)',
-          },
-          {
-            bg: 'rgba(52,211,153,0.12)',
-            border: 'rgba(52,211,153,0.35)',
-            text: '#6ee7b7',
-            glow: 'rgba(52,211,153,0.25)',
-          },
-          {
-            bg: 'rgba(251,191,36,0.12)',
-            border: 'rgba(251,191,36,0.35)',
-            text: '#fcd34d',
-            glow: 'rgba(251,191,36,0.25)',
-          },
-        ];
+    <script>
+      const PILL_COLORS = [
+        {
+          bg: 'rgba(96,165,250,0.12)',
+          border: 'rgba(96,165,250,0.35)',
+          text: '#93c5fd',
+          glow: 'rgba(96,165,250,0.25)',
+        },
+        {
+          bg: 'rgba(34,211,238,0.12)',
+          border: 'rgba(34,211,238,0.35)',
+          text: '#67e8f9',
+          glow: 'rgba(34,211,238,0.25)',
+        },
+        {
+          bg: 'rgba(167,139,250,0.12)',
+          border: 'rgba(167,139,250,0.35)',
+          text: '#c4b5fd',
+          glow: 'rgba(167,139,250,0.25)',
+        },
+        {
+          bg: 'rgba(244,114,182,0.12)',
+          border: 'rgba(244,114,182,0.35)',
+          text: '#f9a8d4',
+          glow: 'rgba(244,114,182,0.25)',
+        },
+        {
+          bg: 'rgba(52,211,153,0.12)',
+          border: 'rgba(52,211,153,0.35)',
+          text: '#6ee7b7',
+          glow: 'rgba(52,211,153,0.25)',
+        },
+        {
+          bg: 'rgba(251,191,36,0.12)',
+          border: 'rgba(251,191,36,0.35)',
+          text: '#fcd34d',
+          glow: 'rgba(251,191,36,0.25)',
+        },
+      ];
 
-        function escapeHtml(str) {
-          const d = document.createElement('div');
-          d.textContent = str;
-          return d.innerHTML;
-        }
+      function escapeHtml(str) {
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+      }
 
-        function buildTechPills(technologies) {
-          if (!Array.isArray(technologies) || technologies.length === 0) return '';
-          return (
-            '<div class="tech-pills">' +
-            technologies
-              .map((tech, i) => {
-                const c = PILL_COLORS[i % PILL_COLORS.length];
-                return `<span class="tech-pill" style="--pill-bg:${c.bg};--pill-border:${c.border};--pill-text:${c.text};--pill-glow:${c.glow};animation-delay:${i * 0.07}s">${escapeHtml(tech)}</span>`;
-              })
-              .join('') +
-            '</div>'
-          );
-        }
+      function buildTechPills(technologies) {
+        if (!Array.isArray(technologies) || technologies.length === 0) return '';
+        return (
+          '<div class="tech-pills">' +
+          technologies
+            .map((tech, i) => {
+              const c = PILL_COLORS[i % PILL_COLORS.length];
+              return `<span class="tech-pill" style="--pill-bg:${c.bg};--pill-border:${c.border};--pill-text:${c.text};--pill-glow:${c.glow};animation-delay:${i * 0.07}s">${escapeHtml(tech)}</span>`;
+            })
+            .join('') +
+          '</div>'
+        );
+      }
 
-        async function loadMentors() {
-          const grid = document.getElementById('mentorGrid');
-          const empty = document.getElementById('emptyState');
-          grid.innerHTML = '';
-          empty.style.display = 'none';
+      async function loadMentors() {
+        const grid = document.getElementById('mentorGrid');
+        const empty = document.getElementById('emptyState');
+        grid.innerHTML = '';
+        empty.style.display = 'none';
 
-          try {
-            const res = await fetch('/api/mentors');
-            const data = await res.json();
-            const list = Array.isArray(data.mentors) ? data.mentors : [];
+        try {
+          const res = await fetch('/api/mentors');
+          const data = await res.json();
+          const list = Array.isArray(data.mentors) ? data.mentors : [];
 
-            if (list.length === 0) {
-              empty.style.display = 'block';
-              return;
-            }
+          if (list.length === 0) {
+            empty.style.display = 'block';
+            return;
+          }
 
-            list.forEach((m, idx) => {
-              const card = document.createElement('div');
-              card.className = 'card';
-              card.style.animationDelay = `${idx * 0.08}s`;
+          list.forEach((m, idx) => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.animationDelay = `${idx * 0.08}s`;
 
-              const mentorName = escapeHtml(`${m.first_name || ''} ${m.last_name || ''}`.trim());
-              const mentorCompany = escapeHtml((m.company_name || '').trim());
-              const description = escapeHtml(
-                (m.bio || '').trim() ||
-                  'Experienced mentor available for technical guidance and project feedback.'
-              );
-              const imgSrc = (m.picture_url || '').trim();
-              const hasPic = Boolean(imgSrc);
-              const techPills = buildTechPills(m.technologies);
+            const mentorName = escapeHtml(`${m.first_name || ''} ${m.last_name || ''}`.trim());
+            const mentorCompany = escapeHtml((m.company_name || '').trim());
+            const description = escapeHtml(
+              (m.bio || '').trim() ||
+                'Experienced mentor available for technical guidance and project feedback.'
+            );
+            const imgSrc = (m.picture_url || '').trim();
+            const hasPic = Boolean(imgSrc);
+            const techPills = buildTechPills(m.technologies);
 
-              card.innerHTML = `
+            card.innerHTML = `
                 <div class="mentor-head">
                   ${
                     hasPic
@@ -144,99 +131,98 @@
                 <div class="description">${description}</div>
                 ${techPills}
               `;
-              grid.appendChild(card);
-            });
-          } catch (e) {
-            empty.textContent = 'Error loading mentors. Please try again.';
-            empty.style.display = 'block';
+            grid.appendChild(card);
+          });
+        } catch (e) {
+          empty.textContent = 'Error loading mentors. Please try again.';
+          empty.style.display = 'block';
+        }
+      }
+
+      function ensureMentorLink(text, href) {
+        const navLinks = document.querySelector('.nav-links');
+        if (!navLinks) return;
+        let link = document.querySelector('.nav-links .mentor-link');
+        if (!link) {
+          link = document.createElement('a');
+          link.className = 'nav-link mentor-link';
+          navLinks.appendChild(link);
+        }
+        link.textContent = text;
+        link.href = href;
+      }
+
+      async function setMentorLinkBySelection() {
+        try {
+          const res = await fetch('/api/mentors/available');
+          if (!res.ok) return;
+          const data = await res.json();
+          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+          if (selectedCount > 0) {
+            ensureMentorLink('Selected Mentors', '/selectedMentors');
+          } else {
+            ensureMentorLink('Choose Mentor', '/chooseMentor');
           }
-        }
+        } catch {}
+      }
 
-        function ensureMentorLink(text, href) {
-          const navLinks = document.querySelector('.nav-links');
-          if (!navLinks) return;
-          let link = document.querySelector('.nav-links .mentor-link');
-          if (!link) {
-            link = document.createElement('a');
-            link.className = 'nav-link mentor-link';
-            navLinks.appendChild(link);
-          }
-          link.textContent = text;
-          link.href = href;
-        }
-
-        async function setMentorLinkBySelection() {
-          try {
-            const res = await fetch('/api/mentors/available');
-            if (!res.ok) return;
-            const data = await res.json();
-            const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-            if (selectedCount > 0) {
-              ensureMentorLink('Selected Mentors', '/selectedMentors');
-            } else {
-              ensureMentorLink('Choose Mentor', '/chooseMentor');
-            }
-          } catch {}
-        }
-
-        function updateNavbar() {
-          const teamName = window.loggedInTeam || '';
-          const navActions = document.querySelector('.nav-actions');
-          if (!navActions) return;
-          if (teamName) {
-            navActions.innerHTML = `
+      function updateNavbar() {
+        const teamName = window.loggedInTeam || '';
+        const navActions = document.querySelector('.nav-actions');
+        if (!navActions) return;
+        if (teamName) {
+          navActions.innerHTML = `
               <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
             `;
-            setMentorLinkBySelection();
-          }
+          setMentorLinkBySelection();
         }
+      }
 
-        async function loadNavbar() {
-          try {
-            const res = await fetch('/navbar.html');
-            if (!res.ok) return;
-            const html = await res.text();
-            const slot = document.getElementById('navbar-slot');
-            if (!slot) return;
-            slot.innerHTML = html;
-            slot.querySelectorAll('script').forEach((old) => {
-              const s = document.createElement('script');
-              s.textContent = old.textContent;
-              document.head.appendChild(s);
-              s.remove();
-            });
-          } catch {}
-        }
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
 
-        async function logout() {
-          try {
-            const response = await fetch('/api/logout', { method: 'POST' });
-            if (response.ok) window.location.reload();
-          } catch (error) {
-            console.error('Logout failed:', error);
-          }
+      async function logout() {
+        try {
+          const response = await fetch('/api/logout', { method: 'POST' });
+          if (response.ok) window.location.reload();
+        } catch (error) {
+          console.error('Logout failed:', error);
         }
+      }
 
-        document.addEventListener('DOMContentLoaded', async () => {
-          await loadNavbar();
-          updateNavbar();
-          await loadMentors();
-        });
-      </script>
-    </div>
-    <!-- /page-wrap -->
-    <script>
-      document.addEventListener('mousemove', (e) => {
-        const s = document.querySelector('.spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
-        }
+      document.addEventListener('DOMContentLoaded', async () => {
+        await loadNavbar();
+        updateNavbar();
+        await loadMentors();
       });
     </script>
-  </body>
-</html>
-
+  </div>
+  <!-- /page-wrap -->
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
+{% endblock %} {% block head %}
 <style>
   :root {
     --bg: #050816;
@@ -740,3 +726,4 @@
     }
   }
 </style>
+{% endblock %}

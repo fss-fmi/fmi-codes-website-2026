@@ -1,914 +1,898 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rank Mentors — FMI Codes</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #050816;
-        --bg-card: rgba(255, 255, 255, 0.03);
-        --border: rgba(255, 255, 255, 0.06);
-        --border-glow: rgba(96, 165, 250, 0.25);
-        --text: #e2e8f0;
-        --muted: #64748b;
-        --accent: #60a5fa;
-        --accent-2: #22d3ee;
-        --purple: #a78bfa;
-        --pink: #f472b6;
-        --panel: rgba(255, 255, 255, 0.04);
-        --panel-border: rgba(255, 255, 255, 0.08);
-        --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-      }
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        font-family: 'Inter', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        padding: 0 16px 60px;
-        -webkit-font-smoothing: antialiased;
-      }
-      .container {
-        width: 100%;
-        max-width: 1100px;
-        margin: 0 auto;
-      }
+{% extends "base.html" %} {% block title %}Rank Mentors — FMI Codes{% endblock %} {% block head %}
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 16px 60px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
 
-      .header {
-        background: var(--panel);
-        border: 1px solid var(--panel-border);
-        border-radius: 16px;
-        padding: 24px 28px;
-        margin-bottom: 22px;
-        box-shadow: var(--glow);
-      }
-      .header h1 {
-        font-size: 26px;
-        font-weight: 700;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 6px;
-      }
-      .header p {
-        color: var(--muted);
-        font-size: 14px;
-        margin-bottom: 12px;
-      }
-      .step-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 14px;
-        border-radius: 20px;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      .step-select {
-        background: rgba(96, 165, 250, 0.14);
-        color: #93c5fd;
-        border: 1px solid rgba(96, 165, 250, 0.35);
-      }
-      .step-rank {
-        background: rgba(34, 211, 238, 0.14);
-        color: #67e8f9;
-        border: 1px solid rgba(34, 211, 238, 0.35);
-      }
+  .header {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 22px;
+    box-shadow: var(--glow);
+  }
+  .header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 6px;
+  }
+  .header p {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  .step-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .step-select {
+    background: rgba(96, 165, 250, 0.14);
+    color: #93c5fd;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+  }
+  .step-rank {
+    background: rgba(34, 211, 238, 0.14);
+    color: #67e8f9;
+    border: 1px solid rgba(34, 211, 238, 0.35);
+  }
 
-      /* Phase 1: Mentor grid selection */
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-      }
-      .card {
-        position: relative;
-        padding: 20px;
-        border-radius: 14px;
-        border: 1px solid var(--panel-border);
-        background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-        box-shadow: var(--glow);
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .card:hover {
-        transform: translateY(-4px);
-        border-color: rgba(96, 165, 250, 0.3);
-      }
-      .card.selected {
-        border-color: var(--accent);
-        background: linear-gradient(145deg, rgba(96, 165, 250, 0.12), rgba(96, 165, 250, 0.04));
-        box-shadow: 0 0 24px rgba(96, 165, 250, 0.2);
-      }
-      .card.disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-        pointer-events: none;
-      }
-      .card-inner {
-        display: flex;
-        gap: 14px;
-        align-items: center;
-      }
-      .avatar {
-        width: 64px;
-        height: 64px;
-        border-radius: 10px;
-        border: 1px solid var(--panel-border);
-        object-fit: cover;
-        background: #111827;
-      }
-      .avatar-placeholder {
-        width: 64px;
-        height: 64px;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.06);
-        display: grid;
-        place-items: center;
-        font-size: 22px;
-        color: #c7d2fe;
-      }
-      .card .name {
-        font-size: 17px;
-        font-weight: 700;
-        margin-bottom: 2px;
-      }
-      .card .company {
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .check-mark {
-        position: absolute;
-        top: 14px;
-        right: 14px;
-        width: 26px;
-        height: 26px;
-        border-radius: 7px;
-        border: 2px solid var(--panel-border);
-        background: rgba(255, 255, 255, 0.03);
-        display: grid;
-        place-items: center;
-        font-size: 14px;
-        transition: all 0.2s;
-      }
-      .card.selected .check-mark {
-        border-color: var(--accent);
-        background: var(--accent);
-        color: #0b1021;
-      }
+  /* Phase 1: Mentor grid selection */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    position: relative;
+    padding: 20px;
+    border-radius: 14px;
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    box-shadow: var(--glow);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(96, 165, 250, 0.3);
+  }
+  .card.selected {
+    border-color: var(--accent);
+    background: linear-gradient(145deg, rgba(96, 165, 250, 0.12), rgba(96, 165, 250, 0.04));
+    box-shadow: 0 0 24px rgba(96, 165, 250, 0.2);
+  }
+  .card.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  .card-inner {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+  }
+  .avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    border: 1px solid var(--panel-border);
+    object-fit: cover;
+    background: #111827;
+  }
+  .avatar-placeholder {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    display: grid;
+    place-items: center;
+    font-size: 22px;
+    color: #c7d2fe;
+  }
+  .card .name {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .card .company {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .check-mark {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    border: 2px solid var(--panel-border);
+    background: rgba(255, 255, 255, 0.03);
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .card.selected .check-mark {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #0b1021;
+  }
 
-      /* Phase 2: Drag & drop ranking */
-      #rank-section {
-        display: none;
-      }
-      .rank-slots {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        max-width: 600px;
-        margin: 0 auto 24px;
-      }
-      .rank-slot {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 18px 22px;
-        border-radius: 12px;
-        border: 2px dashed rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.02);
-        min-height: 80px;
-        transition: all 0.2s;
-      }
-      .rank-slot.drag-over {
-        border-color: var(--accent);
-        background: rgba(96, 165, 250, 0.08);
-      }
-      .rank-slot.filled {
-        border-style: solid;
-        border-color: rgba(255, 255, 255, 0.1);
-        background: var(--panel);
-      }
-      .rank-number {
-        font-size: 28px;
-        font-weight: 800;
-        width: 42px;
-        text-align: center;
-        flex-shrink: 0;
-      }
-      .rank-number.r1 {
-        background: linear-gradient(120deg, #fbbf24, #f59e0b);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .rank-number.r2 {
-        background: linear-gradient(120deg, #d1d5db, #9ca3af);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .rank-number.r3 {
-        background: linear-gradient(120deg, #cd7f32, #b8860b);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .rank-mentor {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        cursor: grab;
-      }
-      .rank-mentor:active {
-        cursor: grabbing;
-      }
-      .rank-mentor img {
-        width: 48px;
-        height: 48px;
-        border-radius: 8px;
-        object-fit: cover;
-      }
-      .rank-mentor .rm-name {
-        font-weight: 600;
-        font-size: 15px;
-      }
-      .rank-mentor .rm-company {
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .rank-placeholder {
-        color: var(--muted);
-        font-size: 14px;
-        font-style: italic;
-      }
-      .back-btn {
-        padding: 10px 22px;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid var(--panel-border);
-        border-radius: 8px;
-        color: var(--text);
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        margin-right: 12px;
-        transition: all 0.2s;
-      }
-      .back-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
-      }
+  /* Phase 2: Drag & drop ranking */
+  #rank-section {
+    display: none;
+  }
+  .rank-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 600px;
+    margin: 0 auto 24px;
+  }
+  .rank-slot {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 22px;
+    border-radius: 12px;
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+    min-height: 80px;
+    transition: all 0.2s;
+  }
+  .rank-slot.drag-over {
+    border-color: var(--accent);
+    background: rgba(96, 165, 250, 0.08);
+  }
+  .rank-slot.filled {
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--panel);
+  }
+  .rank-number {
+    font-size: 28px;
+    font-weight: 800;
+    width: 42px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .rank-number.r1 {
+    background: linear-gradient(120deg, #fbbf24, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .rank-number.r2 {
+    background: linear-gradient(120deg, #d1d5db, #9ca3af);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .rank-number.r3 {
+    background: linear-gradient(120deg, #cd7f32, #b8860b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .rank-mentor {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: grab;
+  }
+  .rank-mentor:active {
+    cursor: grabbing;
+  }
+  .rank-mentor img {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+  }
+  .rank-mentor .rm-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .rank-mentor .rm-company {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .rank-placeholder {
+    color: var(--muted);
+    font-size: 14px;
+    font-style: italic;
+  }
+  .back-btn {
+    padding: 10px 22px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 12px;
+    transition: all 0.2s;
+  }
+  .back-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
 
-      .submit-section {
-        position: sticky;
-        bottom: 0;
-        background: linear-gradient(to top, var(--bg) 85%, transparent);
-        padding: 20px 0;
-        text-align: center;
-      }
-      .submit-btn {
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        border: none;
-        color: #0b1021;
-        padding: 14px 40px;
-        border-radius: 8px;
-        font-weight: 700;
-        font-size: 16px;
-        cursor: pointer;
-        transition:
-          transform 0.2s,
-          box-shadow 0.2s;
-      }
-      .submit-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
-      }
-      .submit-btn:disabled {
-        background: rgba(156, 163, 175, 0.3);
-        color: #6b7280;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-      }
+  .submit-section {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg) 85%, transparent);
+    padding: 20px 0;
+    text-align: center;
+  }
+  .submit-btn {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    border: none;
+    color: #0b1021;
+    padding: 14px 40px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+  }
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .submit-btn:disabled {
+    background: rgba(156, 163, 175, 0.3);
+    color: #6b7280;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
 
-      .message {
-        display: none;
-        padding: 14px 20px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-size: 14px;
-      }
-      .message.show {
-        display: block;
-      }
-      .message.success {
-        background: rgba(34, 197, 94, 0.15);
-        color: #86efac;
-        border: 1px solid rgba(34, 197, 94, 0.3);
-      }
-      .message.error {
-        background: rgba(239, 68, 68, 0.15);
-        color: #fca5a5;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-      }
+  .message {
+    display: none;
+    padding: 14px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  .message.show {
+    display: block;
+  }
+  .message.success {
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+  .message.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
 
-      /* Already submitted state */
-      .current-prefs {
-        max-width: 600px;
-        margin: 0 auto;
-      }
-      .pref-row {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 16px 20px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px;
-        margin-bottom: 10px;
-      }
-      .pref-row img {
-        width: 48px;
-        height: 48px;
-        border-radius: 8px;
-        object-fit: cover;
-      }
-      .pref-rank {
-        font-size: 22px;
-        font-weight: 800;
-        width: 36px;
-        text-align: center;
-      }
+  /* Already submitted state */
+  .current-prefs {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .pref-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+  .pref-row img {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+  }
+  .pref-rank {
+    font-size: 22px;
+    font-weight: 800;
+    width: 36px;
+    text-align: center;
+  }
 
-      @media (max-width: 640px) {
-        body {
-          padding: 76px 12px 40px;
-        }
-        .header {
-          padding: 18px;
-        }
-      }
-      /* Background layers */
-      .dot-grid {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-        background-size: 32px 32px;
-        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-        -webkit-mask-image: radial-gradient(
-          ellipse 80% 60% at 50% 40%,
-          black 30%,
-          transparent 100%
-        );
-      }
-      .spotlight {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background: radial-gradient(
-          600px circle at var(--mx, 50%) var(--my, 30%),
-          rgba(96, 165, 250, 0.07),
-          rgba(34, 211, 238, 0.04) 40%,
-          transparent 70%
-        );
-        transition: background 0.3s ease;
-      }
-      .blobs {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      .blob {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(120px);
-        opacity: 0.15;
-        will-change: transform;
-      }
-      .blob-1 {
-        width: 700px;
-        height: 700px;
-        background: #60a5fa;
-        top: -15%;
-        left: -10%;
-        animation: blobFloat1 18s ease-in-out infinite;
-      }
-      .blob-2 {
-        width: 500px;
-        height: 500px;
-        background: #22d3ee;
-        top: 40%;
-        right: -12%;
-        animation: blobFloat2 22s ease-in-out infinite;
-      }
-      .blob-3 {
-        width: 450px;
-        height: 450px;
-        background: #a78bfa;
-        bottom: -10%;
-        left: 25%;
-        animation: blobFloat3 20s ease-in-out infinite;
-      }
-      @keyframes blobFloat1 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(120px, 80px) scale(1.1);
-        }
-      }
-      @keyframes blobFloat2 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(-80px, -60px) scale(1.15);
-        }
-      }
-      @keyframes blobFloat3 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(70px, -50px) scale(1.08);
-        }
-      }
-      .noise {
-        position: fixed;
-        inset: 0;
-        z-index: 1;
-        pointer-events: none;
-        opacity: 0.035;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-repeat: repeat;
-        background-size: 128px 128px;
-      }
-      .page-wrap {
-        position: relative;
-        z-index: 2;
-        width: 100%;
-      }
-      @keyframes fadeSlideUp {
-        from {
-          opacity: 0;
-          transform: translateY(24px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      .container {
-        animation: fadeSlideUp 0.7s ease both;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="navbar-slot"></div>
-    <div class="dot-grid"></div>
-    <div class="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
-    <div class="page-wrap">
-      <div class="container">
-        <div class="header">
-          <h1>Rank Your Mentors</h1>
-          <p>
-            As team captain, select exactly 3 mentors then drag to rank them in order of preference
-          </p>
-          <div class="step-indicator" id="step-badge"></div>
-        </div>
+  @media (max-width: 640px) {
+    body {
+      padding: 76px 12px 40px;
+    }
+    .header {
+      padding: 18px;
+    }
+  }
+  /* Background layers */
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .container {
+    animation: fadeSlideUp 0.7s ease both;
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+  <div class="dot-grid"></div>
+  <div class="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
+  <div class="page-wrap">
+    <div class="container">
+      <div class="header">
+        <h1>Rank Your Mentors</h1>
+        <p>
+          As team captain, select exactly 3 mentors then drag to rank them in order of preference
+        </p>
+        <div class="step-indicator" id="step-badge"></div>
+      </div>
 
-        <div id="message" class="message"></div>
+      <div id="message" class="message"></div>
 
-        <!-- Already submitted view -->
-        <div id="submitted-section" style="display: none">
-          <p style="text-align: center; color: var(--muted); margin-bottom: 18px">
-            Your preferences have been submitted:
-          </p>
-          <div class="current-prefs" id="current-prefs"></div>
-          <div class="submit-section">
-            <button class="back-btn" onclick="resetToSelect()">Change Preferences</button>
-          </div>
-        </div>
-
-        <!-- Phase 1: Grid selection -->
-        <div id="select-section">
-          <div class="grid" id="mentors-grid">
-            <div style="color: var(--muted); text-align: center; grid-column: 1/-1; padding: 40px">
-              Loading mentors...
-            </div>
-          </div>
-          <div class="submit-section">
-            <button class="submit-btn" id="proceed-btn" disabled onclick="goToRanking()">
-              Proceed to Ranking →
-            </button>
-          </div>
-        </div>
-
-        <!-- Phase 2: Drag & drop ranking -->
-        <div id="rank-section">
-          <div class="rank-slots" id="rank-slots">
-            <div class="rank-slot" data-rank="1">
-              <div class="rank-number r1">1st</div>
-              <div class="rank-placeholder">Drag your top choice here</div>
-            </div>
-            <div class="rank-slot" data-rank="2">
-              <div class="rank-number r2">2nd</div>
-              <div class="rank-placeholder">Drag your second choice here</div>
-            </div>
-            <div class="rank-slot" data-rank="3">
-              <div class="rank-number r3">3rd</div>
-              <div class="rank-placeholder">Drag your third choice here</div>
-            </div>
-          </div>
-          <p style="text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 16px">
-            Drag mentors between slots to reorder
-          </p>
-          <div class="submit-section">
-            <button class="back-btn" onclick="backToSelect()">← Back</button>
-            <button class="submit-btn" id="submit-btn" disabled onclick="submitPreferences()">
-              Submit Preferences
-            </button>
-          </div>
+      <!-- Already submitted view -->
+      <div id="submitted-section" style="display: none">
+        <p style="text-align: center; color: var(--muted); margin-bottom: 18px">
+          Your preferences have been submitted:
+        </p>
+        <div class="current-prefs" id="current-prefs"></div>
+        <div class="submit-section">
+          <button class="back-btn" onclick="resetToSelect()">Change Preferences</button>
         </div>
       </div>
 
-      <script>
-        const token = localStorage.getItem('token');
-        const userId = localStorage.getItem('user_id');
-        if (!token) window.location.href = '/login';
+      <!-- Phase 1: Grid selection -->
+      <div id="select-section">
+        <div class="grid" id="mentors-grid">
+          <div style="color: var(--muted); text-align: center; grid-column: 1/-1; padding: 40px">
+            Loading mentors...
+          </div>
+        </div>
+        <div class="submit-section">
+          <button class="submit-btn" id="proceed-btn" disabled onclick="goToRanking()">
+            Proceed to Ranking →
+          </button>
+        </div>
+      </div>
 
-        let allMentors = [];
-        let selectedIds = [];
-        let teamId = null;
+      <!-- Phase 2: Drag & drop ranking -->
+      <div id="rank-section">
+        <div class="rank-slots" id="rank-slots">
+          <div class="rank-slot" data-rank="1">
+            <div class="rank-number r1">1st</div>
+            <div class="rank-placeholder">Drag your top choice here</div>
+          </div>
+          <div class="rank-slot" data-rank="2">
+            <div class="rank-number r2">2nd</div>
+            <div class="rank-placeholder">Drag your second choice here</div>
+          </div>
+          <div class="rank-slot" data-rank="3">
+            <div class="rank-number r3">3rd</div>
+            <div class="rank-placeholder">Drag your third choice here</div>
+          </div>
+        </div>
+        <p style="text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 16px">
+          Drag mentors between slots to reorder
+        </p>
+        <div class="submit-section">
+          <button class="back-btn" onclick="backToSelect()">← Back</button>
+          <button class="submit-btn" id="submit-btn" disabled onclick="submitPreferences()">
+            Submit Preferences
+          </button>
+        </div>
+      </div>
+    </div>
 
-        async function loadNavbar() {
-          try {
-            const res = await fetch('/navbar.html');
-            if (!res.ok) return;
-            const html = await res.text();
-            const slot = document.getElementById('navbar-slot');
-            if (!slot) return;
-            slot.innerHTML = html;
-            slot.querySelectorAll('script').forEach((old) => {
-              const s = document.createElement('script');
-              s.textContent = old.textContent;
-              document.head.appendChild(s);
-              s.remove();
-            });
-          } catch {}
-        }
+    <script>
+      const token = localStorage.getItem('token');
+      const userId = localStorage.getItem('user_id');
+      if (!token) window.location.href = '/login';
 
-        function showMsg(text, type) {
-          const el = document.getElementById('message');
-          el.textContent = text;
-          el.className = 'message ' + type + ' show';
-          setTimeout(function () {
-            el.classList.remove('show');
-          }, 4000);
-        }
+      let allMentors = [];
+      let selectedIds = [];
+      let teamId = null;
 
-        async function init() {
-          // Get current user's team
-          const meRes = await fetch('/api/auth/me', {
-            headers: { Authorization: 'Bearer ' + token },
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
           });
-          if (!meRes.ok) {
-            window.location.href = '/login';
+        } catch {}
+      }
+
+      function showMsg(text, type) {
+        const el = document.getElementById('message');
+        el.textContent = text;
+        el.className = 'message ' + type + ' show';
+        setTimeout(function () {
+          el.classList.remove('show');
+        }, 4000);
+      }
+
+      async function init() {
+        // Get current user's team
+        const meRes = await fetch('/api/auth/me', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!meRes.ok) {
+          window.location.href = '/login';
+          return;
+        }
+        const me = await meRes.json();
+        if (!me.user.team_id) {
+          showMsg('You must be on a team first', 'error');
+          return;
+        }
+        teamId = me.user.team_id;
+
+        // Check if preferences already submitted
+        const prefRes = await fetch('/api/teams/' + teamId + '/mentor-preferences', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (prefRes.ok) {
+          const prefData = await prefRes.json();
+          if (prefData.preferences && prefData.preferences.length > 0) {
+            showSubmitted(prefData.preferences);
             return;
           }
-          const me = await meRes.json();
-          if (!me.user.team_id) {
-            showMsg('You must be on a team first', 'error');
-            return;
-          }
-          teamId = me.user.team_id;
-
-          // Check if preferences already submitted
-          const prefRes = await fetch('/api/teams/' + teamId + '/mentor-preferences', {
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          if (prefRes.ok) {
-            const prefData = await prefRes.json();
-            if (prefData.preferences && prefData.preferences.length > 0) {
-              showSubmitted(prefData.preferences);
-              return;
-            }
-          }
-
-          // Load available mentors
-          const mentorsRes = await fetch('/api/teams/' + teamId + '/available-mentors', {
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          if (!mentorsRes.ok) {
-            showMsg('Failed to load mentors. Are you the captain?', 'error');
-            return;
-          }
-          const mentorsData = await mentorsRes.json();
-          allMentors = mentorsData.mentors || [];
-          renderGrid();
-          setStep('select');
         }
 
-        function setStep(step) {
-          const badge = document.getElementById('step-badge');
-          if (step === 'select') {
-            badge.className = 'step-indicator step-select';
-            badge.textContent = 'Step 1 — Select 3 mentors (' + selectedIds.length + '/3)';
-          } else {
-            badge.className = 'step-indicator step-rank';
-            badge.textContent = 'Step 2 — Drag to rank';
-          }
+        // Load available mentors
+        const mentorsRes = await fetch('/api/teams/' + teamId + '/available-mentors', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!mentorsRes.ok) {
+          showMsg('Failed to load mentors. Are you the captain?', 'error');
+          return;
         }
+        const mentorsData = await mentorsRes.json();
+        allMentors = mentorsData.mentors || [];
+        renderGrid();
+        setStep('select');
+      }
 
-        function renderGrid() {
-          const grid = document.getElementById('mentors-grid');
-          grid.innerHTML = '';
-          if (allMentors.length === 0) {
-            grid.innerHTML =
-              '<div style="color:var(--muted);text-align:center;grid-column:1/-1;padding:40px">No mentors available.</div>';
-            return;
-          }
-          allMentors.forEach(function (m) {
-            const card = document.createElement('div');
-            card.className = 'card' + (selectedIds.includes(m.mentor_id) ? ' selected' : '');
-            if (selectedIds.length >= 3 && !selectedIds.includes(m.mentor_id))
-              card.className += ' disabled';
-            card.dataset.id = m.mentor_id;
-
-            const imgHtml = m.picture_filename
-              ? '<img src="/api/mentors/' + m.mentor_id + '/picture" class="avatar" alt="" />'
-              : '<div class="avatar-placeholder">&#128100;</div>';
-
-            card.innerHTML =
-              '<div class="check-mark">&#10003;</div>' +
-              '<div class="card-inner">' +
-              imgHtml +
-              '<div><div class="name">' +
-              (m.name || '') +
-              '</div>' +
-              '<div class="company">' +
-              (m.company_name || m.workplace || '') +
-              '</div></div>' +
-              '</div>';
-
-            card.addEventListener('click', function () {
-              toggleMentor(m.mentor_id);
-            });
-            grid.appendChild(card);
-          });
+      function setStep(step) {
+        const badge = document.getElementById('step-badge');
+        if (step === 'select') {
+          badge.className = 'step-indicator step-select';
+          badge.textContent = 'Step 1 — Select 3 mentors (' + selectedIds.length + '/3)';
+        } else {
+          badge.className = 'step-indicator step-rank';
+          badge.textContent = 'Step 2 — Drag to rank';
         }
+      }
 
-        function toggleMentor(id) {
-          const idx = selectedIds.indexOf(id);
-          if (idx > -1) {
-            selectedIds.splice(idx, 1);
-          } else {
-            if (selectedIds.length >= 3) {
-              showMsg('Select exactly 3 mentors', 'error');
-              return;
-            }
-            selectedIds.push(id);
-          }
-          renderGrid();
-          setStep('select');
-          document.getElementById('proceed-btn').disabled = selectedIds.length !== 3;
+      function renderGrid() {
+        const grid = document.getElementById('mentors-grid');
+        grid.innerHTML = '';
+        if (allMentors.length === 0) {
+          grid.innerHTML =
+            '<div style="color:var(--muted);text-align:center;grid-column:1/-1;padding:40px">No mentors available.</div>';
+          return;
         }
+        allMentors.forEach(function (m) {
+          const card = document.createElement('div');
+          card.className = 'card' + (selectedIds.includes(m.mentor_id) ? ' selected' : '');
+          if (selectedIds.length >= 3 && !selectedIds.includes(m.mentor_id))
+            card.className += ' disabled';
+          card.dataset.id = m.mentor_id;
 
-        function goToRanking() {
-          document.getElementById('select-section').style.display = 'none';
-          document.getElementById('rank-section').style.display = 'block';
-          setStep('rank');
-          buildRankSlots();
-        }
+          const imgHtml = m.picture_filename
+            ? '<img src="/api/mentors/' + m.mentor_id + '/picture" class="avatar" alt="" />'
+            : '<div class="avatar-placeholder">&#128100;</div>';
 
-        function backToSelect() {
-          document.getElementById('rank-section').style.display = 'none';
-          document.getElementById('select-section').style.display = 'block';
-          setStep('select');
-        }
-
-        function getMentor(id) {
-          return (
-            allMentors.find(function (m) {
-              return m.mentor_id === id;
-            }) || {}
-          );
-        }
-
-        function buildRankSlots() {
-          var slots = document.querySelectorAll('.rank-slot');
-          selectedIds.forEach(function (id, i) {
-            if (i < slots.length) fillSlot(slots[i], id);
-          });
-          checkRankComplete();
-        }
-
-        function fillSlot(slot, mentorId) {
-          var m = getMentor(mentorId);
-          var imgHtml = m.picture_filename
-            ? '<img src="/api/mentors/' + m.mentor_id + '/picture" alt="" />'
-            : '';
-          var el = document.createElement('div');
-          el.className = 'rank-mentor';
-          el.draggable = true;
-          el.dataset.mentorId = mentorId;
-          el.innerHTML =
+          card.innerHTML =
+            '<div class="check-mark">&#10003;</div>' +
+            '<div class="card-inner">' +
             imgHtml +
-            '<div><div class="rm-name">' +
+            '<div><div class="name">' +
             (m.name || '') +
             '</div>' +
-            '<div class="rm-company">' +
+            '<div class="company">' +
             (m.company_name || m.workplace || '') +
-            '</div></div>';
+            '</div></div>' +
+            '</div>';
 
-          // Remove old content except rank number
-          var rankNum = slot.querySelector('.rank-number');
-          slot.innerHTML = '';
-          slot.appendChild(rankNum);
-          slot.appendChild(el);
-          slot.classList.add('filled');
+          card.addEventListener('click', function () {
+            toggleMentor(m.mentor_id);
+          });
+          grid.appendChild(card);
+        });
+      }
 
-          // Drag events on mentor element
-          el.addEventListener('dragstart', function (e) {
-            e.dataTransfer.setData('text/plain', mentorId);
-            e.dataTransfer.effectAllowed = 'move';
-            el.style.opacity = '0.5';
-          });
-          el.addEventListener('dragend', function () {
-            el.style.opacity = '1';
-          });
+      function toggleMentor(id) {
+        const idx = selectedIds.indexOf(id);
+        if (idx > -1) {
+          selectedIds.splice(idx, 1);
+        } else {
+          if (selectedIds.length >= 3) {
+            showMsg('Select exactly 3 mentors', 'error');
+            return;
+          }
+          selectedIds.push(id);
         }
+        renderGrid();
+        setStep('select');
+        document.getElementById('proceed-btn').disabled = selectedIds.length !== 3;
+      }
 
-        // Slot drop events
+      function goToRanking() {
+        document.getElementById('select-section').style.display = 'none';
+        document.getElementById('rank-section').style.display = 'block';
+        setStep('rank');
+        buildRankSlots();
+      }
+
+      function backToSelect() {
+        document.getElementById('rank-section').style.display = 'none';
+        document.getElementById('select-section').style.display = 'block';
+        setStep('select');
+      }
+
+      function getMentor(id) {
+        return (
+          allMentors.find(function (m) {
+            return m.mentor_id === id;
+          }) || {}
+        );
+      }
+
+      function buildRankSlots() {
+        var slots = document.querySelectorAll('.rank-slot');
+        selectedIds.forEach(function (id, i) {
+          if (i < slots.length) fillSlot(slots[i], id);
+        });
+        checkRankComplete();
+      }
+
+      function fillSlot(slot, mentorId) {
+        var m = getMentor(mentorId);
+        var imgHtml = m.picture_filename
+          ? '<img src="/api/mentors/' + m.mentor_id + '/picture" alt="" />'
+          : '';
+        var el = document.createElement('div');
+        el.className = 'rank-mentor';
+        el.draggable = true;
+        el.dataset.mentorId = mentorId;
+        el.innerHTML =
+          imgHtml +
+          '<div><div class="rm-name">' +
+          (m.name || '') +
+          '</div>' +
+          '<div class="rm-company">' +
+          (m.company_name || m.workplace || '') +
+          '</div></div>';
+
+        // Remove old content except rank number
+        var rankNum = slot.querySelector('.rank-number');
+        slot.innerHTML = '';
+        slot.appendChild(rankNum);
+        slot.appendChild(el);
+        slot.classList.add('filled');
+
+        // Drag events on mentor element
+        el.addEventListener('dragstart', function (e) {
+          e.dataTransfer.setData('text/plain', mentorId);
+          e.dataTransfer.effectAllowed = 'move';
+          el.style.opacity = '0.5';
+        });
+        el.addEventListener('dragend', function () {
+          el.style.opacity = '1';
+        });
+      }
+
+      // Slot drop events
+      document.querySelectorAll('.rank-slot').forEach(function (slot) {
+        slot.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          slot.classList.add('drag-over');
+        });
+        slot.addEventListener('dragleave', function () {
+          slot.classList.remove('drag-over');
+        });
+        slot.addEventListener('drop', function (e) {
+          e.preventDefault();
+          slot.classList.remove('drag-over');
+          var draggedId = parseInt(e.dataTransfer.getData('text/plain'));
+
+          // Find the slot that currently has this mentor
+          var sourceSlot = null;
+          document.querySelectorAll('.rank-slot').forEach(function (s) {
+            var rm = s.querySelector('.rank-mentor');
+            if (rm && parseInt(rm.dataset.mentorId) === draggedId) sourceSlot = s;
+          });
+
+          // Find what this slot currently has
+          var existingMentor = slot.querySelector('.rank-mentor');
+          var existingId = existingMentor ? parseInt(existingMentor.dataset.mentorId) : null;
+
+          // Place dragged mentor here
+          fillSlot(slot, draggedId);
+
+          // Swap: put the displaced mentor in the source slot
+          if (sourceSlot && existingId !== null && existingId !== draggedId) {
+            fillSlot(sourceSlot, existingId);
+          } else if (sourceSlot && existingId === null) {
+            // Clear source slot
+            var rn = sourceSlot.querySelector('.rank-number');
+            sourceSlot.innerHTML = '';
+            sourceSlot.appendChild(rn);
+            sourceSlot.innerHTML += '<div class="rank-placeholder">Drag a mentor here</div>';
+            sourceSlot.classList.remove('filled');
+          }
+          checkRankComplete();
+        });
+      });
+
+      function checkRankComplete() {
+        var filled = document.querySelectorAll('.rank-slot.filled').length;
+        document.getElementById('submit-btn').disabled = filled < 3;
+      }
+
+      async function submitPreferences() {
+        var prefs = [];
         document.querySelectorAll('.rank-slot').forEach(function (slot) {
-          slot.addEventListener('dragover', function (e) {
-            e.preventDefault();
-            slot.classList.add('drag-over');
-          });
-          slot.addEventListener('dragleave', function () {
-            slot.classList.remove('drag-over');
-          });
-          slot.addEventListener('drop', function (e) {
-            e.preventDefault();
-            slot.classList.remove('drag-over');
-            var draggedId = parseInt(e.dataTransfer.getData('text/plain'));
-
-            // Find the slot that currently has this mentor
-            var sourceSlot = null;
-            document.querySelectorAll('.rank-slot').forEach(function (s) {
-              var rm = s.querySelector('.rank-mentor');
-              if (rm && parseInt(rm.dataset.mentorId) === draggedId) sourceSlot = s;
+          var rm = slot.querySelector('.rank-mentor');
+          if (rm) {
+            prefs.push({
+              mentor_id: parseInt(rm.dataset.mentorId),
+              rank: parseInt(slot.dataset.rank),
             });
-
-            // Find what this slot currently has
-            var existingMentor = slot.querySelector('.rank-mentor');
-            var existingId = existingMentor ? parseInt(existingMentor.dataset.mentorId) : null;
-
-            // Place dragged mentor here
-            fillSlot(slot, draggedId);
-
-            // Swap: put the displaced mentor in the source slot
-            if (sourceSlot && existingId !== null && existingId !== draggedId) {
-              fillSlot(sourceSlot, existingId);
-            } else if (sourceSlot && existingId === null) {
-              // Clear source slot
-              var rn = sourceSlot.querySelector('.rank-number');
-              sourceSlot.innerHTML = '';
-              sourceSlot.appendChild(rn);
-              sourceSlot.innerHTML += '<div class="rank-placeholder">Drag a mentor here</div>';
-              sourceSlot.classList.remove('filled');
-            }
-            checkRankComplete();
-          });
+          }
         });
 
-        function checkRankComplete() {
-          var filled = document.querySelectorAll('.rank-slot.filled').length;
-          document.getElementById('submit-btn').disabled = filled < 3;
-        }
-
-        async function submitPreferences() {
-          var prefs = [];
-          document.querySelectorAll('.rank-slot').forEach(function (slot) {
-            var rm = slot.querySelector('.rank-mentor');
-            if (rm) {
-              prefs.push({
-                mentor_id: parseInt(rm.dataset.mentorId),
-                rank: parseInt(slot.dataset.rank),
-              });
-            }
+        try {
+          var res = await fetch('/api/teams/' + teamId + '/mentor-preferences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ preferences: prefs }),
           });
-
-          try {
-            var res = await fetch('/api/teams/' + teamId + '/mentor-preferences', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-              body: JSON.stringify({ preferences: prefs }),
-            });
-            var data = await res.json();
-            if (data.success) {
-              showMsg('Preferences saved!', 'success');
-              setTimeout(function () {
-                window.location.reload();
-              }, 1500);
-            } else {
-              showMsg(data.error || 'Failed to save', 'error');
-            }
-          } catch (e) {
-            showMsg('Network error', 'error');
+          var data = await res.json();
+          if (data.success) {
+            showMsg('Preferences saved!', 'success');
+            setTimeout(function () {
+              window.location.reload();
+            }, 1500);
+          } else {
+            showMsg(data.error || 'Failed to save', 'error');
           }
+        } catch (e) {
+          showMsg('Network error', 'error');
         }
+      }
 
-        function showSubmitted(prefs) {
-          document.getElementById('select-section').style.display = 'none';
-          document.getElementById('rank-section').style.display = 'none';
-          document.getElementById('submitted-section').style.display = 'block';
-          document.getElementById('step-badge').className = 'step-indicator step-rank';
-          document.getElementById('step-badge').textContent = 'Preferences submitted ✓';
+      function showSubmitted(prefs) {
+        document.getElementById('select-section').style.display = 'none';
+        document.getElementById('rank-section').style.display = 'none';
+        document.getElementById('submitted-section').style.display = 'block';
+        document.getElementById('step-badge').className = 'step-indicator step-rank';
+        document.getElementById('step-badge').textContent = 'Preferences submitted ✓';
 
-          var container = document.getElementById('current-prefs');
-          container.innerHTML = '';
-          prefs.sort(function (a, b) {
-            return a.rank - b.rank;
-          });
-          var rankLabels = ['1st', '2nd', '3rd'];
-          var rankClasses = ['r1', 'r2', 'r3'];
-          prefs.forEach(function (p, i) {
-            var row = document.createElement('div');
-            row.className = 'pref-row';
-            row.innerHTML =
-              '<div class="pref-rank ' +
-              (rankClasses[i] || '') +
-              '">' +
-              (rankLabels[i] || i + 1) +
-              '</div>' +
-              '<img src="/api/mentors/' +
-              p.mentor_id +
-              '/picture" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover" onerror="this.style.display=\'none\'" />' +
-              '<div><div style="font-weight:600;font-size:15px">' +
-              (p.mentor_name || p.name || 'Mentor #' + p.mentor_id) +
-              '</div>' +
-              '<div style="color:var(--muted);font-size:13px">' +
-              (p.company_name || '') +
-              '</div></div>';
-            container.appendChild(row);
-          });
-        }
+        var container = document.getElementById('current-prefs');
+        container.innerHTML = '';
+        prefs.sort(function (a, b) {
+          return a.rank - b.rank;
+        });
+        var rankLabels = ['1st', '2nd', '3rd'];
+        var rankClasses = ['r1', 'r2', 'r3'];
+        prefs.forEach(function (p, i) {
+          var row = document.createElement('div');
+          row.className = 'pref-row';
+          row.innerHTML =
+            '<div class="pref-rank ' +
+            (rankClasses[i] || '') +
+            '">' +
+            (rankLabels[i] || i + 1) +
+            '</div>' +
+            '<img src="/api/mentors/' +
+            p.mentor_id +
+            '/picture" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover" onerror="this.style.display=\'none\'" />' +
+            '<div><div style="font-weight:600;font-size:15px">' +
+            (p.mentor_name || p.name || 'Mentor #' + p.mentor_id) +
+            '</div>' +
+            '<div style="color:var(--muted);font-size:13px">' +
+            (p.company_name || '') +
+            '</div></div>';
+          container.appendChild(row);
+        });
+      }
 
-        function resetToSelect() {
-          document.getElementById('submitted-section').style.display = 'none';
-          document.getElementById('select-section').style.display = 'block';
-          selectedIds = [];
-          // Reload mentors
-          fetch('/api/teams/' + teamId + '/available-mentors', {
-            headers: { Authorization: 'Bearer ' + token },
+      function resetToSelect() {
+        document.getElementById('submitted-section').style.display = 'none';
+        document.getElementById('select-section').style.display = 'block';
+        selectedIds = [];
+        // Reload mentors
+        fetch('/api/teams/' + teamId + '/available-mentors', {
+          headers: { Authorization: 'Bearer ' + token },
+        })
+          .then(function (r) {
+            return r.json();
           })
-            .then(function (r) {
-              return r.json();
-            })
-            .then(function (d) {
-              allMentors = d.mentors || [];
-              renderGrid();
-              setStep('select');
-            });
-        }
+          .then(function (d) {
+            allMentors = d.mentors || [];
+            renderGrid();
+            setStep('select');
+          });
+      }
 
-        loadNavbar();
-        init();
-      </script>
-    </div>
-    <!-- /page-wrap -->
-    <script>
-      document.addEventListener('mousemove', (e) => {
-        const s = document.querySelector('.spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
-        }
-      });
+      loadNavbar();
+      init();
     </script>
-  </body>
-</html>
+  </div>
+  <!-- /page-wrap -->
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
+{% endblock %}

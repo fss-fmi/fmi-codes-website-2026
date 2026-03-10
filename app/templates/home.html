@@ -1,1010 +1,986 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FMI{Codes} 2026</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      /* ═══════════════════════════════════════════
+{% extends "base.html" %} {% block title %}FMI{Codes} 2026{% endblock %} {% block head %}
+<style>
+  /* ═══════════════════════════════════════════
          CSS VARIABLES & RESET
          ═══════════════════════════════════════════ */
-      :root {
-        --bg: #050816;
-        --bg-card: rgba(255, 255, 255, 0.03);
-        --border: rgba(255, 255, 255, 0.06);
-        --border-glow: rgba(96, 165, 250, 0.25);
-        --text: #e2e8f0;
-        --muted: #64748b;
-        --accent: #60a5fa;
-        --accent-2: #22d3ee;
-        --purple: #a78bfa;
-        --pink: #f472b6;
-      }
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      html {
-        scroll-behavior: smooth;
-      }
-      body {
-        font-family: 'Inter', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        overflow-x: hidden;
-        -webkit-font-smoothing: antialiased;
-      }
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          ANIMATED DOT GRID BACKGROUND
          ═══════════════════════════════════════════ */
-      .dot-grid {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-        background-size: 32px 32px;
-        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-        -webkit-mask-image: radial-gradient(
-          ellipse 80% 60% at 50% 40%,
-          black 30%,
-          transparent 100%
-        );
-      }
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          MOUSE-FOLLOWING SPOTLIGHT
          ═══════════════════════════════════════════ */
-      .spotlight {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background: radial-gradient(
-          600px circle at var(--mx, 50%) var(--my, 30%),
-          rgba(96, 165, 250, 0.07),
-          rgba(34, 211, 238, 0.04) 40%,
-          transparent 70%
-        );
-        transition: background 0.3s ease;
-      }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          ANIMATED GRADIENT BLOBS
          ═══════════════════════════════════════════ */
-      .blobs {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      .blob {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(120px);
-        opacity: 0.15;
-        will-change: transform;
-      }
-      .blob-1 {
-        width: 700px;
-        height: 700px;
-        background: #60a5fa;
-        top: -15%;
-        left: -10%;
-        animation: blobFloat1 18s ease-in-out infinite;
-      }
-      .blob-2 {
-        width: 500px;
-        height: 500px;
-        background: #22d3ee;
-        top: 40%;
-        right: -12%;
-        animation: blobFloat2 22s ease-in-out infinite;
-      }
-      .blob-3 {
-        width: 450px;
-        height: 450px;
-        background: #a78bfa;
-        bottom: -10%;
-        left: 25%;
-        animation: blobFloat3 20s ease-in-out infinite;
-      }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
 
-      @keyframes blobFloat1 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(120px, 80px) scale(1.1);
-        }
-      }
-      @keyframes blobFloat2 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(-80px, -60px) scale(1.15);
-        }
-      }
-      @keyframes blobFloat3 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(70px, -50px) scale(1.08);
-        }
-      }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
 
-      /* Noise texture overlay */
-      .noise {
-        position: fixed;
-        inset: 0;
-        z-index: 1;
-        pointer-events: none;
-        opacity: 0.035;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-repeat: repeat;
-        background-size: 128px 128px;
-      }
+  /* Noise texture overlay */
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          LAYOUT
          ═══════════════════════════════════════════ */
-      .page-wrap {
-        position: relative;
-        z-index: 2;
-        width: 100%;
-      }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          HERO SECTION
          ═══════════════════════════════════════════ */
-      .hero {
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px 24px 60px;
-        text-align: center;
-        position: relative;
-      }
-      /* Glow line at bottom of hero */
-      .hero::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 10%;
-        right: 10%;
-        height: 1px;
-        background: linear-gradient(
-          90deg,
-          transparent,
-          var(--accent),
-          var(--accent-2),
-          transparent
-        );
-        opacity: 0.4;
-      }
-      .hero-inner {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 32px;
-        max-width: 900px;
-      }
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px 60px;
+    text-align: center;
+    position: relative;
+  }
+  /* Glow line at bottom of hero */
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
+    opacity: 0.4;
+  }
+  .hero-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    max-width: 900px;
+  }
 
-      /* Badge pill */
-      .hero-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 16px 6px 8px;
-        border-radius: 100px;
-        background: rgba(96, 165, 250, 0.08);
-        border: 1px solid rgba(96, 165, 250, 0.2);
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--accent);
-        animation: fadeSlideUp 0.8s ease both;
-      }
-      .hero-badge .pulse {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--accent);
-        animation: pulse 2s ease-in-out infinite;
-      }
-      @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-          box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.5);
-        }
-        50% {
-          opacity: 0.7;
-          box-shadow: 0 0 0 8px rgba(96, 165, 250, 0);
-        }
-      }
+  /* Badge pill */
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px 6px 8px;
+    border-radius: 100px;
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    animation: fadeSlideUp 0.8s ease both;
+  }
+  .hero-badge .pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.5);
+    }
+    50% {
+      opacity: 0.7;
+      box-shadow: 0 0 0 8px rgba(96, 165, 250, 0);
+    }
+  }
 
-      .hero-logo {
-        width: min(480px, 75vw);
-        animation: fadeSlideUp 0.8s 0.15s ease both;
-      }
-      .hero-logo img {
-        width: 100%;
-        height: auto;
-        display: block;
-        filter: drop-shadow(0 0 60px rgba(96, 165, 250, 0.2));
-      }
+  .hero-logo {
+    width: min(480px, 75vw);
+    animation: fadeSlideUp 0.8s 0.15s ease both;
+  }
+  .hero-logo img {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 0 60px rgba(96, 165, 250, 0.2));
+  }
 
-      .hero-title {
-        font-size: clamp(2.5rem, 6vw, 4.5rem);
-        font-weight: 900;
-        letter-spacing: -0.03em;
-        line-height: 1.1;
-        color: #fff;
-        animation: fadeSlideUp 0.8s 0.3s ease both;
-      }
-      .gradient-text {
-        background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--purple));
-        background-size: 200% 200%;
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        animation: gradientShift 4s ease infinite;
-      }
-      @keyframes gradientShift {
-        0%,
-        100% {
-          background-position: 0% 50%;
-        }
-        50% {
-          background-position: 100% 50%;
-        }
-      }
+  .hero-title {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: #fff;
+    animation: fadeSlideUp 0.8s 0.3s ease both;
+  }
+  .gradient-text {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--purple));
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientShift 4s ease infinite;
+  }
+  @keyframes gradientShift {
+    0%,
+    100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
 
-      .hero-subtitle {
-        font-size: clamp(1.05rem, 2vw, 1.3rem);
-        color: var(--muted);
-        line-height: 1.7;
-        max-width: 600px;
-        animation: fadeSlideUp 0.8s 0.45s ease both;
-      }
+  .hero-subtitle {
+    font-size: clamp(1.05rem, 2vw, 1.3rem);
+    color: var(--muted);
+    line-height: 1.7;
+    max-width: 600px;
+    animation: fadeSlideUp 0.8s 0.45s ease both;
+  }
 
-      .hero-actions {
-        display: flex;
-        gap: 16px;
-        margin-top: 8px;
-        flex-wrap: wrap;
-        justify-content: center;
-        animation: fadeSlideUp 0.8s 0.6s ease both;
-      }
+  .hero-actions {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: fadeSlideUp 0.8s 0.6s ease both;
+  }
 
-      @keyframes fadeSlideUp {
-        from {
-          opacity: 0;
-          transform: translateY(30px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 
-      /* CTA Buttons */
-      .btn-primary {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 16px 40px;
-        border-radius: 14px;
-        font-weight: 700;
-        font-size: 1.05rem;
-        text-decoration: none;
-        color: #0b1021;
-        overflow: hidden;
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        box-shadow:
-          0 0 30px rgba(96, 165, 250, 0.3),
-          0 0 80px rgba(96, 165, 250, 0.1);
-        transition:
-          transform 0.25s,
-          box-shadow 0.25s;
-      }
-      .btn-primary::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-        transform: translateX(-100%);
-        transition: transform 0.5s;
-      }
-      .btn-primary:hover {
-        transform: translateY(-3px) scale(1.02);
-        box-shadow:
-          0 0 40px rgba(96, 165, 250, 0.5),
-          0 0 100px rgba(96, 165, 250, 0.15);
-      }
-      .btn-primary:hover::before {
-        transform: translateX(100%);
-      }
+  /* CTA Buttons */
+  .btn-primary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 40px;
+    border-radius: 14px;
+    font-weight: 700;
+    font-size: 1.05rem;
+    text-decoration: none;
+    color: #0b1021;
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow:
+      0 0 30px rgba(96, 165, 250, 0.3),
+      0 0 80px rgba(96, 165, 250, 0.1);
+    transition:
+      transform 0.25s,
+      box-shadow 0.25s;
+  }
+  .btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s;
+  }
+  .btn-primary:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow:
+      0 0 40px rgba(96, 165, 250, 0.5),
+      0 0 100px rgba(96, 165, 250, 0.15);
+  }
+  .btn-primary:hover::before {
+    transform: translateX(100%);
+  }
 
-      .btn-secondary {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 16px 40px;
-        border-radius: 14px;
-        font-weight: 600;
-        font-size: 1.05rem;
-        text-decoration: none;
-        color: var(--text);
-        position: relative;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid var(--border);
-        transition:
-          transform 0.25s,
-          background 0.25s,
-          border-color 0.25s,
-          box-shadow 0.25s;
-      }
-      .btn-secondary:hover {
-        transform: translateY(-3px);
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.15);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-      }
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 40px;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 1.05rem;
+    text-decoration: none;
+    color: var(--text);
+    position: relative;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    transition:
+      transform 0.25s,
+      background 0.25s,
+      border-color 0.25s,
+      box-shadow 0.25s;
+  }
+  .btn-secondary:hover {
+    transform: translateY(-3px);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          BENTO GRID — EVENT INFO
          ═══════════════════════════════════════════ */
-      .bento-section {
-        padding: 0 24px 100px;
-        max-width: 1100px;
-        margin: 0 auto;
-      }
-      .bento-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 16px;
-      }
-      .bento-card {
-        position: relative;
-        padding: 32px 24px;
-        border-radius: 20px;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        overflow: hidden;
-        text-align: center;
-        transition:
-          transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-          border-color 0.35s,
-          box-shadow 0.35s;
-      }
-      .bento-card:hover {
-        transform: translateY(-6px);
-        border-color: var(--border-glow);
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-      }
+  .bento-section {
+    padding: 0 24px 100px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .bento-card {
+    position: relative;
+    padding: 32px 24px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    text-align: center;
+    transition:
+      transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.35s,
+      box-shadow 0.35s;
+  }
+  .bento-card:hover {
+    transform: translateY(-6px);
+    border-color: var(--border-glow);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  }
 
-      /* Inner glow on hover */
-      .bento-card::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 50%;
-        width: 60%;
-        height: 1px;
-        transform: translateX(-50%);
-        background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
-        opacity: 0;
-        transition: opacity 0.4s;
-      }
-      .bento-card:hover::after {
-        opacity: 0.6;
-      }
+  /* Inner glow on hover */
+  .bento-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 60%;
+    height: 1px;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  .bento-card:hover::after {
+    opacity: 0.6;
+  }
 
-      .bento-icon {
-        font-size: 2.2rem;
-        margin-bottom: 16px;
-        display: block;
-        filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.3));
-      }
-      .bento-label {
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        color: var(--muted);
-        font-weight: 600;
-        margin-bottom: 6px;
-      }
-      .bento-value {
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: #fff;
-        font-family: 'JetBrains Mono', 'Inter', monospace;
-      }
+  .bento-icon {
+    font-size: 2.2rem;
+    margin-bottom: 16px;
+    display: block;
+    filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.3));
+  }
+  .bento-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .bento-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #fff;
+    font-family: 'JetBrains Mono', 'Inter', monospace;
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          SPONSORS SECTION
          ═══════════════════════════════════════════ */
-      .sponsors-section {
-        padding: 60px 24px 80px;
-        position: relative;
-      }
-      .sponsors-section::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 10%;
-        right: 10%;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, var(--border), transparent);
-      }
-      .section-header {
-        text-align: center;
-        margin-bottom: 56px;
-      }
-      .section-tag {
-        display: inline-block;
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        color: var(--accent);
-        font-weight: 700;
-        margin-bottom: 12px;
-        padding: 4px 14px;
-        border-radius: 100px;
-        background: rgba(96, 165, 250, 0.08);
-        border: 1px solid rgba(96, 165, 250, 0.15);
-      }
-      .section-title {
-        font-size: clamp(1.8rem, 3.5vw, 2.8rem);
-        font-weight: 800;
-        color: #fff;
-        margin-bottom: 14px;
-      }
-      .section-subtitle {
-        font-size: 1rem;
-        color: var(--muted);
-        max-width: 520px;
-        margin: 0 auto;
-        line-height: 1.7;
-      }
+  .sponsors-section {
+    padding: 60px 24px 80px;
+    position: relative;
+  }
+  .sponsors-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+  }
+  .section-header {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .section-tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 12px;
+    padding: 4px 14px;
+    border-radius: 100px;
+    background: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.15);
+  }
+  .section-title {
+    font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 14px;
+  }
+  .section-subtitle {
+    font-size: 1rem;
+    color: var(--muted);
+    max-width: 520px;
+    margin: 0 auto;
+    line-height: 1.7;
+  }
 
-      /* Carousel */
-      .logos-card {
-        border-radius: 14px;
-        background: transparent;
-        padding: 12px;
-        width: 100%;
-        margin: 0 auto;
-      }
-      .logos {
-        display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 16px;
-        align-items: center;
-      }
-      .logo {
-        height: auto;
-        aspect-ratio: 1/1;
-        justify-self: center;
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        background: var(--bg-card);
-        display: grid;
-        place-items: center;
-        overflow: hidden;
-        transition:
-          transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-          filter 0.3s,
-          box-shadow 0.3s,
-          border-color 0.3s;
-      }
-      .premium {
-        background: rgba(174, 129, 81, 0.1);
-        border-color: rgba(235, 184, 112, 0.3);
-        box-shadow:
-          0 0 0 1px rgba(196, 142, 96, 0.1) inset,
-          0 0 30px rgba(235, 184, 112, 0.05);
-      }
-      .standart {
-        background: rgba(226, 232, 240, 0.06);
-        border-color: rgba(226, 232, 240, 0.2);
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
-      }
-      .logo:hover {
-        transform: translateY(-6px) scale(1.05);
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
-        border-color: rgba(255, 255, 255, 0.15);
-      }
-      .logo img {
-        width: 78%;
-        height: 78%;
-        object-fit: contain;
-      }
-      .logo img[alt='Milestone'] {
-        transform: scale(1.5);
-      }
-      .logo img[alt='Astea'] {
-        transform: scale(1.2);
-      }
-      .logo img[alt='Dreamix'] {
-        transform: scale(1.4);
-      }
-      .logo img[alt='Engineer Access'] {
-        transform: scale(1.15);
-      }
-      .logo img[alt='Raven'] {
-        transform: scale(1.25);
-      }
-      .logo img[alt='Experian'] {
-        transform: scale(1.2);
-      }
-      .logo img[alt='Waracle'] {
-        transform: scale(1.2);
-      }
+  /* Carousel */
+  .logos-card {
+    border-radius: 14px;
+    background: transparent;
+    padding: 12px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .logos {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 16px;
+    align-items: center;
+  }
+  .logo {
+    height: auto;
+    aspect-ratio: 1/1;
+    justify-self: center;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    transition:
+      transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.3s,
+      box-shadow 0.3s,
+      border-color 0.3s;
+  }
+  .premium {
+    background: rgba(174, 129, 81, 0.1);
+    border-color: rgba(235, 184, 112, 0.3);
+    box-shadow:
+      0 0 0 1px rgba(196, 142, 96, 0.1) inset,
+      0 0 30px rgba(235, 184, 112, 0.05);
+  }
+  .standart {
+    background: rgba(226, 232, 240, 0.06);
+    border-color: rgba(226, 232, 240, 0.2);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  }
+  .logo:hover {
+    transform: translateY(-6px) scale(1.05);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+  .logo img {
+    width: 78%;
+    height: 78%;
+    object-fit: contain;
+  }
+  .logo img[alt='Milestone'] {
+    transform: scale(1.5);
+  }
+  .logo img[alt='Astea'] {
+    transform: scale(1.2);
+  }
+  .logo img[alt='Dreamix'] {
+    transform: scale(1.4);
+  }
+  .logo img[alt='Engineer Access'] {
+    transform: scale(1.15);
+  }
+  .logo img[alt='Raven'] {
+    transform: scale(1.25);
+  }
+  .logo img[alt='Experian'] {
+    transform: scale(1.2);
+  }
+  .logo img[alt='Waracle'] {
+    transform: scale(1.2);
+  }
 
-      .carousel-container {
-        width: 100%;
-        overflow: hidden;
-        position: relative;
-      }
-      .carousel-container::before,
-      .carousel-container::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        width: 200px;
-        z-index: 2;
-        pointer-events: none;
-      }
-      .carousel-container::before {
-        left: 0;
-        background: linear-gradient(to right, var(--bg), transparent);
-      }
-      .carousel-container::after {
-        right: 0;
-        background: linear-gradient(to left, var(--bg), transparent);
-      }
-      .carousel_items {
-        display: flex;
-        flex-wrap: nowrap;
-        will-change: transform;
-      }
-      .carousel_item {
-        position: relative;
-        width: calc(100vw / 12);
-        flex-shrink: 0;
-        border-radius: 16px;
-        margin: 8px;
-        padding: 6px;
-      }
-      .carousel {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+  .carousel-container {
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+  .carousel-container::before,
+  .carousel-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 200px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .carousel-container::before {
+    left: 0;
+    background: linear-gradient(to right, var(--bg), transparent);
+  }
+  .carousel-container::after {
+    right: 0;
+    background: linear-gradient(to left, var(--bg), transparent);
+  }
+  .carousel_items {
+    display: flex;
+    flex-wrap: nowrap;
+    will-change: transform;
+  }
+  .carousel_item {
+    position: relative;
+    width: calc(100vw / 12);
+    flex-shrink: 0;
+    border-radius: 16px;
+    margin: 8px;
+    padding: 6px;
+  }
+  .carousel {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          SCROLL ANIMATIONS
          ═══════════════════════════════════════════ */
-      .reveal {
-        opacity: 0;
-        transform: translateY(40px);
-        transition:
-          opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
-          transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
-      }
-      .reveal.visible {
-        opacity: 1;
-        transform: translateY(0);
-      }
-      .reveal-delay-1 {
-        transition-delay: 0.1s;
-      }
-      .reveal-delay-2 {
-        transition-delay: 0.2s;
-      }
-      .reveal-delay-3 {
-        transition-delay: 0.3s;
-      }
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition:
+      opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-delay-1 {
+    transition-delay: 0.1s;
+  }
+  .reveal-delay-2 {
+    transition-delay: 0.2s;
+  }
+  .reveal-delay-3 {
+    transition-delay: 0.3s;
+  }
 
-      /* Staggered card reveals */
-      .bento-card {
-        opacity: 0;
-        transform: translateY(30px) scale(0.97);
-        transition:
-          opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
-          transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
-          border-color 0.35s,
-          box-shadow 0.35s;
-      }
-      .bento-card.visible {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-      }
+  /* Staggered card reveals */
+  .bento-card {
+    opacity: 0;
+    transform: translateY(30px) scale(0.97);
+    transition:
+      opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.35s,
+      box-shadow 0.35s;
+  }
+  .bento-card.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 
-      /* ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
          RESPONSIVE
          ═══════════════════════════════════════════ */
-      @media (max-width: 768px) {
-        .hero {
-          min-height: auto;
-          padding: 100px 16px 50px;
+  @media (max-width: 768px) {
+    .hero {
+      min-height: auto;
+      padding: 100px 16px 50px;
+    }
+    .hero-title {
+      font-size: 2.2rem;
+    }
+    .hero-logo {
+      width: 85vw;
+    }
+    .bento-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .bento-section {
+      padding: 0 16px 60px;
+    }
+    .bento-card {
+      padding: 24px 18px;
+    }
+    .bento-value {
+      font-size: 1.15rem;
+    }
+    .sponsors-section {
+      padding: 40px 12px 50px;
+    }
+    .section-header {
+      margin-bottom: 32px;
+    }
+    .carousel-container::before,
+    .carousel-container::after {
+      width: 80px;
+    }
+    .carousel_item {
+      width: calc(100vw / 4.2) !important;
+      margin: 10px !important;
+      padding: 8px !important;
+      border-radius: 14px !important;
+    }
+    .blob-1 {
+      width: 400px;
+      height: 400px;
+    }
+    .blob-2 {
+      width: 300px;
+      height: 300px;
+    }
+    .blob-3 {
+      width: 260px;
+      height: 260px;
+    }
+    .dot-grid {
+      background-size: 24px 24px;
+    }
+  }
+  @media (max-width: 480px) {
+    .hero-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+    .btn-primary,
+    .btn-secondary {
+      width: 100%;
+      justify-content: center;
+    }
+    .bento-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+
+  <!-- Background layers -->
+  <div class="dot-grid" aria-hidden="true"></div>
+  <div class="spotlight" id="spotlight" aria-hidden="true"></div>
+  <div class="blobs" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <div class="page-wrap">
+    <!-- ═══ HERO ═══ -->
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-badge">
+          <span class="pulse"></span>
+          Registration Open — March 10th 2026
+        </div>
+        <div class="hero-logo">
+          <img src="../static/images/codes_logo3.svg" alt="FMI Codes 2026" />
+        </div>
+        <h1 class="hero-title">Build. <span class="gradient-text">Compete.</span> Innovate.</h1>
+        <p class="hero-subtitle">
+          Sofia University's biggest hackathon is back. 2 days to turn your boldest ideas into real,
+          working projects.
+        </p>
+        <div class="hero-actions">
+          <a href="/registration" class="btn-primary">
+            Register Now
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+          </a>
+          <a href="/regulations" class="btn-secondary">Learn More</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ BENTO INFO GRID ═══ -->
+    <section class="bento-section">
+      <div class="bento-grid">
+        <div class="bento-card" style="transition-delay: 0s">
+          <span class="bento-icon">&#128197;</span>
+          <div class="bento-label">Date</div>
+          <div class="bento-value">March 2026</div>
+        </div>
+        <div class="bento-card" style="transition-delay: 0.1s">
+          <span class="bento-icon">&#128205;</span>
+          <div class="bento-label">Location</div>
+          <div class="bento-value">FMI, Sofia</div>
+        </div>
+        <div class="bento-card" style="transition-delay: 0.2s">
+          <span class="bento-icon">&#128101;</span>
+          <div class="bento-label">Teams</div>
+          <div class="bento-value">Up to 18</div>
+        </div>
+        <div class="bento-card" style="transition-delay: 0.3s">
+          <span class="bento-icon">&#9201;</span>
+          <div class="bento-label">Starts In</div>
+          <div class="bento-value" id="countdown">--:--:--</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ SPONSORS ═══ -->
+    <section class="sponsors-section">
+      <div class="section-header reveal">
+        <div class="section-tag">Partners</div>
+        <h2 class="section-title">Backed by <span class="gradient-text">Industry Leaders</span></h2>
+        <p class="section-subtitle">
+          The companies shaping tomorrow's tech — supporting the next generation of builders.
+        </p>
+      </div>
+
+      <div class="logos-card carousel-container carousel reveal reveal-delay-1">
+        <div class="logos carousel_items carousel" id="track">
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/avenga.svg" alt="Avenga" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/gameloft.png" alt="Gameloft" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/EnduroSat.png" alt="EnduroSat" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/waracle.png" alt="Waracle" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/SAP.png" alt="SAP" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/Milestone.png" alt="Milestone" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/astea.svg" alt="Astea" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/chaos.jpg" alt="Chaos" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/Dreamix.png" alt="Dreamix" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/engineerAcces.png" alt="Engineer Access" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/raven.svg" alt="Raven" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/Experian.jpg" alt="Experian" />
+          </div>
+          <!-- Duplicated for seamless loop -->
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/avenga.svg" alt="Avenga" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/gameloft.png" alt="Gameloft" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/EnduroSat.png" alt="EnduroSat" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/waracle.png" alt="Waracle" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/SAP.png" alt="SAP" />
+          </div>
+          <div class="logo carousel_item carousel premium">
+            <img src="../static/companyLogos/Milestone.png" alt="Milestone" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/astea.svg" alt="Astea" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/chaos.jpg" alt="Chaos" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/Dreamix.png" alt="Dreamix" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/engineerAcces.png" alt="Engineer Access" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/raven.svg" alt="Raven" />
+          </div>
+          <div class="logo carousel_item carousel standart">
+            <img src="../static/companyLogos/Experian.jpg" alt="Experian" />
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    /* ═══ Countdown timer ═══ */
+    (function () {
+      const target = new Date('2026-03-13T18:00:00');
+      const el = document.getElementById('countdown');
+      function tick() {
+        const diff = target - Date.now();
+        if (!el) return;
+        if (diff <= 0) {
+          el.textContent = 'Started!';
+          return;
         }
-        .hero-title {
-          font-size: 2.2rem;
-        }
-        .hero-logo {
-          width: 85vw;
-        }
-        .bento-grid {
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-        }
-        .bento-section {
-          padding: 0 16px 60px;
-        }
-        .bento-card {
-          padding: 24px 18px;
-        }
-        .bento-value {
-          font-size: 1.15rem;
-        }
-        .sponsors-section {
-          padding: 40px 12px 50px;
-        }
-        .section-header {
-          margin-bottom: 32px;
-        }
-        .carousel-container::before,
-        .carousel-container::after {
-          width: 80px;
-        }
-        .carousel_item {
-          width: calc(100vw / 4.2) !important;
-          margin: 10px !important;
-          padding: 8px !important;
-          border-radius: 14px !important;
-        }
-        .blob-1 {
-          width: 400px;
-          height: 400px;
-        }
-        .blob-2 {
-          width: 300px;
-          height: 300px;
-        }
-        .blob-3 {
-          width: 260px;
-          height: 260px;
-        }
-        .dot-grid {
-          background-size: 24px 24px;
-        }
+        const d = Math.floor(diff / 86400000);
+        const h = Math.floor((diff % 86400000) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        el.textContent =
+          (d > 0 ? d + 'd ' : '') +
+          String(h).padStart(2, '0') +
+          'h ' +
+          String(m).padStart(2, '0') +
+          'm ' +
+          String(s).padStart(2, '0') +
+          's';
       }
-      @media (max-width: 480px) {
-        .hero-actions {
-          flex-direction: column;
-          width: 100%;
-        }
-        .btn-primary,
-        .btn-secondary {
-          width: 100%;
-          justify-content: center;
-        }
-        .bento-grid {
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div id="navbar-slot"></div>
+      tick();
+      setInterval(tick, 1000);
+    })();
 
-    <!-- Background layers -->
-    <div class="dot-grid" aria-hidden="true"></div>
-    <div class="spotlight" id="spotlight" aria-hidden="true"></div>
-    <div class="blobs" aria-hidden="true">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise" aria-hidden="true"></div>
+    /* ═══ Navbar loader ═══ */
+    async function loadNavbar() {
+      try {
+        const res = await fetch('/navbar.html');
+        if (!res.ok) return;
+        const html = await res.text();
+        const slot = document.getElementById('navbar-slot');
+        if (!slot) return;
+        slot.innerHTML = html;
+        slot.querySelectorAll('script').forEach((old) => {
+          const s = document.createElement('script');
+          s.textContent = old.textContent;
+          document.head.appendChild(s);
+          s.remove();
+        });
+      } catch {}
+    }
+    loadNavbar();
 
-    <div class="page-wrap">
-      <!-- ═══ HERO ═══ -->
-      <section class="hero">
-        <div class="hero-inner">
-          <div class="hero-badge">
-            <span class="pulse"></span>
-            Registration Open — March 10th 2026
-          </div>
-          <div class="hero-logo">
-            <img src="../static/images/codes_logo3.svg" alt="FMI Codes 2026" />
-          </div>
-          <h1 class="hero-title">Build. <span class="gradient-text">Compete.</span> Innovate.</h1>
-          <p class="hero-subtitle">
-            Sofia University's biggest hackathon is back. 2 days to turn your boldest ideas into
-            real, working projects.
-          </p>
-          <div class="hero-actions">
-            <a href="/registration" class="btn-primary">
-              Register Now
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </a>
-            <a href="/regulations" class="btn-secondary">Learn More</a>
-          </div>
-        </div>
-      </section>
+    /* ═══ Mouse-following spotlight ═══ */
+    document.addEventListener('mousemove', (e) => {
+      document.getElementById('spotlight').style.setProperty('--mx', e.clientX + 'px');
+      document.getElementById('spotlight').style.setProperty('--my', e.clientY + 'px');
+    });
 
-      <!-- ═══ BENTO INFO GRID ═══ -->
-      <section class="bento-section">
-        <div class="bento-grid">
-          <div class="bento-card" style="transition-delay: 0s">
-            <span class="bento-icon">&#128197;</span>
-            <div class="bento-label">Date</div>
-            <div class="bento-value">March 2026</div>
-          </div>
-          <div class="bento-card" style="transition-delay: 0.1s">
-            <span class="bento-icon">&#128205;</span>
-            <div class="bento-label">Location</div>
-            <div class="bento-value">FMI, Sofia</div>
-          </div>
-          <div class="bento-card" style="transition-delay: 0.2s">
-            <span class="bento-icon">&#128101;</span>
-            <div class="bento-label">Teams</div>
-            <div class="bento-value">Up to 18</div>
-          </div>
-          <div class="bento-card" style="transition-delay: 0.3s">
-            <span class="bento-icon">&#9201;</span>
-            <div class="bento-label">Starts In</div>
-            <div class="bento-value" id="countdown">--:--:--</div>
-          </div>
-        </div>
-      </section>
+    /* ═══ Bento card tilt on hover ═══ */
+    document.querySelectorAll('.bento-card').forEach((card) => {
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        card.style.transform = `translateY(-6px) perspective(600px) rotateX(${-y * 8}deg) rotateY(${x * 8}deg)`;
+      });
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = '';
+      });
+    });
 
-      <!-- ═══ SPONSORS ═══ -->
-      <section class="sponsors-section">
-        <div class="section-header reveal">
-          <div class="section-tag">Partners</div>
-          <h2 class="section-title">
-            Backed by <span class="gradient-text">Industry Leaders</span>
-          </h2>
-          <p class="section-subtitle">
-            The companies shaping tomorrow's tech — supporting the next generation of builders.
-          </p>
-        </div>
+    /* ═══ Carousel animation ═══ */
+    window.addEventListener('load', () => {
+      const track = document.getElementById('track');
+      const DURATION = 48000;
 
-        <div class="logos-card carousel-container carousel reveal reveal-delay-1">
-          <div class="logos carousel_items carousel" id="track">
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/avenga.svg" alt="Avenga" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/gameloft.png" alt="Gameloft" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/EnduroSat.png" alt="EnduroSat" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/waracle.png" alt="Waracle" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/SAP.png" alt="SAP" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/Milestone.png" alt="Milestone" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/astea.svg" alt="Astea" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/chaos.jpg" alt="Chaos" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/Dreamix.png" alt="Dreamix" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/engineerAcces.png" alt="Engineer Access" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/raven.svg" alt="Raven" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/Experian.jpg" alt="Experian" />
-            </div>
-            <!-- Duplicated for seamless loop -->
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/avenga.svg" alt="Avenga" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/gameloft.png" alt="Gameloft" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/EnduroSat.png" alt="EnduroSat" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/waracle.png" alt="Waracle" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/SAP.png" alt="SAP" />
-            </div>
-            <div class="logo carousel_item carousel premium">
-              <img src="../static/companyLogos/Milestone.png" alt="Milestone" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/astea.svg" alt="Astea" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/chaos.jpg" alt="Chaos" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/Dreamix.png" alt="Dreamix" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/engineerAcces.png" alt="Engineer Access" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/raven.svg" alt="Raven" />
-            </div>
-            <div class="logo carousel_item carousel standart">
-              <img src="../static/companyLogos/Experian.jpg" alt="Experian" />
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <script>
-      /* ═══ Countdown timer ═══ */
-      (function () {
-        const target = new Date('2026-03-13T18:00:00');
-        const el = document.getElementById('countdown');
-        function tick() {
-          const diff = target - Date.now();
-          if (!el) return;
-          if (diff <= 0) {
-            el.textContent = 'Started!';
-            return;
-          }
-          const d = Math.floor(diff / 86400000);
-          const h = Math.floor((diff % 86400000) / 3600000);
-          const m = Math.floor((diff % 3600000) / 60000);
-          const s = Math.floor((diff % 60000) / 1000);
-          el.textContent =
-            (d > 0 ? d + 'd ' : '') +
-            String(h).padStart(2, '0') +
-            'h ' +
-            String(m).padStart(2, '0') +
-            'm ' +
-            String(s).padStart(2, '0') +
-            's';
-        }
-        tick();
-        setInterval(tick, 1000);
-      })();
-
-      /* ═══ Navbar loader ═══ */
-      async function loadNavbar() {
-        try {
-          const res = await fetch('/navbar.html');
-          if (!res.ok) return;
-          const html = await res.text();
-          const slot = document.getElementById('navbar-slot');
-          if (!slot) return;
-          slot.innerHTML = html;
-          slot.querySelectorAll('script').forEach((old) => {
-            const s = document.createElement('script');
-            s.textContent = old.textContent;
-            document.head.appendChild(s);
-            s.remove();
-          });
-        } catch {}
-      }
-      loadNavbar();
-
-      /* ═══ Mouse-following spotlight ═══ */
-      document.addEventListener('mousemove', (e) => {
-        document.getElementById('spotlight').style.setProperty('--mx', e.clientX + 'px');
-        document.getElementById('spotlight').style.setProperty('--my', e.clientY + 'px');
+      Array.from(track.children).forEach((item) => {
+        track.appendChild(item.cloneNode(true));
       });
 
-      /* ═══ Bento card tilt on hover ═══ */
-      document.querySelectorAll('.bento-card').forEach((card) => {
-        card.addEventListener('mousemove', (e) => {
-          const rect = card.getBoundingClientRect();
-          const x = (e.clientX - rect.left) / rect.width - 0.5;
-          const y = (e.clientY - rect.top) / rect.height - 0.5;
-          card.style.transform = `translateY(-6px) perspective(600px) rotateX(${-y * 8}deg) rotateY(${x * 8}deg)`;
-        });
-        card.addEventListener('mouseleave', () => {
-          card.style.transform = '';
-        });
-      });
+      let startTime = null;
+      let scrollDistance = 0;
 
-      /* ═══ Carousel animation ═══ */
-      window.addEventListener('load', () => {
-        const track = document.getElementById('track');
-        const DURATION = 48000;
+      function measure() {
+        const items = track.querySelectorAll('.carousel_item');
+        const first = items[0].getBoundingClientRect();
+        const thirteenth = items[12].getBoundingClientRect();
+        scrollDistance = thirteenth.left - first.left;
+      }
 
-        Array.from(track.children).forEach((item) => {
-          track.appendChild(item.cloneNode(true));
-        });
-
-        let startTime = null;
-        let scrollDistance = 0;
-
-        function measure() {
-          const items = track.querySelectorAll('.carousel_item');
-          const first = items[0].getBoundingClientRect();
-          const thirteenth = items[12].getBoundingClientRect();
-          scrollDistance = thirteenth.left - first.left;
-        }
-
-        function animate(ts) {
-          if (!startTime) startTime = ts;
-          const elapsed = (ts - startTime) % DURATION;
-          const progress = elapsed / DURATION;
-          track.style.transform = `translateX(${-progress * scrollDistance}px)`;
-          requestAnimationFrame(animate);
-        }
-
-        measure();
-        window.addEventListener('resize', () => {
-          measure();
-          startTime = null;
-        });
+      function animate(ts) {
+        if (!startTime) startTime = ts;
+        const elapsed = (ts - startTime) % DURATION;
+        const progress = elapsed / DURATION;
+        track.style.transform = `translateX(${-progress * scrollDistance}px)`;
         requestAnimationFrame(animate);
+      }
+
+      measure();
+      window.addEventListener('resize', () => {
+        measure();
+        startTime = null;
       });
+      requestAnimationFrame(animate);
+    });
 
-      /* ═══ Intersection Observer — scroll reveals ═══ */
-      const revealObserver = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('visible');
-              revealObserver.unobserve(entry.target);
-            }
-          });
-        },
-        { threshold: 0.15 }
-      );
+    /* ═══ Intersection Observer — scroll reveals ═══ */
+    const revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            revealObserver.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
 
-      document.querySelectorAll('.reveal,.bento-card').forEach((el) => revealObserver.observe(el));
-    </script>
-  </body>
-</html>
+    document.querySelectorAll('.reveal,.bento-card').forEach((el) => revealObserver.observe(el));
+  </script>
+</body>
+{% endblock %}

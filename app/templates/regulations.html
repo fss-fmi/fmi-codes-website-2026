@@ -1,282 +1,268 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Regulations</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body>
-    <div id="navbar-slot"></div>
-    <div class="dot-grid"></div>
-    <div class="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
+{% extends "base.html" %} {% block title %}Regulations{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+  <div class="dot-grid"></div>
+  <div class="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
 
-    <!-- Modal Overlay -->
-    <div class="modal-overlay" id="modalOverlay">
-      <div class="modal-panel" id="modalPanel">
-        <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
-        <div class="modal-accent-stripe" id="modalStripe"></div>
-        <div class="modal-header">
-          <span class="modal-icon" id="modalIcon"></span>
-          <span class="modal-label" id="modalLabel"></span>
+  <!-- Modal Overlay -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-panel" id="modalPanel">
+      <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+      <div class="modal-accent-stripe" id="modalStripe"></div>
+      <div class="modal-header">
+        <span class="modal-icon" id="modalIcon"></span>
+        <span class="modal-label" id="modalLabel"></span>
+      </div>
+      <h2 class="modal-question" id="modalQuestion"></h2>
+      <div class="modal-divider"></div>
+      <p class="modal-answer" id="modalAnswer"></p>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="container">
+      <div class="header">
+        <div>
+          <h1>Regulations</h1>
+          <p>Frequently asked questions and official rules.</p>
         </div>
-        <h2 class="modal-question" id="modalQuestion"></h2>
-        <div class="modal-divider"></div>
-        <p class="modal-answer" id="modalAnswer"></p>
+      </div>
+      <div id="regulationsGrid" class="bento-grid"></div>
+      <div
+        id="emptyState"
+        style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
+      >
+        No regulations found.
       </div>
     </div>
 
-    <div class="page-wrap">
-      <div class="container">
-        <div class="header">
-          <div>
-            <h1>Regulations</h1>
-            <p>Frequently asked questions and official rules.</p>
-          </div>
-        </div>
-        <div id="regulationsGrid" class="bento-grid"></div>
-        <div
-          id="emptyState"
-          style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
-        >
-          No regulations found.
-        </div>
-      </div>
+    <script>
+      const CARD_META = [
+        { icon: '🎯', label: 'The Event', size: 'hero', accent: '#60a5fa' },
+        { icon: '🎓', label: 'Eligibility', size: 'normal', accent: '#22d3ee' },
+        { icon: '📝', label: 'Registration', size: 'normal', accent: '#a78bfa' },
+        { icon: '👥', label: 'Teams', size: 'normal', accent: '#f472b6' },
+        { icon: '💻', label: 'Development', size: 'wide', accent: '#60a5fa' },
+        { icon: '🏢', label: 'Venue', size: 'normal', accent: '#22d3ee' },
+        { icon: '⚖️', label: 'Responsibility', size: 'normal', accent: '#a78bfa' },
+        { icon: '🚫', label: 'Disqualification', size: 'normal', accent: '#f472b6' },
+        { icon: '🧑‍🏫', label: 'Mentors', size: 'normal', accent: '#60a5fa' },
+        { icon: '🎤', label: 'Presentations', size: 'normal', accent: '#22d3ee' },
+        { icon: '📊', label: 'Scoring', size: 'wide', accent: '#a78bfa' },
+        { icon: '🏆', label: 'Prizes', size: 'hero', accent: '#f472b6' },
+        { icon: '🔒', label: 'Privacy', size: 'normal', accent: '#60a5fa' },
+      ];
 
-      <script>
-        const CARD_META = [
-          { icon: '🎯', label: 'The Event', size: 'hero', accent: '#60a5fa' },
-          { icon: '🎓', label: 'Eligibility', size: 'normal', accent: '#22d3ee' },
-          { icon: '📝', label: 'Registration', size: 'normal', accent: '#a78bfa' },
-          { icon: '👥', label: 'Teams', size: 'normal', accent: '#f472b6' },
-          { icon: '💻', label: 'Development', size: 'wide', accent: '#60a5fa' },
-          { icon: '🏢', label: 'Venue', size: 'normal', accent: '#22d3ee' },
-          { icon: '⚖️', label: 'Responsibility', size: 'normal', accent: '#a78bfa' },
-          { icon: '🚫', label: 'Disqualification', size: 'normal', accent: '#f472b6' },
-          { icon: '🧑‍🏫', label: 'Mentors', size: 'normal', accent: '#60a5fa' },
-          { icon: '🎤', label: 'Presentations', size: 'normal', accent: '#22d3ee' },
-          { icon: '📊', label: 'Scoring', size: 'wide', accent: '#a78bfa' },
-          { icon: '🏆', label: 'Prizes', size: 'hero', accent: '#f472b6' },
-          { icon: '🔒', label: 'Privacy', size: 'normal', accent: '#60a5fa' },
-        ];
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
 
-        function escapeHtml(str) {
-          const div = document.createElement('div');
-          div.textContent = str;
-          return div.innerHTML;
-        }
+      function openModal(item, meta) {
+        const overlay = document.getElementById('modalOverlay');
+        const panel = document.getElementById('modalPanel');
+        document.getElementById('modalStripe').style.background =
+          'linear-gradient(90deg, ' + meta.accent + ', ' + meta.accent + '44)';
+        document.getElementById('modalIcon').textContent = meta.icon;
+        document.getElementById('modalLabel').textContent = meta.label;
+        document.getElementById('modalLabel').style.color = meta.accent;
+        document.getElementById('modalQuestion').textContent = item.question || '';
+        document.getElementById('modalAnswer').textContent = item.answer || '';
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+      }
 
-        function openModal(item, meta) {
-          const overlay = document.getElementById('modalOverlay');
-          const panel = document.getElementById('modalPanel');
-          document.getElementById('modalStripe').style.background =
-            'linear-gradient(90deg, ' + meta.accent + ', ' + meta.accent + '44)';
-          document.getElementById('modalIcon').textContent = meta.icon;
-          document.getElementById('modalLabel').textContent = meta.label;
-          document.getElementById('modalLabel').style.color = meta.accent;
-          document.getElementById('modalQuestion').textContent = item.question || '';
-          document.getElementById('modalAnswer').textContent = item.answer || '';
-          overlay.classList.add('active');
-          document.body.style.overflow = 'hidden';
-        }
+      function closeModal() {
+        const overlay = document.getElementById('modalOverlay');
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+      }
 
-        function closeModal() {
-          const overlay = document.getElementById('modalOverlay');
-          overlay.classList.remove('active');
-          document.body.style.overflow = '';
-        }
+      document.getElementById('modalClose').addEventListener('click', closeModal);
+      document.getElementById('modalOverlay').addEventListener('click', function (e) {
+        if (e.target === this) closeModal();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeModal();
+      });
 
-        document.getElementById('modalClose').addEventListener('click', closeModal);
-        document.getElementById('modalOverlay').addEventListener('click', function (e) {
-          if (e.target === this) closeModal();
-        });
-        document.addEventListener('keydown', function (e) {
-          if (e.key === 'Escape') closeModal();
-        });
+      async function loadRegulations() {
+        const grid = document.getElementById('regulationsGrid');
+        const empty = document.getElementById('emptyState');
+        grid.innerHTML = '';
+        empty.style.display = 'none';
 
-        async function loadRegulations() {
-          const grid = document.getElementById('regulationsGrid');
-          const empty = document.getElementById('emptyState');
-          grid.innerHTML = '';
-          empty.style.display = 'none';
+        try {
+          const res = await fetch('/api/regulations');
+          const data = await res.json();
+          const list =
+            data && data.success && Array.isArray(data.regulations) ? data.regulations : [];
 
-          try {
-            const res = await fetch('/api/regulations');
-            const data = await res.json();
-            const list =
-              data && data.success && Array.isArray(data.regulations) ? data.regulations : [];
+          if (list.length === 0) {
+            empty.style.display = 'block';
+            return;
+          }
 
-            if (list.length === 0) {
-              empty.style.display = 'block';
-              return;
-            }
+          list.forEach((item, idx) => {
+            const meta = CARD_META[idx] || {
+              icon: '📄',
+              label: 'Info',
+              size: 'normal',
+              accent: '#60a5fa',
+            };
 
-            list.forEach((item, idx) => {
-              const meta = CARD_META[idx] || {
-                icon: '📄',
-                label: 'Info',
-                size: 'normal',
-                accent: '#60a5fa',
-              };
+            const card = document.createElement('div');
+            card.className = 'bento-card bento-' + meta.size;
+            card.style.setProperty('--card-accent', meta.accent);
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('role', 'button');
 
-              const card = document.createElement('div');
-              card.className = 'bento-card bento-' + meta.size;
-              card.style.setProperty('--card-accent', meta.accent);
-              card.setAttribute('tabindex', '0');
-              card.setAttribute('role', 'button');
+            card.innerHTML =
+              '<div class="card-accent-stripe"></div>' +
+              '<div class="card-inner">' +
+              '<div class="card-badge">' +
+              '<span class="badge-icon">' +
+              meta.icon +
+              '</span>' +
+              '<span class="badge-label">' +
+              escapeHtml(meta.label) +
+              '</span>' +
+              '</div>' +
+              '<div class="card-question">' +
+              escapeHtml(item.question || '') +
+              '</div>' +
+              '<div class="card-answer">' +
+              escapeHtml(item.answer || '') +
+              '</div>' +
+              '<div class="card-hint">' +
+              '<span class="hint-text">Click to read more</span>' +
+              '<svg class="hint-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+              '</div>' +
+              '</div>' +
+              '<div class="card-glow-orb"></div>';
 
-              card.innerHTML =
-                '<div class="card-accent-stripe"></div>' +
-                '<div class="card-inner">' +
-                '<div class="card-badge">' +
-                '<span class="badge-icon">' +
-                meta.icon +
-                '</span>' +
-                '<span class="badge-label">' +
-                escapeHtml(meta.label) +
-                '</span>' +
-                '</div>' +
-                '<div class="card-question">' +
-                escapeHtml(item.question || '') +
-                '</div>' +
-                '<div class="card-answer">' +
-                escapeHtml(item.answer || '') +
-                '</div>' +
-                '<div class="card-hint">' +
-                '<span class="hint-text">Click to read more</span>' +
-                '<svg class="hint-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-                '</div>' +
-                '</div>' +
-                '<div class="card-glow-orb"></div>';
-
-              card.addEventListener('click', function () {
+            card.addEventListener('click', function () {
+              openModal(item, meta);
+            });
+            card.addEventListener('keydown', function (e) {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
                 openModal(item, meta);
-              });
-              card.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  openModal(item, meta);
+              }
+            });
+
+            grid.appendChild(card);
+          });
+
+          // Staggered scroll-triggered entrance
+          const observer = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('visible');
+                  observer.unobserve(entry.target);
                 }
               });
+            },
+            { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+          );
 
-              grid.appendChild(card);
-            });
+          grid.querySelectorAll('.bento-card').forEach(function (card, i) {
+            card.style.transitionDelay = i * 80 + 'ms';
+            observer.observe(card);
+          });
+        } catch (e) {
+          empty.textContent = 'Error loading regulations. Please try again.';
+          empty.style.display = 'block';
+        }
+      }
 
-            // Staggered scroll-triggered entrance
-            const observer = new IntersectionObserver(
-              function (entries) {
-                entries.forEach(function (entry) {
-                  if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                    observer.unobserve(entry.target);
-                  }
-                });
-              },
-              { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
-            );
+      document.addEventListener('DOMContentLoaded', loadRegulations);
+    </script>
+    <script>
+      function ensureMentorLink(text, href) {
+        const navLinks = document.querySelector('.nav-links');
+        let link = document.querySelector('.nav-links .mentor-link');
+        if (!link) {
+          link = document.createElement('a');
+          link.className = 'nav-link mentor-link';
+          navLinks.appendChild(link);
+        }
+        link.textContent = text;
+        link.href = href;
+      }
 
-            grid.querySelectorAll('.bento-card').forEach(function (card, i) {
-              card.style.transitionDelay = i * 80 + 'ms';
-              observer.observe(card);
-            });
-          } catch (e) {
-            empty.textContent = 'Error loading regulations. Please try again.';
-            empty.style.display = 'block';
+      async function setMentorLinkBySelection() {
+        try {
+          const res = await fetch('/api/mentors/available');
+          if (!res.ok) return;
+          const data = await res.json();
+          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+          if (selectedCount > 0) {
+            ensureMentorLink('Selected Mentors', '/selectedMentors');
+          } else {
+            ensureMentorLink('Choose Mentor', '/chooseMentor');
           }
-        }
+        } catch {}
+      }
 
-        document.addEventListener('DOMContentLoaded', loadRegulations);
-      </script>
-      <script>
-        function ensureMentorLink(text, href) {
-          const navLinks = document.querySelector('.nav-links');
-          let link = document.querySelector('.nav-links .mentor-link');
-          if (!link) {
-            link = document.createElement('a');
-            link.className = 'nav-link mentor-link';
-            navLinks.appendChild(link);
-          }
-          link.textContent = text;
-          link.href = href;
-        }
-
-        async function setMentorLinkBySelection() {
-          try {
-            const res = await fetch('/api/mentors/available');
-            if (!res.ok) return;
-            const data = await res.json();
-            const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-            if (selectedCount > 0) {
-              ensureMentorLink('Selected Mentors', '/selectedMentors');
-            } else {
-              ensureMentorLink('Choose Mentor', '/chooseMentor');
-            }
-          } catch {}
-        }
-
-        function updateNavbar() {
-          const teamName = window.loggedInTeam || '';
-          const navActions = document.querySelector('.nav-actions');
-          if (!navActions) return;
-          if (teamName) {
-            navActions.innerHTML = `
+      function updateNavbar() {
+        const teamName = window.loggedInTeam || '';
+        const navActions = document.querySelector('.nav-actions');
+        if (!navActions) return;
+        if (teamName) {
+          navActions.innerHTML = `
           <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
         `;
-            setMentorLinkBySelection();
-          }
+          setMentorLinkBySelection();
         }
-        async function loadNavbar() {
-          try {
-            const res = await fetch('/navbar.html');
-            if (!res.ok) return;
-            const html = await res.text();
-            const slot = document.getElementById('navbar-slot');
-            if (!slot) return;
-            slot.innerHTML = html;
-            slot.querySelectorAll('script').forEach((old) => {
-              const s = document.createElement('script');
-              s.textContent = old.textContent;
-              document.head.appendChild(s);
-              s.remove();
-            });
-          } catch {}
+      }
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
+      async function logout() {
+        try {
+          const response = await fetch('/api/logout', { method: 'POST' });
+          if (response.ok) window.location.reload();
+        } catch (error) {
+          console.error('Logout failed:', error);
         }
-        async function logout() {
-          try {
-            const response = await fetch('/api/logout', { method: 'POST' });
-            if (response.ok) window.location.reload();
-          } catch (error) {
-            console.error('Logout failed:', error);
-          }
-        }
-        loadNavbar().then(updateNavbar);
-      </script>
-    </div>
-    <!-- /page-wrap -->
-    <script>
-      document.addEventListener('mousemove', (e) => {
-        const s = document.querySelector('.spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
-        }
-      });
+      }
+      loadNavbar().then(updateNavbar);
     </script>
-  </body>
-</html>
-
+  </div>
+  <!-- /page-wrap -->
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
+{% endblock %} {% block head %}
 <style>
   :root {
     --bg: #050816;
@@ -1009,3 +995,4 @@
     animation: fadeSlideUp 0.7s ease both;
   }
 </style>
+{% endblock %}

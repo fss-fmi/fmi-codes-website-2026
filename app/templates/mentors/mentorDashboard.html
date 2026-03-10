@@ -1,827 +1,812 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mentor Dashboard — FMI Codes</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #050816;
-        --bg-card: rgba(255, 255, 255, 0.03);
-        --border: rgba(255, 255, 255, 0.06);
-        --border-glow: rgba(96, 165, 250, 0.25);
-        --text: #e2e8f0;
-        --muted: #64748b;
-        --accent: #60a5fa;
-        --accent-2: #22d3ee;
-        --purple: #a78bfa;
-        --pink: #f472b6;
-        --panel: rgba(255, 255, 255, 0.04);
-        --panel-border: rgba(255, 255, 255, 0.08);
-        --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-      }
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        font-family: 'Inter', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        padding: 0 16px 60px;
-        -webkit-font-smoothing: antialiased;
-      }
-      .container {
-        width: 100%;
-        max-width: 900px;
-        margin: 0 auto;
-      }
+{% extends "base.html" %} {% block title %}Mentor Dashboard — FMI Codes{% endblock %} {% block head
+%}
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 16px 60px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+  }
 
-      .header {
-        background: var(--panel);
-        border: 1px solid var(--panel-border);
-        border-radius: 16px;
-        padding: 24px 28px;
-        margin-bottom: 22px;
-        box-shadow: var(--glow);
-      }
-      .header h1 {
-        font-size: 26px;
-        font-weight: 700;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 6px;
-      }
-      .header p {
-        color: var(--muted);
-        font-size: 14px;
-        margin-bottom: 12px;
-      }
-      .step-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 14px;
-        border-radius: 20px;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      .step-select {
-        background: rgba(96, 165, 250, 0.14);
-        color: #93c5fd;
-        border: 1px solid rgba(96, 165, 250, 0.35);
-      }
-      .step-rank {
-        background: rgba(34, 211, 238, 0.14);
-        color: #67e8f9;
-        border: 1px solid rgba(34, 211, 238, 0.35);
-      }
+  .header {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 22px;
+    box-shadow: var(--glow);
+  }
+  .header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 6px;
+  }
+  .header p {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  .step-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .step-select {
+    background: rgba(96, 165, 250, 0.14);
+    color: #93c5fd;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+  }
+  .step-rank {
+    background: rgba(34, 211, 238, 0.14);
+    color: #67e8f9;
+    border: 1px solid rgba(34, 211, 238, 0.35);
+  }
 
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-      }
-      .card {
-        position: relative;
-        padding: 20px;
-        border-radius: 14px;
-        border: 1px solid var(--panel-border);
-        background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-        box-shadow: var(--glow);
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .card:hover {
-        transform: translateY(-4px);
-        border-color: rgba(96, 165, 250, 0.3);
-      }
-      .card.selected {
-        border-color: var(--accent);
-        background: linear-gradient(145deg, rgba(96, 165, 250, 0.12), rgba(96, 165, 250, 0.04));
-        box-shadow: 0 0 24px rgba(96, 165, 250, 0.2);
-      }
-      .card.disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-        pointer-events: none;
-      }
-      .card .name {
-        font-size: 17px;
-        font-weight: 700;
-        margin-bottom: 4px;
-      }
-      .card .details {
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .check-mark {
-        position: absolute;
-        top: 14px;
-        right: 14px;
-        width: 26px;
-        height: 26px;
-        border-radius: 7px;
-        border: 2px solid var(--panel-border);
-        background: rgba(255, 255, 255, 0.03);
-        display: grid;
-        place-items: center;
-        font-size: 14px;
-        transition: all 0.2s;
-      }
-      .card.selected .check-mark {
-        border-color: var(--accent);
-        background: var(--accent);
-        color: #0b1021;
-      }
-      .member-count {
-        display: inline-block;
-        padding: 3px 10px;
-        border-radius: 12px;
-        background: rgba(96, 165, 250, 0.12);
-        color: #93c5fd;
-        font-size: 12px;
-        font-weight: 600;
-        margin-top: 6px;
-      }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    position: relative;
+    padding: 20px;
+    border-radius: 14px;
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    box-shadow: var(--glow);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(96, 165, 250, 0.3);
+  }
+  .card.selected {
+    border-color: var(--accent);
+    background: linear-gradient(145deg, rgba(96, 165, 250, 0.12), rgba(96, 165, 250, 0.04));
+    box-shadow: 0 0 24px rgba(96, 165, 250, 0.2);
+  }
+  .card.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  .card .name {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .card .details {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .check-mark {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    border: 2px solid var(--panel-border);
+    background: rgba(255, 255, 255, 0.03);
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .card.selected .check-mark {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #0b1021;
+  }
+  .member-count {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(96, 165, 250, 0.12);
+    color: #93c5fd;
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 6px;
+  }
 
-      #rank-section {
-        display: none;
-      }
-      .rank-slots {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        max-width: 600px;
-        margin: 0 auto 24px;
-      }
-      .rank-slot {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 18px 22px;
-        border-radius: 12px;
-        border: 2px dashed rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.02);
-        min-height: 72px;
-        transition: all 0.2s;
-      }
-      .rank-slot.drag-over {
-        border-color: var(--accent);
-        background: rgba(96, 165, 250, 0.08);
-      }
-      .rank-slot.filled {
-        border-style: solid;
-        border-color: rgba(255, 255, 255, 0.1);
-        background: var(--panel);
-      }
-      .rank-number {
-        font-size: 28px;
-        font-weight: 800;
-        width: 42px;
-        text-align: center;
-        flex-shrink: 0;
-      }
-      .rank-number.r1 {
-        background: linear-gradient(120deg, #fbbf24, #f59e0b);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .rank-number.r2 {
-        background: linear-gradient(120deg, #d1d5db, #9ca3af);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .rank-number.r3 {
-        background: linear-gradient(120deg, #cd7f32, #b8860b);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .rank-team {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        cursor: grab;
-      }
-      .rank-team:active {
-        cursor: grabbing;
-      }
-      .rank-team .rt-name {
-        font-weight: 600;
-        font-size: 15px;
-      }
-      .rank-team .rt-count {
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .rank-placeholder {
-        color: var(--muted);
-        font-size: 14px;
-        font-style: italic;
-      }
+  #rank-section {
+    display: none;
+  }
+  .rank-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 600px;
+    margin: 0 auto 24px;
+  }
+  .rank-slot {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 22px;
+    border-radius: 12px;
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+    min-height: 72px;
+    transition: all 0.2s;
+  }
+  .rank-slot.drag-over {
+    border-color: var(--accent);
+    background: rgba(96, 165, 250, 0.08);
+  }
+  .rank-slot.filled {
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--panel);
+  }
+  .rank-number {
+    font-size: 28px;
+    font-weight: 800;
+    width: 42px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .rank-number.r1 {
+    background: linear-gradient(120deg, #fbbf24, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .rank-number.r2 {
+    background: linear-gradient(120deg, #d1d5db, #9ca3af);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .rank-number.r3 {
+    background: linear-gradient(120deg, #cd7f32, #b8860b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .rank-team {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: grab;
+  }
+  .rank-team:active {
+    cursor: grabbing;
+  }
+  .rank-team .rt-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .rank-team .rt-count {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .rank-placeholder {
+    color: var(--muted);
+    font-size: 14px;
+    font-style: italic;
+  }
 
-      .submit-section {
-        position: sticky;
-        bottom: 0;
-        background: linear-gradient(to top, var(--bg) 85%, transparent);
-        padding: 20px 0;
-        text-align: center;
-      }
-      .submit-btn {
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        border: none;
-        color: #0b1021;
-        padding: 14px 40px;
-        border-radius: 8px;
-        font-weight: 700;
-        font-size: 16px;
-        cursor: pointer;
-        transition:
-          transform 0.2s,
-          box-shadow 0.2s;
-      }
-      .submit-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
-      }
-      .submit-btn:disabled {
-        background: rgba(156, 163, 175, 0.3);
-        color: #6b7280;
-        cursor: not-allowed;
-        transform: none;
-      }
-      .back-btn {
-        padding: 10px 22px;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid var(--panel-border);
-        border-radius: 8px;
-        color: var(--text);
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        margin-right: 12px;
-        transition: all 0.2s;
-      }
-      .back-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
-      }
+  .submit-section {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg) 85%, transparent);
+    padding: 20px 0;
+    text-align: center;
+  }
+  .submit-btn {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    border: none;
+    color: #0b1021;
+    padding: 14px 40px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+  }
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .submit-btn:disabled {
+    background: rgba(156, 163, 175, 0.3);
+    color: #6b7280;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .back-btn {
+    padding: 10px 22px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 12px;
+    transition: all 0.2s;
+  }
+  .back-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
 
-      .message {
-        display: none;
-        padding: 14px 20px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-size: 14px;
-      }
-      .message.show {
-        display: block;
-      }
-      .message.success {
-        background: rgba(34, 197, 94, 0.15);
-        color: #86efac;
-        border: 1px solid rgba(34, 197, 94, 0.3);
-      }
-      .message.error {
-        background: rgba(239, 68, 68, 0.15);
-        color: #fca5a5;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-      }
+  .message {
+    display: none;
+    padding: 14px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  .message.show {
+    display: block;
+  }
+  .message.success {
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+  .message.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
 
-      .current-prefs {
-        max-width: 600px;
-        margin: 0 auto;
-      }
-      .pref-row {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 16px 20px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px;
-        margin-bottom: 10px;
-      }
-      .pref-rank {
-        font-size: 22px;
-        font-weight: 800;
-        width: 36px;
-        text-align: center;
-      }
-      @media (max-width: 640px) {
-        body {
-          padding: 76px 12px 40px;
-        }
-        .header {
-          padding: 18px;
-        }
-      }
-      /* Background layers */
-      .dot-grid {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-        background-size: 32px 32px;
-        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-        -webkit-mask-image: radial-gradient(
-          ellipse 80% 60% at 50% 40%,
-          black 30%,
-          transparent 100%
-        );
-      }
-      .spotlight {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background: radial-gradient(
-          600px circle at var(--mx, 50%) var(--my, 30%),
-          rgba(96, 165, 250, 0.07),
-          rgba(34, 211, 238, 0.04) 40%,
-          transparent 70%
-        );
-        transition: background 0.3s ease;
-      }
-      .blobs {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      .blob {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(120px);
-        opacity: 0.15;
-        will-change: transform;
-      }
-      .blob-1 {
-        width: 700px;
-        height: 700px;
-        background: #60a5fa;
-        top: -15%;
-        left: -10%;
-        animation: blobFloat1 18s ease-in-out infinite;
-      }
-      .blob-2 {
-        width: 500px;
-        height: 500px;
-        background: #22d3ee;
-        top: 40%;
-        right: -12%;
-        animation: blobFloat2 22s ease-in-out infinite;
-      }
-      .blob-3 {
-        width: 450px;
-        height: 450px;
-        background: #a78bfa;
-        bottom: -10%;
-        left: 25%;
-        animation: blobFloat3 20s ease-in-out infinite;
-      }
-      @keyframes blobFloat1 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(120px, 80px) scale(1.1);
-        }
-      }
-      @keyframes blobFloat2 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(-80px, -60px) scale(1.15);
-        }
-      }
-      @keyframes blobFloat3 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(70px, -50px) scale(1.08);
-        }
-      }
-      .noise {
-        position: fixed;
-        inset: 0;
-        z-index: 1;
-        pointer-events: none;
-        opacity: 0.035;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-repeat: repeat;
-        background-size: 128px 128px;
-      }
-      .page-wrap {
-        position: relative;
-        z-index: 2;
-        width: 100%;
-      }
-      @keyframes fadeSlideUp {
-        from {
-          opacity: 0;
-          transform: translateY(24px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      .container {
-        animation: fadeSlideUp 0.7s ease both;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="navbar-slot"></div>
-    <div class="dot-grid"></div>
-    <div class="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
-    <div class="page-wrap">
-      <div class="container">
-        <div class="header">
-          <h1>Mentor Dashboard</h1>
-          <p>Select and rank 3 teams you'd prefer to mentor</p>
-          <div class="step-indicator" id="step-badge"></div>
-        </div>
-        <div id="message" class="message"></div>
+  .current-prefs {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .pref-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+  .pref-rank {
+    font-size: 22px;
+    font-weight: 800;
+    width: 36px;
+    text-align: center;
+  }
+  @media (max-width: 640px) {
+    body {
+      padding: 76px 12px 40px;
+    }
+    .header {
+      padding: 18px;
+    }
+  }
+  /* Background layers */
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .container {
+    animation: fadeSlideUp 0.7s ease both;
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+  <div class="dot-grid"></div>
+  <div class="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
+  <div class="page-wrap">
+    <div class="container">
+      <div class="header">
+        <h1>Mentor Dashboard</h1>
+        <p>Select and rank 3 teams you'd prefer to mentor</p>
+        <div class="step-indicator" id="step-badge"></div>
+      </div>
+      <div id="message" class="message"></div>
 
-        <!-- Already submitted -->
-        <div id="submitted-section" style="display: none">
-          <p style="text-align: center; color: var(--muted); margin-bottom: 18px">
-            Your preferences have been submitted:
-          </p>
-          <div class="current-prefs" id="current-prefs"></div>
-          <div class="submit-section">
-            <button class="back-btn" onclick="resetToSelect()">Change Preferences</button>
-          </div>
-        </div>
-
-        <!-- Phase 1: Team selection grid -->
-        <div id="select-section">
-          <div class="grid" id="teams-grid">
-            <div style="color: var(--muted); text-align: center; grid-column: 1/-1; padding: 40px">
-              Loading teams...
-            </div>
-          </div>
-          <div class="submit-section">
-            <button class="submit-btn" id="proceed-btn" disabled onclick="goToRanking()">
-              Proceed to Ranking &rarr;
-            </button>
-          </div>
-        </div>
-
-        <!-- Phase 2: Drag & drop ranking -->
-        <div id="rank-section">
-          <div class="rank-slots" id="rank-slots">
-            <div class="rank-slot" data-rank="1">
-              <div class="rank-number r1">1st</div>
-              <div class="rank-placeholder">Drag your top choice here</div>
-            </div>
-            <div class="rank-slot" data-rank="2">
-              <div class="rank-number r2">2nd</div>
-              <div class="rank-placeholder">Drag your second choice here</div>
-            </div>
-            <div class="rank-slot" data-rank="3">
-              <div class="rank-number r3">3rd</div>
-              <div class="rank-placeholder">Drag your third choice here</div>
-            </div>
-          </div>
-          <p style="text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 16px">
-            Drag teams between slots to reorder
-          </p>
-          <div class="submit-section">
-            <button class="back-btn" onclick="backToSelect()">&#8592; Back</button>
-            <button class="submit-btn" id="submit-btn" disabled onclick="submitPreferences()">
-              Submit Preferences
-            </button>
-          </div>
+      <!-- Already submitted -->
+      <div id="submitted-section" style="display: none">
+        <p style="text-align: center; color: var(--muted); margin-bottom: 18px">
+          Your preferences have been submitted:
+        </p>
+        <div class="current-prefs" id="current-prefs"></div>
+        <div class="submit-section">
+          <button class="back-btn" onclick="resetToSelect()">Change Preferences</button>
         </div>
       </div>
 
-      <script>
-        var token = localStorage.getItem('token');
-        if (!token) window.location.href = '/login';
+      <!-- Phase 1: Team selection grid -->
+      <div id="select-section">
+        <div class="grid" id="teams-grid">
+          <div style="color: var(--muted); text-align: center; grid-column: 1/-1; padding: 40px">
+            Loading teams...
+          </div>
+        </div>
+        <div class="submit-section">
+          <button class="submit-btn" id="proceed-btn" disabled onclick="goToRanking()">
+            Proceed to Ranking &rarr;
+          </button>
+        </div>
+      </div>
 
-        var allTeams = [];
-        var selectedIds = [];
-
-        async function loadNavbar() {
-          try {
-            const res = await fetch('/navbar.html');
-            if (!res.ok) return;
-            const html = await res.text();
-            const slot = document.getElementById('navbar-slot');
-            if (!slot) return;
-            slot.innerHTML = html;
-            slot.querySelectorAll('script').forEach((old) => {
-              const s = document.createElement('script');
-              s.textContent = old.textContent;
-              document.head.appendChild(s);
-              s.remove();
-            });
-          } catch {}
-        }
-
-        function showMsg(text, type) {
-          var el = document.getElementById('message');
-          el.textContent = text;
-          el.className = 'message ' + type + ' show';
-          setTimeout(function () {
-            el.classList.remove('show');
-          }, 4000);
-        }
-
-        function setStep(step) {
-          var badge = document.getElementById('step-badge');
-          if (step === 'select') {
-            badge.className = 'step-indicator step-select';
-            badge.textContent = 'Step 1 \u2014 Select 3 teams (' + selectedIds.length + '/3)';
-          } else {
-            badge.className = 'step-indicator step-rank';
-            badge.textContent = 'Step 2 \u2014 Drag to rank';
-          }
-        }
-
-        async function init() {
-          // Check existing preferences
-          var prefRes = await fetch('/api/mentors/team-preferences', {
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          if (prefRes.ok) {
-            var prefData = await prefRes.json();
-            if (prefData.preferences && prefData.preferences.length > 0) {
-              showSubmitted(prefData.preferences);
-              return;
-            }
-          }
-
-          // Load teams
-          var teamsRes = await fetch('/api/mentors/available-teams', {
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          if (!teamsRes.ok) {
-            showMsg('Failed to load teams', 'error');
-            return;
-          }
-          var teamsData = await teamsRes.json();
-          allTeams = teamsData.teams || [];
-          renderGrid();
-          setStep('select');
-        }
-
-        function renderGrid() {
-          var grid = document.getElementById('teams-grid');
-          grid.innerHTML = '';
-          if (allTeams.length === 0) {
-            grid.innerHTML =
-              '<div style="color:var(--muted);text-align:center;grid-column:1/-1;padding:40px">No active teams available.</div>';
-            return;
-          }
-          allTeams.forEach(function (t) {
-            var card = document.createElement('div');
-            card.className = 'card' + (selectedIds.includes(t.team_id) ? ' selected' : '');
-            if (selectedIds.length >= 3 && !selectedIds.includes(t.team_id))
-              card.className += ' disabled';
-            card.dataset.id = t.team_id;
-            card.innerHTML =
-              '<div class="check-mark">&#10003;</div>' +
-              '<div class="name">' +
-              (t.team_name || 'Team #' + t.team_id) +
-              '</div>' +
-              '<div class="details">Team members</div>' +
-              '<div class="member-count">' +
-              (t.participant_count || '?') +
-              '/6 members</div>';
-            card.addEventListener('click', function () {
-              toggleTeam(t.team_id);
-            });
-            grid.appendChild(card);
-          });
-        }
-
-        function toggleTeam(id) {
-          var idx = selectedIds.indexOf(id);
-          if (idx > -1) {
-            selectedIds.splice(idx, 1);
-          } else {
-            if (selectedIds.length >= 3) {
-              showMsg('Select exactly 3 teams', 'error');
-              return;
-            }
-            selectedIds.push(id);
-          }
-          renderGrid();
-          setStep('select');
-          document.getElementById('proceed-btn').disabled = selectedIds.length !== 3;
-        }
-
-        function getTeam(id) {
-          return (
-            allTeams.find(function (t) {
-              return t.team_id === id;
-            }) || {}
-          );
-        }
-
-        function goToRanking() {
-          document.getElementById('select-section').style.display = 'none';
-          document.getElementById('rank-section').style.display = 'block';
-          setStep('rank');
-          buildRankSlots();
-        }
-
-        function backToSelect() {
-          document.getElementById('rank-section').style.display = 'none';
-          document.getElementById('select-section').style.display = 'block';
-          setStep('select');
-        }
-
-        function buildRankSlots() {
-          var slots = document.querySelectorAll('.rank-slot');
-          selectedIds.forEach(function (id, i) {
-            if (i < slots.length) fillSlot(slots[i], id);
-          });
-          checkRankComplete();
-        }
-
-        function fillSlot(slot, teamId) {
-          var t = getTeam(teamId);
-          var el = document.createElement('div');
-          el.className = 'rank-team';
-          el.draggable = true;
-          el.dataset.teamId = teamId;
-          el.innerHTML =
-            '<div><div class="rt-name">' +
-            (t.team_name || 'Team #' + teamId) +
-            '</div>' +
-            '<div class="rt-count">' +
-            (t.participant_count || '?') +
-            ' members</div></div>';
-
-          var rankNum = slot.querySelector('.rank-number');
-          slot.innerHTML = '';
-          slot.appendChild(rankNum);
-          slot.appendChild(el);
-          slot.classList.add('filled');
-
-          el.addEventListener('dragstart', function (e) {
-            e.dataTransfer.setData('text/plain', teamId);
-            e.dataTransfer.effectAllowed = 'move';
-            el.style.opacity = '0.5';
-          });
-          el.addEventListener('dragend', function () {
-            el.style.opacity = '1';
-          });
-        }
-
-        document.querySelectorAll('.rank-slot').forEach(function (slot) {
-          slot.addEventListener('dragover', function (e) {
-            e.preventDefault();
-            slot.classList.add('drag-over');
-          });
-          slot.addEventListener('dragleave', function () {
-            slot.classList.remove('drag-over');
-          });
-          slot.addEventListener('drop', function (e) {
-            e.preventDefault();
-            slot.classList.remove('drag-over');
-            var draggedId = parseInt(e.dataTransfer.getData('text/plain'));
-            var sourceSlot = null;
-            document.querySelectorAll('.rank-slot').forEach(function (s) {
-              var rt = s.querySelector('.rank-team');
-              if (rt && parseInt(rt.dataset.teamId) === draggedId) sourceSlot = s;
-            });
-            var existing = slot.querySelector('.rank-team');
-            var existingId = existing ? parseInt(existing.dataset.teamId) : null;
-            fillSlot(slot, draggedId);
-            if (sourceSlot && existingId !== null && existingId !== draggedId) {
-              fillSlot(sourceSlot, existingId);
-            } else if (sourceSlot && existingId === null) {
-              var rn = sourceSlot.querySelector('.rank-number');
-              sourceSlot.innerHTML = '';
-              sourceSlot.appendChild(rn);
-              sourceSlot.innerHTML += '<div class="rank-placeholder">Drag a team here</div>';
-              sourceSlot.classList.remove('filled');
-            }
-            checkRankComplete();
-          });
-        });
-
-        function checkRankComplete() {
-          document.getElementById('submit-btn').disabled =
-            document.querySelectorAll('.rank-slot.filled').length < 3;
-        }
-
-        async function submitPreferences() {
-          var prefs = [];
-          document.querySelectorAll('.rank-slot').forEach(function (slot) {
-            var rt = slot.querySelector('.rank-team');
-            if (rt)
-              prefs.push({
-                team_id: parseInt(rt.dataset.teamId),
-                rank: parseInt(slot.dataset.rank),
-              });
-          });
-          try {
-            var res = await fetch('/api/mentors/team-preferences', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-              body: JSON.stringify({ preferences: prefs }),
-            });
-            var data = await res.json();
-            if (data.success) {
-              showMsg('Preferences saved!', 'success');
-              setTimeout(function () {
-                window.location.reload();
-              }, 1500);
-            } else showMsg(data.error || 'Failed', 'error');
-          } catch (e) {
-            showMsg('Network error', 'error');
-          }
-        }
-
-        function showSubmitted(prefs) {
-          document.getElementById('select-section').style.display = 'none';
-          document.getElementById('rank-section').style.display = 'none';
-          document.getElementById('submitted-section').style.display = 'block';
-          document.getElementById('step-badge').className = 'step-indicator step-rank';
-          document.getElementById('step-badge').textContent = 'Preferences submitted \u2713';
-
-          var container = document.getElementById('current-prefs');
-          container.innerHTML = '';
-          prefs.sort(function (a, b) {
-            return a.rank - b.rank;
-          });
-          var labels = ['1st', '2nd', '3rd'];
-          var classes = ['r1', 'r2', 'r3'];
-          prefs.forEach(function (p, i) {
-            var row = document.createElement('div');
-            row.className = 'pref-row';
-            row.innerHTML =
-              '<div class="pref-rank ' +
-              (classes[i] || '') +
-              '">' +
-              (labels[i] || i + 1) +
-              '</div>' +
-              '<div><div style="font-weight:600;font-size:15px">' +
-              (p.team_name || 'Team #' + p.team_id) +
-              '</div></div>';
-            container.appendChild(row);
-          });
-        }
-
-        function resetToSelect() {
-          document.getElementById('submitted-section').style.display = 'none';
-          document.getElementById('select-section').style.display = 'block';
-          selectedIds = [];
-          fetch('/api/mentors/available-teams', { headers: { Authorization: 'Bearer ' + token } })
-            .then(function (r) {
-              return r.json();
-            })
-            .then(function (d) {
-              allTeams = d.teams || [];
-              renderGrid();
-              setStep('select');
-            });
-        }
-
-        loadNavbar();
-        init();
-      </script>
+      <!-- Phase 2: Drag & drop ranking -->
+      <div id="rank-section">
+        <div class="rank-slots" id="rank-slots">
+          <div class="rank-slot" data-rank="1">
+            <div class="rank-number r1">1st</div>
+            <div class="rank-placeholder">Drag your top choice here</div>
+          </div>
+          <div class="rank-slot" data-rank="2">
+            <div class="rank-number r2">2nd</div>
+            <div class="rank-placeholder">Drag your second choice here</div>
+          </div>
+          <div class="rank-slot" data-rank="3">
+            <div class="rank-number r3">3rd</div>
+            <div class="rank-placeholder">Drag your third choice here</div>
+          </div>
+        </div>
+        <p style="text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 16px">
+          Drag teams between slots to reorder
+        </p>
+        <div class="submit-section">
+          <button class="back-btn" onclick="backToSelect()">&#8592; Back</button>
+          <button class="submit-btn" id="submit-btn" disabled onclick="submitPreferences()">
+            Submit Preferences
+          </button>
+        </div>
+      </div>
     </div>
-    <!-- /page-wrap -->
+
     <script>
-      document.addEventListener('mousemove', (e) => {
-        const s = document.querySelector('.spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
+      var token = localStorage.getItem('token');
+      if (!token) window.location.href = '/login';
+
+      var allTeams = [];
+      var selectedIds = [];
+
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
+
+      function showMsg(text, type) {
+        var el = document.getElementById('message');
+        el.textContent = text;
+        el.className = 'message ' + type + ' show';
+        setTimeout(function () {
+          el.classList.remove('show');
+        }, 4000);
+      }
+
+      function setStep(step) {
+        var badge = document.getElementById('step-badge');
+        if (step === 'select') {
+          badge.className = 'step-indicator step-select';
+          badge.textContent = 'Step 1 \u2014 Select 3 teams (' + selectedIds.length + '/3)';
+        } else {
+          badge.className = 'step-indicator step-rank';
+          badge.textContent = 'Step 2 \u2014 Drag to rank';
         }
+      }
+
+      async function init() {
+        // Check existing preferences
+        var prefRes = await fetch('/api/mentors/team-preferences', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (prefRes.ok) {
+          var prefData = await prefRes.json();
+          if (prefData.preferences && prefData.preferences.length > 0) {
+            showSubmitted(prefData.preferences);
+            return;
+          }
+        }
+
+        // Load teams
+        var teamsRes = await fetch('/api/mentors/available-teams', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!teamsRes.ok) {
+          showMsg('Failed to load teams', 'error');
+          return;
+        }
+        var teamsData = await teamsRes.json();
+        allTeams = teamsData.teams || [];
+        renderGrid();
+        setStep('select');
+      }
+
+      function renderGrid() {
+        var grid = document.getElementById('teams-grid');
+        grid.innerHTML = '';
+        if (allTeams.length === 0) {
+          grid.innerHTML =
+            '<div style="color:var(--muted);text-align:center;grid-column:1/-1;padding:40px">No active teams available.</div>';
+          return;
+        }
+        allTeams.forEach(function (t) {
+          var card = document.createElement('div');
+          card.className = 'card' + (selectedIds.includes(t.team_id) ? ' selected' : '');
+          if (selectedIds.length >= 3 && !selectedIds.includes(t.team_id))
+            card.className += ' disabled';
+          card.dataset.id = t.team_id;
+          card.innerHTML =
+            '<div class="check-mark">&#10003;</div>' +
+            '<div class="name">' +
+            (t.team_name || 'Team #' + t.team_id) +
+            '</div>' +
+            '<div class="details">Team members</div>' +
+            '<div class="member-count">' +
+            (t.participant_count || '?') +
+            '/6 members</div>';
+          card.addEventListener('click', function () {
+            toggleTeam(t.team_id);
+          });
+          grid.appendChild(card);
+        });
+      }
+
+      function toggleTeam(id) {
+        var idx = selectedIds.indexOf(id);
+        if (idx > -1) {
+          selectedIds.splice(idx, 1);
+        } else {
+          if (selectedIds.length >= 3) {
+            showMsg('Select exactly 3 teams', 'error');
+            return;
+          }
+          selectedIds.push(id);
+        }
+        renderGrid();
+        setStep('select');
+        document.getElementById('proceed-btn').disabled = selectedIds.length !== 3;
+      }
+
+      function getTeam(id) {
+        return (
+          allTeams.find(function (t) {
+            return t.team_id === id;
+          }) || {}
+        );
+      }
+
+      function goToRanking() {
+        document.getElementById('select-section').style.display = 'none';
+        document.getElementById('rank-section').style.display = 'block';
+        setStep('rank');
+        buildRankSlots();
+      }
+
+      function backToSelect() {
+        document.getElementById('rank-section').style.display = 'none';
+        document.getElementById('select-section').style.display = 'block';
+        setStep('select');
+      }
+
+      function buildRankSlots() {
+        var slots = document.querySelectorAll('.rank-slot');
+        selectedIds.forEach(function (id, i) {
+          if (i < slots.length) fillSlot(slots[i], id);
+        });
+        checkRankComplete();
+      }
+
+      function fillSlot(slot, teamId) {
+        var t = getTeam(teamId);
+        var el = document.createElement('div');
+        el.className = 'rank-team';
+        el.draggable = true;
+        el.dataset.teamId = teamId;
+        el.innerHTML =
+          '<div><div class="rt-name">' +
+          (t.team_name || 'Team #' + teamId) +
+          '</div>' +
+          '<div class="rt-count">' +
+          (t.participant_count || '?') +
+          ' members</div></div>';
+
+        var rankNum = slot.querySelector('.rank-number');
+        slot.innerHTML = '';
+        slot.appendChild(rankNum);
+        slot.appendChild(el);
+        slot.classList.add('filled');
+
+        el.addEventListener('dragstart', function (e) {
+          e.dataTransfer.setData('text/plain', teamId);
+          e.dataTransfer.effectAllowed = 'move';
+          el.style.opacity = '0.5';
+        });
+        el.addEventListener('dragend', function () {
+          el.style.opacity = '1';
+        });
+      }
+
+      document.querySelectorAll('.rank-slot').forEach(function (slot) {
+        slot.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          slot.classList.add('drag-over');
+        });
+        slot.addEventListener('dragleave', function () {
+          slot.classList.remove('drag-over');
+        });
+        slot.addEventListener('drop', function (e) {
+          e.preventDefault();
+          slot.classList.remove('drag-over');
+          var draggedId = parseInt(e.dataTransfer.getData('text/plain'));
+          var sourceSlot = null;
+          document.querySelectorAll('.rank-slot').forEach(function (s) {
+            var rt = s.querySelector('.rank-team');
+            if (rt && parseInt(rt.dataset.teamId) === draggedId) sourceSlot = s;
+          });
+          var existing = slot.querySelector('.rank-team');
+          var existingId = existing ? parseInt(existing.dataset.teamId) : null;
+          fillSlot(slot, draggedId);
+          if (sourceSlot && existingId !== null && existingId !== draggedId) {
+            fillSlot(sourceSlot, existingId);
+          } else if (sourceSlot && existingId === null) {
+            var rn = sourceSlot.querySelector('.rank-number');
+            sourceSlot.innerHTML = '';
+            sourceSlot.appendChild(rn);
+            sourceSlot.innerHTML += '<div class="rank-placeholder">Drag a team here</div>';
+            sourceSlot.classList.remove('filled');
+          }
+          checkRankComplete();
+        });
       });
+
+      function checkRankComplete() {
+        document.getElementById('submit-btn').disabled =
+          document.querySelectorAll('.rank-slot.filled').length < 3;
+      }
+
+      async function submitPreferences() {
+        var prefs = [];
+        document.querySelectorAll('.rank-slot').forEach(function (slot) {
+          var rt = slot.querySelector('.rank-team');
+          if (rt)
+            prefs.push({
+              team_id: parseInt(rt.dataset.teamId),
+              rank: parseInt(slot.dataset.rank),
+            });
+        });
+        try {
+          var res = await fetch('/api/mentors/team-preferences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ preferences: prefs }),
+          });
+          var data = await res.json();
+          if (data.success) {
+            showMsg('Preferences saved!', 'success');
+            setTimeout(function () {
+              window.location.reload();
+            }, 1500);
+          } else showMsg(data.error || 'Failed', 'error');
+        } catch (e) {
+          showMsg('Network error', 'error');
+        }
+      }
+
+      function showSubmitted(prefs) {
+        document.getElementById('select-section').style.display = 'none';
+        document.getElementById('rank-section').style.display = 'none';
+        document.getElementById('submitted-section').style.display = 'block';
+        document.getElementById('step-badge').className = 'step-indicator step-rank';
+        document.getElementById('step-badge').textContent = 'Preferences submitted \u2713';
+
+        var container = document.getElementById('current-prefs');
+        container.innerHTML = '';
+        prefs.sort(function (a, b) {
+          return a.rank - b.rank;
+        });
+        var labels = ['1st', '2nd', '3rd'];
+        var classes = ['r1', 'r2', 'r3'];
+        prefs.forEach(function (p, i) {
+          var row = document.createElement('div');
+          row.className = 'pref-row';
+          row.innerHTML =
+            '<div class="pref-rank ' +
+            (classes[i] || '') +
+            '">' +
+            (labels[i] || i + 1) +
+            '</div>' +
+            '<div><div style="font-weight:600;font-size:15px">' +
+            (p.team_name || 'Team #' + p.team_id) +
+            '</div></div>';
+          container.appendChild(row);
+        });
+      }
+
+      function resetToSelect() {
+        document.getElementById('submitted-section').style.display = 'none';
+        document.getElementById('select-section').style.display = 'block';
+        selectedIds = [];
+        fetch('/api/mentors/available-teams', { headers: { Authorization: 'Bearer ' + token } })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (d) {
+            allTeams = d.teams || [];
+            renderGrid();
+            setStep('select');
+          });
+      }
+
+      loadNavbar();
+      init();
     </script>
-  </body>
-</html>
+  </div>
+  <!-- /page-wrap -->
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
+{% endblock %}

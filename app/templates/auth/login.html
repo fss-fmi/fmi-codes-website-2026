@@ -1,453 +1,435 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Login — FMI Codes</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #050816;
-        --bg-card: rgba(255, 255, 255, 0.03);
-        --border: rgba(255, 255, 255, 0.06);
-        --border-glow: rgba(96, 165, 250, 0.25);
-        --text: #e2e8f0;
-        --muted: #64748b;
-        --accent: #60a5fa;
-        --accent-2: #22d3ee;
-        --purple: #a78bfa;
-        --pink: #f472b6;
-      }
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      html {
-        scroll-behavior: smooth;
-      }
-      body {
-        font-family: 'Inter', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        overflow-x: hidden;
-        -webkit-font-smoothing: antialiased;
-      }
+{% extends "base.html" %} {% block title %}Login — FMI Codes{% endblock %} {% block head %}
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
 
-      /* Animated background layers */
-      .dot-grid {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-        background-size: 32px 32px;
-        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-        -webkit-mask-image: radial-gradient(
-          ellipse 80% 60% at 50% 40%,
-          black 30%,
-          transparent 100%
-        );
-      }
-      .spotlight {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background: radial-gradient(
-          600px circle at var(--mx, 50%) var(--my, 30%),
-          rgba(96, 165, 250, 0.07),
-          rgba(34, 211, 238, 0.04) 40%,
-          transparent 70%
-        );
-        transition: background 0.3s ease;
-      }
-      .blobs {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      .blob {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(120px);
-        opacity: 0.15;
-        will-change: transform;
-      }
-      .blob-1 {
-        width: 700px;
-        height: 700px;
-        background: #60a5fa;
-        top: -15%;
-        left: -10%;
-        animation: blobFloat1 18s ease-in-out infinite;
-      }
-      .blob-2 {
-        width: 500px;
-        height: 500px;
-        background: #22d3ee;
-        top: 40%;
-        right: -12%;
-        animation: blobFloat2 22s ease-in-out infinite;
-      }
-      .blob-3 {
-        width: 450px;
-        height: 450px;
-        background: #a78bfa;
-        bottom: -10%;
-        left: 25%;
-        animation: blobFloat3 20s ease-in-out infinite;
-      }
-      @keyframes blobFloat1 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(120px, 80px) scale(1.1);
-        }
-      }
-      @keyframes blobFloat2 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(-80px, -60px) scale(1.15);
-        }
-      }
-      @keyframes blobFloat3 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(70px, -50px) scale(1.08);
-        }
-      }
-      .noise {
-        position: fixed;
-        inset: 0;
-        z-index: 1;
-        pointer-events: none;
-        opacity: 0.035;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-repeat: repeat;
-        background-size: 128px 128px;
-      }
-      .page-wrap {
-        position: relative;
-        z-index: 2;
-        width: 100%;
-      }
+  /* Animated background layers */
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
 
-      /* Animations */
-      @keyframes fadeSlideUp {
-        from {
-          opacity: 0;
-          transform: translateY(30px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
+  /* Animations */
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 
-      /* Page layout */
-      .container {
-        width: 100%;
-        max-width: 440px;
-        margin: 0 auto;
-        padding: 24px 16px 60px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-      }
-      .form-card {
-        position: relative;
-        width: 100%;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 40px 36px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-        backdrop-filter: blur(12px);
-        animation: fadeSlideUp 0.8s ease both;
-        overflow: hidden;
-      }
-      h1 {
-        font-size: 28px;
-        font-weight: 700;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 8px;
-      }
-      .subtitle {
-        color: var(--muted);
-        margin-bottom: 24px;
-        font-size: 15px;
-      }
-      .role-toggle {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 24px;
-      }
-      .role-btn {
-        flex: 1;
-        padding: 10px 12px;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        color: var(--muted);
-        font-family: inherit;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .role-btn.active {
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        color: #0b1021;
-        border-color: transparent;
-      }
-      .role-btn:hover:not(.active) {
-        border-color: var(--accent);
-        color: var(--text);
-      }
-      .form-group {
-        margin-bottom: 18px;
-      }
-      .form-group label {
-        display: block;
-        font-size: 14px;
-        color: var(--muted);
-        margin-bottom: 6px;
-      }
-      .form-group input {
-        width: 100%;
-        padding: 12px 14px;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        color: var(--text);
-        font-family: inherit;
-        font-size: 15px;
-        outline: none;
-        transition: border-color 0.2s;
-      }
-      .form-group input:focus {
-        border-color: var(--accent);
-      }
-      .submit-btn {
-        width: 100%;
-        padding: 14px;
-        margin-top: 8px;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        border: none;
-        border-radius: 8px;
-        color: #0b1021;
-        font-family: inherit;
-        font-size: 16px;
-        font-weight: 700;
-        cursor: pointer;
-        transition:
-          transform 0.2s,
-          box-shadow 0.2s;
-        position: relative;
-        overflow: hidden;
-      }
-      .submit-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
-      }
-      .submit-btn::after {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -60%;
-        width: 200%;
-        height: 200%;
-        background: linear-gradient(
-          120deg,
-          transparent 30%,
-          rgba(255, 255, 255, 0.15) 50%,
-          transparent 70%
-        );
-        transform: rotate(25deg);
-        transition: left 0.6s ease;
-      }
-      .submit-btn:hover::after {
-        left: 120%;
-      }
-      .error-msg {
-        background: rgba(239, 68, 68, 0.15);
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        color: #fca5a5;
-        padding: 12px;
-        border-radius: 8px;
-        margin-bottom: 16px;
-        font-size: 14px;
-      }
-      .alt-action {
-        text-align: center;
-        margin-top: 20px;
-        color: var(--muted);
-        font-size: 14px;
-      }
-      .alt-action a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      .alt-action a:hover {
-        text-decoration: underline;
-      }
-      @media (max-width: 500px) {
-        .form-card {
-          padding: 28px 20px;
-        }
-        .container {
-          padding: 16px 12px 40px;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="dot-grid"></div>
-    <div class="spotlight" id="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
+  /* Page layout */
+  .container {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .form-card {
+    position: relative;
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 36px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(12px);
+    animation: fadeSlideUp 0.8s ease both;
+    overflow: hidden;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 24px;
+    font-size: 15px;
+  }
+  .role-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  .role-btn {
+    flex: 1;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .role-btn.active {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    color: #0b1021;
+    border-color: transparent;
+  }
+  .role-btn:hover:not(.active) {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .form-group {
+    margin-bottom: 18px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus {
+    border-color: var(--accent);
+  }
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    margin-top: 8px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    border: none;
+    border-radius: 8px;
+    color: #0b1021;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .submit-btn::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -60%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      120deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.15) 50%,
+      transparent 70%
+    );
+    transform: rotate(25deg);
+    transition: left 0.6s ease;
+  }
+  .submit-btn:hover::after {
+    left: 120%;
+  }
+  .error-msg {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .alt-action {
+    text-align: center;
+    margin-top: 20px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .alt-action a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .alt-action a:hover {
+    text-decoration: underline;
+  }
+  @media (max-width: 500px) {
+    .form-card {
+      padding: 28px 20px;
+    }
+    .container {
+      padding: 16px 12px 40px;
+    }
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div class="dot-grid"></div>
+  <div class="spotlight" id="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
 
-    <div class="page-wrap">
-      <div id="navbar-slot"></div>
-      <div class="container">
-        <div class="form-card">
-          <h1>Login</h1>
-          <p class="subtitle">Sign in to your account</p>
+  <div class="page-wrap">
+    <div id="navbar-slot"></div>
+    <div class="container">
+      <div class="form-card">
+        <h1>Login</h1>
+        <p class="subtitle">Sign in to your account</p>
 
-          <div id="error-msg" class="error-msg" style="display: none"></div>
+        <div id="error-msg" class="error-msg" style="display: none"></div>
 
-          <div class="role-toggle">
-            <button type="button" class="role-btn active" data-role="participant">
-              Participant
-            </button>
-            <button type="button" class="role-btn" data-role="mentor">Mentor</button>
-            <button type="button" class="role-btn" data-role="admin">Admin</button>
-          </div>
-
-          <form id="loginForm" autocomplete="off">
-            <div class="form-group">
-              <label for="email">Email</label>
-              <input type="email" id="email" name="email" required placeholder="your@email.com" />
-            </div>
-            <div class="form-group">
-              <label for="password">Password</label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                required
-                placeholder="Your password"
-              />
-            </div>
-            <button type="submit" class="submit-btn">Login</button>
-          </form>
-
-          <p class="alt-action">Don't have an account? <a href="/registration">Register here</a></p>
+        <div class="role-toggle">
+          <button type="button" class="role-btn active" data-role="participant">Participant</button>
+          <button type="button" class="role-btn" data-role="mentor">Mentor</button>
+          <button type="button" class="role-btn" data-role="admin">Admin</button>
         </div>
+
+        <form id="loginForm" autocomplete="off">
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required placeholder="your@email.com" />
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              placeholder="Your password"
+            />
+          </div>
+          <button type="submit" class="submit-btn">Login</button>
+        </form>
+
+        <p class="alt-action">Don't have an account? <a href="/registration">Register here</a></p>
       </div>
     </div>
-    <!-- /page-wrap -->
+  </div>
+  <!-- /page-wrap -->
 
-    <script>
-      /* Spotlight tracking */
-      document.addEventListener('mousemove', (e) => {
-        const s = document.getElementById('spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
-        }
-      });
-
-      let selectedRole = 'participant';
-
-      async function loadNavbar() {
-        try {
-          const res = await fetch('/navbar.html');
-          if (!res.ok) return;
-          const html = await res.text();
-          const slot = document.getElementById('navbar-slot');
-          if (!slot) return;
-          slot.innerHTML = html;
-          slot.querySelectorAll('script').forEach((old) => {
-            const s = document.createElement('script');
-            s.textContent = old.textContent;
-            document.head.appendChild(s);
-            s.remove();
-          });
-        } catch {}
+  <script>
+    /* Spotlight tracking */
+    document.addEventListener('mousemove', (e) => {
+      const s = document.getElementById('spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
       }
-      loadNavbar();
+    });
 
-      // Role toggle
-      document.querySelectorAll('.role-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.role-btn').forEach((b) => b.classList.remove('active'));
-          btn.classList.add('active');
-          selectedRole = btn.dataset.role;
+    let selectedRole = 'participant';
+
+    async function loadNavbar() {
+      try {
+        const res = await fetch('/navbar.html');
+        if (!res.ok) return;
+        const html = await res.text();
+        const slot = document.getElementById('navbar-slot');
+        if (!slot) return;
+        slot.innerHTML = html;
+        slot.querySelectorAll('script').forEach((old) => {
+          const s = document.createElement('script');
+          s.textContent = old.textContent;
+          document.head.appendChild(s);
+          s.remove();
         });
+      } catch {}
+    }
+    loadNavbar();
+
+    // Role toggle
+    document.querySelectorAll('.role-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.role-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedRole = btn.dataset.role;
       });
+    });
 
-      document.getElementById('loginForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const errEl = document.getElementById('error-msg');
-        errEl.style.display = 'none';
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('error-msg');
+      errEl.style.display = 'none';
 
-        const body = {
-          email: document.getElementById('email').value.trim(),
-          password: document.getElementById('password').value,
-          role: selectedRole,
-        };
+      const body = {
+        email: document.getElementById('email').value.trim(),
+        password: document.getElementById('password').value,
+        role: selectedRole,
+      };
 
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          const data = await res.json();
-          if (data.success) {
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('role', data.role);
-            localStorage.setItem('user_id', data.user_id);
-            if (data.role === 'admin') window.location.href = '/admin/matching';
-            else if (data.role === 'mentor') window.location.href = '/mentorDashboard';
-            else window.location.href = '/team';
-          } else {
-            errEl.textContent = data.error || 'Login failed';
-            errEl.style.display = 'block';
-          }
-        } catch (err) {
-          errEl.textContent = 'Network error. Please try again.';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('role', data.role);
+          localStorage.setItem('user_id', data.user_id);
+          if (data.role === 'admin') window.location.href = '/admin/matching';
+          else if (data.role === 'mentor') window.location.href = '/mentorDashboard';
+          else window.location.href = '/team';
+        } else {
+          errEl.textContent = data.error || 'Login failed';
           errEl.style.display = 'block';
         }
-      });
-    </script>
-  </body>
-</html>
+      } catch (err) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+{% endblock %}

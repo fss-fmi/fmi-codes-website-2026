@@ -1,98 +1,85 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mentors</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body>
-    <div id="navbar-slot"></div>
-    <div class="dot-grid"></div>
-    <div class="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
-    <div class="page-wrap">
-      <!-- STAY TUNED SECTION -->
-      <div class="stay-tuned-wrap">
-        <div class="st-rings">
-          <div class="st-ring st-ring-1"></div>
-          <div class="st-ring st-ring-2"></div>
-          <div class="st-ring st-ring-3"></div>
+{% extends "base.html" %} {% block title %}Mentors{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+  <div class="dot-grid"></div>
+  <div class="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
+  <div class="page-wrap">
+    <!-- STAY TUNED SECTION -->
+    <div class="stay-tuned-wrap">
+      <div class="st-rings">
+        <div class="st-ring st-ring-1"></div>
+        <div class="st-ring st-ring-2"></div>
+        <div class="st-ring st-ring-3"></div>
+      </div>
+      <div class="st-particles" id="stParticles"></div>
+      <div class="st-content">
+        <div class="st-badge">
+          <span class="st-badge-dot"></span>
+          Coming Soon
         </div>
-        <div class="st-particles" id="stParticles"></div>
-        <div class="st-content">
-          <div class="st-badge">
-            <span class="st-badge-dot"></span>
-            Coming Soon
-          </div>
-          <h1 class="st-title">
-            <span class="st-word" data-word="Stay">Stay</span>
-            <span class="st-word st-word-accent" data-word="Tuned">Tuned</span>
-          </h1>
-          <p class="st-sub">
-            Our mentors are being carefully selected.<br class="st-br" />
-            Check back soon — it'll be worth the wait.
-          </p>
-          <div class="st-dots">
-            <span class="st-dot"></span>
-            <span class="st-dot"></span>
-            <span class="st-dot"></span>
-          </div>
+        <h1 class="st-title">
+          <span class="st-word" data-word="Stay">Stay</span>
+          <span class="st-word st-word-accent" data-word="Tuned">Tuned</span>
+        </h1>
+        <p class="st-sub">
+          Our mentors are being carefully selected.<br class="st-br" />
+          Check back soon — it'll be worth the wait.
+        </p>
+        <div class="st-dots">
+          <span class="st-dot"></span>
+          <span class="st-dot"></span>
+          <span class="st-dot"></span>
         </div>
       </div>
-      <!-- /STAY TUNED SECTION -->
+    </div>
+    <!-- /STAY TUNED SECTION -->
 
-      <script>
-        async function loadNavbar() {
-          try {
-            const res = await fetch('/navbar.html');
-            if (!res.ok) return;
-            const html = await res.text();
-            const slot = document.getElementById('navbar-slot');
-            if (!slot) return;
-            slot.innerHTML = html;
-            slot.querySelectorAll('script').forEach((old) => {
-              const s = document.createElement('script');
-              s.textContent = old.textContent;
-              document.head.appendChild(s);
-              s.remove();
-            });
-          } catch {}
+    <script>
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
+
+      async function logout() {
+        try {
+          const response = await fetch('/api/logout', { method: 'POST' });
+          if (response.ok) window.location.reload();
+        } catch (error) {
+          console.error('Logout failed:', error);
         }
+      }
 
-        async function logout() {
-          try {
-            const response = await fetch('/api/logout', { method: 'POST' });
-            if (response.ok) window.location.reload();
-          } catch (error) {
-            console.error('Logout failed:', error);
-          }
-        }
-
-        function spawnParticles() {
-          const container = document.getElementById('stParticles');
-          if (!container) return;
-          const colors = ['#60a5fa', '#22d3ee', '#a78bfa', '#f472b6', '#34d399'];
-          for (let i = 0; i < 28; i++) {
-            const p = document.createElement('div');
-            p.className = 'st-particle';
-            const size = 3 + Math.random() * 5;
-            const x = Math.random() * 100;
-            const delay = Math.random() * 6;
-            const dur = 5 + Math.random() * 7;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            p.style.cssText = `
+      function spawnParticles() {
+        const container = document.getElementById('stParticles');
+        if (!container) return;
+        const colors = ['#60a5fa', '#22d3ee', '#a78bfa', '#f472b6', '#34d399'];
+        for (let i = 0; i < 28; i++) {
+          const p = document.createElement('div');
+          p.className = 'st-particle';
+          const size = 3 + Math.random() * 5;
+          const x = Math.random() * 100;
+          const delay = Math.random() * 6;
+          const dur = 5 + Math.random() * 7;
+          const color = colors[Math.floor(Math.random() * colors.length)];
+          p.style.cssText = `
               width:${size}px; height:${size}px;
               left:${x}%; bottom:-10px;
               background:${color};
@@ -100,29 +87,28 @@
               animation-duration:${dur}s;
               box-shadow: 0 0 ${size * 3}px ${color};
             `;
-            container.appendChild(p);
-          }
+          container.appendChild(p);
         }
+      }
 
-        document.addEventListener('DOMContentLoaded', async () => {
-          await loadNavbar();
-          spawnParticles();
-        });
-      </script>
-    </div>
-    <!-- /page-wrap -->
-    <script>
-      document.addEventListener('mousemove', (e) => {
-        const s = document.querySelector('.spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
-        }
+      document.addEventListener('DOMContentLoaded', async () => {
+        await loadNavbar();
+        spawnParticles();
       });
     </script>
-  </body>
-</html>
-
+  </div>
+  <!-- /page-wrap -->
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
+{% endblock %} {% block head %}
 <style>
   :root {
     --bg: #050816;
@@ -621,3 +607,4 @@
     }
   }
 </style>
+{% endblock %}

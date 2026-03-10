@@ -1,781 +1,759 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/static/images/FSS_logo_vector_trans_white.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Team — FMI Codes</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #050816;
-        --bg-card: rgba(255, 255, 255, 0.03);
-        --border: rgba(255, 255, 255, 0.06);
-        --border-glow: rgba(96, 165, 250, 0.25);
-        --text: #e2e8f0;
-        --muted: #64748b;
-        --accent: #60a5fa;
-        --accent-2: #22d3ee;
-        --purple: #a78bfa;
-        --pink: #f472b6;
-        --danger: #ef4444;
-        --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-      }
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      html {
-        scroll-behavior: smooth;
-      }
-      body {
-        font-family: 'Inter', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        overflow-x: hidden;
-        -webkit-font-smoothing: antialiased;
-      }
+{% extends "base.html" %} {% block title %}My Team — FMI Codes{% endblock %} {% block head %}
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --danger: #ef4444;
+    --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
 
-      .dot-grid {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-        background-size: 32px 32px;
-        mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-        -webkit-mask-image: radial-gradient(
-          ellipse 80% 60% at 50% 40%,
-          black 30%,
-          transparent 100%
-        );
-      }
-      .spotlight {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background: radial-gradient(
-          600px circle at var(--mx, 50%) var(--my, 30%),
-          rgba(96, 165, 250, 0.07),
-          rgba(34, 211, 238, 0.04) 40%,
-          transparent 70%
-        );
-        transition: background 0.3s ease;
-      }
-      .blobs {
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-      }
-      .blob {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(120px);
-        opacity: 0.15;
-        will-change: transform;
-      }
-      .blob-1 {
-        width: 700px;
-        height: 700px;
-        background: #60a5fa;
-        top: -15%;
-        left: -10%;
-        animation: blobFloat1 18s ease-in-out infinite;
-      }
-      .blob-2 {
-        width: 500px;
-        height: 500px;
-        background: #22d3ee;
-        top: 40%;
-        right: -12%;
-        animation: blobFloat2 22s ease-in-out infinite;
-      }
-      .blob-3 {
-        width: 450px;
-        height: 450px;
-        background: #a78bfa;
-        bottom: -10%;
-        left: 25%;
-        animation: blobFloat3 20s ease-in-out infinite;
-      }
-      @keyframes blobFloat1 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(120px, 80px) scale(1.1);
-        }
-      }
-      @keyframes blobFloat2 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(-80px, -60px) scale(1.15);
-        }
-      }
-      @keyframes blobFloat3 {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(70px, -50px) scale(1.08);
-        }
-      }
-      .noise {
-        position: fixed;
-        inset: 0;
-        z-index: 1;
-        pointer-events: none;
-        opacity: 0.035;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        background-repeat: repeat;
-        background-size: 128px 128px;
-      }
-      .page-wrap {
-        position: relative;
-        z-index: 2;
-        width: 100%;
-      }
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
 
-      @keyframes fadeSlideUp {
-        from {
-          opacity: 0;
-          transform: translateY(30px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      .reveal {
-        opacity: 0;
-        transform: translateY(30px);
-        transition:
-          opacity 0.7s ease,
-          transform 0.7s ease;
-      }
-      .reveal.visible {
-        opacity: 1;
-        transform: translateY(0);
-      }
-      .container {
-        width: 100%;
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 100px 16px 60px;
-        display: flex;
-        flex-direction: column;
-        gap: 22px;
-      }
-      .no-team {
-        text-align: center;
-        padding: 80px 30px;
-      }
-      .no-team h1 {
-        font-size: 36px;
-        font-weight: 700;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 12px;
-      }
-      .no-team p {
-        color: var(--muted);
-        font-size: 16px;
-        margin-bottom: 32px;
-      }
-      .btn-row {
-        display: flex;
-        gap: 16px;
-        justify-content: center;
-        flex-wrap: wrap;
-      }
-      .btn-primary {
-        padding: 14px 28px;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        border: none;
-        border-radius: 8px;
-        color: #0b1021;
-        font-family: inherit;
-        font-size: 16px;
-        font-weight: 700;
-        cursor: pointer;
-        text-decoration: none;
-        transition:
-          transform 0.2s,
-          box-shadow 0.2s;
-        position: relative;
-        overflow: hidden;
-      }
-      .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
-      }
-      .btn-primary::after {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -60%;
-        width: 200%;
-        height: 200%;
-        background: linear-gradient(
-          120deg,
-          transparent 30%,
-          rgba(255, 255, 255, 0.15) 50%,
-          transparent 70%
-        );
-        transform: rotate(25deg);
-        transition: left 0.6s ease;
-      }
-      .btn-primary:hover::after {
-        left: 120%;
-      }
-      .btn-secondary {
-        padding: 14px 28px;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        color: var(--text);
-        font-family: inherit;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        text-decoration: none;
-        transition: all 0.2s;
-      }
-      .btn-secondary:hover {
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.15);
-      }
-      .card {
-        position: relative;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        padding: 28px 32px;
-        box-shadow: var(--glow);
-        backdrop-filter: blur(12px);
-        animation: fadeSlideUp 0.8s ease both;
-        overflow: hidden;
-      }
-      .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-      .card-header h2 {
-        font-size: 22px;
-        font-weight: 700;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-      }
-      .badge-active {
-        background: rgba(34, 197, 94, 0.15);
-        border: 1px solid rgba(34, 197, 94, 0.3);
-        color: #86efac;
-      }
-      .badge-inactive {
-        background: rgba(234, 179, 8, 0.15);
-        border: 1px solid rgba(234, 179, 8, 0.3);
-        color: #fde047;
-      }
-      .badge-captain {
-        background: rgba(251, 191, 36, 0.15);
-        border: 1px solid rgba(251, 191, 36, 0.3);
-        color: #fcd34d;
-        margin-left: 8px;
-      }
-      .code-box {
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px dashed var(--panel-border);
-        border-radius: 10px;
-        padding: 16px;
-        text-align: center;
-        margin-bottom: 16px;
-      }
-      .code-box .label {
-        font-size: 13px;
-        color: var(--muted);
-        margin-bottom: 6px;
-      }
-      .code-box .code {
-        font-size: 28px;
-        font-weight: 800;
-        letter-spacing: 4px;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-      .copy-btn {
-        margin-left: 12px;
-        padding: 4px 12px;
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid var(--panel-border);
-        border-radius: 6px;
-        color: var(--text);
-        cursor: pointer;
-        font-size: 12px;
-      }
-      .copy-btn:hover {
-        background: rgba(255, 255, 255, 0.15);
-      }
-      .members-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .member-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px 18px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px;
-        transition: all 0.25s ease;
-      }
-      .member-row:hover {
-        background: rgba(255, 255, 255, 0.06);
-        transform: translateX(4px);
-        border-color: rgba(96, 165, 250, 0.2);
-      }
-      .member-info {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .member-avatar {
-        width: 38px;
-        height: 38px;
-        border-radius: 50%;
-        background: linear-gradient(120deg, var(--accent), var(--accent-2));
-        display: grid;
-        place-items: center;
-        font-weight: 700;
-        font-size: 16px;
-        color: #0b1021;
-      }
-      .member-name {
-        font-size: 15px;
-        font-weight: 600;
-      }
-      .member-email {
-        font-size: 13px;
-        color: var(--muted);
-      }
-      .remove-btn {
-        padding: 6px 14px;
-        background: rgba(239, 68, 68, 0.12);
-        border: 1px solid rgba(239, 68, 68, 0.25);
-        border-radius: 6px;
-        color: #fca5a5;
-        font-size: 13px;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .remove-btn:hover {
-        background: rgba(239, 68, 68, 0.25);
-      }
-      .danger-zone {
-        border-color: rgba(239, 68, 68, 0.2);
-      }
-      .danger-zone h2 {
-        color: #fca5a5;
-        -webkit-text-fill-color: #fca5a5;
-      }
-      .btn-danger {
-        padding: 12px 24px;
-        background: rgba(239, 68, 68, 0.15);
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        border-radius: 8px;
-        color: #fca5a5;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .btn-danger:hover {
-        background: rgba(239, 68, 68, 0.3);
-      }
-      .info-text {
-        color: var(--muted);
-        font-size: 14px;
-      }
-      .status-msg {
-        padding: 12px;
-        border-radius: 8px;
-        margin-bottom: 16px;
-        font-size: 14px;
-      }
-      .msg-warn {
-        background: rgba(234, 179, 8, 0.15);
-        border: 1px solid rgba(234, 179, 8, 0.3);
-        color: #fde047;
-      }
-      .mentor-row {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 12px 16px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px;
-      }
-      .mentor-row img {
-        width: 42px;
-        height: 42px;
-        border-radius: 50%;
-        object-fit: cover;
-        border: 2px solid var(--accent);
-      }
-      .mentor-name {
-        font-weight: 600;
-        font-size: 15px;
-      }
-      .mentor-company {
-        color: var(--muted);
-        font-size: 13px;
-      }
-      @media (max-width: 768px) {
-        .container {
-          padding: 76px 12px 40px;
-        }
-        .card {
-          padding: 20px 18px;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="dot-grid"></div>
-    <div class="spotlight" id="spotlight"></div>
-    <div class="blobs">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-    <div class="noise"></div>
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition:
+      opacity 0.7s ease,
+      transform 0.7s ease;
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .container {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 100px 16px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .no-team {
+    text-align: center;
+    padding: 80px 30px;
+  }
+  .no-team h1 {
+    font-size: 36px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+  .no-team p {
+    color: var(--muted);
+    font-size: 16px;
+    margin-bottom: 32px;
+  }
+  .btn-row {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .btn-primary {
+    padding: 14px 28px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    border: none;
+    border-radius: 8px;
+    color: #0b1021;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+  }
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -60%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      120deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.15) 50%,
+      transparent 70%
+    );
+    transform: rotate(25deg);
+    transition: left 0.6s ease;
+  }
+  .btn-primary:hover::after {
+    left: 120%;
+  }
+  .btn-secondary {
+    padding: 14px 28px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+  .card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 32px;
+    box-shadow: var(--glow);
+    backdrop-filter: blur(12px);
+    animation: fadeSlideUp 0.8s ease both;
+    overflow: hidden;
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .card-header h2 {
+    font-size: 22px;
+    font-weight: 700;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-active {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+  }
+  .badge-inactive {
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    color: #fde047;
+  }
+  .badge-captain {
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    color: #fcd34d;
+    margin-left: 8px;
+  }
+  .code-box {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px dashed var(--panel-border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .code-box .label {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .code-box .code {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .copy-btn {
+    margin-left: 12px;
+    padding: 4px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .copy-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .member-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    transition: all 0.25s ease;
+  }
+  .member-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateX(4px);
+    border-color: rgba(96, 165, 250, 0.2);
+  }
+  .member-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .member-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: #0b1021;
+  }
+  .member-name {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .member-email {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .remove-btn {
+    padding: 6px 14px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 6px;
+    color: #fca5a5;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .remove-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+  }
+  .danger-zone {
+    border-color: rgba(239, 68, 68, 0.2);
+  }
+  .danger-zone h2 {
+    color: #fca5a5;
+    -webkit-text-fill-color: #fca5a5;
+  }
+  .btn-danger {
+    padding: 12px 24px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-danger:hover {
+    background: rgba(239, 68, 68, 0.3);
+  }
+  .info-text {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .status-msg {
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .msg-warn {
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    color: #fde047;
+  }
+  .mentor-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+  }
+  .mentor-row img {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--accent);
+  }
+  .mentor-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .mentor-company {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  @media (max-width: 768px) {
+    .container {
+      padding: 76px 12px 40px;
+    }
+    .card {
+      padding: 20px 18px;
+    }
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div class="dot-grid"></div>
+  <div class="spotlight" id="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
 
-    <div class="page-wrap">
-      <div id="navbar-slot"></div>
+  <div class="page-wrap">
+    <div id="navbar-slot"></div>
 
-      <div class="container" id="no-team" style="display: none">
-        <div class="card no-team">
-          <h1>You're not on a team yet</h1>
-          <p>Create a new team or join one with an invite code</p>
-          <div class="btn-row">
-            <a href="/createTeam" class="btn-primary">Create Team</a>
-            <a href="/joinTeam" class="btn-secondary">Join Team</a>
-          </div>
+    <div class="container" id="no-team" style="display: none">
+      <div class="card no-team">
+        <h1>You're not on a team yet</h1>
+        <p>Create a new team or join one with an invite code</p>
+        <div class="btn-row">
+          <a href="/createTeam" class="btn-primary">Create Team</a>
+          <a href="/joinTeam" class="btn-secondary">Join Team</a>
         </div>
       </div>
+    </div>
 
-      <div class="container" id="dashboard" style="display: none">
-        <div class="card">
-          <div class="card-header">
-            <h2 id="team-name"></h2>
+    <div class="container" id="dashboard" style="display: none">
+      <div class="card">
+        <div class="card-header">
+          <h2 id="team-name"></h2>
+          <div>
+            <span class="badge" id="team-status"></span>
+            <span id="member-count" class="info-text" style="margin-left: 12px"></span>
+          </div>
+        </div>
+        <div id="status-warn" class="status-msg msg-warn" style="display: none">
+          Your team needs at least 3 members to be eligible for the hackathon.
+        </div>
+        <div id="join-code-area" style="display: none">
+          <div class="code-box">
+            <div class="label">Invite Code</div>
             <div>
-              <span class="badge" id="team-status"></span>
-              <span id="member-count" class="info-text" style="margin-left: 12px"></span>
+              <span class="code" id="join-code"></span
+              ><button
+                class="copy-btn"
+                onclick="
+                  navigator.clipboard.writeText(document.getElementById('join-code').textContent)
+                "
+              >
+                Copy
+              </button>
             </div>
           </div>
-          <div id="status-warn" class="status-msg msg-warn" style="display: none">
-            Your team needs at least 3 members to be eligible for the hackathon.
-          </div>
-          <div id="join-code-area" style="display: none">
-            <div class="code-box">
-              <div class="label">Invite Code</div>
-              <div>
-                <span class="code" id="join-code"></span
-                ><button
-                  class="copy-btn"
-                  onclick="
-                    navigator.clipboard.writeText(document.getElementById('join-code').textContent)
-                  "
-                >
-                  Copy
-                </button>
-              </div>
-            </div>
-            <p class="info-text">Share this code with teammates so they can join.</p>
-          </div>
+          <p class="info-text">Share this code with teammates so they can join.</p>
         </div>
+      </div>
 
-        <div class="card">
-          <div class="card-header"><h2>Members</h2></div>
-          <div class="members-list" id="members-list"></div>
-        </div>
+      <div class="card">
+        <div class="card-header"><h2>Members</h2></div>
+        <div class="members-list" id="members-list"></div>
+      </div>
 
-        <div class="card" id="choose-mentors-card" style="display: none">
-          <div class="card-header"><h2>Mentor Preferences</h2></div>
-          <p class="info-text" style="margin-bottom: 18px">
-            Your team is active! As captain, you can now rank your preferred mentors so the matching
-            algorithm can assign the best fit.
-          </p>
-          <a href="/chooseMentor" class="btn-primary" style="display: inline-block">
-            Choose &amp; Rank Mentors →
-          </a>
-        </div>
+      <div class="card" id="choose-mentors-card" style="display: none">
+        <div class="card-header"><h2>Mentor Preferences</h2></div>
+        <p class="info-text" style="margin-bottom: 18px">
+          Your team is active! As captain, you can now rank your preferred mentors so the matching
+          algorithm can assign the best fit.
+        </p>
+        <a href="/chooseMentor" class="btn-primary" style="display: inline-block">
+          Choose &amp; Rank Mentors →
+        </a>
+      </div>
 
-        <div class="card" id="mentors-card" style="display: none">
-          <div class="card-header"><h2>Assigned Mentors</h2></div>
-          <div id="mentors-list" style="display: flex; flex-direction: column; gap: 10px"></div>
-        </div>
+      <div class="card" id="mentors-card" style="display: none">
+        <div class="card-header"><h2>Assigned Mentors</h2></div>
+        <div id="mentors-list" style="display: flex; flex-direction: column; gap: 10px"></div>
+      </div>
 
-        <div class="card danger-zone" id="danger-zone" style="display: none">
-          <div class="card-header"><h2>Danger Zone</h2></div>
-          <div style="display: flex; gap: 12px; flex-wrap: wrap">
-            <button class="btn-danger" id="leave-btn" onclick="leaveTeam()">Leave Team</button>
-            <button
-              class="btn-danger"
-              id="disband-btn"
-              style="display: none"
-              onclick="disbandTeam()"
-            >
-              Disband Team
-            </button>
-          </div>
+      <div class="card danger-zone" id="danger-zone" style="display: none">
+        <div class="card-header"><h2>Danger Zone</h2></div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap">
+          <button class="btn-danger" id="leave-btn" onclick="leaveTeam()">Leave Team</button>
+          <button class="btn-danger" id="disband-btn" style="display: none" onclick="disbandTeam()">
+            Disband Team
+          </button>
         </div>
       </div>
     </div>
-    <!-- /page-wrap -->
+  </div>
+  <!-- /page-wrap -->
 
-    <script>
-      /* Spotlight tracking */
-      document.addEventListener('mousemove', (e) => {
-        const s = document.getElementById('spotlight');
-        if (s) {
-          s.style.setProperty('--mx', e.clientX + 'px');
-          s.style.setProperty('--my', e.clientY + 'px');
-        }
-      });
-
-      const token = localStorage.getItem('token');
-      const userId = localStorage.getItem('user_id');
-      if (!token) {
-        window.location.href = '/login';
+  <script>
+    /* Spotlight tracking */
+    document.addEventListener('mousemove', (e) => {
+      const s = document.getElementById('spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
       }
+    });
 
-      let currentTeam = null;
-      let isCaptain = false;
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('user_id');
+    if (!token) {
+      window.location.href = '/login';
+    }
 
-      async function loadNavbar() {
-        try {
-          const res = await fetch('/navbar.html');
-          if (!res.ok) return;
-          const html = await res.text();
-          const slot = document.getElementById('navbar-slot');
-          if (!slot) return;
-          slot.innerHTML = html;
-          slot.querySelectorAll('script').forEach((old) => {
-            const s = document.createElement('script');
-            s.textContent = old.textContent;
-            document.head.appendChild(s);
-            s.remove();
-          });
-        } catch {}
-      }
+    let currentTeam = null;
+    let isCaptain = false;
 
-      async function loadDashboard() {
-        try {
-          const meRes = await fetch('/api/auth/me', {
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          if (!meRes.ok) {
-            window.location.href = '/login';
-            return;
-          }
-          const me = await meRes.json();
-
-          if (!me.user.team_id) {
-            document.getElementById('no-team').style.display = 'flex';
-            return;
-          }
-
-          const teamRes = await fetch('/api/teams/' + me.user.team_id, {
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          if (!teamRes.ok) {
-            document.getElementById('no-team').style.display = 'flex';
-            return;
-          }
-          const teamData = await teamRes.json();
-          currentTeam = teamData.team;
-          isCaptain = String(currentTeam.captain_id) === String(userId);
-
-          document.getElementById('team-name').textContent = currentTeam.team_name;
-          const statusBadge = document.getElementById('team-status');
-          if (currentTeam.status === 'active') {
-            statusBadge.className = 'badge badge-active';
-            statusBadge.textContent = 'Active';
-          } else {
-            statusBadge.className = 'badge badge-inactive';
-            statusBadge.textContent = currentTeam.status || 'Pending';
-            document.getElementById('status-warn').style.display = 'block';
-          }
-
-          const count =
-            currentTeam.participant_count ||
-            (currentTeam.members ? currentTeam.members.length : '?');
-          document.getElementById('member-count').textContent = count + '/6 members';
-
-          if (isCaptain && currentTeam.join_code) {
-            document.getElementById('join-code').textContent = currentTeam.join_code;
-            document.getElementById('join-code-area').style.display = 'block';
-          }
-
-          renderMembers(currentTeam.members || []);
-          renderMentors(currentTeam.mentors || []);
-
-          document.getElementById('danger-zone').style.display = 'block';
-          if (isCaptain) {
-            document.getElementById('disband-btn').style.display = 'inline-block';
-            document.getElementById('leave-btn').style.display = 'none';
-            if (currentTeam.status === 'active') {
-              document.getElementById('choose-mentors-card').style.display = 'block';
-            }
-          }
-
-          document.getElementById('dashboard').style.display = 'flex';
-        } catch (err) {
-          console.error(err);
-          document.getElementById('no-team').style.display = 'flex';
-        }
-      }
-
-      function renderMembers(members) {
-        const list = document.getElementById('members-list');
-        list.innerHTML = '';
-        members.forEach(function (m) {
-          const initials = ((m.first_name || '?')[0] + (m.last_name || '?')[0]).toUpperCase();
-          const canRemove = isCaptain && !m.is_captain && String(m.id) !== String(userId);
-          const row = document.createElement('div');
-          row.className = 'member-row';
-          row.innerHTML =
-            '<div class="member-info">' +
-            '<div class="member-avatar">' +
-            initials +
-            '</div>' +
-            '<div><div class="member-name">' +
-            m.first_name +
-            ' ' +
-            m.last_name +
-            (m.is_captain ? '<span class="badge badge-captain">Captain</span>' : '') +
-            '</div><div class="member-email">' +
-            (m.email || '') +
-            '</div></div>' +
-            '</div>' +
-            (canRemove ? '<button class="remove-btn" data-mid="' + m.id + '">Remove</button>' : '');
-          list.appendChild(row);
+    async function loadNavbar() {
+      try {
+        const res = await fetch('/navbar.html');
+        if (!res.ok) return;
+        const html = await res.text();
+        const slot = document.getElementById('navbar-slot');
+        if (!slot) return;
+        slot.innerHTML = html;
+        slot.querySelectorAll('script').forEach((old) => {
+          const s = document.createElement('script');
+          s.textContent = old.textContent;
+          document.head.appendChild(s);
+          s.remove();
         });
-        list.querySelectorAll('.remove-btn').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            removeMember(this.getAttribute('data-mid'));
-          });
+      } catch {}
+    }
+
+    async function loadDashboard() {
+      try {
+        const meRes = await fetch('/api/auth/me', {
+          headers: { Authorization: 'Bearer ' + token },
         });
-      }
-
-      function renderMentors(mentors) {
-        if (!mentors || mentors.length === 0) return;
-        const list = document.getElementById('mentors-list');
-        list.innerHTML = '';
-        mentors.forEach(function (m) {
-          const row = document.createElement('div');
-          row.className = 'mentor-row';
-          row.innerHTML =
-            '<img src="/api/mentors/' +
-            m.mentor_id +
-            '/picture" alt="" onerror="this.style.display=\'none\'" />' +
-            '<div><div class="mentor-name">' +
-            (m.mentor_name || m.name || '') +
-            '</div><div class="mentor-company">' +
-            (m.company_name || '') +
-            '</div></div>';
-          list.appendChild(row);
-        });
-        document.getElementById('mentors-card').style.display = 'block';
-      }
-
-      async function removeMember(mid) {
-        if (!confirm('Remove this member from the team?')) return;
-        try {
-          const res = await fetch('/api/teams/' + currentTeam.id + '/members/' + mid, {
-            method: 'DELETE',
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          const data = await res.json();
-          if (data.success) loadDashboard();
-          else alert(data.error || 'Failed');
-        } catch (e) {
-          alert('Network error');
-        }
-      }
-
-      async function leaveTeam() {
-        if (!confirm('Leave this team?')) return;
-        try {
-          const res = await fetch('/api/teams/' + currentTeam.id + '/leave', {
-            method: 'POST',
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          const data = await res.json();
-          if (data.success) window.location.reload();
-          else alert(data.error || 'Failed');
-        } catch (e) {
-          alert('Network error');
-        }
-      }
-
-      async function disbandTeam() {
-        if (!confirm('Disband this team? This cannot be undone!')) return;
-        if (
-          !confirm(
-            'Are you absolutely sure? All members will be removed and the team will be permanently deleted. There is no going back.'
-          )
-        )
+        if (!meRes.ok) {
+          window.location.href = '/login';
           return;
-        try {
-          const res = await fetch('/api/teams/' + currentTeam.id, {
-            method: 'DELETE',
-            headers: { Authorization: 'Bearer ' + token },
-          });
-          const data = await res.json();
-          if (data.success) window.location.reload();
-          else alert(data.error || 'Failed');
-        } catch (e) {
-          alert('Network error');
         }
-      }
+        const me = await meRes.json();
 
-      loadNavbar();
-      loadDashboard();
-    </script>
-  </body>
-</html>
+        if (!me.user.team_id) {
+          document.getElementById('no-team').style.display = 'flex';
+          return;
+        }
+
+        const teamRes = await fetch('/api/teams/' + me.user.team_id, {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!teamRes.ok) {
+          document.getElementById('no-team').style.display = 'flex';
+          return;
+        }
+        const teamData = await teamRes.json();
+        currentTeam = teamData.team;
+        isCaptain = String(currentTeam.captain_id) === String(userId);
+
+        document.getElementById('team-name').textContent = currentTeam.team_name;
+        const statusBadge = document.getElementById('team-status');
+        if (currentTeam.status === 'active') {
+          statusBadge.className = 'badge badge-active';
+          statusBadge.textContent = 'Active';
+        } else {
+          statusBadge.className = 'badge badge-inactive';
+          statusBadge.textContent = currentTeam.status || 'Pending';
+          document.getElementById('status-warn').style.display = 'block';
+        }
+
+        const count =
+          currentTeam.participant_count || (currentTeam.members ? currentTeam.members.length : '?');
+        document.getElementById('member-count').textContent = count + '/6 members';
+
+        if (isCaptain && currentTeam.join_code) {
+          document.getElementById('join-code').textContent = currentTeam.join_code;
+          document.getElementById('join-code-area').style.display = 'block';
+        }
+
+        renderMembers(currentTeam.members || []);
+        renderMentors(currentTeam.mentors || []);
+
+        document.getElementById('danger-zone').style.display = 'block';
+        if (isCaptain) {
+          document.getElementById('disband-btn').style.display = 'inline-block';
+          document.getElementById('leave-btn').style.display = 'none';
+          if (currentTeam.status === 'active') {
+            document.getElementById('choose-mentors-card').style.display = 'block';
+          }
+        }
+
+        document.getElementById('dashboard').style.display = 'flex';
+      } catch (err) {
+        console.error(err);
+        document.getElementById('no-team').style.display = 'flex';
+      }
+    }
+
+    function renderMembers(members) {
+      const list = document.getElementById('members-list');
+      list.innerHTML = '';
+      members.forEach(function (m) {
+        const initials = ((m.first_name || '?')[0] + (m.last_name || '?')[0]).toUpperCase();
+        const canRemove = isCaptain && !m.is_captain && String(m.id) !== String(userId);
+        const row = document.createElement('div');
+        row.className = 'member-row';
+        row.innerHTML =
+          '<div class="member-info">' +
+          '<div class="member-avatar">' +
+          initials +
+          '</div>' +
+          '<div><div class="member-name">' +
+          m.first_name +
+          ' ' +
+          m.last_name +
+          (m.is_captain ? '<span class="badge badge-captain">Captain</span>' : '') +
+          '</div><div class="member-email">' +
+          (m.email || '') +
+          '</div></div>' +
+          '</div>' +
+          (canRemove ? '<button class="remove-btn" data-mid="' + m.id + '">Remove</button>' : '');
+        list.appendChild(row);
+      });
+      list.querySelectorAll('.remove-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          removeMember(this.getAttribute('data-mid'));
+        });
+      });
+    }
+
+    function renderMentors(mentors) {
+      if (!mentors || mentors.length === 0) return;
+      const list = document.getElementById('mentors-list');
+      list.innerHTML = '';
+      mentors.forEach(function (m) {
+        const row = document.createElement('div');
+        row.className = 'mentor-row';
+        row.innerHTML =
+          '<img src="/api/mentors/' +
+          m.mentor_id +
+          '/picture" alt="" onerror="this.style.display=\'none\'" />' +
+          '<div><div class="mentor-name">' +
+          (m.mentor_name || m.name || '') +
+          '</div><div class="mentor-company">' +
+          (m.company_name || '') +
+          '</div></div>';
+        list.appendChild(row);
+      });
+      document.getElementById('mentors-card').style.display = 'block';
+    }
+
+    async function removeMember(mid) {
+      if (!confirm('Remove this member from the team?')) return;
+      try {
+        const res = await fetch('/api/teams/' + currentTeam.id + '/members/' + mid, {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        const data = await res.json();
+        if (data.success) loadDashboard();
+        else alert(data.error || 'Failed');
+      } catch (e) {
+        alert('Network error');
+      }
+    }
+
+    async function leaveTeam() {
+      if (!confirm('Leave this team?')) return;
+      try {
+        const res = await fetch('/api/teams/' + currentTeam.id + '/leave', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        const data = await res.json();
+        if (data.success) window.location.reload();
+        else alert(data.error || 'Failed');
+      } catch (e) {
+        alert('Network error');
+      }
+    }
+
+    async function disbandTeam() {
+      if (!confirm('Disband this team? This cannot be undone!')) return;
+      if (
+        !confirm(
+          'Are you absolutely sure? All members will be removed and the team will be permanently deleted. There is no going back.'
+        )
+      )
+        return;
+      try {
+        const res = await fetch('/api/teams/' + currentTeam.id, {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        const data = await res.json();
+        if (data.success) window.location.reload();
+        else alert(data.error || 'Failed');
+      } catch (e) {
+        alert('Network error');
+      }
+    }
+
+    loadNavbar();
+    loadDashboard();
+  </script>
+</body>
+{% endblock %}
