@@ -49,10 +49,10 @@ Create the database and apply the base schema plus all migrations in order:
 ```bash
 psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026_dev;"
 psql -U postgres -d fmi_hackathon_2026_dev -f database/schema.sql
-psql -U postgres -d fmi_hackathon_2026_dev -f database/migrations/002_auth_and_preferences.sql
-psql -U postgres -d fmi_hackathon_2026_dev -f database/migrations/003_seed_flag_universities_specialties.sql
-psql -U postgres -d fmi_hackathon_2026_dev -f database/migrations/004_mentor_technologies.sql
 ```
+
+The migrations there are if you have an older version and wish to update your current db, not drop it and create it again.
+In most cases you won't have an old db but would just rebuild it, so just use the `schema.sql` as it is the easiest way.
 
 **3. Create a `.env` file**
 
@@ -77,7 +77,14 @@ JWT_EXPIRY_DAYS=3
 
 # Admin account (seeded on first run)
 ADMIN_EMAIL=admin@fmicodes.bg
-ADMIN_PASSWORD=admin123
+ADMIN_PASSWORD=admin-pass
+
+# Email / SMTP (used for password reset emails)
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
+MAIL_USE_TLS=true
 
 # Feature flags
 # Set to true to show the "stay tuned" placeholder instead of the live mentors grid
@@ -86,21 +93,26 @@ MENTORS_STAY_TUNED=false
 
 All variables have sensible defaults for local dev (see `config.py`) so the app will start without a `.env`, but having one makes overrides explicit and avoids surprises.
 
-| Variable             | Default                    | Notes                                             |
-| -------------------- | -------------------------- | ------------------------------------------------- |
-| `SECRET_KEY`         | `dev-secret-key-12345`     | Change in production                              |
-| `JWT_SECRET_KEY`     | falls back to `SECRET_KEY` | Change in production                              |
-| `JWT_EXPIRY_DAYS`    | `3`                        | Token lifetime in days                            |
-| `DB_HOST`            | `localhost`                |                                                   |
-| `DB_PORT`            | `5432`                     |                                                   |
-| `DB_NAME`            | `fmi_hackathon_2026_dev`   |                                                   |
-| `DB_USER`            | `postgres`                 |                                                   |
-| `DB_PASSWORD`        | `postgres`                 |                                                   |
-| `DATABASE_URL`       | built from above fields    | Override with a full connection string if needed  |
-| `ADMIN_EMAIL`        | `admin@fmicodes.bg`        |                                                   |
-| `ADMIN_PASSWORD`     | `admin123`                 | Change in production                              |
-| `MENTORS_STAY_TUNED` | `false`                    | `true` shows placeholder; `false` shows live grid |
-| `FLASK_ENV`          | `development`              |                                                   |
+| Variable             | Default                       | Notes                                             |
+| -------------------- | ----------------------------- | ------------------------------------------------- |
+| `SECRET_KEY`         | `dev-secret-key-12345`        | Change in production                              |
+| `JWT_SECRET_KEY`     | falls back to `SECRET_KEY`    | Change in production                              |
+| `JWT_EXPIRY_DAYS`    | `3`                           | Token lifetime in days                            |
+| `DB_HOST`            | `localhost`                   |                                                   |
+| `DB_PORT`            | `5432`                        |                                                   |
+| `DB_NAME`            | `fmi_hackathon_2026_dev`      |                                                   |
+| `DB_USER`            | `postgres`                    |                                                   |
+| `DB_PASSWORD`        | `postgres`                    |                                                   |
+| `DATABASE_URL`       | built from above fields       | Override with a full connection string if needed  |
+| `ADMIN_EMAIL`        | `admin@fmicodes.bg`           |                                                   |
+| `ADMIN_PASSWORD`     | `admin-pass`                  | Change in production                              |
+| `MENTORS_STAY_TUNED` | `false`                       | `true` shows placeholder; `false` shows live grid |
+| `FLASK_ENV`          | `development`                 |                                                   |
+| `MAIL_HOST`          | `smtp.gmail.com`              | SMTP server for password reset emails             |
+| `MAIL_PORT`          | `587`                         |                                                   |
+| `MAIL_USERNAME`      | `fss.fmi.uni.sofia@gmail.com` | Sender address                                    |
+| `MAIL_PASSWORD`      | _(none)_                      | **Must be set** — Gmail App Password recommended  |
+| `MAIL_USE_TLS`       | `true`                        |                                                   |
 
 **4. Start the server**
 
@@ -127,7 +139,9 @@ App runs at **http://localhost:5001**. On startup, seed data (mentors, universit
 │   ├── migrations/             Incremental schema changes (apply in numeric order)
 │   │   ├── 002_auth_and_preferences.sql
 │   │   ├── 003_seed_flag_universities_specialties.sql
-│   │   └── 004_mentor_technologies.sql
+│   │   ├── 004_mentor_technologies.sql
+│   │   ├── 005_course_bachelor_masters.sql
+│   │   └── 006_password_reset_cooldown.sql
 │   └── seeds/                  Seed data (mentors, universities, specialties, rankings, regulations)
 ├── config.py           Environment-based configuration (dev/prod/test)
 ├── run_server.py       Local dev entry point
@@ -155,6 +169,7 @@ Routes are thin — they validate the request, call a service, and return JSON o
 | File                          | Responsibility                                                                                         |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `auth_service.py`             | JWT generation/validation, bcrypt password hashing                                                     |
+| `email_service.py`            | Sends password reset emails via SMTP (TLS); reads `MAIL_*` config                                      |
 | `team_service.py`             | Team CRUD, join-code generation, member and mentor lookups                                             |
 | `mentor_service.py`           | Mentor registration, uniqueness checks, profile and picture management                                 |
 | `mentor_selection_service.py` | Enforces the "exactly 3 ranked mentors per team" preference submission rules                           |
@@ -177,7 +192,7 @@ PostgreSQL connection management. Provides `execute_query()`, `execute_insert()`
 
 ## Default Credentials
 
-| Role         | Email                             | Password    |
-| ------------ | --------------------------------- | ----------- |
-| Admin        | `admin@fmicodes.bg`               | `admin123`  |
-| Mentor (any) | see `database/seeds/mentors.json` | `mentor123` |
+| Role         | Email                             | Password     |
+| ------------ | --------------------------------- | ------------ |
+| Admin        | `admin@fmicodes.bg`               | `admin-pass` |
+| Mentor (any) | see `database/seeds/mentors.json` | `mentor123`  |
