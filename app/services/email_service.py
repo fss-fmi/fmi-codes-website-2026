@@ -31,34 +31,69 @@ def send_password_reset_email(
     role_label = role.capitalize()
     subject = "FMI Codes 2026 — Your new password"
 
-    # TODO: Shmiti da opravi tva syobshtenie da e KVO friendly
     plain_body = (
-        f"Hi,\n\n"
-        f"A password reset was requested for your {role_label} account at FMI Codes 2026.\n\n"
-        f"Your new password is:  {new_password}\n\n"
+        f"Hi, 👋\n\n"
+        f"📢 A password reset was requested for your {role_label} account at FMI Codes 2026.\n\n"
+        f"Your new password is:  {new_password}\n"
         f"Please log in and change it as soon as possible.\n\n"
-        f"If you did not request this, someone may have entered your email by mistake. "
-        f"Your previous password has been replaced — use the new one above to log in.\n\n"
-        f"— FMI Codes Team"
+        f"⚠ If you did not request this, someone may have entered your email by mistake. ⚠\n\n"
+        f"📍 Your previous password has been replaced — use the new one above to log in.\n"
+        f" — FMI Codes Team 💻"
     )
 
     html_body = f"""\
-<div style="font-family:'Inter',system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px;
-            background:#0b1021;color:#e2e8f0;border-radius:12px;">
-  <h2 style="margin:0 0 8px;color:#60a5fa;">FMI Codes 2026</h2>
-  <p style="color:#94a3b8;margin:0 0 24px;font-size:14px;">Password Reset</p>
-  <p>A password reset was requested for your <strong>{role_label}</strong> account.</p>
-  <div style="margin:20px 0;padding:16px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
-              border-radius:8px;font-family:monospace;font-size:18px;letter-spacing:1px;text-align:center;">
+<div style="font-family:'Inter',system-ui,sans-serif;max-width:540px;margin:0 auto;padding:36px 40px;
+            background:#0b1021;color:#e2e8f0;border-radius:14px;border:1px solid rgba(255,255,255,0.07);">
+
+  <!-- Header -->
+  <div style="margin-bottom:28px;">
+    <h1 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#60a5fa;letter-spacing:-0.3px;">
+      FMI Codes 2026
+    </h1>
+    <p style="margin:0;font-size:13px;color:#475569;text-transform:uppercase;letter-spacing:0.8px;">
+      Password Reset
+    </p>
+  </div>
+
+  <!-- Greeting -->
+  <p style="font-size:20px;margin:0 0 20px;">Hi! 👋</p>
+
+  <!-- Intro -->
+  <p style="margin:0 0 24px;line-height:1.6;">
+    📢 A password reset was requested for your
+    <strong style="color:#93c5fd;">{role_label}</strong> account at FMI&nbsp;Codes&nbsp;2026.
+  </p>
+
+  <!-- Password box -->
+  <p style="margin:0 0 8px;font-size:13px;color:#94a3b8;font-weight:500;">Your new password is:</p>
+  <div style="margin:0 0 8px;padding:16px 20px;background:rgba(96,165,250,0.07);
+              border:1px solid rgba(96,165,250,0.25);border-radius:10px;
+              font-family:'Courier New',Courier,monospace;font-size:20px;
+              letter-spacing:3px;text-align:center;color:#f0f6ff;word-break:break-all;">
     {new_password}
   </div>
-  <p>Please <strong>log in</strong> and change your password as soon as possible.</p>
-  <p style="color:#64748b;font-size:13px;margin-top:24px;">
-    If you did not request this, someone may have entered your email by mistake.
-    Your previous password has been replaced&nbsp;&mdash; use the new one above to log in.
+  <p style="margin:0 0 28px;font-size:13px;color:#64748b;text-align:center;">
+    Please <strong style="color:#e2e8f0;">log in</strong> and change it as soon as possible.
   </p>
-  <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:24px 0;">
-  <p style="color:#475569;font-size:12px;margin:0;">FMI Codes Team &bull; Sofia University</p>
+
+  <!-- Warning -->
+  <div style="padding:14px 18px;background:rgba(245,158,11,0.08);
+              border:1px solid rgba(245,158,11,0.28);border-radius:10px;
+              color:#fcd34d;font-size:13px;line-height:1.6;margin-bottom:20px;">
+    ⚠&nbsp; If you did not request this, someone may have entered your email by mistake. &nbsp;⚠
+  </div>
+
+  <!-- Note -->
+  <p style="margin:0 0 28px;font-size:13px;color:#94a3b8;line-height:1.6;">
+    📍 Your previous password has been replaced&nbsp;&mdash; use the new one above to log in.
+  </p>
+
+  <!-- Footer -->
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px;">
+  <p style="margin:0;font-size:13px;color:#475569;">
+    &mdash; FMI Codes Team 💻
+  </p>
+
 </div>"""
 
     msg = MIMEMultipart("alternative")
