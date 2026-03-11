@@ -90,24 +90,49 @@
       }
 
       const AVAIL_COLORS = [
-        { bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)', text: '#fcd34d', glow: 'rgba(251,191,36,0.25)' },
-        { bg: 'rgba(251,146,60,0.12)', border: 'rgba(251,146,60,0.35)', text: '#fdba74', glow: 'rgba(251,146,60,0.25)' },
-        { bg: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.35)', text: '#6ee7b7', glow: 'rgba(52,211,153,0.25)' },
+        {
+          bg: 'rgba(251,191,36,0.12)',
+          border: 'rgba(251,191,36,0.35)',
+          text: '#fcd34d',
+          glow: 'rgba(251,191,36,0.25)',
+        },
+        {
+          bg: 'rgba(251,146,60,0.12)',
+          border: 'rgba(251,146,60,0.35)',
+          text: '#fdba74',
+          glow: 'rgba(251,146,60,0.25)',
+        },
+        {
+          bg: 'rgba(52,211,153,0.12)',
+          border: 'rgba(52,211,153,0.35)',
+          text: '#6ee7b7',
+          glow: 'rgba(52,211,153,0.25)',
+        },
       ];
 
       function buildAvailabilityChips(text) {
         if (!text || typeof text !== 'string') return '';
-        const slots = text.split(',').map(s => s.trim()).filter(Boolean);
+        const slots = text
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
         if (slots.length === 0) return '';
-        const clockSvg = '<svg style="width:14px;height:14px;vertical-align:-2px;margin-right:5px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-        return '<div class="avail-section">' +
-          '<div class="avail-header">' + clockSvg + 'Availability</div>' +
+        const clockSvg =
+          '<svg style="width:14px;height:14px;vertical-align:-2px;margin-right:5px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+        return (
+          '<div class="avail-section">' +
+          '<div class="avail-header">' +
+          clockSvg +
+          'Availability</div>' +
           '<div class="avail-chips">' +
-          slots.map((s, i) => {
-            const c = AVAIL_COLORS[i % AVAIL_COLORS.length];
-            return `<span class="avail-chip" style="--ac-bg:${c.bg};--ac-border:${c.border};--ac-text:${c.text};--ac-glow:${c.glow};animation-delay:${i * 0.09}s">${clockSvg}${escapeHtml(s)}</span>`;
-          }).join('') +
-          '</div></div>';
+          slots
+            .map((s, i) => {
+              const c = AVAIL_COLORS[i % AVAIL_COLORS.length];
+              return `<span class="avail-chip" style="--ac-bg:${c.bg};--ac-border:${c.border};--ac-text:${c.text};--ac-glow:${c.glow};animation-delay:${i * 0.09}s">${clockSvg}${escapeHtml(s)}</span>`;
+            })
+            .join('') +
+          '</div></div>'
+        );
       }
 
       async function loadMentors() {
@@ -454,6 +479,24 @@
     margin-top: 18px;
     position: relative;
     z-index: 1;
+    max-height: 150px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+  }
+  .tech-pills::-webkit-scrollbar {
+    width: 4px;
+  }
+  .tech-pills::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 99px;
+  }
+  .tech-pills::-webkit-scrollbar-thumb {
+    background: rgba(96, 165, 250, 0.35);
+    border-radius: 99px;
+  }
+  .tech-pills::-webkit-scrollbar-thumb:hover {
+    background: rgba(96, 165, 250, 0.6);
   }
   .tech-pill {
     display: inline-flex;
