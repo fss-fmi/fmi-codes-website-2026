@@ -240,6 +240,42 @@
     font-size: 14px;
     font-style: italic;
   }
+  .slot-reorder-btns {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .reorder-btn {
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .reorder-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #e5e7eb;
+  }
+  .reorder-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+  @media (max-width: 768px) {
+    .slot-reorder-btns {
+      display: flex;
+    }
+  }
   .back-btn {
     padding: 10px 22px;
     background: rgba(255, 255, 255, 0.06);
@@ -343,6 +379,11 @@
     }
     .header {
       padding: 18px;
+    }
+  }
+  @media (max-width: 480px) {
+    .grid {
+      grid-template-columns: 1fr;
     }
   }
   /* Background layers */
@@ -565,7 +606,7 @@
           </div>
         </div>
         <p style="text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 16px">
-          Drag mentors between slots to reorder
+          Drag mentors between slots to reorder &mdash; or use &#9650;&#9660; on mobile
         </p>
         <div class="submit-section">
           <button
@@ -755,6 +796,7 @@
           if (i < slots.length) fillSlot(slots[i], id);
         });
         checkRankComplete();
+        updateReorderBtns();
       }
 
       function fillSlot(slot, mentorId) {
@@ -781,6 +823,14 @@
         slot.appendChild(rankNum);
         slot.appendChild(el);
         slot.classList.add('filled');
+
+        // Reorder buttons for touch/mobile
+        var reorderBtns = document.createElement('div');
+        reorderBtns.className = 'slot-reorder-btns';
+        reorderBtns.innerHTML =
+          '<button class="reorder-btn up-btn" aria-label="Move up">▲</button>' +
+          '<button class="reorder-btn down-btn" aria-label="Move down">▼</button>';
+        slot.appendChild(reorderBtns);
 
         // Drag events on mentor element
         el.addEventListener('dragstart', function (e) {
@@ -833,6 +883,7 @@
             sourceSlot.classList.remove('filled');
           }
           checkRankComplete();
+          updateReorderBtns();
         });
       });
 
@@ -840,6 +891,37 @@
         var filled = document.querySelectorAll('.rank-slot.filled').length;
         document.getElementById('submit-btn').disabled = filled < 3;
       }
+
+      function updateReorderBtns() {
+        var slots = document.querySelectorAll('.rank-slot');
+        slots.forEach(function (slot, i) {
+          var upBtn = slot.querySelector('.up-btn');
+          var downBtn = slot.querySelector('.down-btn');
+          var filled = slot.classList.contains('filled');
+          if (upBtn) upBtn.disabled = !filled || i === 0;
+          if (downBtn) downBtn.disabled = !filled || i === slots.length - 1;
+        });
+      }
+
+      // Touch reorder via ▲▼ buttons
+      document.getElementById('rank-slots').addEventListener('click', function (e) {
+        var btn = e.target.closest('.reorder-btn');
+        if (!btn) return;
+        var slot = btn.closest('.rank-slot');
+        var slots = Array.from(document.querySelectorAll('.rank-slot'));
+        var idx = slots.indexOf(slot);
+        var other = btn.classList.contains('up-btn') ? idx - 1 : idx + 1;
+        if (other < 0 || other >= slots.length) return;
+        var rmA = slots[idx].querySelector('.rank-mentor');
+        var rmB = slots[other].querySelector('.rank-mentor');
+        if (!rmA || !rmB) return;
+        var idA = parseInt(rmA.dataset.mentorId);
+        var idB = parseInt(rmB.dataset.mentorId);
+        fillSlot(slots[idx], idB);
+        fillSlot(slots[other], idA);
+        checkRankComplete();
+        updateReorderBtns();
+      });
 
       async function submitPreferences() {
         var prefs = [];
