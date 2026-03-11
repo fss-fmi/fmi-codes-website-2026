@@ -261,6 +261,7 @@
     object-fit: cover;
     background: #111827;
     margin: 8px auto 12px;
+    max-width: 100%;
   }
   .team-name {
     font-size: 22px;
@@ -298,12 +299,136 @@
     font-weight: 700;
   }
 
+  .mobile-toggle {
+    display: none;
+    background: none;
+    border: 1.5px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+    color: #e5e7eb;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background 0.2s,
+      border-color 0.2s;
+    flex-shrink: 0;
+  }
+  .mobile-toggle:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .drawer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.3s,
+      visibility 0s 0.3s;
+  }
+  .drawer-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    transition:
+      opacity 0.3s,
+      visibility 0s 0s;
+  }
+  .drawer-close {
+    display: none;
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: #94a3b8;
+    font-size: 18px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background 0.2s,
+      color 0.2s;
+    z-index: 1;
+  }
+  .drawer-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
   @media (max-width: 768px) {
     body {
       padding: 76px 12px 36px;
     }
     .navbar-container {
-      padding: 10px 16px;
+      padding: 12px 16px;
+      justify-content: space-between;
+    }
+    .mobile-toggle {
+      display: flex;
+    }
+    .drawer-close {
+      display: flex;
+    }
+    .navbar-menu {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(280px, 82vw);
+      transform: translateX(100%);
+      visibility: hidden;
+      transition:
+        transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s 0.32s;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+      padding: 72px 24px 32px;
+      background: rgba(5, 6, 13, 0.97);
+      backdrop-filter: blur(20px) saturate(1.8);
+      -webkit-backdrop-filter: blur(20px) saturate(1.8);
+      z-index: 1400;
+      overflow-y: auto;
+      border-left: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .navbar-menu.drawer-open {
+      transform: translateX(0);
+      visibility: visible;
+      transition:
+        transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s 0s;
+    }
+    .nav-links {
+      gap: 4px;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .nav-link {
+      font-size: 15px;
+      padding: 12px 8px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+    .nav-actions {
+      width: 100%;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .login-btn {
+      width: 100%;
+      text-align: center;
     }
     .podium {
       grid-template-columns: 1fr;
@@ -327,6 +452,15 @@
     }
     .list {
       grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 400px) {
+    .team-image {
+      width: 80px;
+      height: 80px;
+    }
+    .podium-card {
+      padding: 16px 12px;
     }
   }
   /* Background layers */
@@ -468,42 +602,66 @@
               alt="FSS"
           /></a>
         </div>
-        <div class="nav-links">
-          <a
-            href="/"
-            class="nav-link"
-            >Home</a
+        <button
+          class="mobile-toggle"
+          id="navOpenBtn"
+          aria-label="Open navigation"
+          aria-expanded="false"
+        >
+          &#9776;
+        </button>
+        <div
+          class="navbar-menu"
+          id="navDrawer"
+        >
+          <button
+            class="drawer-close"
+            id="navCloseBtn"
+            aria-label="Close navigation"
           >
-          <a
-            href="/regulations"
-            class="nav-link"
-            >Regulations</a
-          >
-          <a
-            href="/schedule"
-            class="nav-link"
-            >Schedule</a
-          >
-          <a
-            href="/mentors"
-            class="nav-link"
-            >Mentors</a
-          >
-          <a
-            href="/ranking"
-            class="nav-link"
-            >Ranking</a
-          >
-        </div>
-        <div class="nav-actions">
-          <a
-            href="/login"
-            class="login-btn"
-            >Login</a
-          >
+            &#10005;
+          </button>
+          <div class="nav-links">
+            <a
+              href="/"
+              class="nav-link"
+              >Home</a
+            >
+            <a
+              href="/regulations"
+              class="nav-link"
+              >Regulations</a
+            >
+            <a
+              href="/schedule"
+              class="nav-link"
+              >Schedule</a
+            >
+            <a
+              href="/mentors"
+              class="nav-link"
+              >Mentors</a
+            >
+            <a
+              href="/ranking"
+              class="nav-link"
+              >Ranking</a
+            >
+          </div>
+          <div class="nav-actions">
+            <a
+              href="/login"
+              class="login-btn"
+              >Login</a
+            >
+          </div>
         </div>
       </div>
     </nav>
+    <div
+      class="drawer-overlay"
+      id="drawerOverlay"
+    ></div>
 
     <div class="container">
       <div
@@ -665,6 +823,35 @@
         s.style.setProperty('--my', e.clientY + 'px');
       }
     });
+    /* Mobile side drawer */
+    (function () {
+      var openBtn = document.getElementById('navOpenBtn');
+      var closeBtn = document.getElementById('navCloseBtn');
+      var drawer = document.getElementById('navDrawer');
+      var overlay = document.getElementById('drawerOverlay');
+      if (!openBtn || !drawer) return;
+      function openDrawer() {
+        drawer.classList.add('drawer-open');
+        if (overlay) overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        openBtn.setAttribute('aria-expanded', 'true');
+      }
+      function closeDrawer() {
+        drawer.classList.remove('drawer-open');
+        if (overlay) overlay.classList.remove('active');
+        document.body.style.overflow = '';
+        openBtn.setAttribute('aria-expanded', 'false');
+      }
+      openBtn.addEventListener('click', openDrawer);
+      if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+      if (overlay) overlay.addEventListener('click', closeDrawer);
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeDrawer();
+      });
+      drawer.addEventListener('click', function (e) {
+        if (e.target.closest('.nav-link')) closeDrawer();
+      });
+    })();
   </script>
 </body>
 {% endblock %}
