@@ -3,6 +3,8 @@
 import base64
 import json
 import logging
+import threading
+import time
 from pathlib import Path
 
 import psycopg2
@@ -11,6 +13,12 @@ from flask import current_app
 from app.database import execute_insert, execute_query, execute_update, get_db_cursor
 
 logger = logging.getLogger(__name__)
+
+# ── In-memory cache for get_all_mentors (mirrors regulations_service pattern) ──
+_mentor_cache_lock = threading.Lock()
+_mentor_cache = None
+_mentor_cache_ts = 0
+_MENTOR_CACHE_TTL = 60  # seconds
 
 
 def mentor_exists(first_name: str, last_name: str, company_name: str) -> bool:
@@ -52,6 +60,7 @@ def register_mentor(
             (first_name, last_name, company_name, picture_data, picture_filename),
         )
         logger.info(f"✓ Mentor registered: {first_name} {last_name} (ID: {mentor_id})")
+        _invalidate_mentor_cache()
         return True, f'Mentor "{first_name} {last_name}" registered successfully', mentor_id
 
     except psycopg2.IntegrityError as e:
@@ -63,16 +72,38 @@ def register_mentor(
 
 
 def get_all_mentors() -> list:
-    """Get all registered mentors"""
-    query = """
-        SELECT id, first_name, last_name, email, phone_number, company_name, bio, status, technologies, picture_url, created_at
-        FROM mentors
-        ORDER BY created_at DESC
-    """
-    try:
-        return execute_query(current_app, query, fetch_all=True) or []
-    except Exception as e:
-        raise Exception(f"Failed to get mentors: {str(e)}") from e
+    """Get all registered mentors (cached for 60s to handle high concurrency)"""
+    global _mentor_cache, _mentor_cache_ts
+
+    now = time.monotonic()
+    if _mentor_cache is not None and (now - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
+        return _mentor_cache
+
+    with _mentor_cache_lock:
+        # Double-check after acquiring lock
+        if _mentor_cache is not None and (time.monotonic() - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
+            return _mentor_cache
+
+        query = """
+            SELECT id, first_name, last_name, email, phone_number, company_name,
+                   bio, status, technologies, picture_url, availability_text, created_at
+            FROM mentors
+            ORDER BY created_at DESC
+        """
+        try:
+            result = execute_query(current_app, query, fetch_all=True) or []
+            _mentor_cache = result
+            _mentor_cache_ts = time.monotonic()
+            return result
+        except Exception as e:
+            raise Exception(f"Failed to get mentors: {str(e)}") from e
+
+
+def _invalidate_mentor_cache():
+    """Clear cached mentor list so the next read fetches fresh data."""
+    global _mentor_cache, _mentor_cache_ts
+    _mentor_cache = None
+    _mentor_cache_ts = 0
 
 
 def get_mentor_picture(mentor_id: int) -> tuple:
@@ -103,6 +134,7 @@ def delete_mentor(mentor_id: int) -> tuple:
         if rows == 0:
             return False, "Mentor not found"
         logger.info(f"✓ Mentor {mentor_id} deleted")
+        _invalidate_mentor_cache()
         return True, "Mentor deleted successfully"
     except Exception as e:
         logger.error(f"Error deleting mentor: {e}")
@@ -159,13 +191,15 @@ def load_mentors_from_file(json_path: Path) -> int:
         technologies = mentor.get("technologies", [])
         if not isinstance(technologies, list):
             technologies = []
+        availability_text = str(mentor.get("availability_text", "")).strip() or None
         raw_password = mentor.get("password", "mentor123")
         pw_hash = _hash_pw(raw_password)
 
         query = """
             INSERT INTO mentors (first_name, last_name, company_name, email, phone_number,
-                                 bio, status, picture_url, picture_filename, password_hash, technologies)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                 bio, status, picture_url, picture_filename, password_hash,
+                                 technologies, availability_text)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT ON CONSTRAINT uidx_mentors_identity DO NOTHING
         """
 
@@ -185,6 +219,7 @@ def load_mentors_from_file(json_path: Path) -> int:
                         picture_filename,
                         pw_hash,
                         technologies,
+                        availability_text,
                     ),
                 )
                 if cursor.rowcount:

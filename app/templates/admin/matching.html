@@ -229,6 +229,46 @@
     color: #fde047;
     border: 1px solid rgba(234, 179, 8, 0.3);
   }
+  .badge-registered {
+    background: rgba(16, 185, 129, 0.15);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .badge-queued {
+    background: rgba(34, 211, 238, 0.15);
+    color: #67e8f9;
+    border: 1px solid rgba(34, 211, 238, 0.3);
+  }
+  .badge-unregistered {
+    background: rgba(156, 163, 175, 0.15);
+    color: #9ca3af;
+    border: 1px solid rgba(156, 163, 175, 0.3);
+  }
+  .reg-btn {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.2s;
+  }
+  .reg-btn-register {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+  }
+  .reg-btn-register:hover {
+    background: rgba(16, 185, 129, 0.3);
+  }
+  .reg-btn-unregister {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+  }
+  .reg-btn-unregister:hover {
+    background: rgba(239, 68, 68, 0.25);
+  }
 
   @media (max-width: 640px) {
     body {
@@ -369,6 +409,80 @@
   <div class="noise"></div>
   <div class="page-wrap">
     <div class="container">
+      <!-- Team Registration Management -->
+      <div class="card">
+        <h2>Team Registration</h2>
+        <div
+          id="reg-loading"
+          style="color: var(--muted)"
+        >
+          Loading...
+        </div>
+        <div
+          id="reg-content"
+          style="display: none"
+        >
+          <div class="stat-grid">
+            <div class="stat">
+              <div
+                class="number"
+                id="reg-count"
+              >
+                0
+              </div>
+              <div class="label">Registered</div>
+            </div>
+            <div class="stat">
+              <div
+                class="number"
+                id="reg-max"
+              >
+                18
+              </div>
+              <div class="label">Max Slots</div>
+            </div>
+            <div class="stat">
+              <div
+                class="number"
+                id="queue-count"
+              >
+                0
+              </div>
+              <div class="label">In Queue</div>
+            </div>
+          </div>
+          <div style="margin-bottom: 16px">
+            <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px">
+              Registration slots
+            </div>
+            <div class="progress-bar">
+              <div
+                class="progress-fill"
+                id="reg-progress"
+              ></div>
+            </div>
+          </div>
+          <div class="list-section">
+            <div class="list-header"><h3>Registered Teams</h3></div>
+            <div id="reg-list"></div>
+          </div>
+          <div
+            class="list-section"
+            style="margin-top: 16px"
+          >
+            <div class="list-header"><h3>Queue</h3></div>
+            <div id="queue-list"></div>
+          </div>
+          <div
+            class="list-section"
+            style="margin-top: 16px"
+          >
+            <div class="list-header"><h3>Unregistered Active Teams</h3></div>
+            <div id="unreg-list"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Preference Submission Status</h2>
         <div
@@ -673,7 +787,143 @@
         btn.disabled = false;
       }
 
+      /* ── Registration management ─────────────────────────── */
+
+      async function loadRegistrationStatus() {
+        try {
+          var res = await fetch('/api/admin/teams/registration-status', {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          if (!res.ok) {
+            document.getElementById('reg-loading').textContent = 'Access denied';
+            return;
+          }
+          var data = await res.json();
+          document.getElementById('reg-loading').style.display = 'none';
+          document.getElementById('reg-content').style.display = 'block';
+
+          document.getElementById('reg-count').textContent = data.registered_count || 0;
+          document.getElementById('reg-max').textContent = data.max_registered || 18;
+          document.getElementById('queue-count').textContent = data.queue_count || 0;
+
+          var pct =
+            data.max_registered > 0
+              ? ((data.registered_count || 0) / data.max_registered) * 100
+              : 0;
+          var bar = document.getElementById('reg-progress');
+          bar.style.width = pct + '%';
+          bar.className =
+            'progress-fill ' + (pct >= 100 ? 'complete' : pct > 0 ? 'partial' : 'empty');
+
+          // Registered teams list
+          var regList = document.getElementById('reg-list');
+          regList.innerHTML = '';
+          (data.registered_teams || []).forEach(function (t) {
+            var item = document.createElement('div');
+            item.className = 'list-item';
+            item.innerHTML =
+              '<span>' +
+              escHtml(t.team_name) +
+              ' <span class="badge badge-registered">Registered</span></span>' +
+              '<button class="reg-btn reg-btn-unregister" onclick="adminUnregister(' +
+              t.id +
+              ')">Unregister</button>';
+            regList.appendChild(item);
+          });
+          if ((data.registered_teams || []).length === 0) {
+            regList.innerHTML =
+              '<div style="color:var(--muted);font-size:13px;padding:8px">No registered teams yet.</div>';
+          }
+
+          // Queue list
+          var queueList = document.getElementById('queue-list');
+          queueList.innerHTML = '';
+          (data.queued_teams || []).forEach(function (t) {
+            var item = document.createElement('div');
+            item.className = 'list-item';
+            item.innerHTML =
+              '<span>#' +
+              t.queue_position +
+              ' — ' +
+              escHtml(t.team_name) +
+              ' <span class="badge badge-queued">Queued</span></span>' +
+              '<button class="reg-btn reg-btn-register" onclick="adminRegister(' +
+              t.id +
+              ')">Register</button>';
+            queueList.appendChild(item);
+          });
+          if ((data.queued_teams || []).length === 0) {
+            queueList.innerHTML =
+              '<div style="color:var(--muted);font-size:13px;padding:8px">Queue is empty.</div>';
+          }
+
+          // Unregistered active teams
+          var unregList = document.getElementById('unreg-list');
+          unregList.innerHTML = '';
+          (data.unregistered_teams || []).forEach(function (t) {
+            var item = document.createElement('div');
+            item.className = 'list-item';
+            item.innerHTML =
+              '<span>' +
+              escHtml(t.team_name) +
+              ' <span class="badge badge-unregistered">Active</span></span>' +
+              '<button class="reg-btn reg-btn-register" onclick="adminRegister(' +
+              t.id +
+              ')">Register</button>';
+            unregList.appendChild(item);
+          });
+          if ((data.unregistered_teams || []).length === 0) {
+            unregList.innerHTML =
+              '<div style="color:var(--muted);font-size:13px;padding:8px">None.</div>';
+          }
+        } catch (e) {
+          document.getElementById('reg-loading').textContent = 'Error loading registration status';
+        }
+      }
+
+      function escHtml(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      async function adminRegister(teamId) {
+        try {
+          var res = await fetch('/api/admin/teams/' + teamId + '/register', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          var data = await res.json();
+          if (data.success) {
+            loadRegistrationStatus();
+          } else {
+            alert(data.error || 'Failed to register team');
+          }
+        } catch (e) {
+          alert('Network error');
+        }
+      }
+
+      async function adminUnregister(teamId) {
+        if (!confirm('Unregister this team? This will NOT auto-promote a queued team.')) return;
+        try {
+          var res = await fetch('/api/admin/teams/' + teamId + '/unregister', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          var data = await res.json();
+          if (data.success) {
+            loadRegistrationStatus();
+          } else {
+            alert(data.error || 'Failed to unregister team');
+          }
+        } catch (e) {
+          alert('Network error');
+        }
+      }
+
       loadNavbar();
+      loadRegistrationStatus();
       loadStatus();
       loadResults();
     </script>

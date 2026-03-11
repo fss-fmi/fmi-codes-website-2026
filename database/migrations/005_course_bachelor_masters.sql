@@ -13,13 +13,25 @@ DROP VIEW IF EXISTS v_participants_full;
 DROP VIEW IF EXISTS v_teams_participant_breakdown;
 
 -- 3. Convert existing integer values to Bachelor labels
-ALTER TABLE participants ALTER COLUMN course TYPE VARCHAR(30) USING
-    CASE course::int
-        WHEN 1 THEN 'Bachelor 1st Year'
-        WHEN 2 THEN 'Bachelor 2nd Year'
-        WHEN 3 THEN 'Bachelor 3rd Year'
-        WHEN 4 THEN 'Bachelor 4th Year'
-    END;
+--    Guard: only run the int->string cast when the column is still an integer type.
+--    On a fresh schema (course is already VARCHAR) this block is skipped safely.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'participants'
+          AND column_name = 'course'
+          AND data_type IN ('integer', 'smallint', 'bigint')
+    ) THEN
+        ALTER TABLE participants ALTER COLUMN course TYPE VARCHAR(30) USING
+            CASE course::int
+                WHEN 1 THEN 'Bachelor 1st Year'
+                WHEN 2 THEN 'Bachelor 2nd Year'
+                WHEN 3 THEN 'Bachelor 3rd Year'
+                WHEN 4 THEN 'Bachelor 4th Year'
+            END;
+    END IF;
+END $$;
 
 -- 4. Add new CHECK constraint with all valid course values
 ALTER TABLE participants ADD CONSTRAINT participants_course_check

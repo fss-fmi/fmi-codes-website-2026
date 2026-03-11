@@ -133,7 +133,7 @@ def get_available_mentors_for_ranking(team_id):
     """Get all active mentors for the captain to choose from."""
     query = """
         SELECT m.id AS mentor_id, m.first_name || ' ' || m.last_name AS name,
-               m.company_name, m.bio, m.picture_filename
+               m.company_name, m.bio, m.picture_filename, m.availability_text
         FROM mentors m
         WHERE m.status = 'active'
         ORDER BY m.last_name, m.first_name

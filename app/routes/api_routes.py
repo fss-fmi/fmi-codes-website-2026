@@ -12,6 +12,7 @@ from app.services import (
     ranking_service,
     regulations_service,
 )
+from app.services.team_service import TeamService
 from app.utils.auth_decorators import admin_required
 
 logger = logging.getLogger(__name__)
@@ -189,3 +190,64 @@ def get_matching_results():
     """Get current matching results"""
     results = matching_service.get_matching_results()
     return jsonify({"success": True, "results": [dict(r) for r in results]}), 200
+
+
+# ── Admin team registration endpoints ──────────────────────────────
+
+
+@api_bp.route("/admin/teams/registration-status", methods=["GET"])
+@admin_required
+def team_registration_status():
+    """Return all teams grouped by registration state"""
+    from app.services.team_service import MAX_REGISTERED_TEAMS
+
+    teams = TeamService.get_all_teams()
+    teams_list = [dict(t) for t in teams]
+    for t in teams_list:
+        t.pop("password_hash", None)
+        t.pop("join_code", None)
+
+    registered = [t for t in teams_list if t.get("is_registered")]
+    queued = sorted(
+        [t for t in teams_list if t.get("queue_position") is not None],
+        key=lambda t: t["queue_position"],
+    )
+    unregistered = [
+        t
+        for t in teams_list
+        if not t.get("is_registered")
+        and t.get("queue_position") is None
+        and t.get("status") == "active"
+    ]
+
+    return jsonify(
+        {
+            "success": True,
+            "registered_count": len(registered),
+            "max_registered": MAX_REGISTERED_TEAMS,
+            "queue_count": len(queued),
+            "registered_teams": registered,
+            "queued_teams": queued,
+            "unregistered_teams": unregistered,
+        }
+    ), 200
+
+
+@api_bp.route("/admin/teams/<int:team_id>/register", methods=["POST"])
+@admin_required
+def admin_register_team(team_id):
+    """Admin manually registers a team"""
+    success, message = TeamService.admin_register_team(team_id)
+    if success:
+        return jsonify({"success": True, "message": message}), 200
+    return jsonify({"success": False, "error": message}), 400
+
+
+@api_bp.route("/admin/teams/<int:team_id>/unregister", methods=["POST"])
+@admin_required
+def admin_unregister_team(team_id):
+    """Admin manually unregisters a team"""
+    success, message = TeamService.admin_unregister_team(team_id)
+    if success:
+        return jsonify({"success": True, "message": message}), 200
+    return jsonify({"success": False, "error": message}), 400

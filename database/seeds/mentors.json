@@ -9,6 +9,7 @@
     "picture_filename": null,
     "bio": "Specializes in web architecture and helping teams organize clean project structures.",
     "technologies": ["React", "Node.js", "GraphQL", "TypeScript"],
+    "availability_text": "Sat 10:00-14:00, Sun 11:00-15:00",
     "status": "active"
   },
   {
@@ -21,6 +22,7 @@
     "picture_filename": null,
     "bio": "Focuses on backend APIs, database design, and practical debugging workflows.",
     "technologies": ["Python", "PostgreSQL", "Redis", "Docker"],
+    "availability_text": "Sat 09:00-12:00, Sat 14:00-17:00",
     "status": "active"
   },
   {
@@ -33,6 +35,7 @@
     "picture_filename": null,
     "bio": "Guides teams on machine learning ideas and turning prototypes into demos.",
     "technologies": ["Python", "TensorFlow", "PyTorch", "Jupyter"],
+    "availability_text": "Sun 10:00-16:00",
     "status": "active"
   },
   {
@@ -45,6 +48,7 @@
     "picture_filename": null,
     "bio": "Experienced in cloud deployment, CI pipelines, and performance tuning.",
     "technologies": ["AWS", "Kubernetes", "Terraform", "GitHub Actions", "Linux"],
+    "availability_text": "Sat 11:00-13:00, Sun 13:00-17:00",
     "status": "active"
   },
   {
@@ -57,6 +61,7 @@
     "picture_filename": null,
     "bio": "Helps with algorithmic thinking, optimization, and technical presentation skills.",
     "technologies": ["C++", "Rust", "Go", "Algorithms"],
+    "availability_text": "Sat 09:00-17:00",
     "status": "active"
   },
   {
@@ -69,6 +74,7 @@
     "picture_filename": null,
     "bio": "Supports data engineering, analytics dashboards, and data storytelling.",
     "technologies": ["Apache Spark", "SQL", "Tableau", "Python", "dbt"],
+    "availability_text": "Sat 10:00-12:00, Sun 10:00-12:00, Sun 14:00-16:00",
     "status": "active"
   },
   {
@@ -81,6 +87,7 @@
     "picture_filename": null,
     "bio": "Strong in frontend UX, accessibility, and building polished interfaces quickly.",
     "technologies": ["Vue.js", "Figma", "Tailwind CSS", "Svelte"],
+    "availability_text": "Sat 13:00-17:00, Sun 09:00-13:00",
     "status": "active"
   },
   {
@@ -93,6 +100,7 @@
     "picture_filename": null,
     "bio": "Provides guidance on systems design, reliability, and architecture trade-offs.",
     "technologies": ["Java", "Spring Boot", "Kafka", "MongoDB", "gRPC"],
+    "availability_text": "Sun 11:00-15:00",
     "status": "active"
   }
 ]

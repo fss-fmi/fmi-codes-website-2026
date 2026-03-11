@@ -423,6 +423,26 @@
     border: 1px solid rgba(234, 179, 8, 0.3);
     color: #fde047;
   }
+  .msg-success {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+  }
+  .msg-info {
+    background: rgba(34, 211, 238, 0.15);
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    color: #67e8f9;
+  }
+  .badge-registered {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+  }
+  .badge-queued {
+    background: rgba(34, 211, 238, 0.15);
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    color: #67e8f9;
+  }
   .mentor-row {
     display: flex;
     align-items: center;
@@ -510,6 +530,11 @@
               id="team-status"
             ></span>
             <span
+              class="badge"
+              id="reg-status"
+              style="display: none; margin-left: 8px"
+            ></span>
+            <span
               id="member-count"
               class="info-text"
               style="margin-left: 12px"
@@ -523,6 +548,11 @@
         >
           Your team needs at least 3 members to be eligible for the hackathon.
         </div>
+        <div
+          id="reg-status-msg"
+          class="status-msg"
+          style="display: none"
+        ></div>
         <div
           id="join-code-area"
           style="display: none"
@@ -690,6 +720,28 @@
           statusBadge.className = 'badge badge-inactive';
           statusBadge.textContent = currentTeam.status || 'Pending';
           document.getElementById('status-warn').style.display = 'block';
+        }
+
+        // Registration / queue badge
+        const regBadge = document.getElementById('reg-status');
+        const regMsg = document.getElementById('reg-status-msg');
+        if (currentTeam.is_registered) {
+          regBadge.className = 'badge badge-registered';
+          regBadge.textContent = 'Registered';
+          regBadge.style.display = 'inline-block';
+          regMsg.className = 'status-msg msg-success';
+          regMsg.textContent = 'Your team is registered for the hackathon!';
+          regMsg.style.display = 'block';
+        } else if (currentTeam.queue_position) {
+          regBadge.className = 'badge badge-queued';
+          regBadge.textContent = 'Queue #' + currentTeam.queue_position;
+          regBadge.style.display = 'inline-block';
+          regMsg.className = 'status-msg msg-info';
+          regMsg.textContent =
+            'Your team is in the waiting queue at position #' +
+            currentTeam.queue_position +
+            ". You'll be registered automatically when a slot opens.";
+          regMsg.style.display = 'block';
         }
 
         const count =

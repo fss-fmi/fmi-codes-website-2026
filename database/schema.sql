@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS hackathon_events (
     id BIGSERIAL PRIMARY KEY,
     hackathon_name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
-    max_teams INTEGER NOT NULL DEFAULT 18 CHECK (max_teams <= 18),
+    max_teams INTEGER NOT NULL DEFAULT 18,
     max_participants INTEGER NOT NULL DEFAULT 108,
     start_date TIMESTAMP WITH TIME ZONE NOT NULL,
     end_date TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -105,6 +105,9 @@ CREATE TABLE IF NOT EXISTS teams (
     status VARCHAR(20) DEFAULT 'pending'
         CHECK (status IN ('pending', 'active', 'completed', 'disqualified')),
     participant_count INTEGER DEFAULT 0 CHECK (participant_count >= 0),
+    is_registered BOOLEAN NOT NULL DEFAULT FALSE,
+    registered_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    queue_position INTEGER DEFAULT NULL,
     hackathon_event_id BIGINT REFERENCES hackathon_events(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -114,6 +117,8 @@ CREATE INDEX IF NOT EXISTS idx_teams_team_name ON teams(team_name);
 CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);
 CREATE INDEX IF NOT EXISTS idx_teams_hackathon ON teams(hackathon_event_id);
 CREATE INDEX IF NOT EXISTS idx_teams_created_at ON teams(created_at);
+CREATE INDEX IF NOT EXISTS idx_teams_registered ON teams(is_registered) WHERE is_registered = TRUE;
+CREATE INDEX IF NOT EXISTS idx_teams_queue ON teams(queue_position) WHERE queue_position IS NOT NULL;
 
 -- Mentors table
 CREATE TABLE IF NOT EXISTS mentors (
@@ -127,6 +132,7 @@ CREATE TABLE IF NOT EXISTS mentors (
     picture_filename VARCHAR(255),
     bio TEXT,
     technologies TEXT[] DEFAULT '{}',
+    availability_text TEXT DEFAULT NULL,
     password_hash VARCHAR(255),
     password_reset_requested_at TIMESTAMPTZ DEFAULT NULL,
     status VARCHAR(20) DEFAULT 'active'
@@ -325,6 +331,9 @@ SELECT
     t.team_name,
     t.status,
     t.participant_count,
+    t.is_registered,
+    t.registered_at,
+    t.queue_position,
     COUNT(DISTINCT tm.mentor_id) as mentor_count,
     STRING_AGG(DISTINCT m.company_name, ', ') as mentor_companies,
     h.hackathon_name,
@@ -334,7 +343,9 @@ FROM teams t
 LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
 LEFT JOIN mentors m ON tm.mentor_id = m.id
 LEFT JOIN hackathon_events h ON t.hackathon_event_id = h.id
-GROUP BY t.id, t.team_name, t.status, t.participant_count, h.hackathon_name, t.created_at, t.updated_at;
+GROUP BY t.id, t.team_name, t.status, t.participant_count,
+         t.is_registered, t.registered_at, t.queue_position,
+         h.hackathon_name, t.created_at, t.updated_at;
 
 -- View: Participants with full details
 CREATE OR REPLACE VIEW v_participants_full AS
