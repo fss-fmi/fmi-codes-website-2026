@@ -766,3 +766,526 @@
     }
   }
 </style>
+
+<!-- ═══════════════════════════════════════════
+     BUG REPORT BUBBLE & MODAL
+     ═══════════════════════════════════════════ -->
+
+<!-- Floating trigger button (bottom-right corner).
+     z-index 1200 keeps it below the nav drawer overlay (1300) so on mobile
+     when the drawer opens the overlay naturally hides the button — no JS needed. -->
+<button
+  id="bugBubbleBtn"
+  class="bug-bubble-btn"
+  aria-label="Report a bug"
+  title="Report a bug"
+>
+  <!-- Bug icon SVG -->
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M8 2l1.5 1.5" />
+    <path d="M14.5 3.5L16 2" />
+    <path d="M9 7.5C9 6.12 10.12 5 11.5 5h1C13.88 5 15 6.12 15 7.5v.5H9v-.5z" />
+    <path d="M6 11h-.5A2.5 2.5 0 013 8.5V8" />
+    <path d="M18 11h.5A2.5 2.5 0 0021 8.5V8" />
+    <rect
+      x="6"
+      y="11"
+      width="12"
+      height="8"
+      rx="3"
+    />
+    <path d="M6 15H3" />
+    <path d="M21 15h-3" />
+    <path d="M6 19l-2 2" />
+    <path d="M18 19l2 2" />
+  </svg>
+</button>
+
+<!-- Modal -->
+<div
+  id="bugModal"
+  class="bug-modal"
+  aria-hidden="true"
+  role="dialog"
+  aria-labelledby="bugModalTitle"
+  aria-modal="true"
+>
+  <div
+    class="bug-modal-backdrop"
+    id="bugModalBackdrop"
+  ></div>
+  <div class="bug-modal-panel">
+    <div class="bug-modal-header">
+      <span
+        class="bug-modal-icon"
+        aria-hidden="true"
+        >🐛</span
+      >
+      <h2
+        id="bugModalTitle"
+        class="bug-modal-title"
+      >
+        Report a Bug
+      </h2>
+      <button
+        class="bug-modal-close"
+        id="bugModalClose"
+        aria-label="Close bug report"
+      >
+        &#10005;
+      </button>
+    </div>
+
+    <p class="bug-modal-desc">Found something broken? Tell us what happened and we'll fix it. 🔧</p>
+
+    <form
+      id="bugReportForm"
+      class="bug-form"
+      novalidate
+    >
+      <div class="bug-form-group">
+        <label
+          for="bugWhatDid"
+          class="bug-form-label"
+          >What were you doing?</label
+        >
+        <textarea
+          id="bugWhatDid"
+          class="bug-form-textarea"
+          rows="3"
+          maxlength="2000"
+          placeholder="Describe the steps you took before the issue occurred…"
+        ></textarea>
+        <span
+          class="bug-char-count"
+          id="bugWhatDidCount"
+          aria-live="polite"
+          >0 / 2000</span
+        >
+      </div>
+
+      <div class="bug-form-group">
+        <label
+          for="bugWhatHappened"
+          class="bug-form-label"
+          >What went wrong?</label
+        >
+        <textarea
+          id="bugWhatHappened"
+          class="bug-form-textarea"
+          rows="3"
+          maxlength="2000"
+          placeholder="Describe the unexpected behavior or error you saw…"
+        ></textarea>
+        <span
+          class="bug-char-count"
+          id="bugWhatHappenedCount"
+          aria-live="polite"
+          >0 / 2000</span
+        >
+      </div>
+
+      <div
+        id="bugFormStatus"
+        class="bug-form-status"
+        aria-live="polite"
+        role="status"
+      ></div>
+
+      <button
+        type="submit"
+        id="bugSubmitBtn"
+        class="bug-submit-btn"
+      >
+        <span id="bugSubmitLabel">Send Report</span>
+      </button>
+    </form>
+  </div>
+</div>
+
+<style>
+  /* ═══════════════════════════════════════════
+     BUG BUBBLE BUTTON
+     ═══════════════════════════════════════════ */
+  .bug-bubble-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f472b6 0%, #a78bfa 100%);
+    border: none;
+    cursor: pointer;
+    /* Stay below the nav drawer overlay (z-index 1300) so that on mobile,
+       opening the drawer naturally covers the button without any JS toggling. */
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow:
+      0 4px 20px rgba(244, 114, 182, 0.35),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+    transition:
+      transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.3s;
+    flex-shrink: 0;
+  }
+  .bug-bubble-btn:hover {
+    transform: scale(1.1) translateY(-3px);
+    box-shadow:
+      0 8px 32px rgba(244, 114, 182, 0.55),
+      0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+  .bug-bubble-btn:active {
+    transform: scale(0.95);
+  }
+  .bug-bubble-btn:focus-visible {
+    outline: 2px solid #f472b6;
+    outline-offset: 3px;
+  }
+
+  /* ═══════════════════════════════════════════
+     BUG MODAL OVERLAY + PANEL
+     ═══════════════════════════════════════════ */
+  .bug-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1201;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .bug-modal.bug-open {
+    display: flex;
+  }
+  .bug-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    animation: bugFadeIn 0.2s ease;
+  }
+  .bug-modal-panel {
+    position: relative;
+    background: rgba(11, 16, 33, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(244, 114, 182, 0.2);
+    border-radius: 16px;
+    padding: 28px 32px;
+    max-width: 480px;
+    width: 100%;
+    box-shadow:
+      0 24px 64px rgba(0, 0, 0, 0.65),
+      0 0 0 1px rgba(244, 114, 182, 0.08);
+    animation: bugSlideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  @keyframes bugFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes bugSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(18px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Header */
+  .bug-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .bug-modal-icon {
+    font-size: 24px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .bug-modal-title {
+    margin: 0;
+    flex: 1;
+    font-size: 18px;
+    font-weight: 700;
+    background: linear-gradient(90deg, #f472b6, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.2px;
+  }
+  .bug-modal-close {
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #64748b;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .bug-modal-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+  }
+  .bug-modal-close:focus-visible {
+    outline: 2px solid #f472b6;
+    outline-offset: 2px;
+  }
+  .bug-modal-desc {
+    font-size: 13px;
+    color: #64748b;
+    margin: 0 0 20px;
+    line-height: 1.5;
+  }
+
+  /* Form */
+  .bug-form-group {
+    margin-bottom: 16px;
+  }
+  .bug-form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-bottom: 8px;
+  }
+  .bug-form-textarea {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    color: #e2e8f0;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 12px 14px;
+    resize: vertical;
+    min-height: 80px;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
+    box-sizing: border-box;
+  }
+  .bug-form-textarea:focus {
+    outline: none;
+    border-color: rgba(244, 114, 182, 0.45);
+    box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.1);
+  }
+  .bug-form-textarea::placeholder {
+    color: #2d3d52;
+  }
+  .bug-char-count {
+    display: block;
+    font-size: 11px;
+    color: #334155;
+    text-align: right;
+    margin-top: 4px;
+  }
+  .bug-form-status {
+    min-height: 22px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .bug-form-status.bug-success {
+    color: #34d399;
+  }
+  .bug-form-status.bug-error {
+    color: #f87171;
+  }
+  .bug-submit-btn {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #f472b6, #a78bfa);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s,
+      opacity 0.2s;
+    box-shadow: 0 4px 16px rgba(244, 114, 182, 0.28);
+    letter-spacing: 0.01em;
+  }
+  .bug-submit-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(244, 114, 182, 0.42);
+  }
+  .bug-submit-btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  .bug-submit-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .bug-submit-btn:focus-visible {
+    outline: 2px solid #f472b6;
+    outline-offset: 3px;
+  }
+
+  /* Mobile adjustments */
+  @media (max-width: 768px) {
+    .bug-bubble-btn {
+      bottom: 20px;
+      right: 14px;
+      width: 46px;
+      height: 46px;
+    }
+    .bug-bubble-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+    .bug-modal-panel {
+      padding: 20px 18px;
+    }
+  }
+</style>
+
+<script>
+  /* ── Bug Report Widget ───────────────────────────────────────────── */
+  (function () {
+    var bubbleBtn = document.getElementById('bugBubbleBtn');
+    var modal = document.getElementById('bugModal');
+    var backdrop = document.getElementById('bugModalBackdrop');
+    var closeBtn = document.getElementById('bugModalClose');
+    var form = document.getElementById('bugReportForm');
+    var whatDid = document.getElementById('bugWhatDid');
+    var whatHappened = document.getElementById('bugWhatHappened');
+    var didCount = document.getElementById('bugWhatDidCount');
+    var happenedCount = document.getElementById('bugWhatHappenedCount');
+    var statusEl = document.getElementById('bugFormStatus');
+    var submitBtn = document.getElementById('bugSubmitBtn');
+    var submitLabel = document.getElementById('bugSubmitLabel');
+
+    if (!bubbleBtn || !modal) return;
+
+    /* ── Open / close ─────────────────────────────────────────────── */
+    function openModal() {
+      modal.classList.add('bug-open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      /* Reset status on each open */
+      statusEl.textContent = '';
+      statusEl.className = 'bug-form-status';
+      setTimeout(function () {
+        whatDid.focus();
+      }, 50);
+    }
+
+    function closeModal() {
+      modal.classList.remove('bug-open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    bubbleBtn.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && modal.classList.contains('bug-open')) closeModal();
+    });
+
+    /* ── Character counters ───────────────────────────────────────── */
+    whatDid.addEventListener('input', function () {
+      didCount.textContent = whatDid.value.length + ' / 2000';
+    });
+    whatHappened.addEventListener('input', function () {
+      happenedCount.textContent = whatHappened.value.length + ' / 2000';
+    });
+
+    /* ── Form submit ──────────────────────────────────────────────── */
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      var did = whatDid.value.trim();
+      var happened = whatHappened.value.trim();
+
+      if (!did && !happened) {
+        statusEl.textContent = 'Please describe the issue before sending.';
+        statusEl.className = 'bug-form-status bug-error';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitLabel.textContent = 'Sending…';
+      statusEl.textContent = '';
+      statusEl.className = 'bug-form-status';
+
+      var headers = { 'Content-Type': 'application/json' };
+      var token = localStorage.getItem('token');
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      fetch('/api/bug-report', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          what_did: did,
+          what_happened: happened,
+          page: window.location.href,
+        }),
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok, body: body };
+          });
+        })
+        .then(function (result) {
+          if (result.ok && result.body.success) {
+            statusEl.textContent = '✓ Report sent — thank you for helping us improve!';
+            statusEl.className = 'bug-form-status bug-success';
+            submitLabel.textContent = 'Send Report';
+            submitBtn.disabled = false;
+            whatDid.value = '';
+            whatHappened.value = '';
+            didCount.textContent = '0 / 2000';
+            happenedCount.textContent = '0 / 2000';
+            /* Auto-close after a short delay */
+            setTimeout(closeModal, 2800);
+          } else {
+            throw new Error(result.body.error || 'Failed to submit the report.');
+          }
+        })
+        .catch(function (err) {
+          statusEl.textContent = '✗ ' + (err.message || 'Something went wrong — please try again.');
+          statusEl.className = 'bug-form-status bug-error';
+          submitLabel.textContent = 'Send Report';
+          submitBtn.disabled = false;
+        });
+    });
+  })();
+</script>

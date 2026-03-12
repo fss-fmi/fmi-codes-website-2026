@@ -470,6 +470,13 @@ class TeamService:
             "UPDATE participants SET team_id = NULL, is_captain = FALSE WHERE team_id = %s",
             (team_id,),
         )
+        # Invalidate any pending join requests targeting this team (CASCADE will
+        # delete them when the team row goes, but be explicit for clarity)
+        cursor.execute(
+            "UPDATE team_join_requests SET status = 'invalidated' "
+            "WHERE team_id = %s AND status = 'pending'",
+            (team_id,),
+        )
         cursor.execute("DELETE FROM team_mentor_preferences WHERE team_id = %s", (team_id,))
         cursor.execute("DELETE FROM mentor_team_preferences WHERE team_id = %s", (team_id,))
         cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
@@ -572,6 +579,309 @@ class TeamService:
             ORDER BY p.is_captain DESC, p.created_at
         """
         return execute_query(current_app, query, (team_id,), fetch_all=True) or []
+
+    # ── Join-request flow ──────────────────────────────────────────
+
+    @staticmethod
+    def get_available_teams(participant_id):
+        """Return teams with fewer than MAX_TEAM_MEMBERS members.
+
+        Also flags whether the current participant already has a pending
+        request to each team so the UI can show "Applied" state.
+        """
+        query = """
+            SELECT t.id   AS team_id,
+                   t.team_name,
+                   t.status,
+                   t.participant_count,
+                   EXISTS(
+                       SELECT 1 FROM team_join_requests tjr
+                       WHERE tjr.team_id = t.id
+                         AND tjr.participant_id = %s
+                         AND tjr.status = 'pending'
+                   ) AS already_applied
+            FROM teams t
+            WHERE t.participant_count < %s
+              AND t.status != 'disqualified'
+            ORDER BY t.team_name
+        """
+        return (
+            execute_query(
+                current_app, query, (participant_id, MAX_TEAM_MEMBERS), fetch_all=True
+            )
+            or []
+        )
+
+    @staticmethod
+    def apply_to_team(participant_id, team_id):
+        """Submit a join request. Atomic with advisory lock."""
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(1)")
+
+                # Lock participant — must be teamless
+                cursor.execute(
+                    "SELECT id, team_id FROM participants "
+                    "WHERE id = %s AND status = 'active' FOR UPDATE",
+                    (participant_id,),
+                )
+                participant = cursor.fetchone()
+                if not participant:
+                    return False, "Participant not found"
+                if participant["team_id"]:
+                    return False, "You are already in a team"
+
+                # Lock team — must have space
+                cursor.execute(
+                    "SELECT id, participant_count FROM teams WHERE id = %s FOR UPDATE",
+                    (team_id,),
+                )
+                team = cursor.fetchone()
+                if not team:
+                    return False, "Team not found"
+                if team["participant_count"] >= MAX_TEAM_MEMBERS:
+                    return False, "Team is already full"
+
+                # Check for existing request (UNIQUE constraint is the real guard)
+                cursor.execute(
+                    "SELECT id, status FROM team_join_requests "
+                    "WHERE participant_id = %s AND team_id = %s",
+                    (participant_id, team_id),
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    if existing["status"] == "pending":
+                        return False, "You already have a pending request to this team"
+                    # Allow re-application for any terminal status (declined,
+                    # cancelled, invalidated, or accepted-then-left)
+                    cursor.execute(
+                        "UPDATE team_join_requests SET status = 'pending' "
+                        "WHERE id = %s",
+                        (existing["id"],),
+                    )
+                    return True, "Application submitted"
+
+                cursor.execute(
+                    "INSERT INTO team_join_requests (participant_id, team_id, status) "
+                    "VALUES (%s, %s, 'pending')",
+                    (participant_id, team_id),
+                )
+
+            return True, "Application submitted"
+
+        except psycopg2.IntegrityError:
+            return False, "Duplicate application"
+        except Exception as e:
+            logger.error(f"Error applying to team: {e}")
+            return False, str(e)
+
+    @staticmethod
+    def get_pending_requests_for_team(team_id):
+        """Pending join requests for a team (captain view)."""
+        query = """
+            SELECT tjr.id AS request_id,
+                   tjr.participant_id,
+                   p.first_name,
+                   p.last_name,
+                   p.email,
+                   s.name  AS specialty,
+                   u.name  AS university,
+                   tjr.created_at
+            FROM team_join_requests tjr
+            JOIN participants p ON tjr.participant_id = p.id
+            LEFT JOIN specialties s ON p.specialty_id = s.id
+            LEFT JOIN universities u ON p.university_id = u.id
+            WHERE tjr.team_id = %s AND tjr.status = 'pending'
+            ORDER BY tjr.created_at
+        """
+        return execute_query(current_app, query, (team_id,), fetch_all=True) or []
+
+    @staticmethod
+    def get_my_applications(participant_id):
+        """All join requests submitted by a participant."""
+        query = """
+            SELECT tjr.id AS request_id,
+                   tjr.team_id,
+                   t.team_name,
+                   t.status AS team_status,
+                   t.participant_count,
+                   tjr.status,
+                   tjr.created_at
+            FROM team_join_requests tjr
+            JOIN teams t ON tjr.team_id = t.id
+            WHERE tjr.participant_id = %s
+            ORDER BY tjr.created_at DESC
+        """
+        return execute_query(current_app, query, (participant_id,), fetch_all=True) or []
+
+    @staticmethod
+    def accept_join_request(request_id, captain_id):
+        """Captain accepts a join request. Atomic with advisory lock.
+
+        Adds the applicant to the team, invalidates all their other pending
+        requests, and handles auto-activate + registration-queue logic.
+        """
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(1)")
+
+                # Lock the request row
+                cursor.execute(
+                    "SELECT * FROM team_join_requests WHERE id = %s FOR UPDATE",
+                    (request_id,),
+                )
+                req = cursor.fetchone()
+                if not req:
+                    return False, "Request not found"
+                if req["status"] != "pending":
+                    return False, f"Request is no longer pending (status: {req['status']})"
+
+                team_id = req["team_id"]
+                applicant_id = req["participant_id"]
+
+                # Verify the acting user is captain of this team
+                cursor.execute(
+                    "SELECT captain_id FROM teams WHERE id = %s FOR UPDATE",
+                    (team_id,),
+                )
+                team = cursor.fetchone()
+                if not team or team["captain_id"] != captain_id:
+                    return False, "Only the team captain can accept requests"
+
+                # Lock applicant — must still be teamless
+                cursor.execute(
+                    "SELECT id, team_id FROM participants "
+                    "WHERE id = %s AND status = 'active' FOR UPDATE",
+                    (applicant_id,),
+                )
+                applicant = cursor.fetchone()
+                if not applicant:
+                    cursor.execute(
+                        "UPDATE team_join_requests SET status = 'invalidated' WHERE id = %s",
+                        (request_id,),
+                    )
+                    return False, "Applicant no longer exists"
+                if applicant["team_id"]:
+                    cursor.execute(
+                        "UPDATE team_join_requests SET status = 'invalidated' WHERE id = %s",
+                        (request_id,),
+                    )
+                    return False, "This participant has already joined another team"
+
+                # Re-check team capacity
+                cursor.execute(
+                    "SELECT participant_count, status FROM teams WHERE id = %s",
+                    (team_id,),
+                )
+                team_info = cursor.fetchone()
+                if team_info["participant_count"] >= MAX_TEAM_MEMBERS:
+                    return False, "Team is already full"
+
+                # Add applicant to team
+                cursor.execute(
+                    "UPDATE participants SET team_id = %s WHERE id = %s",
+                    (team_id, applicant_id),
+                )
+
+                # Mark this request accepted
+                cursor.execute(
+                    "UPDATE team_join_requests SET status = 'accepted' WHERE id = %s",
+                    (request_id,),
+                )
+
+                # Invalidate all OTHER pending requests from this applicant
+                cursor.execute(
+                    "UPDATE team_join_requests SET status = 'invalidated' "
+                    "WHERE participant_id = %s AND status = 'pending' AND id != %s",
+                    (applicant_id, request_id),
+                )
+
+                # Auto-activate at threshold + registration/queue
+                new_count = team_info["participant_count"] + 1
+                if new_count >= ACTIVE_THRESHOLD and team_info["status"] == "pending":
+                    cursor.execute(
+                        "UPDATE teams SET status = 'active' WHERE id = %s",
+                        (team_id,),
+                    )
+                    TeamService._try_register_or_queue(cursor, team_id)
+
+            logger.info(
+                f"Join request {request_id} accepted: participant {applicant_id} → team {team_id}"
+            )
+            return True, "Request accepted — participant added to team"
+
+        except Exception as e:
+            logger.error(f"Error accepting join request: {e}")
+            return False, str(e)
+
+    @staticmethod
+    def decline_join_request(request_id, captain_id):
+        """Captain declines a join request. Atomic with advisory lock."""
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(1)")
+
+                cursor.execute(
+                    "SELECT * FROM team_join_requests WHERE id = %s FOR UPDATE",
+                    (request_id,),
+                )
+                req = cursor.fetchone()
+                if not req:
+                    return False, "Request not found"
+                if req["status"] != "pending":
+                    return False, f"Request is no longer pending (status: {req['status']})"
+
+                # Verify captain
+                cursor.execute(
+                    "SELECT captain_id FROM teams WHERE id = %s",
+                    (req["team_id"],),
+                )
+                team = cursor.fetchone()
+                if not team or team["captain_id"] != captain_id:
+                    return False, "Only the team captain can decline requests"
+
+                cursor.execute(
+                    "UPDATE team_join_requests SET status = 'declined' WHERE id = %s",
+                    (request_id,),
+                )
+
+            logger.info(f"Join request {request_id} declined by captain {captain_id}")
+            return True, "Request declined"
+
+        except Exception as e:
+            logger.error(f"Error declining join request: {e}")
+            return False, str(e)
+
+    @staticmethod
+    def cancel_join_request(request_id, participant_id):
+        """Participant withdraws their own pending application."""
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(1)")
+
+                cursor.execute(
+                    "SELECT * FROM team_join_requests WHERE id = %s FOR UPDATE",
+                    (request_id,),
+                )
+                req = cursor.fetchone()
+                if not req:
+                    return False, "Request not found"
+                if req["participant_id"] != participant_id:
+                    return False, "You can only cancel your own requests"
+                if req["status"] != "pending":
+                    return False, f"Request is no longer pending (status: {req['status']})"
+
+                cursor.execute(
+                    "UPDATE team_join_requests SET status = 'cancelled' WHERE id = %s",
+                    (request_id,),
+                )
+
+            logger.info(f"Join request {request_id} cancelled by participant {participant_id}")
+            return True, "Application withdrawn"
+
+        except Exception as e:
+            logger.error(f"Error cancelling join request: {e}")
+            return False, str(e)
 
 
 # Module-level convenience instance

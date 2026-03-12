@@ -1,9 +1,10 @@
-"""API routes — rankings, regulations, admin matching, and lookup data"""
+"""API routes — rankings, regulations, admin matching, lookup data, and bug reports"""
 
 import logging
 
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 
+from app import limiter
 from app.database import execute_insert, execute_query
 from app.routes import api_bp
 from app.services import (
@@ -251,3 +252,93 @@ def admin_unregister_team(team_id):
     if success:
         return jsonify({"success": True, "message": message}), 200
     return jsonify({"success": False, "error": message}), 400
+
+
+# ── Bug Report ─────────────────────────────────────────────────────
+
+
+@api_bp.route("/bug-report", methods=["POST"])
+@limiter.limit("10 per minute")
+def submit_bug_report():
+    """Accept a bug report and post it to the Discord bug-report channel.
+
+    Auth is optional — if a valid JWT is present the reporter's name/email are
+    looked up from the DB and included in the Discord embed.  Anonymous
+    submissions are accepted too.
+
+    Returns 202 immediately; the webhook POST runs asynchronously from a
+    bounded thread pool so the endpoint never blocks on the Discord call and
+    can handle 500+ concurrent submissions without issue.
+    """
+    from app.services.bug_report_service import submit_bug_report_async
+
+    data = request.get_json(silent=True) or {}
+
+    # Clamp fields to reasonable lengths to prevent oversized payloads
+    what_did = (data.get("what_did") or "").strip()[:2000]
+    what_happened = (data.get("what_happened") or "").strip()[:2000]
+    page_url = (data.get("page") or "").strip()[:500]
+
+    if not what_did and not what_happened:
+        return jsonify({"success": False, "error": "Please describe the issue."}), 400
+
+    # Attempt to resolve reporter identity from an optional JWT
+    reporter_name = "Anonymous"
+    reporter_email = "(not provided)"
+    reporter_role = "unknown"
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            from app.services.auth_service import decode_token
+
+            payload = decode_token(token)
+            user_id = payload.get("user_id")
+            role = payload.get("role", "unknown")
+            reporter_role = role
+
+            if role == "participant":
+                row = execute_query(
+                    current_app,
+                    "SELECT first_name, last_name, email FROM participants WHERE id = %s",
+                    (user_id,),
+                    fetch_one=True,
+                )
+                if row:
+                    reporter_name = f"{row['first_name']} {row['last_name']}"
+                    reporter_email = row["email"]
+            elif role == "mentor":
+                row = execute_query(
+                    current_app,
+                    "SELECT name, email FROM mentors WHERE id = %s",
+                    (user_id,),
+                    fetch_one=True,
+                )
+                if row:
+                    reporter_name = row["name"]
+                    reporter_email = row["email"]
+            elif role == "admin":
+                reporter_name = "Admin"
+                reporter_email = current_app.config.get("ADMIN_EMAIL", "admin")
+        except Exception:
+            pass  # Non-fatal — fall back to anonymous
+
+    webhook_url = current_app.config.get("DISCORD_BUG_WEBHOOK_URL", "")
+
+    submit_bug_report_async(
+        webhook_url,
+        reporter_name=reporter_name,
+        reporter_email=reporter_email,
+        reporter_role=reporter_role,
+        page_url=page_url or "(unknown)",
+        what_did=what_did or "(not specified)",
+        what_happened=what_happened or "(not specified)",
+    )
+
+    logger.info(
+        "Bug report queued for delivery (reporter=%s, page=%s)",
+        reporter_email,
+        page_url,
+    )
+    return jsonify({"success": True, "message": "Bug report submitted — thank you!"}), 202

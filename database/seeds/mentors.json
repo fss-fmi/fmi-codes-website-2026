@@ -39,7 +39,7 @@
       "GitHub",
       "ASP.NET"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -104,7 +104,7 @@
       "GitHub",
       "ASP.NET"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -196,7 +196,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -231,7 +231,7 @@
       "NumPy",
       "GitLab"
     ],
-    "availability_text": "Fri 18:00 - 19:00; Fri 19:30 - 20:30, Sat 13:00 - 19:00",
+    "availability_text": "Sat 13:00 - 19:00",
     "status": "active"
   },
   {
@@ -270,7 +270,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -346,7 +346,7 @@
       "GitHub",
       "ASP.NET"
     ],
-    "availability_text": "Fri 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -404,7 +404,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 16:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 16:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -448,7 +448,7 @@
       "GitHub",
       "ASP.NET"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -482,7 +482,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 18:00 - 19:00, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -508,7 +508,7 @@
       "GitHub",
       "ASP.NET"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 16:00",
+    "availability_text": "Sat 13:00 - 16:00",
     "status": "active"
   },
   {
@@ -547,7 +547,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -609,7 +609,7 @@
       "GitHub",
       "ASP.NET"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 16:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 16:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -679,7 +679,7 @@
       "GitHub",
       "ASP.NET"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -716,7 +716,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -760,7 +760,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -787,7 +787,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 18:00 - 19:00; 19:30 - 20:30, Sat 13:00 - 19:00, Sun 10:00 - 13:00",
+    "availability_text": "Sat 13:00 - 19:00, Sun 10:00 - 13:00",
     "status": "active"
   },
   {
@@ -884,7 +884,7 @@
       "GitHub",
       "GitLab"
     ],
-    "availability_text": "Fri 19:30 - 20:30, Sat 13:00 - 16:00",
+    "availability_text": "Sat 13:00 - 16:00",
     "status": "active"
   }
 ]

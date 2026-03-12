@@ -1,0 +1,633 @@
+{% extends "base.html" %} {% block title %}Browse Teams — FMI Codes{% endblock %} {% block head %}
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-glow: rgba(96, 165, 250, 0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --danger: #ef4444;
+    --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #7dd3fc;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #f9a8d4;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #7dd3fc;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
+
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .container {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 100px 16px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .page-header {
+    text-align: center;
+    margin-bottom: 8px;
+    animation: fadeSlideUp 0.6s ease both;
+  }
+  .page-header h1 {
+    font-size: 36px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #7dd3fc, #f9a8d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .page-header p {
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    margin-bottom: 4px;
+    transition: color 0.2s;
+    animation: fadeSlideUp 0.5s ease both;
+  }
+  .back-link:hover {
+    color: var(--accent);
+  }
+
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    top: 90px;
+    right: 20px;
+    z-index: 9999;
+    padding: 14px 22px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    transform: translateX(120%);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 380px;
+  }
+  .toast.show {
+    transform: translateX(0);
+  }
+  .toast-success {
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #6ee7b7;
+  }
+  .toast-error {
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+  }
+
+  /* Team grid */
+  .teams-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px;
+  }
+
+  .team-card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: var(--glow);
+    backdrop-filter: blur(12px);
+    animation: fadeSlideUp 0.7s ease both;
+    transition:
+      border-color 0.3s,
+      transform 0.25s;
+    overflow: hidden;
+  }
+  .team-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #7dd3fc, #f9a8d4);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .team-card:hover {
+    border-color: rgba(125, 211, 252, 0.25);
+    transform: translateY(-3px);
+  }
+  .team-card:hover::before {
+    opacity: 1;
+  }
+  .team-card-name {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    background: linear-gradient(120deg, var(--text), #7dd3fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .team-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-active {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+  }
+  .badge-pending {
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    color: #fde047;
+  }
+
+  /* Member bar */
+  .member-bar-wrap {
+    margin-bottom: 18px;
+  }
+  .member-bar-label {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .member-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .member-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #7dd3fc, #f9a8d4);
+    transition: width 0.5s ease;
+  }
+
+  /* Apply button */
+  .btn-apply {
+    width: 100%;
+    padding: 11px 0;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #7dd3fc, #f9a8d4);
+    color: #0b1021;
+  }
+  .btn-apply:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(125, 211, 252, 0.35);
+  }
+  .btn-apply::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -60%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      120deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.15) 50%,
+      transparent 70%
+    );
+    transform: rotate(25deg);
+    transition: left 0.6s ease;
+  }
+  .btn-apply:hover:not(:disabled)::after {
+    left: 120%;
+  }
+  .btn-apply:disabled {
+    opacity: 0.55;
+    cursor: default;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--muted);
+  }
+  .btn-apply.applied {
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #6ee7b7;
+  }
+
+  /* Loading / empty states */
+  .loading-wrap,
+  .empty-wrap {
+    text-align: center;
+    padding: 60px 20px;
+    animation: fadeSlideUp 0.7s ease both;
+  }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #7dd3fc;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .empty-wrap h2 {
+    font-size: 22px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .empty-wrap p {
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      padding: 76px 12px 40px;
+    }
+    .teams-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div class="dot-grid"></div>
+  <div
+    class="spotlight"
+    id="spotlight"
+  ></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
+
+  <div class="page-wrap">
+    <div id="navbar-slot"></div>
+
+    <div class="container">
+      <a
+        href="/team"
+        class="back-link"
+        >← Back to Team Dashboard</a
+      >
+
+      <div class="page-header">
+        <h1>Find a Team</h1>
+        <p>Browse teams with open spots and send a request to join</p>
+      </div>
+
+      <div
+        id="loading"
+        class="loading-wrap"
+      >
+        <div class="spinner"></div>
+        <p style="color: var(--muted)">Loading available teams…</p>
+      </div>
+
+      <div
+        id="empty"
+        class="empty-wrap"
+        style="display: none"
+      >
+        <h2>No teams available</h2>
+        <p>All teams are full right now. Try creating your own!</p>
+      </div>
+
+      <div
+        id="teams-grid"
+        class="teams-grid"
+        style="display: none"
+      ></div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div
+    id="toast"
+    class="toast"
+  ></div>
+
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.getElementById('spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/login';
+
+    function showToast(msg, type) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-' + type + ' show';
+      setTimeout(() => t.classList.remove('show'), 3500);
+    }
+
+    async function loadNavbar() {
+      try {
+        const res = await fetch('/navbar.html');
+        if (!res.ok) return;
+        const html = await res.text();
+        const slot = document.getElementById('navbar-slot');
+        if (!slot) return;
+        slot.innerHTML = html;
+        slot.querySelectorAll('script').forEach((old) => {
+          const s = document.createElement('script');
+          s.textContent = old.textContent;
+          document.head.appendChild(s);
+          s.remove();
+        });
+      } catch {}
+    }
+
+    async function loadTeams() {
+      try {
+        const res = await fetch('/api/teams/available', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!res.ok) {
+          if (res.status === 401) {
+            window.location.href = '/login';
+            return;
+          }
+          throw new Error('Failed to load');
+        }
+        const data = await res.json();
+        document.getElementById('loading').style.display = 'none';
+
+        if (!data.teams || data.teams.length === 0) {
+          document.getElementById('empty').style.display = 'block';
+          return;
+        }
+
+        const grid = document.getElementById('teams-grid');
+        grid.style.display = 'grid';
+        grid.innerHTML = '';
+
+        data.teams.forEach((team, i) => {
+          const pct = Math.round((team.participant_count / 6) * 100);
+          const statusClass = team.status === 'active' ? 'badge-active' : 'badge-pending';
+          const applied = team.already_applied;
+
+          const card = document.createElement('div');
+          card.className = 'team-card';
+          card.style.animationDelay = i * 0.07 + 's';
+
+          card.innerHTML =
+            '<div class="team-card-name">' +
+            escapeHtml(team.team_name) +
+            '</div>' +
+            '<div class="team-card-meta">' +
+            '  <span class="badge ' +
+            statusClass +
+            '">' +
+            escapeHtml(team.status) +
+            '</span>' +
+            '</div>' +
+            '<div class="member-bar-wrap">' +
+            '  <div class="member-bar-label">' +
+            '    <span>Members</span>' +
+            '    <span>' +
+            team.participant_count +
+            ' / 6</span>' +
+            '  </div>' +
+            '  <div class="member-bar">' +
+            '    <div class="member-bar-fill" style="width:' +
+            pct +
+            '%"></div>' +
+            '  </div>' +
+            '</div>' +
+            '<button class="btn-apply' +
+            (applied ? ' applied' : '') +
+            '"' +
+            (applied ? ' disabled' : '') +
+            ' data-team-id="' +
+            team.team_id +
+            '">' +
+            (applied ? 'Applied ✓' : 'Apply to Join') +
+            '</button>';
+
+          grid.appendChild(card);
+        });
+
+        grid.querySelectorAll('.btn-apply:not(.applied)').forEach((btn) => {
+          btn.addEventListener('click', function () {
+            applyToTeam(this);
+          });
+        });
+      } catch (err) {
+        console.error(err);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('empty').style.display = 'block';
+      }
+    }
+
+    async function applyToTeam(btn) {
+      const teamId = btn.getAttribute('data-team-id');
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      try {
+        const res = await fetch('/api/teams/' + teamId + '/apply', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+        });
+        const data = await res.json();
+        if (data.success) {
+          btn.className = 'btn-apply applied';
+          btn.textContent = 'Applied ✓';
+          btn.disabled = true;
+          showToast('Application sent!', 'success');
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Apply to Join';
+          showToast(data.error || 'Failed to apply', 'error');
+        }
+      } catch {
+        btn.disabled = false;
+        btn.textContent = 'Apply to Join';
+        showToast('Network error', 'error');
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
+
+    loadNavbar();
+    loadTeams();
+  </script>
+</body>
+{% endblock %}

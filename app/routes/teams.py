@@ -165,3 +165,79 @@ def remove_member(team_id, member_id):
     if success:
         return jsonify({"success": True, "message": message}), 200
     return jsonify({"success": False, "error": message}), 400
+
+
+# ── Browse / Join Request flow ─────────────────────────────────
+
+
+@teams_bp.route("/browseTeams", methods=["GET"])
+def browse_teams_page():
+    """Serve the browse available teams page"""
+    return render_template("teams/browseTeams.html")
+
+
+@teams_bp.route("/api/teams/available", methods=["GET"])
+@participant_required
+def get_available_teams():
+    """List teams with fewer than 6 members for a teamless participant."""
+    teams = TeamService.get_available_teams(g.current_user["user_id"])
+    return jsonify({"success": True, "teams": [dict(t) for t in teams]}), 200
+
+
+@teams_bp.route("/api/teams/my-applications", methods=["GET"])
+@participant_required
+def get_my_applications():
+    """List the current participant's join requests."""
+    apps = TeamService.get_my_applications(g.current_user["user_id"])
+    return jsonify({"success": True, "applications": [dict(a) for a in apps]}), 200
+
+
+@teams_bp.route("/api/teams/<int:team_id>/apply", methods=["POST"])
+@participant_required
+def apply_to_team(team_id):
+    """Submit a join request to a team."""
+    success, message = TeamService.apply_to_team(g.current_user["user_id"], team_id)
+    if success:
+        return jsonify({"success": True, "message": message}), 201
+    return jsonify({"success": False, "error": message}), 400
+
+
+@teams_bp.route("/api/teams/<int:team_id>/requests", methods=["GET"])
+@captain_required
+def get_team_requests(team_id):
+    """List pending join requests for the captain's team."""
+    if g.current_user.get("team_id") != team_id:
+        return jsonify({"success": False, "error": "You can only view your own team's requests"}), 403
+
+    requests = TeamService.get_pending_requests_for_team(team_id)
+    return jsonify({"success": True, "requests": [dict(r) for r in requests]}), 200
+
+
+@teams_bp.route("/api/teams/requests/<int:request_id>/accept", methods=["POST"])
+@captain_required
+def accept_request(request_id):
+    """Accept a pending join request (captain only)."""
+    success, message = TeamService.accept_join_request(request_id, g.current_user["user_id"])
+    if success:
+        return jsonify({"success": True, "message": message}), 200
+    return jsonify({"success": False, "error": message}), 400
+
+
+@teams_bp.route("/api/teams/requests/<int:request_id>/decline", methods=["POST"])
+@captain_required
+def decline_request(request_id):
+    """Decline a pending join request (captain only)."""
+    success, message = TeamService.decline_join_request(request_id, g.current_user["user_id"])
+    if success:
+        return jsonify({"success": True, "message": message}), 200
+    return jsonify({"success": False, "error": message}), 400
+
+
+@teams_bp.route("/api/teams/requests/<int:request_id>/cancel", methods=["POST"])
+@participant_required
+def cancel_request(request_id):
+    """Withdraw own pending join request."""
+    success, message = TeamService.cancel_join_request(request_id, g.current_user["user_id"])
+    if success:
+        return jsonify({"success": True, "message": message}), 200
+    return jsonify({"success": False, "error": message}), 400

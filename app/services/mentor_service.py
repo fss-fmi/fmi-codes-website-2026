@@ -21,8 +21,17 @@ _mentor_cache_ts = 0
 _MENTOR_CACHE_TTL = 60  # seconds
 
 
-def mentor_exists(first_name: str, last_name: str, company_name: str) -> bool:
-    """Check if a mentor already exists by identity fields"""
+def mentor_exists(first_name: str, last_name: str, company_name: str, email: str = None) -> bool:
+    """Check if a mentor already exists. Prefers email lookup when available."""
+    if email:
+        result = execute_query(
+            current_app,
+            "SELECT 1 FROM mentors WHERE email = %s",
+            (email,),
+            fetch_one=True,
+        )
+        if result is not None:
+            return True
     query = """
         SELECT 1 FROM mentors
         WHERE first_name = %s AND last_name = %s AND company_name = %s
@@ -165,11 +174,12 @@ def load_mentors_from_file(json_path: Path) -> int:
         last_name = str(mentor.get("last_name", "")).strip()
         company_name = str(mentor.get("company_name", "")).strip()
         picture_path = mentor.get("picture_url")
+        email = str(mentor.get("email", "")).strip() or None
 
         if not first_name or not last_name or not company_name:
             continue
 
-        if mentor_exists(first_name, last_name, company_name):
+        if mentor_exists(first_name, last_name, company_name, email=email):
             continue
 
         # picture_url is stored as a URL string (e.g. /static/mentorPictures/alice.jpg)
@@ -184,7 +194,6 @@ def load_mentors_from_file(json_path: Path) -> int:
                 picture_data = f"/static/mentorPictures/{p}"
             picture_filename = Path(p).name
 
-        email = str(mentor.get("email", "")).strip() or None
         phone_number = str(mentor.get("phone_number", "")).strip() or None
         bio = str(mentor.get("bio", "")).strip() or None
         status = str(mentor.get("status", "active")).strip()

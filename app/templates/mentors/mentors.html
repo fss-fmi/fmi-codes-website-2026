@@ -175,8 +175,8 @@
                         escapeHtml(imgSrc) +
                         '" alt="' +
                         mentorName +
-                        '" onerror="this.outerHTML=\'<div class=\\"avatar placeholder\\">&#x1f464;</div>\'">'
-                      : '<div class="avatar placeholder">&#x1f464;</div>'
+                        '" onerror="this.style.visibility=\'hidden\'">'
+                      : '<div class="avatar"></div>'
                   }
                   <div>
                     <div class="name">${mentorName}</div>
@@ -458,7 +458,7 @@
   }
   .workplace {
     margin-top: 8px;
-    color: var(--muted);
+    color: #67e8f9;
     font-size: clamp(14px, 3vw, 16px);
     line-height: 1.5;
   }

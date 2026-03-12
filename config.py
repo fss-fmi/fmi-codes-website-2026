@@ -42,6 +42,9 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")  # Must be set in .env
     MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "true").lower() == "true"
 
+    # Discord webhook for bug reports — set DISCORD_BUG_WEBHOOK_URL in .env
+    DISCORD_BUG_WEBHOOK_URL = os.environ.get("DISCORD_BUG_WEBHOOK_URL", "")
+
     TEMPLATES_FOLDER = BASE_DIR / "app" / "templates"
     STATIC_FOLDER = BASE_DIR / "app" / "static"
     MENTORS_STAY_TUNED = os.environ.get("MENTORS_STAY_TUNED", "false").lower() == "true"

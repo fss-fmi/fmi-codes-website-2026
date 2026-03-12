@@ -238,6 +238,26 @@ CREATE TABLE IF NOT EXISTS mentor_team_preferences (
 CREATE INDEX IF NOT EXISTS idx_mtp_mentor_id ON mentor_team_preferences(mentor_id);
 CREATE INDEX IF NOT EXISTS idx_mtp_team_id ON mentor_team_preferences(team_id);
 
+-- Team Join Requests (participants apply to teams; captains accept/decline)
+CREATE TABLE IF NOT EXISTS team_join_requests (
+    id BIGSERIAL PRIMARY KEY,
+    participant_id BIGINT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+    team_id BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'declined', 'invalidated', 'cancelled')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (participant_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tjr_team_pending
+    ON team_join_requests (team_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_tjr_participant_pending
+    ON team_join_requests (participant_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_tjr_participant_id ON team_join_requests (participant_id);
+CREATE INDEX IF NOT EXISTS idx_tjr_team_id ON team_join_requests (team_id);
+CREATE INDEX IF NOT EXISTS idx_tjr_status ON team_join_requests (status);
+
 -- ============================================================================
 -- SECTION 4: TRIGGER FUNCTIONS FOR DATA INTEGRITY
 -- ============================================================================
@@ -319,6 +339,10 @@ FOR EACH ROW EXECUTE FUNCTION prevent_team_deletion_with_participants();
 CREATE TRIGGER trig_update_participant_count
 AFTER INSERT OR UPDATE OF team_id OR DELETE ON participants
 FOR EACH ROW EXECUTE FUNCTION update_team_participant_count();
+
+CREATE TRIGGER trig_update_timestamp_team_join_requests
+BEFORE UPDATE ON team_join_requests
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 -- ============================================================================
 -- SECTION 6: VIEWS FOR REPORTING
