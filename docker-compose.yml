@@ -3,19 +3,18 @@ services:
     container_name: fmi-codes-db
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: fmi_hackathon_2026
-      POSTGRES_USER: postgres
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       # Persistent storage — data survives container restarts
       - postgres_data:/var/lib/postgresql/data
       # Init scripts: Postgres runs these once on first startup, in order
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./database/migrations/002_auth_and_preferences.sql:/docker-entrypoint-initdb.d/02_migration.sql:ro
     ports:
       - '5433:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d fmi_hackathon_2026']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -26,17 +25,24 @@ services:
     ports:
       - '5001:5001'
     environment:
-      FLASK_ENV: production
+      FLASK_ENV: ${FLASK_ENV}
+      FLASK_DEBUG: ${FLASK_DEBUG}
       DB_HOST: db # "db" is the service name above — Docker resolves it automatically
-      DB_PORT: 5432
-      DB_NAME: fmi_hackathon_2026
-      DB_USER: postgres
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       MENTORS_STAY_TUNED: ${MENTORS_STAY_TUNED}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_USE_TLS: ${MAIL_USE_TLS}
+      DISCORD_BUG_WEBHOOK_URL: ${DISCORD_BUG_WEBHOOK_URL}
     depends_on:
       db:
         condition: service_healthy # App won't start until Postgres is ready
