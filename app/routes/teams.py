@@ -4,7 +4,7 @@ from flask import current_app, g, jsonify, render_template, request
 
 from app.database import execute_query
 from app.routes import teams_bp
-from app.services.team_service import TeamService
+from app.services.team_service import MAX_TEAM_MEMBERS, TeamService
 from app.utils.auth_decorators import captain_required, participant_required, token_required
 
 
@@ -24,6 +24,78 @@ def create_team_page():
 def join_team_page():
     """Serve the join team page"""
     return render_template("teams/joinTeam.html")
+
+
+@teams_bp.route("/registeredTeams", methods=["GET"])
+def registered_teams_page():
+    """Serve the registered teams showcase page"""
+    return render_template("teams/registeredTeams.html")
+
+
+@teams_bp.route("/api/teams/registered", methods=["GET"])
+def get_registered_teams():
+    """Public endpoint: return all registered teams with optional auth enrichment.
+
+    If the caller provides a valid participant JWT and has no team,
+    each team entry includes an `already_applied` flag and `can_apply` is True
+    in the response so the UI can show Apply buttons.
+    """
+    query = """
+        SELECT t.id          AS team_id,
+               t.team_name,
+               t.status,
+               t.participant_count,
+               t.registered_at
+        FROM teams t
+        WHERE t.is_registered = TRUE
+        ORDER BY t.registered_at ASC
+    """
+    teams = execute_query(current_app, query, fetch_all=True) or []
+    teams_list = [dict(t) for t in teams]
+
+    can_apply = False
+    participant_id = None
+
+    # Optional auth: try to read JWT but don't fail if absent/invalid
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            from app.services.auth_service import decode_token
+            payload = decode_token(auth_header[7:])
+            if payload.get("role") == "participant":
+                participant_id = payload["user_id"]
+                # Check if participant already has a team
+                p = execute_query(
+                    current_app,
+                    "SELECT team_id FROM participants WHERE id = %s AND status = 'active'",
+                    (participant_id,),
+                    fetch_one=True,
+                )
+                if p and not p["team_id"]:
+                    can_apply = True
+        except Exception:
+            pass  # Invalid/expired token — just show read-only view
+
+    if can_apply and participant_id:
+        # Enrich with already_applied flag
+        applied_query = """
+            SELECT team_id FROM team_join_requests
+            WHERE participant_id = %s AND status = 'pending'
+        """
+        applied_rows = execute_query(
+            current_app, applied_query, (participant_id,), fetch_all=True
+        ) or []
+        applied_set = {r["team_id"] for r in applied_rows}
+        for t in teams_list:
+            t["already_applied"] = t["team_id"] in applied_set
+            t["is_full"] = t["participant_count"] >= MAX_TEAM_MEMBERS
+
+    return jsonify({
+        "success": True,
+        "teams": teams_list,
+        "can_apply": can_apply,
+        "max_registered": 18,
+    }), 200
 
 
 @teams_bp.route("/teamMentors", methods=["GET"])
