@@ -24,7 +24,7 @@ def init_database(app):
     max_conn = app.config.get("DB_POOL_MAX", 20)
     _pool_timeout = app.config.get("DB_POOL_TIMEOUT", 5)
     
-    max_retries = 5
+    max_retries = 10
     retry_delay = 3
 
     for attempt in range(1, max_retries + 1):
