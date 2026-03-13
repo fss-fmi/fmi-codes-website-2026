@@ -107,6 +107,13 @@ MAIL_USE_TLS=true
 # Discord webhook for bug reports (optional)
 DISCORD_BUG_WEBHOOK_URL=
 
+# Social media / contact links (shown in the home page contact section)
+DISCORD_URL=https://discord.gg/your-invite-code
+INSTAGRAM_URL=https://instagram.com/fmicodes
+FACEBOOK_URL=https://facebook.com/fmicodes
+CONTACT_EMAIL=contact@fmicodes.bg
+CONTACT_PHONE=+359 88 000 0000
+
 # Feature flags
 # Set to true to show the "stay tuned" placeholder instead of the live mentors grid
 MENTORS_STAY_TUNED=false
@@ -135,6 +142,11 @@ All variables have sensible defaults for local dev (see `config.py`) so the app 
 | `MAIL_PASSWORD`           | _(none)_                      | **Must be set** — Gmail App Password recommended      |
 | `MAIL_USE_TLS`            | `true`                        |                                                       |
 | `DISCORD_BUG_WEBHOOK_URL` | _(none)_                      | If empty, bug reports are silently dropped            |
+| `DISCORD_URL`             | _(none)_                      | Invite link shown in the home page contact section    |
+| `INSTAGRAM_URL`           | _(none)_                      | Instagram profile URL for the contact section         |
+| `FACEBOOK_URL`            | _(none)_                      | Facebook page URL for the contact section             |
+| `CONTACT_EMAIL`           | _(none)_                      | Contact e-mail shown in the contact section           |
+| `CONTACT_PHONE`           | _(none)_                      | Contact phone shown in the contact section            |
 | `DB_POOL_MIN`             | `2`                           | Min connections per worker                            |
 | `DB_POOL_MAX`             | `20`                          | Max connections per worker                            |
 | `DB_POOL_TIMEOUT`         | `5`                           | Seconds to wait for a free connection                 |
@@ -182,6 +194,10 @@ Captains rank exactly 3 mentors as team preferences. Mentors also rank exactly 3
 
 An admin triggers the matching manually via `POST /api/admin/run-matching`. The algorithm runs Hospital-Resident Gale-Shapley (mentor-proposing): each team can be matched to up to 3 mentors, each mentor to exactly 1 team. Results are persisted to the `team_mentors` table and visible on each team's Mentors page.
 
+### Contact section
+
+The home page footer area includes a contacts section with a prominent Discord call-to-action and pill links for Instagram, Facebook, email, and phone. Each entry is conditionally rendered — if the corresponding env variable is empty the element is simply omitted. Configure the links via `DISCORD_URL`, `INSTAGRAM_URL`, `FACEBOOK_URL`, `CONTACT_EMAIL`, and `CONTACT_PHONE` in `.env`.
+
 ### Bug reporting
 
 Any logged-in user can submit a bug report from the UI. Reports are forwarded to a Discord channel via a webhook (`DISCORD_BUG_WEBHOOK_URL`). Delivery is fire-and-forget using a bounded `ThreadPoolExecutor` (20 workers) so it never blocks the request thread. If the webhook URL is not configured, reports are silently dropped and a warning is logged.
@@ -201,9 +217,9 @@ Any logged-in user can submit a bug report from the UI. Reports are forwarded to
 │   ├── services/           Business logic layer
 │   ├── utils/              Shared utilities (auth decorators)
 │   ├── templates/          Jinja2 HTML pages
-│   │   ├── base.html / navbar.html / home.html
+│   │   ├── base.html / navbar.html / home.html  (home includes contact section)
 │   │   ├── auth/           login, registration, profile
-│   │   ├── teams/          team, createTeam, joinTeam, browseTeams, teamMentors, teamSchedule, teamRegulations
+│   │   ├── teams/          team, createTeam, joinTeam, browseTeams, registeredTeams, teamMentors, teamSchedule, teamRegulations, teamRanking
 │   │   ├── mentors/        mentors, mentorsStayTuned, chooseMentor, mentorDashboard, selectedMentors
 │   │   ├── rankings/       ranking, teamRanking
 │   │   └── admin/          matching dashboard
@@ -226,13 +242,13 @@ Any logged-in user can submit a bug report from the UI. Reports are forwarded to
 
 Routes are thin: validate the request, call a service, return JSON or render a template. No business logic lives here.
 
-| File            | Responsibility                                                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `pages.py`      | Serves HTML templates for public pages: home, schedule, regulations, rankings, admin matching dashboard                     |
-| `auth.py`       | Participant register, login, logout, password reset request & confirm; issues JWTs                                          |
-| `teams.py`      | Team create / join (code) / leave / disband / kick; browse available teams; join-request apply / accept / decline / cancel  |
-| `mentors.py`    | Mentor listing, picture serving, team and mentor preference submission / retrieval                                          |
-| `api_routes.py` | Universities & specialties lookups; rankings & regulations data; admin endpoints (matching, registration queue, bug report) |
+| File            | Responsibility                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `pages.py`      | Serves HTML templates for public pages: home (with contact section), schedule, regulations, rankings, admin matching dashboard |
+| `auth.py`       | Participant register, login, logout, password reset request & confirm; issues JWTs                                             |
+| `teams.py`      | Team create / join (code) / leave / disband / kick; browse available teams; join-request apply / accept / decline / cancel     |
+| `mentors.py`    | Mentor listing, picture serving, team and mentor preference submission / retrieval                                             |
+| `api_routes.py` | Universities & specialties lookups; rankings & regulations data; admin endpoints (matching, registration queue, bug report)    |
 
 ### Services (`app/services/`)
 
