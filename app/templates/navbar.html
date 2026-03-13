@@ -62,6 +62,11 @@
           class="nav-link"
           >Teams</a
         >
+        <a
+          href="/rankings"
+          class="nav-link"
+          >Rankings</a
+        >
       </div>
       <div
         class="nav-actions"
@@ -72,13 +77,13 @@
           class="login-btn ghost-btn"
           >Login</a
         >
-        <!-- Registration period has ended — button disabled
+        {% if config.REGISTRATION_OPEN %}
         <a
           href="/registration"
           class="login-btn"
           >Register</a
         >
-        -->
+        {% endif %}
       </div>
     </div>
   </div>

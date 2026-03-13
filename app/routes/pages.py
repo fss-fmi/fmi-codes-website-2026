@@ -20,8 +20,22 @@ def home():
 
 @pages_bp.route("/ranking")
 def ranking_page():
-    """Serve the ranking page"""
+    """Serve the public ranking page (TBD placeholder)"""
     return render_template("rankings/ranking.html")
+
+
+@pages_bp.route("/rankings")
+def rankings_page():
+    """Serve TBD placeholder or live leaderboard depending on RANKINGS_LIVE config"""
+    if current_app.config.get("RANKINGS_LIVE"):
+        return render_template("rankings/rankingsLive.html")
+    return render_template("rankings/rankingsTBD.html")
+
+
+@pages_bp.route("/rankings/live")
+def rankings_live_page():
+    """Direct access to the live rankings page (always shows live, ignores toggle)"""
+    return render_template("rankings/rankingsLive.html")
 
 
 @pages_bp.route("/teamRanking")

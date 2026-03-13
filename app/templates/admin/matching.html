@@ -395,6 +395,83 @@
   .container {
     animation: fadeSlideUp 0.7s ease both;
   }
+
+  /* Score management */
+  .score-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    gap: 12px;
+  }
+  .score-row .team-label {
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .score-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .score-input {
+    width: 100px;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    text-align: right;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .score-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.15);
+  }
+  .score-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+  }
+  .score-save-btn {
+    padding: 5px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    background: rgba(96, 165, 250, 0.1);
+    color: #93c5fd;
+    transition: all 0.2s;
+  }
+  .score-save-btn:hover {
+    background: rgba(96, 165, 250, 0.25);
+  }
+  .score-save-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .score-status {
+    font-size: 11px;
+    min-width: 16px;
+    text-align: center;
+  }
+  .msg-success {
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
 </style>
 {% endblock %} {% block body %}
 <body>
@@ -598,6 +675,49 @@
       >
         <h2>Matching Results</h2>
         <div id="results-content"></div>
+      </div>
+
+      <!-- Team Score Management -->
+      <div class="card">
+        <h2>Team Scores</h2>
+        <p style="color: var(--muted); font-size: 13px; margin-bottom: 16px">
+          Set scores for registered teams. The live rankings page at
+          <a
+            href="/rankings/live"
+            style="color: var(--accent)"
+            >/rankings/live</a
+          >
+          will update automatically. Public page at
+          <a
+            href="/rankings"
+            style="color: var(--accent)"
+            >/rankings</a
+          >
+          shows "To Be Determined".
+        </p>
+        <div
+          id="scores-loading"
+          style="color: var(--muted)"
+        >
+          Loading teams…
+        </div>
+        <div
+          id="scores-content"
+          style="display: none"
+        >
+          <div id="scores-msg"></div>
+          <div id="scores-list"></div>
+          <div style="margin-top: 16px; text-align: right">
+            <button
+              class="run-btn"
+              id="save-all-scores-btn"
+              onclick="saveAllScores()"
+              style="font-size: 14px; padding: 10px 24px"
+            >
+              Save All Scores
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -926,6 +1046,179 @@
       loadRegistrationStatus();
       loadStatus();
       loadResults();
+      loadTeamScores();
+
+      /* ── Team Scores Management ──────────────────────── */
+
+      var _scoreTeams = [];
+
+      async function loadTeamScores() {
+        try {
+          var res = await fetch('/api/admin/teams/scores', {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          if (!res.ok) {
+            document.getElementById('scores-loading').textContent = 'Access denied';
+            return;
+          }
+          var data = await res.json();
+          _scoreTeams = data.teams || [];
+          document.getElementById('scores-loading').style.display = 'none';
+          document.getElementById('scores-content').style.display = 'block';
+          renderScoreRows(_scoreTeams);
+        } catch (e) {
+          document.getElementById('scores-loading').textContent = 'Error loading teams';
+        }
+      }
+
+      function renderScoreRows(teams) {
+        var container = document.getElementById('scores-list');
+        container.innerHTML = '';
+        if (teams.length === 0) {
+          container.innerHTML =
+            '<div style="color:var(--muted);font-size:13px;padding:8px">No registered teams.</div>';
+          return;
+        }
+        teams.forEach(function (t) {
+          var row = document.createElement('div');
+          row.className = 'score-row';
+          row.setAttribute('data-team-id', t.team_id);
+          var scoreVal = t.score != null ? t.score : '';
+          row.innerHTML =
+            '<span class="team-label">' +
+            escHtml(t.team_name) +
+            '</span>' +
+            '<div class="score-input-wrap">' +
+            '<input type="number" step="0.01" min="0" class="score-input" ' +
+            'placeholder="0.00" value="' +
+            scoreVal +
+            '" ' +
+            'data-team-id="' +
+            t.team_id +
+            '" />' +
+            '<button class="score-save-btn" onclick="saveSingleScore(' +
+            t.team_id +
+            ', this)">Save</button>' +
+            '<span class="score-status" id="score-status-' +
+            t.team_id +
+            '"></span>' +
+            '</div>';
+          container.appendChild(row);
+        });
+      }
+
+      async function saveSingleScore(teamId, btn) {
+        var input = document.querySelector('.score-input[data-team-id="' + teamId + '"]');
+        var statusEl = document.getElementById('score-status-' + teamId);
+        if (!input) return;
+
+        var val = input.value.trim();
+        if (val === '') {
+          statusEl.textContent = '⚠️';
+          statusEl.title = 'Enter a score';
+          return;
+        }
+        var score = parseFloat(val);
+        if (isNaN(score) || score < 0) {
+          statusEl.textContent = '⚠️';
+          statusEl.title = 'Invalid score';
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = '…';
+        statusEl.textContent = '';
+
+        try {
+          var res = await fetch('/api/admin/teams/' + teamId + '/score', {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer ' + token,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ score: score }),
+          });
+          var data = await res.json();
+          if (data.success) {
+            statusEl.textContent = '✅';
+            statusEl.title = 'Saved';
+          } else {
+            statusEl.textContent = '❌';
+            statusEl.title = data.error || 'Failed';
+          }
+        } catch (e) {
+          statusEl.textContent = '❌';
+          statusEl.title = 'Network error';
+        }
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      }
+
+      async function saveAllScores() {
+        var btn = document.getElementById('save-all-scores-btn');
+        var msgEl = document.getElementById('scores-msg');
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        msgEl.innerHTML = '';
+
+        var inputs = document.querySelectorAll('.score-input');
+        var success = 0;
+        var failed = 0;
+
+        for (var i = 0; i < inputs.length; i++) {
+          var input = inputs[i];
+          var teamId = input.dataset.teamId;
+          var val = input.value.trim();
+          var statusEl = document.getElementById('score-status-' + teamId);
+
+          if (val === '') {
+            continue;
+          }
+          var score = parseFloat(val);
+          if (isNaN(score) || score < 0) {
+            statusEl.textContent = '⚠️';
+            failed++;
+            continue;
+          }
+
+          try {
+            var res = await fetch('/api/admin/teams/' + teamId + '/score', {
+              method: 'PUT',
+              headers: {
+                Authorization: 'Bearer ' + token,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ score: score }),
+            });
+            var data = await res.json();
+            if (data.success) {
+              statusEl.textContent = '✅';
+              success++;
+            } else {
+              statusEl.textContent = '❌';
+              failed++;
+            }
+          } catch (e) {
+            statusEl.textContent = '❌';
+            failed++;
+          }
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Save All Scores';
+        var msgClass = failed === 0 ? 'msg msg-success' : 'msg msg-warn';
+        msgEl.innerHTML =
+          '<div class="' +
+          msgClass +
+          '">Saved ' +
+          success +
+          ' score(s)' +
+          (failed > 0 ? ', ' + failed + ' failed' : '') +
+          '.</div>';
+        setTimeout(function () {
+          msgEl.innerHTML = '';
+        }, 4000);
+      }
     </script>
   </div>
   <!-- /page-wrap -->

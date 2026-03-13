@@ -342,3 +342,48 @@ def submit_bug_report():
         page_url,
     )
     return jsonify({"success": True, "message": "Bug report submitted — thank you!"}), 202
+
+
+# ── Team Score Rankings ────────────────────────────────────────────
+
+
+@api_bp.route("/teams/rankings", methods=["GET"])
+def get_team_rankings():
+    """Public: get DB-backed team rankings sorted by score descending."""
+    try:
+        rankings = ranking_service.get_team_rankings()
+        return jsonify({"success": True, "rankings": rankings}), 200
+    except Exception as e:
+        logger.error(f"Error fetching team rankings: {e}")
+        return jsonify({"success": False, "error": "Failed to fetch rankings"}), 500
+
+
+@api_bp.route("/admin/teams/<int:team_id>/score", methods=["PUT"])
+@admin_required
+def set_team_score(team_id):
+    """Admin: set the score for a single team."""
+    data = request.get_json(silent=True) or {}
+    valid, result = ranking_service.validate_score(data.get("score"))
+    if not valid:
+        return jsonify({"success": False, "error": result}), 400
+
+    try:
+        updated = ranking_service.update_team_score(team_id, result)
+        if not updated:
+            return jsonify({"success": False, "error": "Team not found"}), 404
+        return jsonify({"success": True, "message": "Score updated"}), 200
+    except Exception as e:
+        logger.error(f"Error updating team score: {e}")
+        return jsonify({"success": False, "error": "Failed to update score"}), 500
+
+
+@api_bp.route("/admin/teams/scores", methods=["GET"])
+@admin_required
+def get_teams_for_scoring():
+    """Admin: get registered teams with current scores for the scoring UI."""
+    try:
+        teams = ranking_service.get_registered_teams_for_scoring()
+        return jsonify({"success": True, "teams": teams}), 200
+    except Exception as e:
+        logger.error(f"Error fetching teams for scoring: {e}")
+        return jsonify({"success": False, "error": "Failed to fetch teams"}), 500

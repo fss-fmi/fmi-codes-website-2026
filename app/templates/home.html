@@ -971,7 +971,7 @@
           working projects.
         </p>
         <div class="hero-actions">
-          <!-- Registration period has ended — button disabled
+          {% if config.REGISTRATION_OPEN %}
           <a
             href="/registration"
             class="btn-primary"
@@ -991,7 +991,7 @@
               <path d="m12 5 7 7-7 7" />
             </svg>
           </a>
-          -->
+          {% endif %}
           <a
             href="/regulations"
             class="btn-secondary"

@@ -25,14 +25,15 @@ def login_page():
 
 @auth_bp.route("/registration", methods=["GET"])
 def registration_page():
-    """Registration period has ended — serve the closed notice page"""
+    """Serve the registration page or the closed notice depending on REGISTRATION_OPEN config"""
+    if current_app.config.get("REGISTRATION_OPEN"):
+        return render_template("auth/registration.html")
     return render_template("auth/registration_closed.html")
 
 
-# Registration period has ended — route disabled
-# @auth_bp.route("/api/auth/register", methods=["POST"])
-# @limiter.limit("10 per minute")
-# def register_participant():
+@auth_bp.route("/api/auth/register", methods=["POST"])
+@limiter.limit("10 per minute")
+def register_participant():
     """Register a new participant and return JWT.
 
     Optimised for concurrent load:
@@ -40,6 +41,8 @@ def registration_page():
     - uniqueness checks + insert happen in a single pooled transaction
     - DB UNIQUE constraints are the real guard against races
     """
+    if not current_app.config.get("REGISTRATION_OPEN"):
+        return jsonify({"success": False, "error": "Registration is closed"}), 403
     data = request.get_json(silent=True) or {}
     required = [
         "first_name",

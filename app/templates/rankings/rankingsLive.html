@@ -1,0 +1,995 @@
+{% extends "base.html" %} {% block title %}Live Rankings{% endblock %} {% block head %}
+<style>
+  :root {
+    --bg: #050816;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --border: rgba(255, 255, 255, 0.06);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --pink: #f472b6;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    --gold: #f59e0b;
+    --silver: #94a3b8;
+    --bronze: #b45309;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 16px 60px;
+    display: flex;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Background layers */
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #60a5fa;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #22d3ee;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
+    }
+  }
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+  .page-wrap {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Particles */
+  .particles {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .particle {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.3;
+  }
+  .particle:nth-child(1) {
+    width: 4px;
+    height: 4px;
+    background: #60a5fa;
+    top: 12%;
+    left: 8%;
+    animation: pfloat1 12s ease-in-out infinite;
+  }
+  .particle:nth-child(2) {
+    width: 6px;
+    height: 6px;
+    background: #22d3ee;
+    top: 22%;
+    right: 12%;
+    animation: pfloat2 15s ease-in-out infinite;
+  }
+  .particle:nth-child(3) {
+    width: 4px;
+    height: 4px;
+    background: #a78bfa;
+    top: 55%;
+    left: 18%;
+    animation: pfloat3 10s ease-in-out infinite;
+  }
+  .particle:nth-child(4) {
+    width: 3px;
+    height: 3px;
+    background: #f472b6;
+    top: 65%;
+    right: 22%;
+    animation: pfloat1 14s ease-in-out infinite;
+  }
+  .particle:nth-child(5) {
+    width: 5px;
+    height: 5px;
+    background: #60a5fa;
+    top: 38%;
+    left: 55%;
+    animation: pfloat2 11s ease-in-out infinite;
+  }
+  .particle:nth-child(6) {
+    width: 4px;
+    height: 4px;
+    background: #22d3ee;
+    top: 78%;
+    left: 40%;
+    animation: pfloat3 13s ease-in-out infinite;
+  }
+  @keyframes pfloat1 {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    50% {
+      transform: translate(20px, -40px);
+    }
+  }
+  @keyframes pfloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    50% {
+      transform: translate(-25px, 25px);
+    }
+  }
+  @keyframes pfloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    50% {
+      transform: translate(15px, 20px);
+    }
+  }
+
+  /* Hero */
+  .hero {
+    text-align: center;
+    padding: 100px 0 40px;
+    animation: fadeSlideUp 0.6s ease both;
+  }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    color: #86efac;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 999px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    animation: livePulse 1.5s ease-in-out infinite;
+  }
+  @keyframes livePulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+    }
+    50% {
+      opacity: 0.7;
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+    }
+  }
+  .hero h1 {
+    font-size: 52px;
+    font-weight: 900;
+    background: linear-gradient(120deg, #60a5fa, #22d3ee, #a78bfa, #f472b6);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: heroGradient 6s ease infinite;
+    letter-spacing: -1.5px;
+    margin-bottom: 8px;
+  }
+  @keyframes heroGradient {
+    0%,
+    100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+  .hero p {
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  /* Loading skeleton */
+  .skeleton-podium {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr 1fr;
+    gap: 20px;
+    align-items: end;
+    margin-bottom: 20px;
+  }
+  .skeleton-card {
+    border-radius: 16px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    border: 1px solid var(--panel-border);
+    overflow: hidden;
+    position: relative;
+  }
+  .skeleton-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.04) 50%,
+      transparent 100%
+    );
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  .sk-tall {
+    height: 320px;
+  }
+  .sk-med {
+    height: 260px;
+  }
+  .skeleton-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .sk-row {
+    height: 72px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+    border: 1px solid var(--panel-border);
+    position: relative;
+    overflow: hidden;
+  }
+  .sk-row::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.03) 50%,
+      transparent 100%
+    );
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    animation: fadeSlideUp 0.6s ease both 0.3s;
+    opacity: 0;
+  }
+  .empty-state .icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+  }
+  .empty-state h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .empty-state p {
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  /* Podium */
+  .podium {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr 1fr;
+    gap: 20px;
+    align-items: end;
+    margin-bottom: 28px;
+    animation: fadeSlideUp 0.6s ease both 0.2s;
+    opacity: 0;
+  }
+  .podium-card {
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    box-shadow: var(--glow);
+    padding: 28px 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    min-height: 280px;
+    transition:
+      transform 0.3s ease,
+      box-shadow 0.3s ease;
+  }
+  .podium-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  }
+  .podium-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    pointer-events: none;
+  }
+  .podium-card.first {
+    transform: translateY(-30px);
+    border-color: rgba(245, 158, 11, 0.45);
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.08), rgba(255, 255, 255, 0.02));
+  }
+  .podium-card.first::after {
+    background: radial-gradient(circle at 30% 20%, rgba(245, 158, 11, 0.15), transparent 50%);
+  }
+  .podium-card.first:hover {
+    transform: translateY(-36px);
+  }
+  .podium-card.first .medal-glow {
+    position: absolute;
+    top: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+    animation: glowPulse 3s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%,
+    100% {
+      opacity: 0.6;
+      transform: translateX(-50%) scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: translateX(-50%) scale(1.15);
+    }
+  }
+
+  .podium-card.second {
+    transform: translateY(-12px);
+    border-color: rgba(148, 163, 184, 0.4);
+    background: linear-gradient(145deg, rgba(148, 163, 184, 0.06), rgba(255, 255, 255, 0.02));
+  }
+  .podium-card.second::after {
+    background: radial-gradient(circle at 30% 20%, rgba(148, 163, 184, 0.1), transparent 50%);
+  }
+  .podium-card.second:hover {
+    transform: translateY(-18px);
+  }
+
+  .podium-card.third {
+    transform: translateY(-6px);
+    border-color: rgba(180, 83, 9, 0.4);
+    background: linear-gradient(145deg, rgba(180, 83, 9, 0.06), rgba(255, 255, 255, 0.02));
+  }
+  .podium-card.third::after {
+    background: radial-gradient(circle at 30% 20%, rgba(180, 83, 9, 0.1), transparent 50%);
+  }
+  .podium-card.third:hover {
+    transform: translateY(-12px);
+  }
+
+  .medal-emoji {
+    font-size: 44px;
+    margin-bottom: 8px;
+  }
+  .podium-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .podium-badge.gold {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fcd34d;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+  }
+  .podium-badge.silver {
+    background: rgba(148, 163, 184, 0.15);
+    color: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+  }
+  .podium-badge.bronze {
+    background: rgba(180, 83, 9, 0.15);
+    color: #fdba74;
+    border: 1px solid rgba(180, 83, 9, 0.4);
+  }
+  .podium-name {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+  }
+  .podium-score {
+    font-size: 32px;
+    font-weight: 900;
+    margin-top: 10px;
+  }
+  .podium-score.gold-score {
+    background: linear-gradient(120deg, #f59e0b, #fcd34d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .podium-score.silver-score {
+    background: linear-gradient(120deg, #94a3b8, #e2e8f0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .podium-score.bronze-score {
+    background: linear-gradient(120deg, #b45309, #fdba74);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .podium-pts-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Grid list 4–18 */
+  .rank-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    animation: fadeSlideUp 0.6s ease both 0.4s;
+    opacity: 0;
+  }
+  .rank-card {
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+    box-shadow: var(--glow);
+    padding: 16px 18px;
+    position: relative;
+    overflow: hidden;
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease,
+      border-color 0.25s ease;
+    animation: cardSlideIn 0.5s ease both;
+    opacity: 0;
+  }
+  @keyframes cardSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .rank-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+    border-color: rgba(96, 165, 250, 0.2);
+  }
+  .rank-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .rank-card-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .rank-num {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--muted);
+    min-width: 28px;
+  }
+  .rank-num.top-half {
+    color: var(--accent);
+  }
+  .rank-team-name {
+    font-size: 15px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+  .rank-score {
+    font-size: 16px;
+    font-weight: 800;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .rank-score.no-score {
+    background: none;
+    -webkit-text-fill-color: var(--muted);
+    font-weight: 600;
+  }
+
+  /* Score bar */
+  .score-bar-bg {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    width: 0;
+    transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .bar-purple {
+    background: linear-gradient(90deg, var(--purple), var(--pink));
+  }
+  .bar-cyan {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  }
+  .bar-muted {
+    background: linear-gradient(90deg, #475569, #64748b);
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    body {
+      padding: 0 12px 40px;
+    }
+    .hero {
+      padding: 80px 0 28px;
+    }
+    .hero h1 {
+      font-size: 34px;
+    }
+    .podium {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    .podium-card {
+      min-height: 200px;
+      padding: 22px 16px;
+    }
+    .podium-card.first,
+    .podium-card.second,
+    .podium-card.third {
+      transform: none;
+    }
+    .podium-card.first:hover,
+    .podium-card.second:hover,
+    .podium-card.third:hover {
+      transform: translateY(-4px);
+    }
+    .rank-grid {
+      grid-template-columns: 1fr;
+    }
+    .skeleton-podium {
+      grid-template-columns: 1fr;
+    }
+    .skeleton-list {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 400px) {
+    .hero h1 {
+      font-size: 28px;
+    }
+    .podium-card {
+      padding: 16px 12px;
+    }
+  }
+</style>
+{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+  <div class="dot-grid"></div>
+  <div class="spotlight"></div>
+  <div class="blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="noise"></div>
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <div class="page-wrap">
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-badge">
+        <div class="live-dot"></div>
+        Live
+      </div>
+      <h1>LEADERBOARD</h1>
+      <p>Real-time team rankings — updated by the jury</p>
+    </div>
+
+    <!-- Loading skeleton -->
+    <div id="skeleton">
+      <div class="skeleton-podium">
+        <div class="skeleton-card sk-med"></div>
+        <div class="skeleton-card sk-tall"></div>
+        <div class="skeleton-card sk-med"></div>
+      </div>
+      <div class="skeleton-list">
+        <div class="sk-row"></div>
+        <div class="sk-row"></div>
+        <div class="sk-row"></div>
+        <div class="sk-row"></div>
+        <div class="sk-row"></div>
+        <div class="sk-row"></div>
+      </div>
+    </div>
+
+    <!-- Empty state (hidden by default) -->
+    <div
+      id="empty-state"
+      class="empty-state"
+      style="display: none"
+    >
+      <div class="icon">📋</div>
+      <h2>Scores Not Published Yet</h2>
+      <p>The jury hasn't submitted any scores yet. Check back soon!</p>
+    </div>
+
+    <!-- Podium (top 3) — filled by JS -->
+    <div
+      id="podium"
+      class="podium"
+      style="display: none"
+    ></div>
+
+    <!-- Grid (4–18) — filled by JS -->
+    <div
+      id="rank-grid"
+      class="rank-grid"
+      style="display: none"
+    ></div>
+  </div>
+
+  <script>
+    /* ── Navbar loader ─────────────────────────── */
+    (async function () {
+      try {
+        const res = await fetch('/navbar.html');
+        if (!res.ok) return;
+        const html = await res.text();
+        const slot = document.getElementById('navbar-slot');
+        if (!slot) return;
+        slot.innerHTML = html;
+        slot.querySelectorAll('script').forEach((old) => {
+          const s = document.createElement('script');
+          s.textContent = old.textContent;
+          document.head.appendChild(s);
+          s.remove();
+        });
+      } catch {}
+    })();
+
+    /* ── Helpers ───────────────────────────────── */
+    function escHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function animateScore(el, target, duration) {
+      const start = performance.now();
+      const formatted = (v) => v.toFixed(2);
+      function tick(now) {
+        const t = Math.min((now - start) / duration, 1);
+        const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
+        el.textContent = formatted(ease * target);
+        if (t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+
+    /* ── Podium builder ────────────────────────── */
+    function buildPodium(teams) {
+      const podium = document.getElementById('podium');
+      podium.innerHTML = '';
+
+      // Display order: 2nd | 1st | 3rd
+      const slots = [
+        {
+          idx: 1,
+          cls: 'second',
+          medal: '🥈',
+          badge: 'silver',
+          label: '2nd Place',
+          scoreClass: 'silver-score',
+        },
+        {
+          idx: 0,
+          cls: 'first',
+          medal: '🏆',
+          badge: 'gold',
+          label: '1st Place',
+          scoreClass: 'gold-score',
+        },
+        {
+          idx: 2,
+          cls: 'third',
+          medal: '🥉',
+          badge: 'bronze',
+          label: '3rd Place',
+          scoreClass: 'bronze-score',
+        },
+      ];
+
+      slots.forEach((slot) => {
+        const team = teams[slot.idx];
+        if (!team) return;
+        const card = document.createElement('div');
+        card.className = 'podium-card ' + slot.cls;
+
+        let glow = '';
+        if (slot.cls === 'first') glow = '<div class="medal-glow"></div>';
+
+        const score = team.score != null ? team.score : 0;
+        card.innerHTML =
+          glow +
+          '<div class="medal-emoji">' +
+          slot.medal +
+          '</div>' +
+          '<div class="podium-badge ' +
+          slot.badge +
+          '">' +
+          slot.label +
+          '</div>' +
+          '<div class="podium-name">' +
+          escHtml(team.team_name) +
+          '</div>' +
+          '<div class="podium-score ' +
+          slot.scoreClass +
+          '" data-score="' +
+          score +
+          '">0.00</div>' +
+          '<div class="podium-pts-label">points</div>';
+        podium.appendChild(card);
+      });
+
+      // Animate score counters
+      podium.querySelectorAll('.podium-score').forEach((el) => {
+        const target = parseFloat(el.dataset.score) || 0;
+        if (target > 0) animateScore(el, target, 1500);
+        else el.textContent = '—';
+      });
+    }
+
+    /* ── Grid builder (4–18) ───────────────────── */
+    function buildGrid(teams, maxScore) {
+      const grid = document.getElementById('rank-grid');
+      grid.innerHTML = '';
+
+      teams.forEach((team, i) => {
+        const card = document.createElement('div');
+        card.className = 'rank-card';
+        card.style.animationDelay = i * 60 + 'ms';
+
+        const rank = team.rank || i + 4;
+        const isTopHalf = rank <= 9;
+        const score = team.score != null ? team.score : null;
+        const barPct = score != null && maxScore > 0 ? (score / maxScore) * 100 : 0;
+
+        let barClass = 'bar-muted';
+        if (rank <= 6) barClass = 'bar-purple';
+        else if (rank <= 10) barClass = 'bar-cyan';
+
+        card.innerHTML =
+          '<div class="rank-card-top">' +
+          '<div class="rank-card-left">' +
+          '<span class="rank-num ' +
+          (isTopHalf ? 'top-half' : '') +
+          '">#' +
+          rank +
+          '</span>' +
+          '<span class="rank-team-name">' +
+          escHtml(team.team_name) +
+          '</span>' +
+          '</div>' +
+          '<span class="rank-score ' +
+          (score == null ? 'no-score' : '') +
+          '">' +
+          (score != null ? score.toFixed(2) + ' pts' : '—') +
+          '</span>' +
+          '</div>' +
+          '<div class="score-bar-bg">' +
+          '<div class="score-bar-fill ' +
+          barClass +
+          '" data-width="' +
+          barPct +
+          '"></div>' +
+          '</div>';
+
+        grid.appendChild(card);
+      });
+
+      // Trigger bar animations after a tick
+      requestAnimationFrame(() => {
+        grid.querySelectorAll('.score-bar-fill').forEach((bar) => {
+          bar.style.width = bar.dataset.width + '%';
+        });
+      });
+    }
+
+    /* ── Main fetch & render ───────────────────── */
+    async function loadRankings() {
+      try {
+        const res = await fetch('/api/teams/rankings');
+        const data = await res.json();
+        const rankings = data && data.success && Array.isArray(data.rankings) ? data.rankings : [];
+
+        document.getElementById('skeleton').style.display = 'none';
+
+        // Check if any team has a score
+        const hasScores = rankings.some((t) => t.score != null);
+        if (!hasScores || rankings.length === 0) {
+          document.getElementById('empty-state').style.display = 'block';
+          return;
+        }
+
+        const top3 = rankings.slice(0, 3);
+        const rest = rankings.slice(3);
+        const maxScore = rankings.reduce((m, t) => Math.max(m, t.score || 0), 0);
+
+        document.getElementById('podium').style.display = 'grid';
+        buildPodium(top3);
+
+        if (rest.length > 0) {
+          document.getElementById('rank-grid').style.display = 'grid';
+          buildGrid(rest, maxScore);
+        }
+      } catch (e) {
+        document.getElementById('skeleton').style.display = 'none';
+        const empty = document.getElementById('empty-state');
+        empty.querySelector('h2').textContent = 'Error Loading Rankings';
+        empty.querySelector('p').textContent = 'Something went wrong. Please try again later.';
+        empty.style.display = 'block';
+      }
+    }
+
+    /* ── Init ──────────────────────────────────── */
+    document.addEventListener('DOMContentLoaded', loadRankings);
+
+    // Auto-refresh every 30s
+    setInterval(loadRankings, 30000);
+
+    // Spotlight follows mouse
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
+{% endblock %}
