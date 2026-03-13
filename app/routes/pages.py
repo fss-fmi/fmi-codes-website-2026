@@ -1,6 +1,6 @@
 """Static page routes"""
 
-from flask import render_template
+from flask import current_app, render_template
 
 from app.routes import pages_bp
 
@@ -8,7 +8,14 @@ from app.routes import pages_bp
 @pages_bp.route("/")
 def home():
     """Serve the home page"""
-    return render_template("home.html")
+    return render_template(
+        "home.html",
+        discord_url=current_app.config.get("DISCORD_URL", ""),
+        instagram_url=current_app.config.get("INSTAGRAM_URL", ""),
+        facebook_url=current_app.config.get("FACEBOOK_URL", ""),
+        contact_email=current_app.config.get("CONTACT_EMAIL", ""),
+        contact_phone=current_app.config.get("CONTACT_PHONE", ""),
+    )
 
 
 @pages_bp.route("/ranking")

@@ -1,9 +1,12 @@
 """Team management routes — JWT-protected"""
 
+import threading
+
 from flask import current_app, g, jsonify, render_template, request
 
 from app.database import execute_query
 from app.routes import teams_bp
+from app.services.email_service import send_join_request_notification
 from app.services.team_service import MAX_TEAM_MEMBERS, TeamService
 from app.utils.auth_decorators import captain_required, participant_required, token_required
 
@@ -95,6 +98,40 @@ def get_registered_teams():
         "teams": teams_list,
         "can_apply": can_apply,
         "max_registered": 18,
+    }), 200
+
+
+@teams_bp.route("/api/teams/<int:team_id>/members/public", methods=["GET"])
+def get_team_members_public(team_id):
+    """Public read-only endpoint: first+last names of active members in a registered team.
+
+    Read-only SELECT under PostgreSQL MVCC — no locking needed.
+    Only registered teams are exposed (privacy guard for unregistered teams).
+    """
+    team = execute_query(
+        current_app,
+        "SELECT id FROM teams WHERE id = %s AND is_registered = TRUE",
+        (team_id,),
+        fetch_one=True,
+    )
+    if not team:
+        return jsonify({"success": False, "error": "Team not found"}), 404
+
+    members = execute_query(
+        current_app,
+        """
+        SELECT first_name, last_name
+        FROM participants
+        WHERE team_id = %s AND status = 'active'
+        ORDER BY is_captain DESC, created_at
+        """,
+        (team_id,),
+        fetch_all=True,
+    ) or []
+
+    return jsonify({
+        "success": True,
+        "members": [{"first_name": m["first_name"], "last_name": m["last_name"]} for m in members],
     }), 200
 
 
@@ -268,10 +305,48 @@ def get_my_applications():
 @participant_required
 def apply_to_team(team_id):
     """Submit a join request to a team."""
-    success, message = TeamService.apply_to_team(g.current_user["user_id"], team_id)
-    if success:
-        return jsonify({"success": True, "message": message}), 201
-    return jsonify({"success": False, "error": message}), 400
+    participant_id = g.current_user["user_id"]
+    success, message = TeamService.apply_to_team(participant_id, team_id)
+    if not success:
+        return jsonify({"success": False, "error": message}), 400
+
+    # Fire join-request notification email to the team captain in the background.
+    # A failed email must never roll back a successful application.
+    try:
+        row = execute_query(
+            current_app,
+            """
+            SELECT p_cap.email        AS captain_email,
+                   p_cap.first_name   AS captain_first_name,
+                   t.team_name,
+                   p_app.first_name   AS app_first_name,
+                   p_app.last_name    AS app_last_name
+            FROM teams t
+            JOIN participants p_cap ON t.captain_id = p_cap.id
+            JOIN participants p_app ON p_app.id = %s
+            WHERE t.id = %s
+            """,
+            (participant_id, team_id),
+            fetch_one=True,
+        )
+        if row:
+            app_config = dict(current_app.config)
+            threading.Thread(
+                target=send_join_request_notification,
+                args=(
+                    app_config,
+                    row["captain_email"],
+                    row["captain_first_name"],
+                    row["team_name"],
+                    row["app_first_name"],
+                    row["app_last_name"],
+                ),
+                daemon=True,
+            ).start()
+    except Exception:
+        pass  # Notification failure must not affect the response
+
+    return jsonify({"success": True, "message": message}), 201
 
 
 @teams_bp.route("/api/teams/<int:team_id>/requests", methods=["GET"])

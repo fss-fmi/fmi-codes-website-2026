@@ -45,6 +45,13 @@ class Config:
     # Discord webhook for bug reports — set DISCORD_BUG_WEBHOOK_URL in .env
     DISCORD_BUG_WEBHOOK_URL = os.environ.get("DISCORD_BUG_WEBHOOK_URL", "")
 
+    # Social media / contact links
+    DISCORD_URL = os.environ.get("DISCORD_URL", "")
+    INSTAGRAM_URL = os.environ.get("INSTAGRAM_URL", "")
+    FACEBOOK_URL = os.environ.get("FACEBOOK_URL", "")
+    CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
+    CONTACT_PHONE = os.environ.get("CONTACT_PHONE", "")
+
     TEMPLATES_FOLDER = BASE_DIR / "app" / "templates"
     STATIC_FOLDER = BASE_DIR / "app" / "static"
     MENTORS_STAY_TUNED = os.environ.get("MENTORS_STAY_TUNED", "false").lower() == "true"
