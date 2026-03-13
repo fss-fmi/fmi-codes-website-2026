@@ -25,13 +25,14 @@ def login_page():
 
 @auth_bp.route("/registration", methods=["GET"])
 def registration_page():
-    """Serve the participant registration form"""
-    return render_template("auth/registration.html")
+    """Registration period has ended — serve the closed notice page"""
+    return render_template("auth/registration_closed.html")
 
 
-@auth_bp.route("/api/auth/register", methods=["POST"])
-@limiter.limit("10 per minute")
-def register_participant():
+# Registration period has ended — route disabled
+# @auth_bp.route("/api/auth/register", methods=["POST"])
+# @limiter.limit("10 per minute")
+# def register_participant():
     """Register a new participant and return JWT.
 
     Optimised for concurrent load:
