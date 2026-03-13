@@ -1218,8 +1218,12 @@
     </div>
 
     <div class="contact-inner">
-      <!-- Discord feature -->
-      <div class="discord-feature reveal">
+      <!-- Discord feature — only shown to logged-in users (JWT in localStorage) -->
+      <div
+        class="discord-feature reveal"
+        id="discord-section"
+        style="display: none"
+      >
         <div class="discord-logo-wrap">
           <svg
             width="60"
@@ -1262,8 +1266,22 @@
         {% endif %}
       </div>
 
-      <!-- Divider -->
-      <div class="contact-divider reveal reveal-delay-1"><span>Other channels</span></div>
+      <!-- Divider — only shown alongside Discord for logged-in users -->
+      <div
+        class="contact-divider reveal reveal-delay-1"
+        id="discord-divider"
+        style="display: none"
+      >
+        <span>Other channels</span>
+      </div>
+
+      <!-- Divider — shown to logged-out users instead of the Discord divider -->
+      <div
+        class="contact-divider reveal reveal-delay-1"
+        id="contact-divider"
+      >
+        <span>Contact us at</span>
+      </div>
 
       <!-- Social pills -->
       <div class="social-row reveal reveal-delay-2">
@@ -1477,6 +1495,16 @@
     );
 
     document.querySelectorAll('.reveal,.bento-card').forEach((el) => revealObserver.observe(el));
+
+    // Show Discord section and divider only for logged-in users
+    if (localStorage.getItem('token')) {
+      const discordSection = document.getElementById('discord-section');
+      const discordDivider = document.getElementById('discord-divider');
+      const contactDivider = document.getElementById('contact-divider');
+      if (discordSection) discordSection.style.display = '';
+      if (discordDivider) discordDivider.style.display = '';
+      if (contactDivider) contactDivider.style.display = 'none';
+    }
   </script>
 </body>
 {% endblock %}
