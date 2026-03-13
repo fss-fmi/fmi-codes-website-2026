@@ -1,6 +1,7 @@
 """PostgreSQL Database initialization and utilities — connection-pooled"""
 
 import logging
+import time
 from contextlib import contextmanager
 
 import psycopg2
@@ -18,47 +19,57 @@ _pool_timeout = 5
 def init_database(app):
     """Initialize a ThreadedConnectionPool and verify the schema exists."""
     global _pool, _pool_timeout
-    try:
-        min_conn = app.config.get("DB_POOL_MIN", 2)
-        max_conn = app.config.get("DB_POOL_MAX", 20)
-        _pool_timeout = app.config.get("DB_POOL_TIMEOUT", 5)
+    
+    min_conn = app.config.get("DB_POOL_MIN", 2)
+    max_conn = app.config.get("DB_POOL_MAX", 20)
+    _pool_timeout = app.config.get("DB_POOL_TIMEOUT", 5)
+    
+    max_retries = 5
+    retry_delay = 3
 
-        _pool = ThreadedConnectionPool(
-            min_conn,
-            max_conn,
-            app.config["DATABASE_URL"],
-            cursor_factory=RealDictCursor,
-        )
-
-        # Quick schema check using a pooled connection
-        conn = _pool.getconn()
+    for attempt in range(1, max_retries + 1):
         try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT EXISTS(
-                    SELECT FROM information_schema.tables
-                    WHERE table_name = 'teams'
-                );
-            """)
-            tables_exist = cursor.fetchone()["exists"]
-            if not tables_exist:
-                logger.warning("Database schema not found. Please run schema.sql manually.")
-                logger.warning(
-                    "Execute: psql -U postgres -d fmi_hackathon_2026 -f database/schema.sql"
-                )
-            cursor.close()
-        finally:
-            _pool.putconn(conn)
+            _pool = ThreadedConnectionPool(
+                min_conn,
+                max_conn,
+                app.config["DATABASE_URL"],
+                cursor_factory=RealDictCursor,
+            )
 
-        logger.info(f"✓ PostgreSQL connection pool ready (min={min_conn}, max={max_conn})")
+            # Quick schema check using a pooled connection
+            conn = _pool.getconn()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT EXISTS(
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = 'teams'
+                    );
+                """)
+                tables_exist = cursor.fetchone()["exists"]
+                if not tables_exist:
+                    logger.warning("Database schema not found. Please run schema.sql manually.")
+                    logger.warning(
+                        "Execute: psql -U postgres -d fmi_hackathon_2026 -f database/schema.sql"
+                    )
+                cursor.close()
+            finally:
+                _pool.putconn(conn)
 
-    except psycopg2.OperationalError as e:
-        logger.error(f"Cannot connect to PostgreSQL: {e}")
-        logger.error("Make sure PostgreSQL is running and credentials are correct")
-        raise
-    except Exception as e:
-        logger.error(f"Database initialization error: {e}")
-        raise
+            logger.info(f"✓ PostgreSQL connection pool ready (min={min_conn}, max={max_conn})")
+            return  # Exit the initialization function entirely on success
+
+        except psycopg2.OperationalError as e:
+            logger.warning(f"Database connection attempt {attempt}/{max_retries} failed: {e}")
+            if attempt < max_retries:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error("Make sure PostgreSQL is running and credentials are correct.")
+                raise  # Exhausted retries, crash the worker
+        except Exception as e:
+            logger.error(f"Database initialization error: {e}")
+            raise
 
 
 def close_pool():
@@ -77,7 +88,6 @@ def get_db_connection(app=None):
     """
     if _pool is None:
         raise RuntimeError("Connection pool not initialized — call init_database first")
-    import time
 
     deadline = time.monotonic() + _pool_timeout
     while True:
@@ -120,18 +130,7 @@ def get_db_cursor(app=None, commit=True):
 
 
 def execute_query(app, query, params=None, fetch_one=False, fetch_all=False):
-    """Execute a query and optionally fetch results
-
-    Args:
-        app: Flask application instance (kept for back-compat, pool is module-level)
-        query: SQL query string (use %s for parameters)
-        params: Tuple or list of parameters
-        fetch_one: If True, fetch single row
-        fetch_all: If True, fetch all rows
-
-    Returns:
-        Query result or None
-    """
+    """Execute a query and optionally fetch results"""
     with get_db_cursor(app) as cursor:
         cursor.execute(query, params or ())
 
@@ -143,16 +142,7 @@ def execute_query(app, query, params=None, fetch_one=False, fetch_all=False):
 
 
 def execute_insert(app, query, params):
-    """Execute INSERT and return generated ID
-
-    Args:
-        app: Flask application instance
-        query: SQL query string with RETURNING id clause
-        params: Tuple or list of parameters
-
-    Returns:
-        Generated ID or None
-    """
+    """Execute INSERT and return generated ID"""
     try:
         with get_db_cursor(app) as cursor:
             cursor.execute(query, params)
@@ -167,16 +157,7 @@ def execute_insert(app, query, params):
 
 
 def execute_update(app, query, params):
-    """Execute UPDATE/DELETE and return number of affected rows
-
-    Args:
-        app: Flask application instance
-        query: SQL query string
-        params: Tuple or list of parameters
-
-    Returns:
-        Number of rows affected
-    """
+    """Execute UPDATE/DELETE and return number of affected rows"""
     try:
         with get_db_cursor(app) as cursor:
             cursor.execute(query, params)
@@ -187,16 +168,7 @@ def execute_update(app, query, params):
 
 
 def execute_batch(app, query, params_list):
-    """Execute batch INSERT operations efficiently
-
-    Args:
-        app: Flask application instance
-        query: SQL query string
-        params_list: List of parameter tuples
-
-    Returns:
-        List of generated IDs or None
-    """
+    """Execute batch INSERT operations efficiently"""
     try:
         with get_db_cursor(app) as cursor:
             if "RETURNING" in query.upper():
@@ -206,5 +178,4 @@ def execute_batch(app, query, params_list):
                 execute_values(cursor, query, params_list)
                 return cursor.rowcount
     except Exception as e:
-        logger.error(f"Batch operation error: {e}")
-        raise
+        logger
