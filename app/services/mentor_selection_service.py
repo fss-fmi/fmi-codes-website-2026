@@ -30,19 +30,28 @@ def set_team_mentor_preferences(team_id, preferences):
     if len(set(mentor_ids)) != 3:
         return False, "All three mentors must be different"
 
-    # Verify all mentors exist and are active
-    for mid in mentor_ids:
-        m = execute_query(
-            current_app,
-            "SELECT id FROM mentors WHERE id = %s AND status = 'active'",
-            (mid,),
-            fetch_one=True,
-        )
-        if not m:
-            return False, f"Mentor {mid} not found or inactive"
-
     try:
         with get_db_cursor(current_app) as cursor:
+            # Lock the team row for the duration of this transaction so that a
+            # concurrent double-submit (network retry / double-click) from the
+            # same captain cannot interleave their DELETE+INSERT sequences.
+            cursor.execute(
+                "SELECT id FROM teams WHERE id = %s FOR UPDATE",
+                (team_id,),
+            )
+            if not cursor.fetchone():
+                return False, "Team not found"
+
+            # Validate mentors inside the transaction to close the TOCTOU window
+            # between the check and the INSERT (no FK enforces status='active').
+            for mid in mentor_ids:
+                cursor.execute(
+                    "SELECT id FROM mentors WHERE id = %s AND status = 'active'",
+                    (mid,),
+                )
+                if not cursor.fetchone():
+                    return False, f"Mentor {mid} not found or inactive"
+
             cursor.execute("DELETE FROM team_mentor_preferences WHERE team_id = %s", (team_id,))
             for pref in preferences:
                 cursor.execute(
@@ -91,19 +100,28 @@ def set_mentor_team_preferences(mentor_id, preferences):
     if len(set(team_ids)) != 3:
         return False, "All three teams must be different"
 
-    # Verify all teams exist and are active
-    for tid in team_ids:
-        t = execute_query(
-            current_app,
-            "SELECT id FROM teams WHERE id = %s AND status = 'active'",
-            (tid,),
-            fetch_one=True,
-        )
-        if not t:
-            return False, f"Team {tid} not found or not active"
-
     try:
         with get_db_cursor(current_app) as cursor:
+            # Lock the mentor row for the duration of this transaction so that a
+            # concurrent double-submit cannot interleave their DELETE+INSERT sequences.
+            cursor.execute(
+                "SELECT id FROM mentors WHERE id = %s FOR UPDATE",
+                (mentor_id,),
+            )
+            if not cursor.fetchone():
+                return False, "Mentor not found"
+
+            # Validate teams inside the transaction to close the TOCTOU window.
+            # Require active AND registered — matches the ranking UI filter so a
+            # mentor cannot rank a team that isn't eligible for the algorithm.
+            for tid in team_ids:
+                cursor.execute(
+                    "SELECT id FROM teams WHERE id = %s AND status = 'active' AND is_registered = TRUE",
+                    (tid,),
+                )
+                if not cursor.fetchone():
+                    return False, f"Team {tid} not found or not eligible"
+
             cursor.execute("DELETE FROM mentor_team_preferences WHERE mentor_id = %s", (mentor_id,))
             for pref in preferences:
                 cursor.execute(

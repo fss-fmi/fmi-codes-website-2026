@@ -232,6 +232,11 @@ def save_matching_results(assignments):
     """
     try:
         with get_db_cursor(current_app) as cursor:
+            # Serialize concurrent saves with a dedicated advisory lock.
+            # Key 2 is distinct from the team-mutation lock (key 1) to avoid
+            # accidental deadlocks.  Two simultaneous admin "run matching" calls
+            # will now queue up here rather than racing on DELETE FROM team_mentors.
+            cursor.execute("SELECT pg_advisory_xact_lock(2)")
             cursor.execute("DELETE FROM team_mentors")
             for team_id, mentor_id in assignments:
                 cursor.execute(
