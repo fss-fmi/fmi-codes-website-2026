@@ -31,13 +31,6 @@ def rankings_live_page():
     """Direct access to the live rankings page (always shows live, ignores toggle)"""
     return render_template("rankings/rankingsLive.html")
 
-
-@pages_bp.route("/teamRanking")
-def team_ranking_page():
-    """Serve the team ranking page"""
-    return render_template("rankings/teamRanking.html")
-
-
 @pages_bp.route("/regulations")
 def regulations_page():
     """Serve the regulations page"""

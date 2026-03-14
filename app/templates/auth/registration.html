@@ -1,16 +1,16 @@
-{% extends "base.html" %} {% block title %}Register — FMI Codes{% endblock %} {% block head %}
+{% extends "base.html" %} {% block title %}Register — Mission Control{% endblock %} {% block head %}
 <style>
   :root {
     --bg: #050816;
-    --bg-card: rgba(255, 255, 255, 0.03);
-    --border: rgba(255, 255, 255, 0.06);
-    --border-glow: rgba(96, 165, 250, 0.25);
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #60a5fa;
     --accent-2: #22d3ee;
     --purple: #a78bfa;
     --pink: #f472b6;
+    --emerald: #34d399;
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
   *,
   *::before,
@@ -29,8 +29,10 @@
     min-height: 100vh;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
   }
 
+  /* ── Background layers (Dotted Grid & Original Blob Colors) ── */
   .dot-grid {
     position: fixed;
     inset: 0;
@@ -65,13 +67,13 @@
     position: absolute;
     border-radius: 50%;
     filter: blur(120px);
-    opacity: 0.15;
+    opacity: 0.13;
     will-change: transform;
   }
   .blob-1 {
     width: 700px;
     height: 700px;
-    background: #60a5fa;
+    background: #7dd3fc;
     top: -15%;
     left: -10%;
     animation: blobFloat1 18s ease-in-out infinite;
@@ -79,7 +81,7 @@
   .blob-2 {
     width: 500px;
     height: 500px;
-    background: #22d3ee;
+    background: #f9a8d4;
     top: 40%;
     right: -12%;
     animation: blobFloat2 22s ease-in-out infinite;
@@ -129,10 +131,51 @@
     background-repeat: repeat;
     background-size: 128px 128px;
   }
+
   .page-wrap {
     position: relative;
     z-index: 2;
     width: 100%;
+  }
+
+  /* ── Layout ── */
+  .container {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+
+  /* ── Form Card (Glassmorphism) ── */
+  .form-card {
+    position: relative;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    padding: 40px 36px;
+    box-shadow: var(--card-glow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    animation: fadeSlideUp 0.8s ease both;
+    overflow: hidden;
+  }
+  .form-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .form-card > * {
+    position: relative;
+    z-index: 1;
   }
 
   @keyframes fadeSlideUp {
@@ -146,36 +189,36 @@
     }
   }
 
-  .container {
-    width: 100%;
-    max-width: 560px;
-    margin: 0 auto;
-    padding: 24px 16px 60px;
-  }
-  .form-card {
-    position: relative;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 40px 36px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(12px);
-    animation: fadeSlideUp 0.8s ease both;
-    overflow: hidden;
-  }
+  /* ── Typography & Forms ── */
   h1 {
-    font-size: 28px;
-    font-weight: 700;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    font-size: 32px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    background-size: 200% auto;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    margin-bottom: 8px;
+    background-clip: text;
+    animation: shimmer 4s linear infinite;
+    margin-bottom: 6px;
+    padding-bottom: 0.15em; /* Anti-clipping */
+    letter-spacing: -0.02em;
   }
+  @keyframes shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+
   .subtitle {
     color: var(--muted);
     margin-bottom: 24px;
     font-size: 15px;
+    line-height: 1.5;
   }
+
   .form-row {
     display: flex;
     gap: 16px;
@@ -183,31 +226,39 @@
   .form-row .form-group {
     flex: 1;
   }
+
   .form-group {
-    margin-bottom: 18px;
+    margin-bottom: 20px;
   }
   .form-group label {
     display: block;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 600;
     color: var(--muted);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .form-group input,
   .form-group select {
     width: 100%;
-    padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
     color: var(--text);
     font-family: inherit;
     font-size: 15px;
     outline: none;
-    transition: border-color 0.2s;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
   }
   .form-group input:focus,
   .form-group select:focus {
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+  }
+  .form-group input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
   }
   .form-group select option {
     background: #0b1021;
@@ -219,27 +270,29 @@
     font-style: normal;
     font-weight: 600;
   }
+
   .submit-btn {
     width: 100%;
     padding: 14px;
     margin-top: 8px;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     color: #0b1021;
     font-family: inherit;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     transition:
-      transform 0.2s,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(96, 165, 250, 0.3);
     position: relative;
     overflow: hidden;
   }
   .submit-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+    box-shadow: 0 8px 25px rgba(96, 165, 250, 0.45);
   }
   .submit-btn::after {
     content: '';
@@ -260,69 +313,96 @@
   .submit-btn:hover::after {
     left: 120%;
   }
+  .submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
   .error-msg {
     background: rgba(239, 68, 68, 0.15);
     border: 1px solid rgba(239, 68, 68, 0.3);
     color: #fca5a5;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
+    padding: 14px;
+    border-radius: 10px;
+    margin-bottom: 20px;
     font-size: 14px;
+    font-weight: 500;
   }
   .success-msg {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    color: #86efac;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    color: var(--emerald);
+    padding: 14px;
+    border-radius: 10px;
+    margin-bottom: 20px;
     font-size: 14px;
+    font-weight: 500;
   }
+
   .alt-action {
     text-align: center;
-    margin-top: 20px;
+    margin-top: 24px;
     color: var(--muted);
     font-size: 14px;
   }
   .alt-action a {
     color: var(--accent);
     text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
   }
   .alt-action a:hover {
-    text-decoration: underline;
+    color: var(--accent-2);
   }
+
   @media (max-width: 500px) {
     .form-row {
       flex-direction: column;
       gap: 0;
     }
     .form-card {
-      padding: 28px 20px;
+      padding: 32px 24px;
     }
     .container {
-      padding: 100px 12px 40px;
+      padding: 16px 16px 40px;
+    }
+    h1 {
+      font-size: 28px;
     }
   }
 </style>
 {% endblock %} {% block body %}
 <body>
-  <div class="dot-grid"></div>
+  <div id="navbar-slot"></div>
+
+  <div
+    class="dot-grid"
+    aria-hidden="true"
+  ></div>
   <div
     class="spotlight"
     id="spotlight"
+    aria-hidden="true"
   ></div>
-  <div class="blobs">
+  <div
+    class="blobs"
+    aria-hidden="true"
+  >
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
   </div>
-  <div class="noise"></div>
+  <div
+    class="noise"
+    aria-hidden="true"
+  ></div>
 
   <div class="page-wrap">
-    <div id="navbar-slot"></div>
     <div class="container">
       <div class="form-card">
-        <h1>Participant Registration</h1>
+        <h1>Register</h1>
         <p class="subtitle">Create your account to join the hackathon</p>
 
         <div
@@ -445,7 +525,6 @@
             </select>
           </div>
 
-          <!-- Hidden fields for "Other" university -->
           <div
             id="other-uni-fields"
             style="display: none"
@@ -455,7 +534,7 @@
               <input
                 type="text"
                 id="other_uni_name"
-                placeholder="e.g. My University"
+                placeholder="e.g. Sofia University"
               />
             </div>
             <div class="form-row">
@@ -489,7 +568,6 @@
             </select>
           </div>
 
-          <!-- Hidden field for "Other" specialty -->
           <div
             id="other-spec-fields"
             style="display: none"
@@ -499,7 +577,7 @@
               <input
                 type="text"
                 id="other_spec_name"
-                placeholder="e.g. Robotics"
+                placeholder="e.g. Software Engineering"
               />
             </div>
           </div>
@@ -507,16 +585,16 @@
           <button
             type="submit"
             class="submit-btn"
+            id="submitBtn"
           >
             Register
           </button>
         </form>
 
-        <p class="alt-action">Already have an account? <a href="/login">Login here</a></p>
+        <p class="alt-action">Already have an account? <a href="/login">Sign in here</a></p>
       </div>
     </div>
   </div>
-  <!-- /page-wrap -->
 
   <script>
     /* Spotlight tracking */
@@ -546,7 +624,7 @@
     }
     loadNavbar();
 
-    // Load dropdowns from API (only seed data shown)
+    // Load dropdowns from API
     (async () => {
       try {
         const [uniRes, specRes] = await Promise.all([
@@ -595,8 +673,13 @@
       e.preventDefault();
       const errEl = document.getElementById('error-msg');
       const sucEl = document.getElementById('success-msg');
+      const btn = document.getElementById('submitBtn');
+      const originalBtnText = btn.textContent;
+
       errEl.style.display = 'none';
       sucEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Registering...';
 
       let universityId = document.getElementById('university_id').value;
       let specialtyId = document.getElementById('specialty_id').value;
@@ -607,11 +690,15 @@
           const uniName = document.getElementById('other_uni_name').value.trim();
           const uniCity = document.getElementById('other_uni_city').value.trim();
           const uniCountry = document.getElementById('other_uni_country').value.trim();
+
           if (!uniName || !uniCity || !uniCountry) {
             errEl.textContent = 'Please fill in the university name, city, and country.';
             errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = originalBtnText;
             return;
           }
+
           const uniRes = await fetch('/api/universities', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -621,6 +708,8 @@
           if (!uniData.success) {
             errEl.textContent = uniData.error || 'Failed to create university';
             errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = originalBtnText;
             return;
           }
           universityId = uniData.id;
@@ -632,6 +721,8 @@
           if (!specName) {
             errEl.textContent = 'Please fill in the specialty name.';
             errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = originalBtnText;
             return;
           }
           const specRes = await fetch('/api/specialties', {
@@ -643,6 +734,8 @@
           if (!specData.success) {
             errEl.textContent = specData.error || 'Failed to create specialty';
             errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = originalBtnText;
             return;
           }
           specialtyId = specData.id;
@@ -666,20 +759,26 @@
           body: JSON.stringify(body),
         });
         const data = await res.json();
+
         if (data.success) {
           localStorage.setItem('token', data.token);
           localStorage.setItem('role', data.role);
           localStorage.setItem('user_id', data.user_id);
           sucEl.textContent = 'Registration successful! Redirecting...';
           sucEl.style.display = 'block';
+          btn.textContent = 'Success!';
           setTimeout(() => (window.location.href = '/team'), 1000);
         } else {
           errEl.textContent = data.error || 'Registration failed';
           errEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = originalBtnText;
         }
       } catch (err) {
         errEl.textContent = 'Network error. Please try again.';
         errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = originalBtnText;
       }
     });
   </script>

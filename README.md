@@ -219,7 +219,7 @@ Any logged-in user can submit a bug report from the UI. Reports are forwarded to
 │   ├── templates/          Jinja2 HTML pages
 │   │   ├── base.html / navbar.html / home.html  (home includes contact section)
 │   │   ├── auth/           login, registration, profile
-│   │   ├── teams/          team, createTeam, joinTeam, browseTeams, registeredTeams, teamMentors, teamSchedule, teamRegulations, teamRanking
+│   │   ├── teams/          team, createTeam, joinTeam, browseTeams, registeredTeams
 │   │   ├── mentors/        mentors, mentorsStayTuned, chooseMentor, mentorDashboard, selectedMentors
 │   │   ├── rankings/       ranking, teamRanking
 │   │   └── admin/          matching dashboard

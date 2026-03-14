@@ -1,125 +1,4 @@
-{% extends "base.html" %} {% block title %}Mentors{% endblock %} {% block body %}
-<body>
-  <div id="navbar-slot"></div>
-  <div class="dot-grid"></div>
-  <div class="spotlight"></div>
-  <div class="blobs">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-  </div>
-  <div class="noise"></div>
-  <div class="page-wrap">
-    <!-- STAY TUNED SECTION -->
-    <div class="stay-tuned-wrap">
-      <div class="st-rings">
-        <div class="st-ring st-ring-1"></div>
-        <div class="st-ring st-ring-2"></div>
-        <div class="st-ring st-ring-3"></div>
-      </div>
-      <div
-        class="st-particles"
-        id="stParticles"
-      ></div>
-      <div class="st-content">
-        <div class="st-badge">
-          <span class="st-badge-dot"></span>
-          Coming Soon
-        </div>
-        <h1 class="st-title">
-          <span
-            class="st-word"
-            data-word="Stay"
-            >Stay</span
-          >
-          <span
-            class="st-word st-word-accent"
-            data-word="Tuned"
-            >Tuned</span
-          >
-        </h1>
-        <p class="st-sub">
-          Our mentors are being carefully selected.<br class="st-br" />
-          Check back soon — it'll be worth the wait.
-        </p>
-        <div class="st-dots">
-          <span class="st-dot"></span>
-          <span class="st-dot"></span>
-          <span class="st-dot"></span>
-        </div>
-      </div>
-    </div>
-    <!-- /STAY TUNED SECTION -->
-
-    <script>
-      async function loadNavbar() {
-        try {
-          const res = await fetch('/navbar.html');
-          if (!res.ok) return;
-          const html = await res.text();
-          const slot = document.getElementById('navbar-slot');
-          if (!slot) return;
-          slot.innerHTML = html;
-          slot.querySelectorAll('script').forEach((old) => {
-            const s = document.createElement('script');
-            s.textContent = old.textContent;
-            document.head.appendChild(s);
-            s.remove();
-          });
-        } catch {}
-      }
-
-      async function logout() {
-        try {
-          const response = await fetch('/api/logout', { method: 'POST' });
-          if (response.ok) window.location.reload();
-        } catch (error) {
-          console.error('Logout failed:', error);
-        }
-      }
-
-      function spawnParticles() {
-        const container = document.getElementById('stParticles');
-        if (!container) return;
-        const colors = ['#60a5fa', '#22d3ee', '#a78bfa', '#f472b6', '#34d399'];
-        for (let i = 0; i < 28; i++) {
-          const p = document.createElement('div');
-          p.className = 'st-particle';
-          const size = 3 + Math.random() * 5;
-          const x = Math.random() * 100;
-          const delay = Math.random() * 6;
-          const dur = 5 + Math.random() * 7;
-          const color = colors[Math.floor(Math.random() * colors.length)];
-          p.style.cssText = `
-              width:${size}px; height:${size}px;
-              left:${x}%; bottom:-10px;
-              background:${color};
-              animation-delay:${delay}s;
-              animation-duration:${dur}s;
-              box-shadow: 0 0 ${size * 3}px ${color};
-            `;
-          container.appendChild(p);
-        }
-      }
-
-      document.addEventListener('DOMContentLoaded', async () => {
-        await loadNavbar();
-        spawnParticles();
-      });
-    </script>
-  </div>
-  <!-- /page-wrap -->
-  <script>
-    document.addEventListener('mousemove', (e) => {
-      const s = document.querySelector('.spotlight');
-      if (s) {
-        s.style.setProperty('--mx', e.clientX + 'px');
-        s.style.setProperty('--my', e.clientY + 'px');
-      }
-    });
-  </script>
-</body>
-{% endblock %} {% block head %}
+{% extends "base.html" %} {% block title %}Mentors — Mission Control{% endblock %} {% block head %}
 <style>
   :root {
     --bg: #050816;
@@ -144,53 +23,10 @@
     display: flex;
     justify-content: center;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
 
-  .navbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    background: rgba(5, 6, 13, 0.6);
-    backdrop-filter: blur(20px) saturate(1.8);
-    -webkit-backdrop-filter: blur(20px) saturate(1.8);
-    border: none;
-    border-radius: 0;
-    z-index: 1000;
-    box-shadow: none;
-    transition:
-      background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .navbar::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      #60a5fa 20%,
-      #22d3ee 40%,
-      #a78bfa 60%,
-      #f472b6 80%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: navGradientFlow 6s linear infinite;
-    opacity: 0.5;
-  }
-  @keyframes navGradientFlow {
-    0% {
-      background-position: 100% 0;
-    }
-    100% {
-      background-position: -100% 0;
-    }
-  }
-  /* Background layers */
+  /* ── Background layers (Dotted Grid & Original Blob Colors) ── */
   .dot-grid {
     position: fixed;
     inset: 0;
@@ -225,13 +61,13 @@
     position: absolute;
     border-radius: 50%;
     filter: blur(120px);
-    opacity: 0.15;
+    opacity: 0.13;
     will-change: transform;
   }
   .blob-1 {
     width: 700px;
     height: 700px;
-    background: #60a5fa;
+    background: #7dd3fc;
     top: -15%;
     left: -10%;
     animation: blobFloat1 18s ease-in-out infinite;
@@ -239,7 +75,7 @@
   .blob-2 {
     width: 500px;
     height: 500px;
-    background: #22d3ee;
+    background: #f9a8d4;
     top: 40%;
     right: -12%;
     animation: blobFloat2 22s ease-in-out infinite;
@@ -305,15 +141,17 @@
     }
   }
 
-  /* ══ STAY TUNED STYLES ══ */
+  /* ── STAY TUNED STYLES ── */
   .stay-tuned-wrap {
     position: relative;
-    min-height: calc(100vh - 96px);
+    min-height: calc(100vh - 140px); /* Adjust for navbar and padding */
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
   }
+
+  /* Rings */
   .st-rings {
     position: absolute;
     inset: 0;
@@ -364,6 +202,8 @@
       opacity: 1;
     }
   }
+
+  /* Particles */
   .st-particles {
     position: absolute;
     inset: 0;
@@ -392,6 +232,8 @@
       opacity: 0;
     }
   }
+
+  /* Content */
   .st-content {
     position: relative;
     z-index: 2;
@@ -402,6 +244,8 @@
     gap: 28px;
     animation: fadeSlideUp 0.9s ease both;
   }
+
+  /* Badge */
   .st-badge {
     display: inline-flex;
     align-items: center;
@@ -436,6 +280,8 @@
         0 0 32px rgba(34, 211, 238, 0.4);
     }
   }
+
+  /* Title & Anti-Clipping padding */
   .st-title {
     font-size: clamp(54px, 12vw, 110px);
     font-weight: 900;
@@ -446,6 +292,7 @@
     flex-wrap: wrap;
     justify-content: center;
     animation: fadeSlideUp 0.8s 0.15s ease both;
+    padding-bottom: 0.15em; /* Prevent descender clipping on animated words */
   }
   .st-word {
     display: inline-block;
@@ -479,6 +326,8 @@
       transform: translateY(-8px);
     }
   }
+
+  /* Subtitle */
   .st-sub {
     font-size: clamp(16px, 2.5vw, 22px);
     color: #64748b;
@@ -494,6 +343,8 @@
       display: block;
     }
   }
+
+  /* Loading Dots */
   .st-dots {
     display: flex;
     gap: 10px;
@@ -526,4 +377,137 @@
     }
   }
 </style>
+{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+
+  <div
+    class="dot-grid"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="spotlight"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="blobs"
+    aria-hidden="true"
+  >
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div
+    class="noise"
+    aria-hidden="true"
+  ></div>
+
+  <div class="page-wrap">
+    <div class="stay-tuned-wrap">
+      <div
+        class="st-rings"
+        aria-hidden="true"
+      >
+        <div class="st-ring st-ring-1"></div>
+        <div class="st-ring st-ring-2"></div>
+        <div class="st-ring st-ring-3"></div>
+      </div>
+      <div
+        class="st-particles"
+        id="stParticles"
+        aria-hidden="true"
+      ></div>
+
+      <div class="st-content">
+        <div class="st-badge">
+          <span class="st-badge-dot"></span>
+          Coming Soon
+        </div>
+
+        <h1 class="st-title">
+          <span
+            class="st-word"
+            data-word="Stay"
+            >Stay</span
+          >
+          <span
+            class="st-word st-word-accent"
+            data-word="Tuned"
+            >Tuned</span
+          >
+        </h1>
+
+        <p class="st-sub">
+          Our mentors are being carefully selected.<br class="st-br" />
+          Check back soon — it'll be worth the wait.
+        </p>
+
+        <div class="st-dots">
+          <span class="st-dot"></span>
+          <span class="st-dot"></span>
+          <span class="st-dot"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* Load shared navbar */
+    async function loadNavbar() {
+      try {
+        const res = await fetch('/navbar.html');
+        if (!res.ok) return;
+        const html = await res.text();
+        const slot = document.getElementById('navbar-slot');
+        if (!slot) return;
+        slot.innerHTML = html;
+        slot.querySelectorAll('script').forEach((old) => {
+          const s = document.createElement('script');
+          s.textContent = old.textContent;
+          document.head.appendChild(s);
+          s.remove();
+        });
+      } catch {}
+    }
+
+    /* Spawn background particles */
+    function spawnParticles() {
+      const container = document.getElementById('stParticles');
+      if (!container) return;
+      const colors = ['#60a5fa', '#22d3ee', '#a78bfa', '#f472b6', '#34d399'];
+      for (let i = 0; i < 28; i++) {
+        const p = document.createElement('div');
+        p.className = 'st-particle';
+        const size = 3 + Math.random() * 5;
+        const x = Math.random() * 100;
+        const delay = Math.random() * 6;
+        const dur = 5 + Math.random() * 7;
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        p.style.cssText = `
+            width:${size}px; height:${size}px;
+            left:${x}%; bottom:-10px;
+            background:${color};
+            animation-delay:${delay}s;
+            animation-duration:${dur}s;
+            box-shadow: 0 0 ${size * 3}px ${color};
+          `;
+        container.appendChild(p);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadNavbar();
+      spawnParticles();
+    });
+
+    /* Spotlight tracking */
+    document.addEventListener('mousemove', (e) => {
+      const s = document.querySelector('.spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
 {% endblock %}

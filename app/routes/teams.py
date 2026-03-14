@@ -134,25 +134,6 @@ def get_team_members_public(team_id):
         "members": [{"first_name": m["first_name"], "last_name": m["last_name"]} for m in members],
     }), 200
 
-
-@teams_bp.route("/teamMentors", methods=["GET"])
-def team_mentors_page():
-    """Serve the team mentors page"""
-    return render_template("teams/teamMentors.html")
-
-
-@teams_bp.route("/teamSchedule", methods=["GET"])
-def team_schedule_page():
-    """Serve the team schedule page"""
-    return render_template("teams/teamSchedule.html")
-
-
-@teams_bp.route("/teamRegulations", methods=["GET"])
-def team_regulations_page():
-    """Serve the team regulations page"""
-    return render_template("teams/teamRegulations.html")
-
-
 @teams_bp.route("/api/teams", methods=["POST"])
 @participant_required
 def create_team():
