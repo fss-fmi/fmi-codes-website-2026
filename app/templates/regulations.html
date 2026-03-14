@@ -1,404 +1,226 @@
-{% extends "base.html" %} {% block title %}Regulations{% endblock %} {% block body %}
-<body>
-  <div id="navbar-slot"></div>
-  <div class="dot-grid"></div>
-  <div class="spotlight"></div>
-  <div class="blobs">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-  </div>
-  <div class="noise"></div>
-
-  <!-- Modal Overlay -->
-  <div
-    class="modal-overlay"
-    id="modalOverlay"
-  >
-    <div
-      class="modal-panel"
-      id="modalPanel"
-    >
-      <button
-        class="modal-close"
-        id="modalClose"
-        aria-label="Close"
-      >
-        &times;
-      </button>
-      <div
-        class="modal-accent-stripe"
-        id="modalStripe"
-      ></div>
-      <div class="modal-header">
-        <span
-          class="modal-icon"
-          id="modalIcon"
-        ></span>
-        <span
-          class="modal-label"
-          id="modalLabel"
-        ></span>
-      </div>
-      <h2
-        class="modal-question"
-        id="modalQuestion"
-      ></h2>
-      <div class="modal-divider"></div>
-      <p
-        class="modal-answer"
-        id="modalAnswer"
-      ></p>
-    </div>
-  </div>
-
-  <div class="page-wrap">
-    <div class="container">
-      <div class="header">
-        <div>
-          <h1>Regulations</h1>
-          <p>Frequently asked questions and official rules.</p>
-        </div>
-      </div>
-      <div
-        id="regulationsGrid"
-        class="bento-grid"
-      ></div>
-      <div
-        id="emptyState"
-        style="display: none; color: #cbd5e1; text-align: center; padding: 40px 0"
-      >
-        No regulations found.
-      </div>
-    </div>
-
-    <script>
-      const CARD_META = [
-        { icon: '🎯', label: 'The Event', size: 'hero', accent: '#60a5fa' },
-        { icon: '🎓', label: 'Eligibility', size: 'normal', accent: '#22d3ee' },
-        { icon: '📝', label: 'Registration', size: 'normal', accent: '#a78bfa' },
-        { icon: '👥', label: 'Teams', size: 'normal', accent: '#f472b6' },
-        { icon: '💻', label: 'Development', size: 'wide', accent: '#60a5fa' },
-        { icon: '🏢', label: 'Venue', size: 'normal', accent: '#22d3ee' },
-        { icon: '⚖️', label: 'Responsibility', size: 'normal', accent: '#a78bfa' },
-        { icon: '🚫', label: 'Disqualification', size: 'normal', accent: '#f472b6' },
-        { icon: '🧑‍🏫', label: 'Mentors', size: 'normal', accent: '#60a5fa' },
-        { icon: '🎤', label: 'Presentations', size: 'normal', accent: '#22d3ee' },
-        { icon: '📊', label: 'Scoring', size: 'wide', accent: '#a78bfa' },
-        { icon: '🏆', label: 'Prizes', size: 'hero', accent: '#f472b6' },
-        { icon: '🔒', label: 'Privacy', size: 'normal', accent: '#60a5fa' },
-      ];
-
-      function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-      }
-
-      function openModal(item, meta) {
-        const overlay = document.getElementById('modalOverlay');
-        const panel = document.getElementById('modalPanel');
-        document.getElementById('modalStripe').style.background =
-          'linear-gradient(90deg, ' + meta.accent + ', ' + meta.accent + '44)';
-        document.getElementById('modalIcon').textContent = meta.icon;
-        document.getElementById('modalLabel').textContent = meta.label;
-        document.getElementById('modalLabel').style.color = meta.accent;
-        document.getElementById('modalQuestion').textContent = item.question || '';
-        document.getElementById('modalAnswer').textContent = item.answer || '';
-        overlay.classList.add('active');
-        document.body.style.overflow = 'hidden';
-      }
-
-      function closeModal() {
-        const overlay = document.getElementById('modalOverlay');
-        overlay.classList.remove('active');
-        document.body.style.overflow = '';
-      }
-
-      document.getElementById('modalClose').addEventListener('click', closeModal);
-      document.getElementById('modalOverlay').addEventListener('click', function (e) {
-        if (e.target === this) closeModal();
-      });
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') closeModal();
-      });
-
-      async function loadRegulations() {
-        const grid = document.getElementById('regulationsGrid');
-        const empty = document.getElementById('emptyState');
-        grid.innerHTML = '';
-        empty.style.display = 'none';
-
-        try {
-          const res = await fetch('/api/regulations');
-          const data = await res.json();
-          const list =
-            data && data.success && Array.isArray(data.regulations) ? data.regulations : [];
-
-          if (list.length === 0) {
-            empty.style.display = 'block';
-            return;
-          }
-
-          list.forEach((item, idx) => {
-            const meta = CARD_META[idx] || {
-              icon: '📄',
-              label: 'Info',
-              size: 'normal',
-              accent: '#60a5fa',
-            };
-
-            const card = document.createElement('div');
-            card.className = 'bento-card bento-' + meta.size;
-            card.style.setProperty('--card-accent', meta.accent);
-            card.setAttribute('tabindex', '0');
-            card.setAttribute('role', 'button');
-
-            card.innerHTML =
-              '<div class="card-accent-stripe"></div>' +
-              '<div class="card-inner">' +
-              '<div class="card-badge">' +
-              '<span class="badge-icon">' +
-              meta.icon +
-              '</span>' +
-              '<span class="badge-label">' +
-              escapeHtml(meta.label) +
-              '</span>' +
-              '</div>' +
-              '<div class="card-question">' +
-              escapeHtml(item.question || '') +
-              '</div>' +
-              '<div class="card-answer">' +
-              escapeHtml(item.answer || '') +
-              '</div>' +
-              '<div class="card-hint">' +
-              '<span class="hint-text">Click to read more</span>' +
-              '<svg class="hint-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-              '</div>' +
-              '</div>' +
-              '<div class="card-glow-orb"></div>';
-
-            card.addEventListener('click', function () {
-              openModal(item, meta);
-            });
-            card.addEventListener('keydown', function (e) {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                openModal(item, meta);
-              }
-            });
-
-            grid.appendChild(card);
-          });
-
-          // Staggered scroll-triggered entrance
-          const observer = new IntersectionObserver(
-            function (entries) {
-              entries.forEach(function (entry) {
-                if (entry.isIntersecting) {
-                  entry.target.classList.add('visible');
-                  observer.unobserve(entry.target);
-                }
-              });
-            },
-            { threshold: 0.1, rootMargin: '0px 0px -40px 0px' },
-          );
-
-          grid.querySelectorAll('.bento-card').forEach(function (card, i) {
-            card.style.transitionDelay = i * 80 + 'ms';
-            observer.observe(card);
-          });
-        } catch (e) {
-          empty.textContent = 'Error loading regulations. Please try again.';
-          empty.style.display = 'block';
-        }
-      }
-
-      document.addEventListener('DOMContentLoaded', loadRegulations);
-    </script>
-    <script>
-      function ensureMentorLink(text, href) {
-        const navLinks = document.querySelector('.nav-links');
-        let link = document.querySelector('.nav-links .mentor-link');
-        if (!link) {
-          link = document.createElement('a');
-          link.className = 'nav-link mentor-link';
-          navLinks.appendChild(link);
-        }
-        link.textContent = text;
-        link.href = href;
-      }
-
-      async function setMentorLinkBySelection() {
-        try {
-          const res = await fetch('/api/mentors/available');
-          if (!res.ok) return;
-          const data = await res.json();
-          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
-          if (selectedCount > 0) {
-            ensureMentorLink('Selected Mentors', '/selectedMentors');
-          } else {
-            ensureMentorLink('Choose Mentor', '/chooseMentor');
-          }
-        } catch {}
-      }
-
-      function updateNavbar() {
-        const teamName = window.loggedInTeam || '';
-        const navActions = document.querySelector('.nav-actions');
-        if (!navActions) return;
-        if (teamName) {
-          navActions.innerHTML = `
-          <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
-        `;
-          setMentorLinkBySelection();
-        }
-      }
-      async function loadNavbar() {
-        try {
-          const res = await fetch('/navbar.html');
-          if (!res.ok) return;
-          const html = await res.text();
-          const slot = document.getElementById('navbar-slot');
-          if (!slot) return;
-          slot.innerHTML = html;
-          slot.querySelectorAll('script').forEach((old) => {
-            const s = document.createElement('script');
-            s.textContent = old.textContent;
-            document.head.appendChild(s);
-            s.remove();
-          });
-        } catch {}
-      }
-      async function logout() {
-        try {
-          const response = await fetch('/api/logout', { method: 'POST' });
-          if (response.ok) window.location.reload();
-        } catch (error) {
-          console.error('Logout failed:', error);
-        }
-      }
-      loadNavbar().then(updateNavbar);
-    </script>
-  </div>
-  <!-- /page-wrap -->
-  <script>
-    document.addEventListener('mousemove', (e) => {
-      const s = document.querySelector('.spotlight');
-      if (s) {
-        s.style.setProperty('--mx', e.clientX + 'px');
-        s.style.setProperty('--my', e.clientY + 'px');
-      }
-    });
-  </script>
-</body>
-{% endblock %} {% block head %}
+{% extends "base.html" %} {% block title %}Regulations — Mission Control{% endblock %} {% block head
+%}
 <style>
   :root {
     --bg: #050816;
-    --bg-card: rgba(255, 255, 255, 0.03);
-    --border: rgba(255, 255, 255, 0.06);
-    --border-glow: rgba(96, 165, 250, 0.25);
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #60a5fa;
     --accent-2: #22d3ee;
     --purple: #a78bfa;
     --pink: #f472b6;
-    --panel: rgba(255, 255, 255, 0.04);
+    --emerald: #34d399;
     --panel-border: rgba(255, 255, 255, 0.08);
     --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
-  * {
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+  }
+  html {
+    scroll-behavior: smooth;
   }
   body {
     font-family: 'Inter', system-ui, sans-serif;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
-    padding: 80px 16px 60px;
-    display: flex;
-    justify-content: center;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
   }
 
-  /* Navbar */
-  .navbar {
+  /* ── Background layers (Dotted Grid & Original Blob Colors) ── */
+  .dot-grid {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    background: rgba(5, 6, 13, 0.6);
-    backdrop-filter: blur(20px) saturate(1.8);
-    -webkit-backdrop-filter: blur(20px) saturate(1.8);
-    border: none;
-    border-radius: 0;
-    z-index: 1000;
-    box-shadow: none;
-    transition:
-      background 0.4s cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
   }
-  .navbar::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      #60a5fa 20%,
-      #22d3ee 40%,
-      #a78bfa 60%,
-      #f472b6 80%,
-      transparent 100%
+  .spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
     );
-    background-size: 200% 100%;
-    animation: navGradientFlow 6s linear infinite;
-    opacity: 0.5;
+    transition: background 0.3s ease;
   }
-  @keyframes navGradientFlow {
-    0% {
-      background-position: 100% 0;
-    }
+  .blobs {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.13;
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 700px;
+    height: 700px;
+    background: #7dd3fc;
+    top: -15%;
+    left: -10%;
+    animation: blobFloat1 18s ease-in-out infinite;
+  }
+  .blob-2 {
+    width: 500px;
+    height: 500px;
+    background: #f9a8d4;
+    top: 40%;
+    right: -12%;
+    animation: blobFloat2 22s ease-in-out infinite;
+  }
+  .blob-3 {
+    width: 450px;
+    height: 450px;
+    background: #a78bfa;
+    bottom: -10%;
+    left: 25%;
+    animation: blobFloat3 20s ease-in-out infinite;
+  }
+  @keyframes blobFloat1 {
+    0%,
     100% {
-      background-position: -100% 0;
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(120px, 80px) scale(1.1);
     }
   }
-  /* Page Layout */
-  .container {
+  @keyframes blobFloat2 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(-80px, -60px) scale(1.15);
+    }
+  }
+  @keyframes blobFloat3 {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    50% {
+      transform: translate(70px, -50px) scale(1.08);
+    }
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 128px 128px;
+  }
+
+  .page-wrap {
+    position: relative;
+    z-index: 2;
     width: 100%;
+    padding-top: 76px;
   }
-  .header {
-    margin-top: 28px;
-    margin-bottom: 36px;
+
+  /* ── Header ── */
+  .admin-header {
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 40px 24px 20px;
+    text-align: center;
     display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 12px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: center;
   }
-  .header h1 {
-    font-size: 30px;
-    font-weight: 800;
-    letter-spacing: -0.3px;
-    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+  .admin-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .admin-eyebrow::before,
+  .admin-eyebrow::after {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    border-radius: 2px;
+  }
+  .admin-title {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 900;
+    line-height: 1.2; /* Увеличено от 1.08 */
+    padding-bottom: 0.15em; /* Добавено място за букви като 'g', 'p', 'y' */
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    background-clip: text;
+    background-size: 200% auto;
+    letter-spacing: -0.02em;
+    animation: shimmer 4s linear infinite;
   }
-  .header p {
+  @keyframes shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+  .admin-subtitle {
     color: var(--muted);
-    font-size: 16px;
-    margin-top: 6px;
+    font-size: 14px;
+    margin-top: 2px; /* Намалено леко, заради добавения padding на заглавието */
+    max-width: 600px;
+    line-height: 1.6;
   }
 
-  /* ─── Bento Grid ─── */
+  /* ── Container ── */
+  .container {
+    width: 100%;
+    margin-inline: auto;
+    max-width: 1360px;
+    padding: 20px 24px 80px;
+    animation: fadeSlideUp 0.7s ease both;
+  }
+
+  @keyframes fadeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* ── Bento Grid ── */
   .bento-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -406,25 +228,21 @@
     grid-auto-flow: dense;
   }
 
-  /* ─── Bento Card ─── */
+  /* ── Bento Card ── */
+  .card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    position: relative;
+    overflow: hidden;
+  }
   .bento-card {
     --card-accent: #60a5fa;
-    position: relative;
-    border-radius: 16px;
-    border: 1px solid var(--panel-border);
-    background: linear-gradient(
-      165deg,
-      rgba(255, 255, 255, 0.055) 0%,
-      rgba(255, 255, 255, 0.02) 50%,
-      rgba(255, 255, 255, 0.01) 100%
-    );
-    box-shadow: var(--card-glow);
-    overflow: hidden;
     cursor: pointer;
     min-height: 200px;
     display: flex;
     flex-direction: column;
-    /* Scroll animation initial state */
     opacity: 0;
     transform: translateY(30px);
     transition:
@@ -433,19 +251,26 @@
       border-color 0.3s ease,
       box-shadow 0.3s ease;
   }
+  .bento-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
   .bento-card.visible {
     opacity: 1;
     transform: translateY(0);
   }
-  .bento-card:hover {
+  .bento-card:hover,
+  .bento-card.visible:hover {
     transform: translateY(-6px);
     border-color: var(--card-accent);
     box-shadow:
       0 20px 60px rgba(0, 0, 0, 0.45),
       0 0 30px color-mix(in srgb, var(--card-accent) 15%, transparent);
-  }
-  .bento-card.visible:hover {
-    transform: translateY(-6px);
   }
   .bento-card:focus-visible {
     outline: 2px solid var(--card-accent);
@@ -461,6 +286,8 @@
       color-mix(in srgb, var(--card-accent) 40%, transparent)
     );
     flex-shrink: 0;
+    position: relative;
+    z-index: 1;
   }
 
   /* Inner glow orb */
@@ -476,6 +303,7 @@
     pointer-events: none;
     transform: translate(30%, -30%);
     transition: opacity 0.3s ease;
+    z-index: 0;
   }
   .bento-card:hover .card-glow-orb {
     opacity: 0.12;
@@ -586,8 +414,7 @@
     transform: translateX(3px);
   }
 
-  /* ─── Card Sizes ─── */
-  /* Hero: spans 2 columns, taller */
+  /* ── Card Sizes ── */
   .bento-hero {
     min-height: 240px;
   }
@@ -611,7 +438,6 @@
     font-size: 13px;
   }
 
-  /* Wide: spans 2 columns */
   .bento-wide {
     min-height: 200px;
   }
@@ -626,7 +452,7 @@
     font-size: 15px;
   }
 
-  /* ─── Modal ─── */
+  /* ── Modal Overlay ── */
   .modal-overlay {
     position: fixed;
     inset: 0;
@@ -655,7 +481,7 @@
     max-height: 85vh;
     overflow-y: auto;
     border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--panel-border);
     background: linear-gradient(170deg, rgba(15, 18, 35, 0.97) 0%, rgba(8, 10, 22, 0.98) 100%);
     box-shadow:
       0 40px 100px rgba(0, 0, 0, 0.6),
@@ -737,11 +563,8 @@
     color: #94a3b8;
   }
 
-  /* ─── Responsive ─── */
+  /* ── Responsive ── */
   @media (min-width: 768px) {
-    body {
-      padding: 76px 24px 40px;
-    }
     .bento-grid {
       grid-template-columns: repeat(2, 1fr);
       gap: 18px;
@@ -750,18 +573,8 @@
     .bento-wide {
       grid-column: span 2;
     }
-    .header h1 {
-      font-size: 36px;
-    }
-    .header p {
-      font-size: 17px;
-    }
   }
-
   @media (min-width: 1024px) {
-    body {
-      padding: 76px 40px 40px;
-    }
     .bento-grid {
       grid-template-columns: repeat(3, 1fr);
       gap: 20px;
@@ -779,12 +592,6 @@
     .card-question {
       font-size: 20px;
     }
-    .header h1 {
-      font-size: 42px;
-    }
-    .header p {
-      font-size: 18px;
-    }
     .card-inner {
       padding: 28px 28px 22px;
     }
@@ -795,130 +602,322 @@
       font-size: 17px;
     }
   }
-
-  @media (min-width: 1400px) {
-    .bento-grid {
-      max-width: 1360px;
-      margin: 0 auto;
-    }
-  }
-
-  /* Background layers */
-  .dot-grid {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-    background-size: 32px 32px;
-    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-  }
-  .spotlight {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background: radial-gradient(
-      600px circle at var(--mx, 50%) var(--my, 30%),
-      rgba(96, 165, 250, 0.07),
-      rgba(34, 211, 238, 0.04) 40%,
-      transparent 70%
-    );
-    transition: background 0.3s ease;
-  }
-  .blobs {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    overflow: hidden;
-  }
-  .blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(120px);
-    opacity: 0.15;
-    will-change: transform;
-  }
-  .blob-1 {
-    width: 700px;
-    height: 700px;
-    background: #60a5fa;
-    top: -15%;
-    left: -10%;
-    animation: blobFloat1 18s ease-in-out infinite;
-  }
-  .blob-2 {
-    width: 500px;
-    height: 500px;
-    background: #22d3ee;
-    top: 40%;
-    right: -12%;
-    animation: blobFloat2 22s ease-in-out infinite;
-  }
-  .blob-3 {
-    width: 450px;
-    height: 450px;
-    background: #a78bfa;
-    bottom: -10%;
-    left: 25%;
-    animation: blobFloat3 20s ease-in-out infinite;
-  }
-  @keyframes blobFloat1 {
-    0%,
-    100% {
-      transform: translate(0, 0) scale(1);
-    }
-    50% {
-      transform: translate(120px, 80px) scale(1.1);
-    }
-  }
-  @keyframes blobFloat2 {
-    0%,
-    100% {
-      transform: translate(0, 0) scale(1);
-    }
-    50% {
-      transform: translate(-80px, -60px) scale(1.15);
-    }
-  }
-  @keyframes blobFloat3 {
-    0%,
-    100% {
-      transform: translate(0, 0) scale(1);
-    }
-    50% {
-      transform: translate(70px, -50px) scale(1.08);
-    }
-  }
-  .noise {
-    position: fixed;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    opacity: 0.035;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-size: 128px 128px;
-  }
-  .page-wrap {
-    position: relative;
-    z-index: 2;
-    width: 100%;
-  }
-  @keyframes fadeSlideUp {
-    from {
-      opacity: 0;
-      transform: translateY(24px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  .container {
-    animation: fadeSlideUp 0.7s ease both;
-  }
 </style>
+{% endblock %} {% block body %}
+<body>
+  <div id="navbar-slot"></div>
+
+  <div
+    class="dot-grid"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="spotlight"
+    id="spotlight"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="blobs"
+    aria-hidden="true"
+  >
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div
+    class="noise"
+    aria-hidden="true"
+  ></div>
+
+  <div
+    class="modal-overlay"
+    id="modalOverlay"
+  >
+    <div
+      class="modal-panel"
+      id="modalPanel"
+    >
+      <button
+        class="modal-close"
+        id="modalClose"
+        aria-label="Close"
+      >
+        &times;
+      </button>
+      <div
+        class="modal-accent-stripe"
+        id="modalStripe"
+      ></div>
+      <div class="modal-header">
+        <span
+          class="modal-icon"
+          id="modalIcon"
+        ></span>
+        <span
+          class="modal-label"
+          id="modalLabel"
+        ></span>
+      </div>
+      <h2
+        class="modal-question"
+        id="modalQuestion"
+      ></h2>
+      <div class="modal-divider"></div>
+      <p
+        class="modal-answer"
+        id="modalAnswer"
+      ></p>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="admin-header">
+      <div class="admin-eyebrow">Information</div>
+      <div class="admin-title">Regulations</div>
+      <div class="admin-subtitle">
+        Frequently asked questions and official rules for FMI{Codes} 2026.
+      </div>
+    </div>
+
+    <div class="container">
+      <div
+        id="regulationsGrid"
+        class="bento-grid"
+      ></div>
+      <div
+        id="emptyState"
+        style="
+          display: none;
+          color: var(--muted);
+          text-align: center;
+          padding: 40px 0;
+          font-size: 16px;
+        "
+      >
+        <div style="font-size: 48px; margin-bottom: 16px">📜</div>
+        No regulations found.
+      </div>
+    </div>
+
+    <script>
+      const CARD_META = [
+        { icon: '🎯', label: 'The Event', size: 'hero', accent: '#60a5fa' },
+        { icon: '🎓', label: 'Eligibility', size: 'normal', accent: '#22d3ee' },
+        { icon: '📝', label: 'Registration', size: 'normal', accent: '#a78bfa' },
+        { icon: '👥', label: 'Teams', size: 'normal', accent: '#f472b6' },
+        { icon: '💻', label: 'Development', size: 'wide', accent: '#60a5fa' },
+        { icon: '🏢', label: 'Venue', size: 'normal', accent: '#22d3ee' },
+        { icon: '⚖️', label: 'Responsibility', size: 'normal', accent: '#a78bfa' },
+        { icon: '🚫', label: 'Disqualification', size: 'normal', accent: '#f472b6' },
+        { icon: '🧑‍🏫', label: 'Mentors', size: 'normal', accent: '#60a5fa' },
+        { icon: '🎤', label: 'Presentations', size: 'normal', accent: '#22d3ee' },
+        { icon: '📊', label: 'Scoring', size: 'wide', accent: '#a78bfa' },
+        { icon: '🏆', label: 'Prizes', size: 'hero', accent: '#f472b6' },
+        { icon: '🔒', label: 'Privacy', size: 'normal', accent: '#60a5fa' },
+      ];
+
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      function openModal(item, meta) {
+        const overlay = document.getElementById('modalOverlay');
+        const panel = document.getElementById('modalPanel');
+        document.getElementById('modalStripe').style.background =
+          'linear-gradient(90deg, ' + meta.accent + ', ' + meta.accent + '44)';
+        document.getElementById('modalIcon').textContent = meta.icon;
+        document.getElementById('modalLabel').textContent = meta.label;
+        document.getElementById('modalLabel').style.color = meta.accent;
+        document.getElementById('modalQuestion').textContent = item.question || '';
+        document.getElementById('modalAnswer').textContent = item.answer || '';
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+      }
+
+      function closeModal() {
+        const overlay = document.getElementById('modalOverlay');
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+      }
+
+      document.getElementById('modalClose').addEventListener('click', closeModal);
+      document.getElementById('modalOverlay').addEventListener('click', function (e) {
+        if (e.target === this) closeModal();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeModal();
+      });
+
+      async function loadRegulations() {
+        const grid = document.getElementById('regulationsGrid');
+        const empty = document.getElementById('emptyState');
+        grid.innerHTML = '';
+        empty.style.display = 'none';
+
+        try {
+          const res = await fetch('/api/regulations');
+          const data = await res.json();
+          const list =
+            data && data.success && Array.isArray(data.regulations) ? data.regulations : [];
+
+          if (list.length === 0) {
+            empty.style.display = 'block';
+            return;
+          }
+
+          list.forEach((item, idx) => {
+            const meta = CARD_META[idx] || {
+              icon: '📄',
+              label: 'Info',
+              size: 'normal',
+              accent: '#60a5fa',
+            };
+
+            const card = document.createElement('div');
+            card.className = 'card bento-card bento-' + meta.size;
+            card.style.setProperty('--card-accent', meta.accent);
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('role', 'button');
+
+            card.innerHTML =
+              '<div class="card-accent-stripe"></div>' +
+              '<div class="card-inner">' +
+              '<div class="card-badge">' +
+              '<span class="badge-icon">' +
+              meta.icon +
+              '</span>' +
+              '<span class="badge-label">' +
+              escapeHtml(meta.label) +
+              '</span>' +
+              '</div>' +
+              '<div class="card-question">' +
+              escapeHtml(item.question || '') +
+              '</div>' +
+              '<div class="card-answer">' +
+              escapeHtml(item.answer || '') +
+              '</div>' +
+              '<div class="card-hint">' +
+              '<span class="hint-text">Click to read more</span>' +
+              '<svg class="hint-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+              '</div>' +
+              '</div>' +
+              '<div class="card-glow-orb"></div>';
+
+            card.addEventListener('click', function () {
+              openModal(item, meta);
+            });
+            card.addEventListener('keydown', function (e) {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openModal(item, meta);
+              }
+            });
+
+            grid.appendChild(card);
+          });
+
+          const observer = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('visible');
+                  observer.unobserve(entry.target);
+                }
+              });
+            },
+            { threshold: 0.1, rootMargin: '0px 0px -40px 0px' },
+          );
+
+          grid.querySelectorAll('.bento-card').forEach(function (card, i) {
+            card.style.transitionDelay = i * 80 + 'ms';
+            observer.observe(card);
+          });
+        } catch (e) {
+          empty.innerHTML =
+            '<div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>Error loading regulations. Please try again.';
+          empty.style.display = 'block';
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', loadRegulations);
+    </script>
+    <script>
+      function ensureMentorLink(text, href) {
+        const navLinks = document.querySelector('.nav-links');
+        if (!navLinks) return;
+        let link = document.querySelector('.nav-links .mentor-link');
+        if (!link) {
+          link = document.createElement('a');
+          link.className = 'nav-link mentor-link';
+          navLinks.appendChild(link);
+        }
+        link.textContent = text;
+        link.href = href;
+      }
+
+      async function setMentorLinkBySelection() {
+        try {
+          const res = await fetch('/api/mentors/available');
+          if (!res.ok) return;
+          const data = await res.json();
+          const selectedCount = Array.isArray(data.selected) ? data.selected.length : 0;
+          if (selectedCount > 0) {
+            ensureMentorLink('Selected Mentors', '/selectedMentors');
+          } else {
+            ensureMentorLink('Choose Mentor', '/chooseMentor');
+          }
+        } catch {}
+      }
+
+      function updateNavbar() {
+        const teamName = window.loggedInTeam || '';
+        const navActions = document.querySelector('.nav-actions');
+        if (!navActions) return;
+        if (teamName) {
+          navActions.innerHTML = `
+          <button onclick="logout()" class="login-btn" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">Logout</button>
+        `;
+          setMentorLinkBySelection();
+        }
+      }
+      async function loadNavbar() {
+        try {
+          const res = await fetch('/navbar.html');
+          if (!res.ok) return;
+          const html = await res.text();
+          const slot = document.getElementById('navbar-slot');
+          if (!slot) return;
+          slot.innerHTML = html;
+          slot.querySelectorAll('script').forEach((old) => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.head.appendChild(s);
+            s.remove();
+          });
+        } catch {}
+      }
+      async function logout() {
+        try {
+          const response = await fetch('/api/logout', { method: 'POST' });
+          if (response.ok) window.location.reload();
+        } catch (error) {
+          console.error('Logout failed:', error);
+        }
+      }
+      loadNavbar().then(updateNavbar);
+    </script>
+  </div>
+
+  <script>
+    document.addEventListener('mousemove', (e) => {
+      const s = document.getElementById('spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
+    });
+  </script>
+</body>
 {% endblock %}

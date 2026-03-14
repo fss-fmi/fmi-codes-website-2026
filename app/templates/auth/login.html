@@ -2,15 +2,15 @@
 <style>
   :root {
     --bg: #050816;
-    --bg-card: rgba(255, 255, 255, 0.03);
-    --border: rgba(255, 255, 255, 0.06);
-    --border-glow: rgba(96, 165, 250, 0.25);
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #60a5fa;
     --accent-2: #22d3ee;
     --purple: #a78bfa;
     --pink: #f472b6;
+    --emerald: #34d399;
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
   *,
   *::before,
@@ -29,9 +29,10 @@
     min-height: 100vh;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
   }
 
-  /* Animated background layers */
+  /* ── Background layers (Dotted Grid & Original Blob Colors) ── */
   .dot-grid {
     position: fixed;
     inset: 0;
@@ -66,13 +67,13 @@
     position: absolute;
     border-radius: 50%;
     filter: blur(120px);
-    opacity: 0.15;
+    opacity: 0.13;
     will-change: transform;
   }
   .blob-1 {
     width: 700px;
     height: 700px;
-    background: #60a5fa;
+    background: #7dd3fc;
     top: -15%;
     left: -10%;
     animation: blobFloat1 18s ease-in-out infinite;
@@ -80,7 +81,7 @@
   .blob-2 {
     width: 500px;
     height: 500px;
-    background: #22d3ee;
+    background: #f9a8d4;
     top: 40%;
     right: -12%;
     animation: blobFloat2 22s ease-in-out infinite;
@@ -130,13 +131,53 @@
     background-repeat: repeat;
     background-size: 128px 128px;
   }
+
   .page-wrap {
     position: relative;
     z-index: 2;
     width: 100%;
   }
 
-  /* Animations */
+  /* ── Layout ── */
+  .container {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+
+  /* ── Form Card (Glassmorphism) ── */
+  .form-card {
+    position: relative;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    padding: 40px 36px;
+    box-shadow: var(--card-glow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    animation: fadeSlideUp 0.8s ease both;
+    overflow: hidden;
+  }
+  .form-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .form-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
   @keyframes fadeSlideUp {
     from {
       opacity: 0;
@@ -148,42 +189,26 @@
     }
   }
 
-  /* Page layout */
-  .container {
-    width: 100%;
-    max-width: 440px;
-    margin: 0 auto;
-    padding: 24px 16px 60px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-  }
-  .form-card {
-    position: relative;
-    width: 100%;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 40px 36px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(12px);
-    animation: fadeSlideUp 0.8s ease both;
-    overflow: hidden;
-  }
+  /* ── Typography & Forms ── */
   h1 {
-    font-size: 28px;
-    font-weight: 700;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    font-size: 32px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    margin-bottom: 8px;
+    background-clip: text;
+    margin-bottom: 6px;
+    padding-bottom: 0.15em; /* Anti-clipping */
+    letter-spacing: -0.02em;
   }
+
   .subtitle {
     color: var(--muted);
     margin-bottom: 24px;
     font-size: 15px;
+    line-height: 1.5;
   }
+
   .role-toggle {
     display: flex;
     gap: 8px;
@@ -193,218 +218,236 @@
     flex: 1;
     padding: 10px 12px;
     background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
     color: var(--muted);
     font-family: inherit;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .role-btn.active {
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
     color: #0b1021;
     border-color: transparent;
+    box-shadow: 0 4px 15px rgba(96, 165, 250, 0.25);
   }
   .role-btn:hover:not(.active) {
-    border-color: var(--accent);
+    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
     color: var(--text);
   }
+
   .form-group {
-    margin-bottom: 18px;
+    margin-bottom: 20px;
   }
   .form-group label {
     display: block;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 600;
     color: var(--muted);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .form-group input {
     width: 100%;
-    padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
     color: var(--text);
     font-family: inherit;
     font-size: 15px;
     outline: none;
-    transition: border-color 0.2s;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
   }
   .form-group input:focus {
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
   }
+  .form-group input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+  }
+
   .submit-btn {
     width: 100%;
     padding: 14px;
     margin-top: 8px;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     color: #0b1021;
     font-family: inherit;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     transition:
-      transform 0.2s,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 0.2s;
-    position: relative;
-    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(96, 165, 250, 0.3);
   }
   .submit-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+    box-shadow: 0 8px 25px rgba(96, 165, 250, 0.45);
   }
-  .submit-btn::after {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -60%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-      120deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.15) 50%,
-      transparent 70%
-    );
-    transform: rotate(25deg);
-    transition: left 0.6s ease;
-  }
-  .submit-btn:hover::after {
-    left: 120%;
-  }
+
   .error-msg {
     background: rgba(239, 68, 68, 0.15);
     border: 1px solid rgba(239, 68, 68, 0.3);
     color: #fca5a5;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
+    padding: 14px;
+    border-radius: 10px;
+    margin-bottom: 20px;
     font-size: 14px;
+    font-weight: 500;
   }
+  .success-msg {
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    color: var(--emerald);
+    padding: 14px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
   .alt-action {
     text-align: center;
-    margin-top: 20px;
+    margin-top: 24px;
     color: var(--muted);
     font-size: 14px;
   }
   .alt-action a {
     color: var(--accent);
     text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
   }
   .alt-action a:hover {
-    text-decoration: underline;
+    color: var(--accent-2);
   }
-  /* Forgot-password / reset section */
+
+  /* ── Forgot Password Section ── */
   .forgot-link {
     text-align: center;
-    margin-top: 12px;
-    font-size: 14px;
+    margin-top: 16px;
+    font-size: 13px;
   }
   .forgot-link a {
-    color: var(--accent);
+    color: var(--muted);
     text-decoration: none;
     cursor: pointer;
+    transition: color 0.2s;
   }
   .forgot-link a:hover {
-    text-decoration: underline;
+    color: var(--accent);
   }
+
   .reset-section {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border);
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--panel-border);
+    animation: fadeSlideUp 0.4s ease both;
   }
   .reset-section h2 {
     font-size: 20px;
-    font-weight: 700;
-    background: linear-gradient(120deg, var(--purple), var(--pink));
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--purple), var(--pink));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    padding-bottom: 0.15em;
   }
-  .reset-section .subtitle {
-    margin-bottom: 16px;
-  }
+
   .reset-btn {
     width: 100%;
-    padding: 12px;
-    margin-top: 6px;
-    background: linear-gradient(120deg, var(--purple), var(--pink));
+    padding: 14px;
+    margin-top: 8px;
+    background: linear-gradient(135deg, var(--purple), var(--pink));
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     color: #0b1021;
     font-family: inherit;
     font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     transition:
-      transform 0.2s,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(167, 139, 250, 0.3);
   }
-  .reset-btn:hover {
+  .reset-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(167, 139, 250, 0.3);
+    box-shadow: 0 8px 25px rgba(167, 139, 250, 0.45);
   }
   .reset-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-    transform: none;
     box-shadow: none;
   }
-  .success-msg {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    color: #86efac;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    font-size: 14px;
-  }
+
   .back-link {
     text-align: center;
-    margin-top: 14px;
-    font-size: 14px;
+    margin-top: 16px;
+    font-size: 13px;
   }
   .back-link a {
-    color: var(--accent);
+    color: var(--muted);
     text-decoration: none;
     cursor: pointer;
+    font-weight: 500;
+    transition: color 0.2s;
   }
   .back-link a:hover {
-    text-decoration: underline;
+    color: var(--text);
   }
+
   @media (max-width: 500px) {
     .form-card {
-      padding: 28px 20px;
+      padding: 32px 24px;
     }
     .container {
-      padding: 16px 12px 40px;
+      padding: 16px 16px 40px;
+    }
+    h1 {
+      font-size: 28px;
     }
   }
 </style>
 {% endblock %} {% block body %}
 <body>
-  <div class="dot-grid"></div>
+  <div id="navbar-slot"></div>
+
+  <div
+    class="dot-grid"
+    aria-hidden="true"
+  ></div>
   <div
     class="spotlight"
     id="spotlight"
+    aria-hidden="true"
   ></div>
-  <div class="blobs">
+  <div
+    class="blobs"
+    aria-hidden="true"
+  >
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
   </div>
-  <div class="noise"></div>
+  <div
+    class="noise"
+    aria-hidden="true"
+  ></div>
 
   <div class="page-wrap">
-    <div id="navbar-slot"></div>
     <div class="container">
       <div class="form-card">
         <h1>Login</h1>
-        <p class="subtitle">Sign in to your account</p>
+        <p class="subtitle">Sign in to your account to continue</p>
 
         <div
           id="error-msg"
@@ -441,13 +484,13 @@
           autocomplete="off"
         >
           <div class="form-group">
-            <label for="email">Email</label>
+            <label for="email">Email address</label>
             <input
               type="email"
               id="email"
               name="email"
               required
-              placeholder="your@email.com"
+              placeholder="name@example.com"
             />
           </div>
           <div class="form-group">
@@ -457,14 +500,14 @@
               id="password"
               name="password"
               required
-              placeholder="Your password"
+              placeholder="Enter your password"
             />
           </div>
           <button
             type="submit"
             class="submit-btn"
           >
-            Login
+            Sign In
           </button>
         </form>
 
@@ -472,7 +515,7 @@
           class="forgot-link"
           id="forgot-link"
         >
-          <a onclick="toggleResetSection(true)">Forgot password?</a>
+          <a onclick="toggleResetSection(true)">Forgot your password?</a>
         </p>
 
         <div
@@ -482,6 +525,7 @@
         >
           <h2>Reset Password</h2>
           <p class="subtitle">We’ll send a new password to your email.</p>
+
           <div
             id="reset-error"
             class="error-msg"
@@ -492,31 +536,33 @@
             class="success-msg"
             style="display: none"
           ></div>
+
           <div class="form-group">
-            <label for="reset-email">Email</label>
+            <label for="reset-email">Email address</label>
             <input
               type="email"
               id="reset-email"
               required
-              placeholder="your@email.com"
+              placeholder="name@example.com"
             />
           </div>
+
           <button
             type="button"
             class="reset-btn"
             id="reset-btn"
             onclick="submitReset()"
           >
-            Send new password
+            Send Recovery Email
           </button>
-          <p class="back-link"><a onclick="toggleResetSection(false)">← Back to login</a></p>
+
+          <p class="back-link"><a onclick="toggleResetSection(false)">← Back to sign in</a></p>
         </div>
 
         <p class="alt-action">Don't have an account? <a href="/registration">Register here</a></p>
       </div>
     </div>
   </div>
-  <!-- /page-wrap -->
 
   <script>
     /* Spotlight tracking */
@@ -562,17 +608,14 @@
         const resetVisible = resetSection.style.display !== 'none';
 
         if (selectedRole === 'admin') {
-          // Always revert to login form for admin — no reset available
           forgotLink.style.display = 'none';
           resetSection.style.display = 'none';
           loginForm.style.display = '';
         } else if (resetVisible && prevRole === 'admin') {
-          // Coming back from admin: reset section was hidden, show login form
           resetSection.style.display = 'none';
           loginForm.style.display = '';
           forgotLink.style.display = '';
         } else if (resetVisible) {
-          // Switching between participant ↔ mentor while reset is open: stay in reset view
           forgotLink.style.display = 'none';
           loginForm.style.display = 'none';
         } else {
@@ -589,14 +632,12 @@
         resetSection.style.display = '';
         loginForm.style.display = 'none';
         forgotLink.style.display = 'none';
-        // Pre-fill from login email field
         const loginEmail = document.getElementById('email').value.trim();
         if (loginEmail) document.getElementById('reset-email').value = loginEmail;
-        // Clear previous status messages
         document.getElementById('reset-error').style.display = 'none';
         document.getElementById('reset-success').style.display = 'none';
         document.getElementById('reset-btn').disabled = false;
-        document.getElementById('reset-btn').textContent = 'Send new password';
+        document.getElementById('reset-btn').textContent = 'Send Recovery Email';
         document.getElementById('reset-email').disabled = false;
       } else {
         resetSection.style.display = 'none';
@@ -639,13 +680,13 @@
           errEl.textContent = data.error || 'Something went wrong.';
           errEl.style.display = 'block';
           btn.disabled = false;
-          btn.textContent = 'Send new password';
+          btn.textContent = 'Send Recovery Email';
         }
       } catch (err) {
         errEl.textContent = 'Network error. Please try again.';
         errEl.style.display = 'block';
         btn.disabled = false;
-        btn.textContent = 'Send new password';
+        btn.textContent = 'Send Recovery Email';
       }
     }
 
@@ -653,6 +694,11 @@
       e.preventDefault();
       const errEl = document.getElementById('error-msg');
       errEl.style.display = 'none';
+      const btn = e.target.querySelector('.submit-btn');
+      const originalText = btn.textContent;
+
+      btn.disabled = true;
+      btn.textContent = 'Authenticating...';
 
       const body = {
         email: document.getElementById('email').value.trim(),
@@ -675,12 +721,16 @@
           else if (data.role === 'mentor') window.location.href = '/mentorDashboard';
           else window.location.href = '/team';
         } else {
-          errEl.textContent = data.error || 'Login failed';
+          errEl.textContent = data.error || 'Invalid credentials. Please try again.';
           errEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = originalText;
         }
       } catch (err) {
-        errEl.textContent = 'Network error. Please try again.';
+        errEl.textContent = 'Network error. Please check your connection.';
         errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     });
   </script>

@@ -1,10 +1,8 @@
-{% extends "base.html" %} {% block title %}Registered Teams — FMI Codes{% endblock %} {% block head
-%}
+{% extends "base.html" %} {% block title %}Registered Teams — Mission Control{% endblock %} {% block
+head %}
 <style>
   :root {
     --bg: #050816;
-    --bg-card: rgba(255, 255, 255, 0.03);
-    --border: rgba(255, 255, 255, 0.06);
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #60a5fa;
@@ -12,11 +10,9 @@
     --purple: #a78bfa;
     --pink: #f472b6;
     --emerald: #34d399;
-    --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    --panel-border: rgba(255, 255, 255, 0.08);
   }
-  *,
-  *::before,
-  *::after {
+  * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
@@ -31,9 +27,16 @@
     min-height: 100vh;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
   }
 
-  /* ── Background layers ────────────────────────────────────── */
+  /* --- Background Layers (Original Dotted Grid) --- */
+  .bg-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
   .dot-grid {
     position: fixed;
     inset: 0;
@@ -44,24 +47,7 @@
     mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
     -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
   }
-  .spotlight {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background: radial-gradient(
-      600px circle at var(--mx, 50%) var(--my, 30%),
-      rgba(96, 165, 250, 0.07),
-      rgba(34, 211, 238, 0.04) 40%,
-      transparent 70%
-    );
-    transition: background 0.3s ease;
-  }
-  .blobs {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
+  .bg-blobs {
     overflow: hidden;
   }
   .blob {
@@ -71,6 +57,7 @@
     opacity: 0.13;
     will-change: transform;
   }
+  /* Restored Original Blob Colors */
   .blob-1 {
     width: 700px;
     height: 700px;
@@ -122,24 +109,105 @@
       transform: translate(70px, -50px) scale(1.08);
     }
   }
-  .noise {
+  .spotlight {
     position: fixed;
     inset: 0;
     z-index: 1;
     pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--mx, 50%) var(--my, 30%),
+      rgba(96, 165, 250, 0.07),
+      rgba(34, 211, 238, 0.04) 40%,
+      transparent 70%
+    );
+    transition: background 0.3s ease;
+  }
+  .noise {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
     opacity: 0.035;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-repeat: repeat;
     background-size: 128px 128px;
   }
-
   .page-wrap {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     width: 100%;
+    padding-top: 76px;
   }
 
-  /* ── Animations ───────────────────────────────────────────── */
+  /* --- Header --- */
+  .admin-header {
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 40px 24px 20px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .admin-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .admin-eyebrow::before,
+  .admin-eyebrow::after {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    border-radius: 2px;
+  }
+
+  /* Restored Original Title Gradient & Shimmer */
+  .admin-title {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 900;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-size: 200% auto;
+    animation: shimmer 4s linear infinite;
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+
+  .admin-subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 8px;
+    max-width: 600px;
+    line-height: 1.6;
+  }
+
+  /* --- Layout & Utilities --- */
+  .container {
+    width: 100%;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 20px 24px 80px;
+  }
+
   @keyframes fadeSlideUp {
     from {
       opacity: 0;
@@ -158,33 +226,6 @@
     to {
       opacity: 1;
       transform: translateX(0);
-    }
-  }
-  @keyframes countUp {
-    from {
-      opacity: 0;
-      transform: scale(0.5);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
-  }
-  @keyframes shimmer {
-    0% {
-      background-position: -200% center;
-    }
-    100% {
-      background-position: 200% center;
     }
   }
   @keyframes lineGrow {
@@ -212,68 +253,11 @@
     }
   }
 
-  /* ── Container ────────────────────────────────────────────── */
-  .container {
-    width: 100%;
-    max-width: 820px;
-    margin: 0 auto;
-    padding: 100px 20px 80px;
-  }
-
-  /* ── Hero section ─────────────────────────────────────────── */
-  .hero {
-    text-align: center;
-    margin-bottom: 48px;
-    animation: fadeSlideUp 0.7s ease both;
-  }
-  .hero-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px;
-    border-radius: 20px;
-    background: rgba(96, 165, 250, 0.1);
-    border: 1px solid rgba(96, 165, 250, 0.25);
-    color: #60a5fa;
-    font-size: 13px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 20px;
-  }
-  .hero-label .pulse-dot {
-    width: 8px;
-    height: 8px;
-    background: #60a5fa;
-    border-radius: 50%;
-  }
-  .hero h1 {
-    font-size: clamp(32px, 5vw, 48px);
-    font-weight: 900;
-    line-height: 1.1;
-    margin-bottom: 14px;
-    letter-spacing: -0.5px;
-  }
-  .hero h1 .gradient-text {
-    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-size: 200% auto;
-    animation: shimmer 4s linear infinite;
-  }
-  .hero p {
-    color: var(--muted);
-    font-size: 17px;
-    max-width: 520px;
-    margin: 0 auto;
-    line-height: 1.6;
-  }
-
-  /* ── Progress ring ────────────────────────────────────────── */
+  /* --- Progress Ring Section --- */
   .progress-section {
     display: flex;
     justify-content: center;
-    margin-bottom: 48px;
+    margin-bottom: 60px;
     animation: fadeSlideUp 0.8s ease 0.15s both;
   }
   .progress-ring-wrap {
@@ -309,6 +293,8 @@
     justify-content: center;
     animation: ringPulse 3s ease-in-out infinite;
   }
+
+  /* Restored Count Gradient */
   .progress-count {
     font-size: 42px;
     font-weight: 900;
@@ -323,15 +309,17 @@
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    font-weight: 600;
+    font-weight: 700;
     margin-top: 4px;
   }
 
-  /* ── Timeline / leaderboard ───────────────────────────────── */
+  /* --- Timeline Base --- */
   .timeline {
     position: relative;
     padding-left: 60px;
   }
+
+  /* Restored Timeline Line Gradient */
   .timeline::before {
     content: '';
     position: absolute;
@@ -350,13 +338,12 @@
 
   .team-entry {
     position: relative;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
     opacity: 0;
     transform: translateX(40px);
     animation: fadeSlideLeft 0.5s ease forwards;
   }
 
-  /* Rank dot on the timeline */
   .team-entry .rank-dot {
     position: absolute;
     left: -48px;
@@ -376,6 +363,8 @@
     z-index: 1;
     transition: all 0.3s ease;
   }
+
+  /* Restored Hover on Rank Dot */
   .team-entry:hover .rank-dot {
     border-color: var(--pink);
     color: var(--pink);
@@ -383,26 +372,28 @@
     box-shadow: 0 0 16px rgba(244, 114, 182, 0.3);
   }
 
-  /* Card body */
+  /* --- Team Row Card --- */
   .team-row {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 18px 22px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    backdrop-filter: blur(12px);
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
     cursor: pointer;
     user-select: none;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   }
   .team-row.expanded {
-    border-radius: 14px 14px 0 0;
+    border-radius: 16px 16px 0 0;
     border-bottom-color: transparent;
   }
+
+  /* Restored Card Top Border Hover Gradient */
   .team-row::before {
     content: '';
     position: absolute;
@@ -417,9 +408,7 @@
   .team-row:hover {
     border-color: rgba(96, 165, 250, 0.2);
     transform: translateX(4px);
-    box-shadow:
-      0 8px 32px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
   }
   .team-row:hover::before {
     opacity: 1;
@@ -430,42 +419,47 @@
     min-width: 0;
   }
   .team-name {
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 700;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     transition: color 0.3s;
+    color: var(--text);
   }
+
+  /* Restored Team Name Hover Gradient */
   .team-row:hover .team-name {
     background: linear-gradient(90deg, #60a5fa, #f472b6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
+
   .team-meta {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     flex-wrap: wrap;
   }
   .meta-chip {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     font-size: 12px;
+    font-weight: 600;
     color: var(--muted);
   }
   .meta-chip svg {
     width: 14px;
     height: 14px;
-    opacity: 0.6;
+    opacity: 0.7;
   }
 
-  /* Member pills */
+  /* Restored Member Dots Gradient */
   .member-dots {
     display: flex;
-    gap: 4px;
+    gap: 5px;
     align-items: center;
   }
   .m-dot {
@@ -478,19 +472,19 @@
   }
   .m-dot.empty {
     background: none;
-    border: 1.5px dashed rgba(255, 255, 255, 0.15);
+    border: 1.5px dashed rgba(255, 255, 255, 0.2);
     opacity: 0.5;
   }
   .team-row:hover .m-dot:not(.empty) {
     transform: scale(1.2);
   }
 
-  /* Apply button (inline) */
+  /* Restored Apply Button Gradient */
   .btn-apply-sm {
     flex-shrink: 0;
     padding: 8px 20px;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-family: inherit;
     font-size: 13px;
     font-weight: 700;
@@ -499,34 +493,31 @@
     background: linear-gradient(135deg, #60a5fa, #a78bfa);
     color: #0b1021;
     white-space: nowrap;
+    box-shadow: 0 4px 15px rgba(96, 165, 250, 0.2);
   }
   .btn-apply-sm:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 18px rgba(96, 165, 250, 0.35);
-  }
-  .btn-apply-sm:active:not(:disabled) {
-    transform: translateY(0);
+    box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
   }
   .btn-apply-sm:disabled {
-    opacity: 0.45;
+    opacity: 0.5;
     cursor: default;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
     color: var(--muted);
+    box-shadow: none;
   }
   .btn-apply-sm.applied {
     background: rgba(52, 211, 153, 0.15);
     border: 1px solid rgba(52, 211, 153, 0.3);
-    color: #6ee7b7;
+    color: var(--emerald);
   }
   .btn-apply-sm.full-tag {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--muted);
-    font-weight: 600;
-    font-size: 12px;
   }
 
-  /* ── Expand chevron ──────────────────────────────────────── */
+  /* Expand chevron */
   .expand-chevron {
     flex-shrink: 0;
     width: 20px;
@@ -540,15 +531,15 @@
       color 0.3s ease;
   }
   .expand-chevron svg {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
   }
   .team-row.expanded .expand-chevron {
     transform: rotate(180deg);
     color: var(--accent);
   }
 
-  /* ── Members panel ───────────────────────────────────────── */
+  /* Members Dropdown Panel */
   .members-panel {
     overflow: hidden;
     max-height: 0;
@@ -556,25 +547,25 @@
     transition:
       max-height 0.38s cubic-bezier(0.4, 0, 0.2, 1),
       opacity 0.28s ease;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--panel-border);
     border-top: none;
-    border-radius: 0 0 14px 14px;
+    border-radius: 0 0 16px 16px;
     backdrop-filter: blur(12px);
   }
   .members-panel.open {
     opacity: 1;
   }
   .members-panel-inner {
-    padding: 14px 22px 18px;
+    padding: 16px 24px 20px;
   }
   .members-panel-label {
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 0.1em;
     color: var(--muted);
     font-weight: 700;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
   .member-chips {
     display: flex;
@@ -584,20 +575,13 @@
   .member-chip {
     display: inline-flex;
     align-items: center;
-    padding: 5px 14px;
+    padding: 6px 16px;
     background: rgba(96, 165, 250, 0.08);
-    border: 1px solid rgba(96, 165, 250, 0.18);
-    border-radius: 20px;
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    border-radius: 10px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text);
-    transition:
-      background 0.2s ease,
-      border-color 0.2s ease;
-  }
-  .member-chip:hover {
-    background: rgba(96, 165, 250, 0.14);
-    border-color: rgba(96, 165, 250, 0.3);
   }
   .members-loading {
     display: flex;
@@ -616,14 +600,14 @@
     flex-shrink: 0;
   }
 
-  /* ── Toast ────────────────────────────────────────────────── */
+  /* --- Toasts & States --- */
   .toast {
     position: fixed;
     top: 90px;
     right: 20px;
     z-index: 9999;
     padding: 14px 22px;
-    border-radius: 10px;
+    border-radius: 12px;
     font-size: 14px;
     font-weight: 600;
     backdrop-filter: blur(12px);
@@ -636,17 +620,16 @@
     transform: translateX(0);
   }
   .toast-success {
-    background: rgba(16, 185, 129, 0.2);
-    border: 1px solid rgba(16, 185, 129, 0.4);
-    color: #6ee7b7;
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    color: var(--emerald);
   }
   .toast-error {
-    background: rgba(239, 68, 68, 0.2);
-    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
     color: #fca5a5;
   }
 
-  /* ── Loading / empty ──────────────────────────────────────── */
   .loading-wrap,
   .empty-wrap {
     text-align: center;
@@ -664,18 +647,18 @@
   }
   .empty-wrap h2 {
     font-size: 22px;
-    color: var(--muted);
+    color: var(--text);
     margin-bottom: 8px;
+    font-weight: 700;
   }
   .empty-wrap p {
     color: var(--muted);
     font-size: 15px;
   }
 
-  /* ── Responsive ───────────────────────────────────────────── */
   @media (max-width: 600px) {
     .container {
-      padding: 80px 12px 50px;
+      padding: 20px 12px 50px;
     }
     .timeline {
       padding-left: 48px;
@@ -691,60 +674,51 @@
     }
     .team-row {
       flex-wrap: wrap;
-      padding: 14px 16px;
-      gap: 10px;
+      padding: 16px;
+      gap: 12px;
     }
     .btn-apply-sm {
       width: 100%;
       text-align: center;
     }
-    .progress-ring-wrap {
-      width: 130px;
-      height: 130px;
-    }
-    .progress-ring-svg {
-      width: 130px;
-      height: 130px;
-    }
-    .progress-count {
-      font-size: 34px;
-    }
-    .hero h1 {
-      font-size: 28px;
-    }
   }
 </style>
 {% endblock %} {% block body %}
 <body>
-  <div class="dot-grid"></div>
+  <div id="navbar-slot"></div>
+
   <div
-    class="spotlight"
-    id="spotlight"
+    class="dot-grid"
+    aria-hidden="true"
   ></div>
-  <div class="blobs">
+  <div
+    class="bg-layer bg-blobs"
+    aria-hidden="true"
+  >
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
   </div>
-  <div class="noise"></div>
+  <div
+    class="spotlight"
+    id="spotlight"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="noise"
+    aria-hidden="true"
+  ></div>
 
   <div class="page-wrap">
-    <div id="navbar-slot"></div>
+    <div class="admin-header">
+      <div class="admin-eyebrow">Participants</div>
+      <div class="admin-title">Registered Teams</div>
+      <div class="admin-subtitle">
+        The first 18 teams to hit 3+ members lock in their spot. Here's who made it so far.
+      </div>
+    </div>
 
     <div class="container">
-      <!-- Hero -->
-      <div class="hero">
-        <div class="hero-label">
-          <span class="pulse-dot"></span>
-          Registration Closed
-        </div>
-        <h1>
-          <span class="gradient-text">Registered Teams</span>
-        </h1>
-        <p>The first 18 teams to hit 3+ members lock in their spot. Here's who made it so far.</p>
-      </div>
-
-      <!-- Progress ring -->
       <div class="progress-section">
         <div class="progress-ring-wrap">
           <svg
@@ -798,7 +772,6 @@
         </div>
       </div>
 
-      <!-- Loading -->
       <div
         id="loading"
         class="loading-wrap"
@@ -807,17 +780,16 @@
         <p style="color: var(--muted)">Loading registered teams…</p>
       </div>
 
-      <!-- Empty state -->
       <div
         id="empty"
         class="empty-wrap"
         style="display: none"
       >
+        <div style="font-size: 48px; margin-bottom: 16px">🏆</div>
         <h2>No teams registered yet</h2>
         <p>Be the first — create a team and get 3 members to lock in your spot!</p>
       </div>
 
-      <!-- Timeline -->
       <div
         id="timeline"
         class="timeline"
@@ -895,12 +867,11 @@
       var pct = count / max;
       var offset = circumference * (1 - pct);
       var ring = document.getElementById('ring-fill');
-      // Wait a tick so the transition fires
+
       requestAnimationFrame(function () {
         ring.style.strokeDashoffset = offset;
       });
 
-      // Count-up animation
       var display = document.getElementById('count-display');
       var current = 0;
       var step = Math.max(1, Math.floor(count / 30));
@@ -1043,7 +1014,6 @@
           var count = team.participant_count || 0;
           var isFull = count >= 6;
 
-          // Build action button HTML
           var actionHtml = '';
           if (canApply) {
             if (isFull || team.is_full) {
@@ -1090,6 +1060,7 @@
           var teamRow = entry.querySelector('.team-row');
           var panel = entry.querySelector('.members-panel');
           var teamId = team.team_id;
+
           teamRow.addEventListener('click', function (e) {
             if (e.target.closest('.btn-apply-sm')) return;
             var isOpen = panel.classList.contains('open');
@@ -1105,7 +1076,6 @@
           timeline.appendChild(entry);
         });
 
-        // Wire up apply buttons
         timeline
           .querySelectorAll('.btn-apply-sm:not(.applied):not(.full-tag)')
           .forEach(function (btn) {

@@ -18,12 +18,6 @@ def home():
     )
 
 
-@pages_bp.route("/ranking")
-def ranking_page():
-    """Serve the public ranking page (TBD placeholder)"""
-    return render_template("rankings/ranking.html")
-
-
 @pages_bp.route("/rankings")
 def rankings_page():
     """Serve TBD placeholder or live leaderboard depending on RANKINGS_LIVE config"""

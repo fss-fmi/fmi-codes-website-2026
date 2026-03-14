@@ -1,19 +1,18 @@
 {% extends "base.html" %} {% block title %}FMI{Codes} 2026{% endblock %} {% block head %}
 <style>
-  /* ═══════════════════════════════════════════
-         CSS VARIABLES & RESET
-         ═══════════════════════════════════════════ */
   :root {
     --bg: #050816;
     --bg-card: rgba(255, 255, 255, 0.03);
     --border: rgba(255, 255, 255, 0.06);
-    --border-glow: rgba(96, 165, 250, 0.25);
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #60a5fa;
     --accent-2: #22d3ee;
     --purple: #a78bfa;
     --pink: #f472b6;
+    --emerald: #34d399;
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
   *,
   *::before,
@@ -34,9 +33,7 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* ═══════════════════════════════════════════
-         ANIMATED DOT GRID BACKGROUND
-         ═══════════════════════════════════════════ */
+  /* ── Background layers (Dotted Grid & Original Blob Colors) ── */
   .dot-grid {
     position: fixed;
     inset: 0;
@@ -47,10 +44,6 @@
     mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
     -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
   }
-
-  /* ═══════════════════════════════════════════
-         MOUSE-FOLLOWING SPOTLIGHT
-         ═══════════════════════════════════════════ */
   .spotlight {
     position: fixed;
     inset: 0;
@@ -64,10 +57,6 @@
     );
     transition: background 0.3s ease;
   }
-
-  /* ═══════════════════════════════════════════
-         ANIMATED GRADIENT BLOBS
-         ═══════════════════════════════════════════ */
   .blobs {
     position: fixed;
     inset: 0;
@@ -79,13 +68,13 @@
     position: absolute;
     border-radius: 50%;
     filter: blur(120px);
-    opacity: 0.15;
+    opacity: 0.13;
     will-change: transform;
   }
   .blob-1 {
     width: 700px;
     height: 700px;
-    background: #60a5fa;
+    background: #7dd3fc;
     top: -15%;
     left: -10%;
     animation: blobFloat1 18s ease-in-out infinite;
@@ -93,7 +82,7 @@
   .blob-2 {
     width: 500px;
     height: 500px;
-    background: #22d3ee;
+    background: #f9a8d4;
     top: 40%;
     right: -12%;
     animation: blobFloat2 22s ease-in-out infinite;
@@ -106,7 +95,6 @@
     left: 25%;
     animation: blobFloat3 20s ease-in-out infinite;
   }
-
   @keyframes blobFloat1 {
     0%,
     100% {
@@ -134,8 +122,6 @@
       transform: translate(70px, -50px) scale(1.08);
     }
   }
-
-  /* Noise texture overlay */
   .noise {
     position: fixed;
     inset: 0;
@@ -147,13 +133,110 @@
     background-size: 128px 128px;
   }
 
-  /* ═══════════════════════════════════════════
-         LAYOUT
-         ═══════════════════════════════════════════ */
   .page-wrap {
     position: relative;
     z-index: 2;
     width: 100%;
+  }
+
+  /* ── Reusable Buttons ── */
+  .btn {
+    padding: 16px 40px;
+    border-radius: 14px;
+    border: none;
+    cursor: pointer;
+    font-size: 1.05rem;
+    font-weight: 700;
+    transition: all 0.25s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0b1021;
+    box-shadow: 0 4px 20px rgba(96, 165, 250, 0.3);
+  }
+  .btn-primary:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 30px rgba(96, 165, 250, 0.5);
+  }
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    transform: translateY(-3px);
+  }
+
+  /* ── Template Card Base ── */
+  .card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 20px;
+    padding: 32px 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* ── Template Icons ── */
+  .card-title-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+    margin: 0 auto 16px;
+  }
+  .icon-blue {
+    background: rgba(96, 165, 250, 0.15);
+  }
+  .icon-cyan {
+    background: rgba(34, 211, 238, 0.15);
+  }
+  .icon-purple {
+    background: rgba(167, 139, 250, 0.15);
+  }
+  .icon-amber {
+    background: rgba(245, 158, 11, 0.15);
+  }
+
+  /* ── Gradient Text Utility (with Anti-Clipping Fix) ── */
+  .gradient-text {
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradientShift 4s ease infinite;
+    padding-bottom: 0.15em; /* Prevents descenders from clipping */
+  }
+  @keyframes gradientShift {
+    0%,
+    100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
   }
 
   /* ═══════════════════════════════════════════
@@ -168,7 +251,6 @@
     text-align: center;
     position: relative;
   }
-  /* Glow line at bottom of hero */
   .hero::after {
     content: '';
     position: absolute;
@@ -176,7 +258,7 @@
     left: 10%;
     right: 10%;
     height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
+    background: linear-gradient(90deg, transparent, var(--accent), var(--purple), transparent);
     opacity: 0.4;
   }
   .hero-inner {
@@ -187,7 +269,6 @@
     max-width: 900px;
   }
 
-  /* Badge pill */
   .hero-badge {
     display: inline-flex;
     align-items: center;
@@ -235,26 +316,9 @@
     font-size: clamp(2.5rem, 6vw, 4.5rem);
     font-weight: 900;
     letter-spacing: -0.03em;
-    line-height: 1.1;
+    line-height: 1.15; /* Increased for descenders */
     color: #fff;
     animation: fadeSlideUp 0.8s 0.3s ease both;
-  }
-  .gradient-text {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--purple));
-    background-size: 200% 200%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: gradientShift 4s ease infinite;
-  }
-  @keyframes gradientShift {
-    0%,
-    100% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
   }
 
   .hero-subtitle {
@@ -285,71 +349,6 @@
     }
   }
 
-  /* CTA Buttons */
-  .btn-primary {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 16px 40px;
-    border-radius: 14px;
-    font-weight: 700;
-    font-size: 1.05rem;
-    text-decoration: none;
-    color: #0b1021;
-    overflow: hidden;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    box-shadow:
-      0 0 30px rgba(96, 165, 250, 0.3),
-      0 0 80px rgba(96, 165, 250, 0.1);
-    transition:
-      transform 0.25s,
-      box-shadow 0.25s;
-  }
-  .btn-primary::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transform: translateX(-100%);
-    transition: transform 0.5s;
-  }
-  .btn-primary:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow:
-      0 0 40px rgba(96, 165, 250, 0.5),
-      0 0 100px rgba(96, 165, 250, 0.15);
-  }
-  .btn-primary:hover::before {
-    transform: translateX(100%);
-  }
-
-  .btn-secondary {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 16px 40px;
-    border-radius: 14px;
-    font-weight: 600;
-    font-size: 1.05rem;
-    text-decoration: none;
-    color: var(--text);
-    position: relative;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
-    transition:
-      transform 0.25s,
-      background 0.25s,
-      border-color 0.25s,
-      box-shadow 0.25s;
-  }
-  .btn-secondary:hover {
-    transform: translateY(-3px);
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-  }
-
   /* ═══════════════════════════════════════════
          BENTO GRID — EVENT INFO
          ═══════════════════════════════════════════ */
@@ -363,26 +362,25 @@
     grid-template-columns: repeat(4, 1fr);
     gap: 16px;
   }
+
   .bento-card {
-    position: relative;
-    padding: 32px 24px;
-    border-radius: 20px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    overflow: hidden;
     text-align: center;
     transition:
       transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
       border-color 0.35s,
       box-shadow 0.35s;
+    opacity: 0;
+    transform: translateY(30px) scale(0.97);
+  }
+  .bento-card.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
   .bento-card:hover {
     transform: translateY(-6px);
-    border-color: var(--border-glow);
+    border-color: rgba(34, 211, 238, 0.4);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
   }
-
-  /* Inner glow on hover */
   .bento-card::after {
     content: '';
     position: absolute;
@@ -399,18 +397,12 @@
     opacity: 0.6;
   }
 
-  .bento-icon {
-    font-size: 2.2rem;
-    margin-bottom: 16px;
-    display: block;
-    filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.3));
-  }
   .bento-label {
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--muted);
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 6px;
   }
   .bento-value {
@@ -458,6 +450,7 @@
     font-weight: 800;
     color: #fff;
     margin-bottom: 14px;
+    line-height: 1.2;
   }
   .section-subtitle {
     font-size: 1rem;
@@ -487,27 +480,18 @@
     justify-self: center;
     border-radius: 16px;
     border: 1px solid var(--border);
-    background: var(--bg-card);
+    background: rgba(255, 255, 255, 0.02);
     display: grid;
     place-items: center;
     overflow: hidden;
     transition:
       transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-      filter 0.3s,
       box-shadow 0.3s,
       border-color 0.3s;
   }
   .premium {
-    background: rgba(174, 129, 81, 0.1);
-    border-color: rgba(235, 184, 112, 0.3);
-    box-shadow:
-      0 0 0 1px rgba(196, 142, 96, 0.1) inset,
-      0 0 30px rgba(235, 184, 112, 0.05);
-  }
-  .standart {
-    background: rgba(226, 232, 240, 0.06);
-    border-color: rgba(226, 232, 240, 0.2);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+    background: rgba(174, 129, 81, 0.05);
+    border-color: rgba(235, 184, 112, 0.2);
   }
   .logo:hover {
     transform: translateY(-6px) scale(1.05);
@@ -584,125 +568,8 @@
   }
 
   /* ═══════════════════════════════════════════
-         SCROLL ANIMATIONS
+         CONTACT SECTION
          ═══════════════════════════════════════════ */
-  .reveal {
-    opacity: 0;
-    transform: translateY(40px);
-    transition:
-      opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .reveal.visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .reveal-delay-1 {
-    transition-delay: 0.1s;
-  }
-  .reveal-delay-2 {
-    transition-delay: 0.2s;
-  }
-  .reveal-delay-3 {
-    transition-delay: 0.3s;
-  }
-
-  /* Staggered card reveals */
-  .bento-card {
-    opacity: 0;
-    transform: translateY(30px) scale(0.97);
-    transition:
-      opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 0.35s,
-      box-shadow 0.35s;
-  }
-  .bento-card.visible {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-
-  /* ═══════════════════════════════════════════
-         RESPONSIVE
-         ═══════════════════════════════════════════ */
-  @media (max-width: 768px) {
-    .hero {
-      min-height: auto;
-      padding: 100px 16px 50px;
-    }
-    .hero-title {
-      font-size: 2.2rem;
-    }
-    .hero-logo {
-      width: 85vw;
-    }
-    .bento-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    .bento-section {
-      padding: 0 16px 60px;
-    }
-    .bento-card {
-      padding: 24px 18px;
-    }
-    .bento-value {
-      font-size: 1.15rem;
-    }
-    .sponsors-section {
-      padding: 40px 12px 50px;
-    }
-    .section-header {
-      margin-bottom: 32px;
-    }
-    .carousel-container::before,
-    .carousel-container::after {
-      width: 80px;
-    }
-    .carousel_item {
-      width: calc(100vw / 4.2) !important;
-      margin: 10px !important;
-      padding: 8px !important;
-      border-radius: 14px !important;
-    }
-    .blob-1 {
-      width: 400px;
-      height: 400px;
-    }
-    .blob-2 {
-      width: 300px;
-      height: 300px;
-    }
-    .blob-3 {
-      width: 260px;
-      height: 260px;
-    }
-    .dot-grid {
-      background-size: 24px 24px;
-    }
-  }
-  @media (max-width: 480px) {
-    .hero-actions {
-      flex-direction: column;
-      width: 100%;
-    }
-    .btn-primary,
-    .btn-secondary {
-      width: 100%;
-      justify-content: center;
-    }
-    .bento-grid {
-      grid-template-columns: 1fr;
-      gap: 10px;
-    }
-    .carousel_item {
-      width: calc(100vw / 2.2) !important;
-    }
-  }
-
-  /* ═══════════════════════════════════════════
-       CONTACT SECTION
-       ═══════════════════════════════════════════ */
   .contact-section {
     position: relative;
     padding: 120px 24px 140px;
@@ -718,7 +585,6 @@
     height: 1px;
     background: linear-gradient(90deg, transparent, var(--border), transparent);
   }
-  /* Ambient Discord glow bleeding up from the bottom */
   .contact-section::after {
     content: '';
     position: absolute;
@@ -735,7 +601,6 @@
     z-index: 0;
   }
 
-  /* Watermark text behind the section (inspired by Hack the North) */
   .contact-bg-text {
     position: absolute;
     bottom: 0;
@@ -764,7 +629,6 @@
     gap: 0;
   }
 
-  /* Discord feature block */
   .discord-feature {
     display: flex;
     flex-direction: column;
@@ -782,7 +646,7 @@
   .contact-heading {
     font-size: clamp(2.4rem, 5.5vw, 4rem);
     font-weight: 900;
-    line-height: 1.1;
+    line-height: 1.15; /* Increased for descenders */
     letter-spacing: -0.03em;
     color: #fff;
     margin: 0;
@@ -795,34 +659,19 @@
     margin: 0;
   }
   .btn-discord {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 16px 44px;
-    border-radius: 100px;
-    font-weight: 700;
-    font-size: 1rem;
-    text-decoration: none;
-    color: #fff;
     background: linear-gradient(135deg, #5865f2 0%, #7289da 100%);
+    color: #fff;
     box-shadow:
       0 0 40px rgba(88, 101, 242, 0.45),
       0 4px 24px rgba(0, 0, 0, 0.35);
-    transition:
-      transform 0.25s,
-      box-shadow 0.25s,
-      filter 0.25s;
-    letter-spacing: 0.01em;
   }
   .btn-discord:hover {
-    transform: translateY(-3px) scale(1.03);
     box-shadow:
       0 0 64px rgba(88, 101, 242, 0.7),
       0 8px 32px rgba(0, 0, 0, 0.45);
     filter: brightness(1.08);
   }
 
-  /* Section divider with label */
   .contact-divider {
     width: 100%;
     display: flex;
@@ -846,7 +695,6 @@
     white-space: nowrap;
   }
 
-  /* Social pill row */
   .social-row {
     display: flex;
     align-items: center;
@@ -866,12 +714,7 @@
     font-weight: 600;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border);
-    transition:
-      color 0.25s,
-      background 0.25s,
-      border-color 0.25s,
-      box-shadow 0.25s,
-      transform 0.25s;
+    transition: all 0.25s;
   }
   .social-pill:hover {
     transform: translateY(-2px);
@@ -898,29 +741,72 @@
     box-shadow: 0 4px 24px rgba(34, 197, 94, 0.18);
   }
 
+  /* --- Scroll Animations --- */
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition:
+      opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-delay-1 {
+    transition-delay: 0.1s;
+  }
+  .reveal-delay-2 {
+    transition-delay: 0.2s;
+  }
+  .reveal-delay-3 {
+    transition-delay: 0.3s;
+  }
+
   @media (max-width: 768px) {
+    .hero {
+      padding: 100px 16px 50px;
+    }
+    .hero-title {
+      font-size: 2.2rem;
+    }
+    .bento-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .bento-section {
+      padding: 0 16px 60px;
+    }
+    .bento-card {
+      padding: 24px 18px;
+    }
+    .sponsors-section {
+      padding: 40px 12px 50px;
+    }
+    .carousel_item {
+      width: calc(100vw / 4.2) !important;
+    }
     .contact-section {
       padding: 80px 20px 100px;
-    }
-    .discord-feature {
-      margin-bottom: 52px;
-      gap: 18px;
     }
     .contact-bg-text {
       font-size: clamp(52px, 18vw, 100px);
     }
   }
   @media (max-width: 480px) {
-    .btn-discord {
+    .hero-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+    .btn {
       width: 100%;
       justify-content: center;
     }
-    .social-row {
-      gap: 8px;
+    .bento-grid {
+      grid-template-columns: 1fr;
     }
-    .social-pill {
-      padding: 9px 16px;
-      font-size: 0.82rem;
+    .carousel_item {
+      width: calc(100vw / 2.2) !important;
     }
   }
 </style>
@@ -928,7 +814,6 @@
 <body>
   <div id="navbar-slot"></div>
 
-  <!-- Background layers -->
   <div
     class="dot-grid"
     aria-hidden="true"
@@ -952,10 +837,11 @@
   ></div>
 
   <div class="page-wrap">
-    <!-- ═══ HERO ═══ -->
     <section class="hero">
       <div class="hero-inner">
-        <div class="hero-badge">Good luck to all participating teams!</div>
+        <div class="hero-badge">
+          <span class="pulse"></span>Good luck to all participating teams!
+        </div>
         <div class="hero-logo">
           <img
             src="../static/images/codes_logo3.svg"
@@ -971,7 +857,7 @@
           {% if config.REGISTRATION_OPEN %}
           <a
             href="/registration"
-            class="btn-primary"
+            class="btn btn-primary"
           >
             Register Now
             <svg
@@ -991,45 +877,44 @@
           {% endif %}
           <a
             href="/regulations"
-            class="btn-secondary"
+            class="btn btn-ghost"
             >Learn More</a
           >
         </div>
       </div>
     </section>
 
-    <!-- ═══ BENTO INFO GRID ═══ -->
     <section class="bento-section">
       <div class="bento-grid">
         <div
-          class="bento-card"
+          class="card bento-card"
           style="transition-delay: 0s"
         >
-          <span class="bento-icon">&#128197;</span>
+          <div class="card-title-icon icon-blue">📅</div>
           <div class="bento-label">Date</div>
           <div class="bento-value">March 2026</div>
         </div>
         <div
-          class="bento-card"
+          class="card bento-card"
           style="transition-delay: 0.1s"
         >
-          <span class="bento-icon">&#128205;</span>
+          <div class="card-title-icon icon-cyan">📍</div>
           <div class="bento-label">Location</div>
           <div class="bento-value">FMI, Sofia</div>
         </div>
         <div
-          class="bento-card"
+          class="card bento-card"
           style="transition-delay: 0.2s"
         >
-          <span class="bento-icon">&#128101;</span>
+          <div class="card-title-icon icon-purple">👥</div>
           <div class="bento-label">Teams</div>
           <div class="bento-value">Up to 18</div>
         </div>
         <div
-          class="bento-card"
+          class="card bento-card"
           style="transition-delay: 0.3s"
         >
-          <span class="bento-icon">&#9201;</span>
+          <div class="card-title-icon icon-amber">⏳</div>
           <div class="bento-label">Starts In</div>
           <div
             class="bento-value"
@@ -1041,7 +926,6 @@
       </div>
     </section>
 
-    <!-- ═══ SPONSORS ═══ -->
     <section class="sponsors-section">
       <div class="section-header reveal">
         <div class="section-tag">Partners</div>
@@ -1092,6 +976,7 @@
               alt="Milestone"
             />
           </div>
+
           <div class="logo carousel_item carousel standart">
             <img
               src="../static/companyLogos/astea.svg"
@@ -1128,7 +1013,7 @@
               alt="Experian"
             />
           </div>
-          <!-- Duplicated for seamless loop -->
+
           <div class="logo carousel_item carousel premium">
             <img
               src="../static/companyLogos/avenga.svg"
@@ -1204,179 +1089,173 @@
         </div>
       </div>
     </section>
-  </div>
 
-  <!-- ═══ CONTACT ═══ -->
-  <section class="contact-section">
-    <!-- Decorative watermark text -->
-    <div
-      class="contact-bg-text"
-      aria-hidden="true"
-    >
-      FMI{Codes}
-    </div>
-
-    <div class="contact-inner">
-      <!-- Discord feature — only shown to logged-in users (JWT in localStorage) -->
+    <section class="contact-section">
       <div
-        class="discord-feature reveal"
-        id="discord-section"
-        style="display: none"
+        class="contact-bg-text"
+        aria-hidden="true"
       >
-        <div class="discord-logo-wrap">
-          <svg
-            width="60"
-            height="60"
-            viewBox="0 0 24 24"
-            fill="#5865f2"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-label="Discord"
-          >
-            <path
-              d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
-            />
-          </svg>
-        </div>
-        <h2 class="contact-heading">Build with the <span class="gradient-text">community</span></h2>
-        <p class="contact-sub">
-          Questions, updates, team building — our Discord is the heartbeat of FMI{Codes}. Come hang
-          out before, during, and after the hackathon.
-        </p>
-        {% if discord_url %}
-        <a
-          href="{{ discord_url }}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn-discord"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
-            />
-          </svg>
-          Join the Discord
-        </a>
-        {% endif %}
+        FMI{Codes}
       </div>
-
-      <!-- Divider — only shown alongside Discord for logged-in users -->
-      <div
-        class="contact-divider reveal reveal-delay-1"
-        id="discord-divider"
-        style="display: none"
-      >
-        <span>Other channels</span>
-      </div>
-
-      <!-- Divider — shown to logged-out users instead of the Discord divider -->
-      <div
-        class="contact-divider reveal reveal-delay-1"
-        id="contact-divider"
-      >
-        <span>Contact us at</span>
-      </div>
-
-      <!-- Social pills -->
-      <div class="social-row reveal reveal-delay-2">
-        {% if instagram_url %}
-        <a
-          href="{{ instagram_url }}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="social-pill instagram"
+      <div class="contact-inner">
+        <div
+          class="discord-feature reveal"
+          id="discord-section"
+          style="display: none"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="#e1306c"
-            aria-hidden="true"
+          <div class="discord-logo-wrap">
+            <svg
+              width="60"
+              height="60"
+              viewBox="0 0 24 24"
+              fill="#5865f2"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-label="Discord"
+            >
+              <path
+                d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
+              />
+            </svg>
+          </div>
+          <h2 class="contact-heading">
+            Build with the <span class="gradient-text">community</span>
+          </h2>
+          <p class="contact-sub">
+            Questions, updates, team building — our Discord is the heartbeat of FMI{Codes}. Come
+            hang out before, during, and after the hackathon.
+          </p>
+          {% if discord_url %}
+          <a
+            href="{{ discord_url }}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-discord"
           >
-            <path
-              d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"
-            />
-          </svg>
-          Instagram
-        </a>
-        {% endif %} {% if facebook_url %}
-        <a
-          href="{{ facebook_url }}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="social-pill facebook"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="#1877f2"
-            aria-hidden="true"
-          >
-            <path
-              d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
-            />
-          </svg>
-          Facebook
-        </a>
-        {% endif %} {% if contact_email %}
-        <a
-          href="mailto:{{ contact_email }}"
-          class="social-pill email"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#60a5fa"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <rect
+            <svg
               width="20"
-              height="16"
-              x="2"
-              y="4"
-              rx="2"
-            />
-            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-          </svg>
-          {{ contact_email }}
-        </a>
-        {% endif %} {% if contact_phone %}
-        <a
-          href="tel:{{ contact_phone }}"
-          class="social-pill phone"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
+              />
+            </svg>
+            Join the Discord
+          </a>
+          {% endif %}
+        </div>
+
+        <div
+          class="contact-divider reveal reveal-delay-1"
+          id="discord-divider"
+          style="display: none"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#22c55e"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+          <span>Other channels</span>
+        </div>
+        <div
+          class="contact-divider reveal reveal-delay-1"
+          id="contact-divider"
+        >
+          <span>Contact us at</span>
+        </div>
+
+        <div class="social-row reveal reveal-delay-2">
+          {% if instagram_url %}
+          <a
+            href="{{ instagram_url }}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="social-pill instagram"
           >
-            <path
-              d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z"
-            />
-          </svg>
-          {{ contact_phone }}
-        </a>
-        {% endif %}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="#e1306c"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"
+              />
+            </svg>
+            Instagram
+          </a>
+          {% endif %} {% if facebook_url %}
+          <a
+            href="{{ facebook_url }}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="social-pill facebook"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="#1877f2"
+              aria-hidden="true"
+            >
+              <path
+                d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+              />
+            </svg>
+            Facebook
+          </a>
+          {% endif %} {% if contact_email %}
+          <a
+            href="mailto:{{ contact_email }}"
+            class="social-pill email"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#60a5fa"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect
+                width="20"
+                height="16"
+                x="2"
+                y="4"
+                rx="2"
+              />
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+            </svg>
+            {{ contact_email }}
+          </a>
+          {% endif %} {% if contact_phone %}
+          <a
+            href="tel:{{ contact_phone }}"
+            class="social-pill phone"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#22c55e"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z"
+              />
+            </svg>
+            {{ contact_phone }}
+          </a>
+          {% endif %}
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
+  </div>
 
   <script>
     /* ═══ Countdown timer ═══ */
@@ -1428,8 +1307,11 @@
 
     /* ═══ Mouse-following spotlight ═══ */
     document.addEventListener('mousemove', (e) => {
-      document.getElementById('spotlight').style.setProperty('--mx', e.clientX + 'px');
-      document.getElementById('spotlight').style.setProperty('--my', e.clientY + 'px');
+      const s = document.getElementById('spotlight');
+      if (s) {
+        s.style.setProperty('--mx', e.clientX + 'px');
+        s.style.setProperty('--my', e.clientY + 'px');
+      }
     });
 
     /* ═══ Bento card tilt on hover ═══ */
