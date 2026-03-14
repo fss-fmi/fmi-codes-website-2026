@@ -1,14 +1,18 @@
-"""Gale-Shapley Matching Service — Hospital-Resident Variant
+"""Gale-Shapley + Greedy Fill Matching Service
 
-Each team (hospital) has capacity 3, each mentor (resident) has capacity 1.
-Uses mentor-proposing algorithm:
-  1. Each unmatched mentor proposes to their highest-ranked team not yet rejected by.
-  2. Each team tentatively holds the best 3 proposers (per team's preference) and rejects the rest.
-  3. Rejected mentors propose to their next choice.
-  4. Repeat until no unmatched mentor has remaining teams to propose to.
+Phase 1 — Extended Gale-Shapley (mentor-proposing, MENTOR_CAPACITY=3, TEAM_CAPACITY=3):
+  Each mentor proposes down their ranked preference list, accumulating up to 3 team
+  assignments. Teams hold the best TEAM_CAPACITY proposals by their own preference
+  ranking; displaced mentors re-queue to propose to their next choice.
+
+Phase 2 — Greedy fill:
+  Any team still below TEAM_CAPACITY gets the most-available unassigned mentors
+  appended to it. Ensures every registered+active team reaches capacity even when
+  preference coverage is sparse (e.g. not all preferences submitted).
 """
 
 import logging
+from collections import deque
 
 from flask import current_app
 
@@ -17,34 +21,57 @@ from app.services.mentor_selection_service import get_preference_submission_stat
 
 logger = logging.getLogger(__name__)
 
-TEAM_CAPACITY = 3
+TEAM_CAPACITY = 3    # mentors per team
+MENTOR_CAPACITY = 3  # teams per mentor
 
 
 def run_gale_shapley():
-    """Run the Hospital-Resident Gale-Shapley matching algorithm.
+    """Run the matching algorithm.
 
     Returns:
-        (success, message, assignments) where assignments is a list of
-        (team_id, mentor_id) tuples.
+        (success, message, assignments, warnings) where assignments is a list of
+        (team_id, mentor_id) tuples and warnings is a list of advisory strings.
+
+    Always attempts to run — incomplete preference submissions produce warnings
+    rather than an outright failure. Phase 2 greedy fill covers the gaps.
     """
-    # Check all preferences are submitted
-    status = get_preference_submission_status()
-    if not status["all_submitted"]:
-        return False, "Not all preferences have been submitted yet", []
+    warnings = []
+
+    # Load all active+registered teams and all active mentors
+    all_team_rows = (
+        execute_query(
+            current_app,
+            "SELECT id FROM teams WHERE status = 'active' AND is_registered = TRUE",
+            fetch_all=True,
+        )
+        or []
+    )
+    all_teams = [r["id"] for r in all_team_rows]
+
+    all_mentor_rows = (
+        execute_query(
+            current_app,
+            "SELECT id FROM mentors WHERE status = 'active'",
+            fetch_all=True,
+        )
+        or []
+    )
+    all_mentors = [r["id"] for r in all_mentor_rows]
+
+    if not all_teams:
+        return False, "No active registered teams found", [], []
+    if not all_mentors:
+        return False, "No active mentors found", [], []
 
     # Load mentor preferences: mentor_id -> [team_id ordered by rank]
     mentor_prefs_rows = (
         execute_query(
             current_app,
-            """
-        SELECT mentor_id, team_id FROM mentor_team_preferences
-        ORDER BY mentor_id, rank
-    """,
+            "SELECT mentor_id, team_id FROM mentor_team_preferences ORDER BY mentor_id, rank",
             fetch_all=True,
         )
         or []
     )
-
     mentor_pref_lists = {}
     for row in mentor_prefs_rows:
         mentor_pref_lists.setdefault(row["mentor_id"], []).append(row["team_id"])
@@ -53,80 +80,145 @@ def run_gale_shapley():
     team_prefs_rows = (
         execute_query(
             current_app,
-            """
-        SELECT team_id, mentor_id, rank FROM team_mentor_preferences
-        ORDER BY team_id, rank
-    """,
+            "SELECT team_id, mentor_id, rank FROM team_mentor_preferences ORDER BY team_id, rank",
             fetch_all=True,
         )
         or []
     )
-
     team_pref_ranks = {}
     for row in team_prefs_rows:
         team_pref_ranks.setdefault(row["team_id"], {})[row["mentor_id"]] = row["rank"]
 
-    all_mentors = list(mentor_pref_lists.keys())
-    all_teams = list(team_pref_ranks.keys())
+    # Soft warnings for incomplete submissions (do not block)
+    teams_without_prefs = [t for t in all_teams if t not in team_pref_ranks]
+    mentors_without_prefs = [m for m in all_mentors if m not in mentor_pref_lists]
+    if teams_without_prefs:
+        warnings.append(
+            f"{len(teams_without_prefs)} team(s) have not submitted mentor preferences"
+        )
+    if mentors_without_prefs:
+        warnings.append(
+            f"{len(mentors_without_prefs)} mentor(s) have not submitted team preferences"
+        )
 
-    # Initialize
-    # mentor_proposal_index: which preference index mentor proposes to next
-    mentor_proposal_index = dict.fromkeys(all_mentors, 0)
-    # mentor_match: mentor_id -> team_id or None
-    mentor_match = dict.fromkeys(all_mentors)
-    # team_matches: team_id -> list of mentor_ids currently held
-    team_matches = {t: [] for t in all_teams}
+    # ── Phase 1: Extended Gale-Shapley ───────────────────────────────────────
+    mentor_proposal_idx = {m: 0 for m in all_mentors}
+    mentor_assignments = {m: [] for m in all_mentors}   # mentor -> [team_ids]
+    team_assignments   = {t: [] for t in all_teams}     # team   -> [mentor_ids]
 
-    # Free mentors queue
-    free_mentors = list(all_mentors)
+    queue = deque(all_mentors)
+    in_queue = set(all_mentors)
 
-    while free_mentors:
-        mentor_id = free_mentors.pop(0)
+    while queue:
+        mentor_id = queue.popleft()
+        in_queue.discard(mentor_id)
+
+        if len(mentor_assignments[mentor_id]) >= MENTOR_CAPACITY:
+            continue  # already full
+
         pref_list = mentor_pref_lists.get(mentor_id, [])
-        idx = mentor_proposal_index[mentor_id]
+        idx = mentor_proposal_idx[mentor_id]
 
         if idx >= len(pref_list):
-            # Mentor has exhausted all preferences — remains unmatched
-            continue
+            continue  # exhausted all preferences
 
         team_id = pref_list[idx]
-        mentor_proposal_index[mentor_id] = idx + 1
+        mentor_proposal_idx[mentor_id] = idx + 1
+
+        if team_id not in team_assignments:
+            # Proposed to a team not in the eligible set — skip, try next
+            if (
+                len(mentor_assignments[mentor_id]) < MENTOR_CAPACITY
+                and mentor_proposal_idx[mentor_id] < len(pref_list)
+                and mentor_id not in in_queue
+            ):
+                queue.append(mentor_id)
+                in_queue.add(mentor_id)
+            continue
 
         team_ranking = team_pref_ranks.get(team_id, {})
-        current_holders = team_matches[team_id]
+        current_holders = team_assignments[team_id]
 
         if len(current_holders) < TEAM_CAPACITY:
-            # Team has room — accept
+            # Space available — accept
             current_holders.append(mentor_id)
-            mentor_match[mentor_id] = team_id
+            mentor_assignments[mentor_id].append(team_id)
         else:
-            # Team is full — check if this mentor is preferred over the worst held
-            # "Worst" = the held mentor with the highest rank number (least preferred)
-            # If mentor is not in team's preference list, treat as rank infinity
+            # Team is full — displace the worst holder if this mentor is preferred
             mentor_rank = team_ranking.get(mentor_id, float("inf"))
-            worst_held = max(current_holders, key=lambda m: team_ranking.get(m, float("inf")))
+            worst_held = max(
+                current_holders, key=lambda m: team_ranking.get(m, float("inf"))
+            )
             worst_rank = team_ranking.get(worst_held, float("inf"))
 
             if mentor_rank < worst_rank:
-                # Replace worst with this mentor
                 current_holders.remove(worst_held)
-                mentor_match[worst_held] = None
-                free_mentors.append(worst_held)
+                mentor_assignments[worst_held].remove(team_id)
+                # Displaced mentor re-enters the queue
+                if worst_held not in in_queue:
+                    queue.append(worst_held)
+                    in_queue.add(worst_held)
 
                 current_holders.append(mentor_id)
-                mentor_match[mentor_id] = team_id
-            else:
-                # Rejected — mentor proposes to next
-                free_mentors.append(mentor_id)
+                mentor_assignments[mentor_id].append(team_id)
+            # else rejected — fall through to re-queue below
 
-    # Collect assignments
-    assignments = []
-    for mentor_id, team_id in mentor_match.items():
-        if team_id is not None:
-            assignments.append((team_id, mentor_id))
+        # Re-queue if mentor still has capacity and unproposed teams left
+        if (
+            len(mentor_assignments[mentor_id]) < MENTOR_CAPACITY
+            and mentor_proposal_idx[mentor_id] < len(pref_list)
+            and mentor_id not in in_queue
+        ):
+            queue.append(mentor_id)
+            in_queue.add(mentor_id)
 
+    # ── Phase 2: Greedy fill ─────────────────────────────────────────────────
+    # Fill teams that are still below capacity using mentors that still have room.
+    # Process teams with fewest mentors first; prefer mentors with fewest assignments
+    # (spreads load evenly instead of piling onto already-busy mentors).
+    def _mentor_load(m):
+        return len(mentor_assignments.get(m, []))
+
+    for team_id in sorted(all_teams, key=lambda t: len(team_assignments[t])):
+        if len(team_assignments[team_id]) >= TEAM_CAPACITY:
+            continue
+        candidates = sorted(
+            [
+                m
+                for m in all_mentors
+                if len(mentor_assignments[m]) < MENTOR_CAPACITY
+                and team_id not in mentor_assignments[m]
+            ],
+            key=_mentor_load,
+        )
+        for mentor_id in candidates:
+            if len(team_assignments[team_id]) >= TEAM_CAPACITY:
+                break
+            team_assignments[team_id].append(mentor_id)
+            mentor_assignments[mentor_id].append(team_id)
+
+    # Collect and sort final assignments
+    assignments = [
+        (team_id, mentor_id)
+        for team_id, mentor_list in team_assignments.items()
+        for mentor_id in mentor_list
+    ]
     assignments.sort(key=lambda x: (x[0], x[1]))
-    return True, f"Matching complete: {len(assignments)} assignments made", assignments
+
+    teams_underfilled = sum(1 for t in all_teams if len(team_assignments[t]) < TEAM_CAPACITY)
+    if teams_underfilled:
+        warnings.append(
+            f"{teams_underfilled} team(s) received fewer than {TEAM_CAPACITY} mentors"
+            " — not enough mentors available to fill all slots"
+        )
+
+    msg = (
+        f"Matching complete: {len(assignments)} assignments"
+        f" across {len(all_teams)} teams and {len(all_mentors)} mentors"
+    )
+    logger.info(msg)
+    return True, msg, assignments, warnings
+
 
 
 def save_matching_results(assignments):

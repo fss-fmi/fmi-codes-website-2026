@@ -160,8 +160,8 @@ def preference_status():
 @api_bp.route("/admin/run-matching", methods=["POST"])
 @admin_required
 def run_matching():
-    """Trigger Gale-Shapley matching algorithm"""
-    success, message, assignments = matching_service.run_gale_shapley()
+    """Trigger matching algorithm — always attempts to run, returns warnings for partial data"""
+    success, message, assignments, warnings = matching_service.run_gale_shapley()
     if not success:
         return jsonify({"success": False, "error": message}), 400
 
@@ -170,7 +170,6 @@ def run_matching():
     except Exception as e:
         return jsonify({"success": False, "error": f"Failed to save results: {e}"}), 500
 
-    # Format results for response
     results = {}
     for team_id, mentor_id in assignments:
         results.setdefault(team_id, []).append(mentor_id)
@@ -181,6 +180,7 @@ def run_matching():
             "message": message,
             "assignment_count": len(assignments),
             "assignments": results,
+            "warnings": warnings,
         }
     ), 200
 

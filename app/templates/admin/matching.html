@@ -661,10 +661,9 @@
         <button
           class="run-btn"
           id="run-btn"
-          disabled
           onclick="runMatching()"
         >
-          Run Gale-Shapley Matching
+          Run Matching Algorithm
         </button>
         <div id="match-status"></div>
       </div>
@@ -818,15 +817,15 @@
             });
           }
 
-          // Enable/disable run button
-          var allReady = data.all_submitted === true;
-          document.getElementById('run-btn').disabled = !allReady;
-          if (!allReady) {
+          // Show advisory if not all submitted, but always allow running
+          if (!data.all_submitted) {
             document.getElementById('match-msg').innerHTML =
-              '<div class="msg msg-warn">All teams and mentors must submit preferences before running the algorithm.</div>';
+              '<div class="msg msg-warn">Some teams or mentors have not yet submitted preferences. ' +
+              'You can still run the algorithm — unsubmitted participants will be assigned via greedy fill.</div>';
           } else {
             document.getElementById('match-msg').innerHTML = '';
           }
+          document.getElementById('run-btn').disabled = false;
         } catch (e) {
           document.getElementById('status-loading').textContent = 'Error loading status';
         }
@@ -876,9 +875,21 @@
       }
 
       async function runMatching() {
+        // Confirm re-run if results already exist
+        var hasResults = document.getElementById('results-section').style.display !== 'none';
+        if (hasResults) {
+          if (
+            !confirm(
+              'Matching has already been run. Re-running will overwrite ALL existing mentor assignments. Continue?',
+            )
+          ) {
+            return;
+          }
+        }
+
         var btn = document.getElementById('run-btn');
         btn.disabled = true;
-        btn.textContent = 'Running...';
+        btn.textContent = 'Running…';
         var statusEl = document.getElementById('match-status');
         statusEl.innerHTML = '';
 
@@ -889,12 +900,18 @@
           });
           var data = await res.json();
           if (data.success) {
-            statusEl.innerHTML =
+            var html =
               '<div class="run-success">' +
               data.message +
               ' (' +
               (data.assignment_count || 0) +
               ' assignments)</div>';
+            if (data.warnings && data.warnings.length > 0) {
+              data.warnings.forEach(function (w) {
+                html += '<div class="run-warning">⚠️ ' + w + '</div>';
+              });
+            }
+            statusEl.innerHTML = html;
             loadResults();
           } else {
             statusEl.innerHTML =
@@ -903,7 +920,7 @@
         } catch (e) {
           statusEl.innerHTML = '<div class="run-warning">Network error</div>';
         }
-        btn.textContent = 'Run Gale-Shapley Matching';
+        btn.textContent = 'Re-run Matching';
         btn.disabled = false;
       }
 
