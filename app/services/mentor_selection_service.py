@@ -170,7 +170,7 @@ def get_preference_submission_status():
             """
         SELECT t.id, t.team_name,
                EXISTS(SELECT 1 FROM team_mentor_preferences tmp WHERE tmp.team_id = t.id) as submitted
-        FROM teams t WHERE t.status = 'active'
+        FROM teams t WHERE t.status = 'active' AND t.is_registered = TRUE
         ORDER BY t.team_name
     """,
             fetch_all=True,
