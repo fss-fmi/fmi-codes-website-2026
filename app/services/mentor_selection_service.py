@@ -61,7 +61,7 @@ def get_team_mentor_preferences(team_id):
     query = """
         SELECT tmp.rank, tmp.mentor_id,
                m.first_name || ' ' || m.last_name AS mentor_name,
-               m.company_name
+               m.company_name, m.picture_url
         FROM team_mentor_preferences tmp
         JOIN mentors m ON tmp.mentor_id = m.id
         WHERE tmp.team_id = %s
@@ -133,7 +133,7 @@ def get_available_mentors_for_ranking(team_id):
     """Get all active mentors for the captain to choose from."""
     query = """
         SELECT m.id AS mentor_id, m.first_name || ' ' || m.last_name AS name,
-               m.company_name, m.bio, m.picture_filename, m.availability_text
+               m.company_name, m.bio, m.picture_url, m.picture_filename, m.availability_text
         FROM mentors m
         WHERE m.status = 'active'
         ORDER BY m.last_name, m.first_name
