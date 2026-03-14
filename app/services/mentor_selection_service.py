@@ -149,6 +149,7 @@ def get_active_teams_for_ranking():
         FROM teams t
         LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
         WHERE t.status = 'active'
+          AND t.is_registered = TRUE
         GROUP BY t.id
         ORDER BY t.team_name
     """
