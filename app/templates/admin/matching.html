@@ -213,6 +213,143 @@
     object-fit: cover;
   }
 
+  /* Export */
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .results-header h2 {
+    margin: 0;
+  }
+  .export-btn {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .export-btn:hover {
+    background: rgba(96, 165, 250, 0.1);
+  }
+
+  /* Export Modal */
+  .export-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .export-overlay.open {
+    display: flex;
+  }
+  .export-modal {
+    background: #0f1729;
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 720px;
+    max-height: 85vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Inter', sans-serif;
+  }
+  .export-modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .export-modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #e2e8f0;
+  }
+  .export-modal-body {
+    overflow-y: auto;
+    padding: 20px 24px;
+    flex: 1;
+  }
+  .export-meta {
+    font-size: 12px;
+    color: #475569;
+    margin-bottom: 16px;
+  }
+  .export-violation {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #fca5a5;
+    font-size: 13px;
+    margin-bottom: 16px;
+    line-height: 1.8;
+  }
+  .export-team-block {
+    background: rgba(96, 165, 250, 0.04);
+    border: 1px solid rgba(96, 165, 250, 0.12);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .export-team-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #60a5fa;
+    margin-bottom: 10px;
+  }
+  .export-mentor-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #cbd5e1;
+    padding: 4px 0;
+  }
+  .export-company {
+    color: #64748b;
+    font-size: 12px;
+  }
+  .export-modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+  .export-copy-btn {
+    background: var(--accent);
+    color: #0b1021;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .export-close-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #94a3b8;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
   .msg {
     padding: 14px;
     border-radius: 8px;
@@ -672,7 +809,15 @@
         class="card results-section"
         id="results-section"
       >
-        <h2>Matching Results</h2>
+        <div class="results-header">
+          <h2>Matching Results</h2>
+          <button
+            class="export-btn"
+            onclick="exportResults()"
+          >
+            📋 Export Results
+          </button>
+        </div>
         <div id="results-content"></div>
       </div>
 
@@ -1024,6 +1169,111 @@
         return d.innerHTML;
       }
 
+      /* ── Export Results ──────────────────────────────── */
+
+      var _exportText = '';
+
+      async function exportResults() {
+        try {
+          var res = await fetch('/api/admin/matching-export', {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          var data = await res.json();
+          if (!data.success) {
+            alert('Failed to load export data');
+            return;
+          }
+
+          var body = document.getElementById('export-body');
+          var html = '';
+          var copyLines = ['🏆 FMI Codes 2026 — Mentor Assignments', ''];
+          var genDate = new Date(data.generated_at).toLocaleString();
+
+          html +=
+            '<div class="export-meta">Generated: ' +
+            genDate +
+            ' · ' +
+            data.total_assignments +
+            ' assignments across ' +
+            data.teams.length +
+            ' teams</div>';
+          copyLines.push('Generated: ' + genDate);
+          copyLines.push(
+            data.total_assignments + ' assignments across ' + data.teams.length + ' teams',
+          );
+          copyLines.push('');
+
+          if (data.violations && data.violations.length > 0) {
+            html += '<div class="export-violation">⚠️ Constraint violations detected:<br>';
+            data.violations.forEach(function (v) {
+              html += '• ' + escHtml(v) + '<br>';
+            });
+            html += '</div>';
+            copyLines.push('⚠️ CONSTRAINT VIOLATIONS:');
+            data.violations.forEach(function (v) {
+              copyLines.push('  • ' + v);
+            });
+            copyLines.push('');
+          }
+
+          data.teams.forEach(function (team) {
+            html += '<div class="export-team-block">';
+            html += '<div class="export-team-name">🎯 ' + escHtml(team.team_name) + '</div>';
+            copyLines.push('🎯 ' + team.team_name);
+            team.mentors.forEach(function (m) {
+              var company = m.company_name ? ' · ' + m.company_name : '';
+              html +=
+                '<div class="export-mentor-row">👨‍💼 <span>' +
+                escHtml(m.mentor_name) +
+                '</span>' +
+                (company ? '<span class="export-company">' + escHtml(company) + '</span>' : '') +
+                '</div>';
+              copyLines.push('   👨‍💼 ' + m.mentor_name + company);
+            });
+            html += '</div>';
+            copyLines.push('');
+          });
+
+          _exportText = copyLines.join('\n');
+          body.innerHTML = html;
+          document.getElementById('copy-btn').textContent = '📋 Copy to Clipboard';
+          document.getElementById('export-overlay').classList.add('open');
+        } catch (e) {
+          alert('Error loading export: ' + e.message);
+        }
+      }
+
+      function closeExport() {
+        document.getElementById('export-overlay').classList.remove('open');
+      }
+
+      function copyExport() {
+        if (!_exportText) return;
+        var btn = document.getElementById('copy-btn');
+        navigator.clipboard
+          .writeText(_exportText)
+          .then(function () {
+            btn.textContent = '✅ Copied!';
+            setTimeout(function () {
+              btn.textContent = '📋 Copy to Clipboard';
+            }, 2000);
+          })
+          .catch(function () {
+            // Fallback for browsers without clipboard API
+            var ta = document.createElement('textarea');
+            ta.value = _exportText;
+            ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            btn.textContent = '✅ Copied!';
+            setTimeout(function () {
+              btn.textContent = '📋 Copy to Clipboard';
+            }, 2000);
+          });
+      }
+
       async function adminRegister(teamId) {
         try {
           var res = await fetch('/api/admin/teams/' + teamId + '/register', {
@@ -1248,5 +1498,43 @@
       }
     });
   </script>
+  <!-- Export Modal -->
+  <div
+    class="export-overlay"
+    id="export-overlay"
+    onclick="if (event.target === this) closeExport();"
+  >
+    <div class="export-modal">
+      <div class="export-modal-header">
+        <h3>🏆 FMI Codes 2026 — Mentor Assignments</h3>
+        <button
+          class="export-close-btn"
+          onclick="closeExport()"
+          style="padding: 6px 14px; font-size: 20px; line-height: 1"
+        >
+          ×
+        </button>
+      </div>
+      <div
+        class="export-modal-body"
+        id="export-body"
+      ></div>
+      <div class="export-modal-footer">
+        <button
+          class="export-copy-btn"
+          id="copy-btn"
+          onclick="copyExport()"
+        >
+          📋 Copy to Clipboard
+        </button>
+        <button
+          class="export-close-btn"
+          onclick="closeExport()"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
 </body>
 {% endblock %}

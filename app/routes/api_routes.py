@@ -193,6 +193,56 @@ def get_matching_results():
     return jsonify({"success": True, "results": [dict(r) for r in results]}), 200
 
 
+@api_bp.route("/admin/matching-export", methods=["GET"])
+@admin_required
+def matching_export():
+    """Get matching results grouped by team, with constraint validation, for export"""
+    from datetime import datetime, timezone
+
+    rows = [dict(r) for r in matching_service.get_matching_results()]
+
+    teams: dict = {}
+    mentor_teams: dict = {}
+
+    for r in rows:
+        tid = r["team_id"]
+        mid = r["mentor_id"]
+        if tid not in teams:
+            teams[tid] = {"team_name": r["team_name"], "mentors": []}
+        teams[tid]["mentors"].append(
+            {
+                "mentor_name": r["mentor_name"],
+                "company_name": r.get("company_name") or "",
+            }
+        )
+        entry = mentor_teams.setdefault(
+            mid, {"mentor_name": r["mentor_name"], "teams": []}
+        )
+        entry["teams"].append(r["team_name"])
+
+    violations = []
+    for t in teams.values():
+        if len(t["mentors"]) > 3:
+            violations.append(
+                f"Team '{t['team_name']}' has {len(t['mentors'])} mentors (max 3)"
+            )
+    for m in mentor_teams.values():
+        if len(m["teams"]) > 3:
+            violations.append(
+                f"Mentor '{m['mentor_name']}' is assigned to {len(m['teams'])} teams (max 3)"
+            )
+
+    return jsonify(
+        {
+            "success": True,
+            "teams": list(teams.values()),
+            "total_assignments": len(rows),
+            "violations": violations,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ), 200
+
+
 # ── Admin team registration endpoints ──────────────────────────────
 
 
