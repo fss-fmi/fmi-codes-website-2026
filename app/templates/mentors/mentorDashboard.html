@@ -460,6 +460,21 @@
         class="message"
       ></div>
 
+      <!-- Confirmed by admin — show assigned teams -->
+      <div
+        id="assigned-section"
+        style="display: none"
+      >
+        <div style="margin-bottom: 20px; text-align: center">
+          <div style="font-size: 40px; margin-bottom: 12px">🎯</div>
+          <h3 style="font-size: 19px; font-weight: 700; margin-bottom: 6px">Your Assigned Teams</h3>
+          <p style="color: var(--muted); font-size: 13px; margin: 0">
+            Final assignments confirmed by admin for FMI Codes 2026.
+          </p>
+        </div>
+        <div id="assigned-teams-list"></div>
+      </div>
+
       <!-- Already submitted -->
       <div
         id="submitted-section"
@@ -599,6 +614,18 @@
       }
 
       async function init() {
+        // Check if admin has already confirmed the matching results
+        try {
+          var statusRes = await fetch('/api/matching-status');
+          if (statusRes.ok) {
+            var statusData = await statusRes.json();
+            if (statusData.confirmed) {
+              await showAssignedTeams();
+              return;
+            }
+          }
+        } catch (_) {}
+
         // Check existing preferences
         var prefRes = await fetch('/api/mentors/team-preferences', {
           headers: { Authorization: 'Bearer ' + token },
@@ -793,6 +820,47 @@
           } else showMsg(data.error || 'Failed', 'error');
         } catch (e) {
           showMsg('Network error', 'error');
+        }
+      }
+
+      async function showAssignedTeams() {
+        document.getElementById('select-section').style.display = 'none';
+        document.getElementById('rank-section').style.display = 'none';
+        document.getElementById('submitted-section').style.display = 'none';
+        document.getElementById('assigned-section').style.display = 'block';
+        document.getElementById('step-badge').className = 'step-indicator step-rank';
+        document.getElementById('step-badge').textContent = '✅ Assignments confirmed';
+
+        try {
+          var res = await fetch('/api/mentors/assigned-teams', {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          var data = res.ok ? await res.json() : { teams: [] };
+          var teams = data.teams || [];
+          var container = document.getElementById('assigned-teams-list');
+          container.innerHTML = '';
+          if (teams.length === 0) {
+            container.innerHTML =
+              '<div style="color:var(--muted);text-align:center;padding:24px">No teams assigned.</div>';
+            return;
+          }
+          teams.forEach(function (t) {
+            var row = document.createElement('div');
+            row.className = 'pref-row';
+            row.innerHTML =
+              '<div style="font-size:22px">🎯</div>' +
+              '<div>' +
+              '<div style="font-weight:600;font-size:15px">' +
+              (t.team_name || 'Team #' + t.team_id) +
+              '</div>' +
+              '<div style="color:var(--muted);font-size:13px">' +
+              (t.participant_count || '?') +
+              ' members</div></div>';
+            container.appendChild(row);
+          });
+        } catch (_) {
+          document.getElementById('assigned-teams-list').innerHTML =
+            '<div style="color:var(--muted);text-align:center;padding:24px">Failed to load assignments.</div>';
         }
       }
 

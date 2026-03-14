@@ -467,6 +467,46 @@
     color: var(--muted);
     font-size: 13px;
   }
+  /* Mentor preferences list (before confirmation) */
+  .pref-mentor-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  .pref-rank-badge {
+    min-width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    background: rgba(96, 165, 250, 0.15);
+    color: #93c5fd;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    flex-shrink: 0;
+  }
+  .pref-rank-badge.r1 {
+    background: rgba(250, 204, 21, 0.15);
+    color: #fde68a;
+    border-color: rgba(250, 204, 21, 0.3);
+  }
+  .pref-rank-badge.r2 {
+    background: rgba(156, 163, 175, 0.15);
+    color: #d1d5db;
+    border-color: rgba(156, 163, 175, 0.3);
+  }
+  .pref-rank-badge.r3 {
+    background: rgba(180, 122, 70, 0.15);
+    color: #d4a574;
+    border-color: rgba(180, 122, 70, 0.3);
+  }
   /* Browse teams button — light blue/pink gradient */
   .btn-browse {
     padding: 14px 28px;
@@ -885,12 +925,58 @@
         </a>
       </div>
 
+      <!-- Mentor preferences: shown BEFORE admin confirms matching -->
+      <div
+        class="card"
+        id="mentor-prefs-card"
+        style="display: none"
+      >
+        <div class="card-header"><h2>🎯 Mentor Preferences</h2></div>
+        <p
+          class="info-text"
+          style="margin-bottom: 14px; color: var(--muted); font-size: 13px"
+        >
+          Your team's submitted ranking. Final assignments will be revealed once the admin confirms
+          the algorithm results.
+        </p>
+        <div
+          id="mentor-prefs-list"
+          style="display: flex; flex-direction: column; gap: 0"
+        ></div>
+        <div
+          id="mentor-prefs-empty"
+          class="info-text"
+          style="color: var(--muted); font-size: 13px; display: none"
+        >
+          No preferences submitted yet.
+          <a
+            href="/chooseMentor"
+            style="color: var(--accent)"
+            >Submit your ranking →</a
+          >
+        </div>
+      </div>
+
+      <!-- Assigned mentors: shown AFTER admin confirms matching -->
       <div
         class="card"
         id="mentors-card"
         style="display: none"
       >
-        <div class="card-header"><h2>Assigned Mentors</h2></div>
+        <div class="card-header">
+          <h2>✅ Assigned Mentors</h2>
+          <span
+            style="
+              font-size: 12px;
+              padding: 4px 10px;
+              border-radius: 6px;
+              background: rgba(34, 197, 94, 0.12);
+              border: 1px solid rgba(34, 197, 94, 0.3);
+              color: #86efac;
+            "
+            >Confirmed</span
+          >
+        </div>
         <div
           id="mentors-list"
           style="display: flex; flex-direction: column; gap: 10px"
@@ -1043,7 +1129,6 @@
         }
 
         renderMembers(currentTeam.members || []);
-        renderMentors(currentTeam.mentors || []);
 
         // Load join requests for captain
         if (isCaptain) {
@@ -1054,18 +1139,94 @@
         if (isCaptain) {
           document.getElementById('disband-btn').style.display = 'inline-block';
           document.getElementById('leave-btn').style.display = 'none';
-          if (currentTeam.status === 'active') {
-            document.getElementById('choose-mentors-card').style.display = 'block';
-          } else {
-            document.getElementById('choose-mentors-card').style.display = 'none';
-          }
         }
+
+        // Load matching confirmation state and mentor preferences in parallel
+        await loadMentorSection();
 
         document.getElementById('dashboard').style.display = 'flex';
       } catch (err) {
         console.error(err);
         document.getElementById('no-team').style.display = 'flex';
       }
+    }
+
+    async function loadMentorSection() {
+      if (!currentTeam || !currentTeam.id) return;
+      const teamId = currentTeam.id;
+      const isActive = currentTeam.status === 'active';
+
+      // Fetch confirmation status and preferences in parallel
+      const [statusRes, prefRes] = await Promise.all([
+        fetch('/api/matching-status').catch(() => null),
+        isActive
+          ? fetch('/api/teams/' + teamId + '/mentor-preferences', {
+              headers: { Authorization: 'Bearer ' + token },
+            }).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      const statusData = statusRes && statusRes.ok ? await statusRes.json() : { confirmed: false };
+      const confirmed = Boolean(statusData.confirmed);
+
+      if (confirmed) {
+        // Show assigned mentors
+        renderMentors(currentTeam.mentors || []);
+        document.getElementById('choose-mentors-card').style.display = 'none';
+        document.getElementById('mentor-prefs-card').style.display = 'none';
+      } else {
+        // Show preference ranking + choice card
+        document.getElementById('mentors-card').style.display = 'none';
+
+        if (isCaptain && isActive) {
+          document.getElementById('choose-mentors-card').style.display = 'block';
+        }
+
+        if (isActive) {
+          const prefData = prefRes && prefRes.ok ? await prefRes.json() : null;
+          const prefs = prefData && prefData.preferences ? prefData.preferences : [];
+          renderMentorPrefs(prefs);
+          document.getElementById('mentor-prefs-card').style.display = 'block';
+        }
+      }
+    }
+
+    function renderMentorPrefs(prefs) {
+      const list = document.getElementById('mentor-prefs-list');
+      const empty = document.getElementById('mentor-prefs-empty');
+      list.innerHTML = '';
+      if (!prefs || prefs.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      const labels = ['1st', '2nd', '3rd'];
+      const classes = ['r1', 'r2', 'r3'];
+      prefs.forEach(function (p, i) {
+        const row = document.createElement('div');
+        row.className = 'pref-mentor-row';
+        const pic = p.picture_url
+          ? '<img src="' +
+            p.picture_url +
+            '" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" />'
+          : '';
+        row.innerHTML =
+          '<div class="pref-rank-badge ' +
+          (classes[i] || '') +
+          '">' +
+          (labels[i] || i + 1) +
+          '</div>' +
+          pic +
+          '<div>' +
+          '<div style="font-weight:600;font-size:14px">' +
+          (p.mentor_name || 'Mentor #' + p.mentor_id) +
+          '</div>' +
+          '<div style="color:var(--muted);font-size:12px">' +
+          (p.company_name || '') +
+          '</div>' +
+          '</div>';
+        list.appendChild(row);
+      });
     }
 
     function renderMembers(members) {

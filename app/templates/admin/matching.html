@@ -181,6 +181,49 @@
     margin-top: 12px;
   }
 
+  /* Confirm button */
+  .confirm-btn {
+    padding: 10px 24px;
+    background: linear-gradient(120deg, #22c55e, #16a34a);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+  }
+  .confirm-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(34, 197, 94, 0.35);
+  }
+  .confirmed-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    color: #86efac;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .unconfirmed-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: rgba(234, 179, 8, 0.1);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    color: #fde047;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
   .results-section {
     display: none;
   }
@@ -811,12 +854,23 @@
       >
         <div class="results-header">
           <h2>Matching Results</h2>
-          <button
-            class="export-btn"
-            onclick="exportResults()"
-          >
-            📋 Export Results
-          </button>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+            <div id="confirmation-badge"></div>
+            <button
+              class="confirm-btn"
+              id="confirm-btn"
+              onclick="confirmMatching()"
+              style="display: none"
+            >
+              ✅ Confirm as Final
+            </button>
+            <button
+              class="export-btn"
+              onclick="exportResults()"
+            >
+              📋 Export Results
+            </button>
+          </div>
         </div>
         <div id="results-content"></div>
       </div>
@@ -976,6 +1030,63 @@
         }
       }
 
+      function setConfirmationBadge(confirmed) {
+        var badge = document.getElementById('confirmation-badge');
+        var btn = document.getElementById('confirm-btn');
+        if (confirmed) {
+          badge.innerHTML =
+            '<span class="confirmed-badge">✅ Confirmed — teams can see mentors</span>';
+          btn.style.display = 'none';
+        } else {
+          badge.innerHTML = '<span class="unconfirmed-badge">⏳ Not confirmed yet</span>';
+          btn.style.display = 'inline-block';
+        }
+      }
+
+      async function loadConfirmationStatus() {
+        try {
+          var res = await fetch('/api/matching-status', {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          if (!res.ok) return;
+          var data = await res.json();
+          if (document.getElementById('results-section').style.display !== 'none') {
+            setConfirmationBadge(data.confirmed);
+          }
+        } catch (e) {}
+      }
+
+      async function confirmMatching() {
+        var btn = document.getElementById('confirm-btn');
+        if (
+          !confirm(
+            'Confirm these matching results as final?\n\nTeams will immediately see their assigned mentors and mentors will see their assigned teams.',
+          )
+        ) {
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Confirming…';
+        try {
+          var res = await fetch('/api/admin/confirm-matching', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          var data = await res.json();
+          if (data.success) {
+            setConfirmationBadge(true);
+          } else {
+            alert(data.error || 'Failed to confirm');
+            btn.disabled = false;
+            btn.textContent = '✅ Confirm as Final';
+          }
+        } catch (e) {
+          alert('Network error');
+          btn.disabled = false;
+          btn.textContent = '✅ Confirm as Final';
+        }
+      }
+
       async function loadResults() {
         try {
           var res = await fetch('/api/admin/matching-results', {
@@ -1016,6 +1127,9 @@
             el.innerHTML = html;
             content.appendChild(el);
           });
+
+          // Load and display confirmation state
+          loadConfirmationStatus();
         } catch (e) {}
       }
 
@@ -1057,6 +1171,8 @@
               });
             }
             statusEl.innerHTML = html;
+            // Reset confirmation state visually (backend already cleared it)
+            setConfirmationBadge(false);
             loadResults();
           } else {
             statusEl.innerHTML =

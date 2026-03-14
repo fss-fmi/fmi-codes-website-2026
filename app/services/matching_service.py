@@ -224,6 +224,9 @@ def run_gale_shapley():
 def save_matching_results(assignments):
     """Clear existing team_mentors and write new assignments.
 
+    Also resets the admin confirmation flag so teams/mentors continue seeing
+    preferences until the admin explicitly re-confirms the new results.
+
     Args:
         assignments: list of (team_id, mentor_id) tuples
     """
@@ -235,10 +238,52 @@ def save_matching_results(assignments):
                     "INSERT INTO team_mentors (team_id, mentor_id, is_active) VALUES (%s, %s, TRUE)",
                     (team_id, mentor_id),
                 )
+            # Reset confirmation — admin must re-confirm after every new run
+            cursor.execute(
+                "UPDATE matching_state SET is_confirmed = FALSE, confirmed_at = NULL WHERE id = 1"
+            )
         logger.info(f"Saved {len(assignments)} matching results")
     except Exception as e:
         logger.error(f"Error saving matching results: {e}")
         raise
+
+
+def get_matching_confirmed() -> bool:
+    """Return whether the admin has confirmed the current matching results as final."""
+    row = execute_query(
+        current_app,
+        "SELECT is_confirmed FROM matching_state WHERE id = 1",
+        fetch_one=True,
+    )
+    return bool(row["is_confirmed"]) if row else False
+
+
+def set_matching_confirmed(confirmed: bool) -> None:
+    """Set (or clear) the admin confirmation flag."""
+    with get_db_cursor(current_app) as cursor:
+        if confirmed:
+            cursor.execute(
+                "UPDATE matching_state SET is_confirmed = TRUE, confirmed_at = NOW() WHERE id = 1"
+            )
+        else:
+            cursor.execute(
+                "UPDATE matching_state SET is_confirmed = FALSE, confirmed_at = NULL WHERE id = 1"
+            )
+
+
+def get_assigned_teams_for_mentor(mentor_id):
+    """Get teams assigned to a mentor by the algorithm."""
+    query = """
+        SELECT tm.team_id, t.team_name,
+               COUNT(DISTINCT p.id) AS participant_count
+        FROM team_mentors tm
+        JOIN teams t ON tm.team_id = t.id
+        LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
+        WHERE tm.mentor_id = %s AND tm.is_active = TRUE
+        GROUP BY tm.team_id, t.team_name
+        ORDER BY t.team_name
+    """
+    return execute_query(current_app, query, (mentor_id,), fetch_all=True) or []
 
 
 def get_matching_results():

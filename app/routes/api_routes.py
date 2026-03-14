@@ -185,6 +185,32 @@ def run_matching():
     ), 200
 
 
+@api_bp.route("/matching-status", methods=["GET"])
+def matching_status():
+    """Return whether the admin has confirmed the current matching results.
+
+    Accessible to any user (no auth required) so teams and mentors can poll it.
+    """
+    confirmed = matching_service.get_matching_confirmed()
+    return jsonify({"success": True, "confirmed": confirmed}), 200
+
+
+@api_bp.route("/admin/confirm-matching", methods=["POST"])
+@admin_required
+def confirm_matching():
+    """Admin explicitly confirms that the current matching results are final.
+
+    After this, teams see their assigned mentors and mentors see their assigned
+    teams instead of their preferences.
+    """
+    try:
+        matching_service.set_matching_confirmed(True)
+        return jsonify({"success": True, "message": "Matching results confirmed as final"}), 200
+    except Exception as e:
+        logger.error(f"Error confirming matching: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @api_bp.route("/admin/matching-results", methods=["GET"])
 @admin_required
 def get_matching_results():

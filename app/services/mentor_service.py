@@ -84,14 +84,19 @@ def get_all_mentors() -> list:
     """Get all registered mentors (cached for 60s to handle high concurrency)"""
     global _mentor_cache, _mentor_cache_ts
 
+    # Capture the reference into a local variable first so that a concurrent
+    # _invalidate_mentor_cache() call cannot set the global to None between the
+    # "is not None" check and the actual return, which would hand callers None.
+    cached = _mentor_cache
     now = time.monotonic()
-    if _mentor_cache is not None and (now - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
-        return _mentor_cache
+    if cached is not None and (now - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
+        return cached
 
     with _mentor_cache_lock:
-        # Double-check after acquiring lock
-        if _mentor_cache is not None and (time.monotonic() - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
-            return _mentor_cache
+        # Double-check after acquiring lock (same safe capture pattern)
+        cached = _mentor_cache
+        if cached is not None and (time.monotonic() - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
+            return cached
 
         query = """
             SELECT id, first_name, last_name, email, phone_number, company_name,
@@ -111,8 +116,11 @@ def get_all_mentors() -> list:
 def _invalidate_mentor_cache():
     """Clear cached mentor list so the next read fetches fresh data."""
     global _mentor_cache, _mentor_cache_ts
-    _mentor_cache = None
-    _mentor_cache_ts = 0
+    # Hold the lock so the two-field clear is atomic with respect to readers
+    # that use the lock path, and so local-ref capture in get_all_mentors is safe.
+    with _mentor_cache_lock:
+        _mentor_cache = None
+        _mentor_cache_ts = 0
 
 
 def get_mentor_picture(mentor_id: int) -> tuple:

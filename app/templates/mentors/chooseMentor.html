@@ -594,6 +594,37 @@
         class="message"
       ></div>
 
+      <!-- Confirmed by admin — show link to team page -->
+      <div
+        id="confirmed-section"
+        style="display: none"
+      >
+        <div style="text-align: center; padding: 48px 16px">
+          <div style="font-size: 48px; margin-bottom: 16px">✅</div>
+          <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 10px">
+            Mentor Assignments Confirmed!
+          </h2>
+          <p style="color: var(--muted); margin: 0 auto 28px; max-width: 400px; font-size: 14px">
+            The admin has confirmed the matching results. Your assigned mentors are now visible on
+            your team page.
+          </p>
+          <a
+            href="/team"
+            style="
+              display: inline-block;
+              padding: 12px 28px;
+              background: linear-gradient(135deg, #22c55e, #16a34a);
+              color: #fff;
+              border-radius: 10px;
+              font-weight: 600;
+              text-decoration: none;
+              font-size: 15px;
+            "
+            >Go to Team Page →</a
+          >
+        </div>
+      </div>
+
       <!-- Already submitted view -->
       <div
         id="submitted-section"
@@ -805,6 +836,18 @@
           return;
         }
         teamId = me.user.team_id;
+
+        // Check if admin has already confirmed the matching results
+        try {
+          const statusRes = await fetch('/api/matching-status');
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            if (statusData.confirmed) {
+              showConfirmedState();
+              return;
+            }
+          }
+        } catch (_) {}
 
         // Check if preferences already submitted
         const prefRes = await fetch('/api/teams/' + teamId + '/mentor-preferences', {
@@ -1080,6 +1123,15 @@
         } catch (e) {
           showMsg('Network error', 'error');
         }
+      }
+
+      function showConfirmedState() {
+        document.getElementById('select-section').style.display = 'none';
+        document.getElementById('rank-section').style.display = 'none';
+        document.getElementById('submitted-section').style.display = 'none';
+        document.getElementById('confirmed-section').style.display = 'block';
+        document.getElementById('step-badge').className = 'step-indicator step-rank';
+        document.getElementById('step-badge').textContent = '✅ Assignments confirmed';
       }
 
       function showSubmitted(prefs) {

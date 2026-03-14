@@ -140,3 +140,13 @@ def get_mentor_preferences():
     """Get mentor's current team preferences"""
     prefs = mentor_selection_service.get_mentor_team_preferences(g.current_user["user_id"])
     return jsonify({"success": True, "preferences": [dict(p) for p in prefs]}), 200
+
+
+@mentors_bp.route("/api/mentors/assigned-teams", methods=["GET"])
+@mentor_required
+def get_assigned_teams():
+    """Get the teams assigned to this mentor by the algorithm (visible after admin confirmation)."""
+    from app.services import matching_service
+
+    teams = matching_service.get_assigned_teams_for_mentor(g.current_user["user_id"])
+    return jsonify({"success": True, "teams": [dict(t) for t in teams]}), 200
