@@ -5,6 +5,8 @@ on:
     branches:
       - main
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 1 * *'
 
 jobs:
   build:
@@ -29,4 +31,5 @@ jobs:
           context: .
           push: true
           tags: fssfmi/fmi-codes-app:latest
-
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
