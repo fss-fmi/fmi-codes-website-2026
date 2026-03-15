@@ -1,16 +1,17 @@
-{% extends "base.html" %} {% block title %}Join Team — FMI Codes{% endblock %} {% block head %}
+{% extends "base.html" %} {% block title %}Join Team — Mission Control{% endblock %} {% block head
+%}
 <style>
   :root {
     --bg: #050816;
-    --bg-card: rgba(255, 255, 255, 0.03);
-    --border: rgba(255, 255, 255, 0.06);
-    --border-glow: rgba(96, 165, 250, 0.25);
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #60a5fa;
     --accent-2: #22d3ee;
     --purple: #a78bfa;
     --pink: #f472b6;
+    --emerald: #34d399;
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
   *,
   *::before,
@@ -29,8 +30,10 @@
     min-height: 100vh;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
   }
 
+  /* ── Background layers ── */
   .dot-grid {
     position: fixed;
     inset: 0;
@@ -65,13 +68,13 @@
     position: absolute;
     border-radius: 50%;
     filter: blur(120px);
-    opacity: 0.15;
+    opacity: 0.13;
     will-change: transform;
   }
   .blob-1 {
     width: 700px;
     height: 700px;
-    background: #60a5fa;
+    background: #7dd3fc;
     top: -15%;
     left: -10%;
     animation: blobFloat1 18s ease-in-out infinite;
@@ -79,7 +82,7 @@
   .blob-2 {
     width: 500px;
     height: 500px;
-    background: #22d3ee;
+    background: #f9a8d4;
     top: 40%;
     right: -12%;
     animation: blobFloat2 22s ease-in-out infinite;
@@ -129,10 +132,25 @@
     background-repeat: repeat;
     background-size: 128px 128px;
   }
+
   .page-wrap {
     position: relative;
     z-index: 2;
     width: 100%;
+    padding-top: 76px;
+  }
+
+  /* ── Layout ── */
+  .container {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 40px 16px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 76px);
   }
 
   @keyframes fadeSlideUp {
@@ -146,184 +164,291 @@
     }
   }
 
-  .container {
+  /* ── Slick Back Button ── */
+  .back-btn-wrap {
     width: 100%;
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 24px 16px 60px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
+    justify-content: flex-start;
+    margin-bottom: 24px;
+    animation: fadeSlideUp 0.6s ease both;
   }
+  .btn-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .btn-back svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    transition: transform 0.25s;
+  }
+  .btn-back:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--text);
+  }
+  .btn-back:hover svg {
+    transform: translateX(-4px);
+  }
+
+  /* ── Form Card (Glassmorphism) ── */
   .form-card {
     position: relative;
     width: 100%;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 40px 36px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    padding: 48px 40px;
+    box-shadow: var(--card-glow);
     backdrop-filter: blur(12px);
-    animation: fadeSlideUp 0.8s ease both;
+    -webkit-backdrop-filter: blur(12px);
+    animation: fadeSlideUp 0.8s ease both 0.1s;
     overflow: hidden;
   }
+  .form-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .form-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Typography & Forms ── */
   h1 {
-    font-size: 28px;
-    font-weight: 700;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    font-size: 32px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    background-size: 200% auto;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    margin-bottom: 8px;
+    background-clip: text;
+    animation: shimmer 4s linear infinite;
+    margin-bottom: 6px;
+    padding-bottom: 0.15em; /* Anti-clipping */
+    letter-spacing: -0.02em;
+    text-align: center;
   }
+  @keyframes shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+
   .subtitle {
     color: var(--muted);
-    margin-bottom: 24px;
+    margin-bottom: 32px;
     font-size: 15px;
+    line-height: 1.5;
+    text-align: center;
   }
+
   .form-group {
-    margin-bottom: 18px;
+    margin-bottom: 24px;
   }
   .form-group label {
     display: block;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 600;
     color: var(--muted);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
   .form-group input {
     width: 100%;
-    padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    color: var(--accent-2);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 15px;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    text-align: center;
+    text-transform: uppercase;
     outline: none;
-    transition: border-color 0.2s;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
   }
   .form-group input:focus {
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
   }
+  .form-group input::placeholder {
+    color: rgba(255, 255, 255, 0.15);
+    font-size: 20px;
+    letter-spacing: 2px;
+  }
+
   .submit-btn {
     width: 100%;
-    padding: 14px;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    padding: 16px;
+    margin-top: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     color: #0b1021;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: inherit;
     font-size: 16px;
     font-weight: 700;
     cursor: pointer;
     transition:
-      transform 0.2s,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 0.2s;
-    position: relative;
-    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(96, 165, 250, 0.3);
   }
   .submit-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.3);
+    box-shadow: 0 8px 25px rgba(96, 165, 250, 0.45);
   }
-  .submit-btn::after {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -60%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-      120deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.15) 50%,
-      transparent 70%
-    );
-    transform: rotate(25deg);
-    transition: left 0.6s ease;
-  }
-  .submit-btn:hover::after {
-    left: 120%;
-  }
+
   .error-msg {
     background: rgba(239, 68, 68, 0.15);
     border: 1px solid rgba(239, 68, 68, 0.3);
     color: #fca5a5;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 16px;
+    padding: 14px;
+    border-radius: 10px;
+    margin-bottom: 24px;
     font-size: 14px;
+    font-weight: 500;
+    text-align: center;
   }
   .success-msg {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    color: #86efac;
-    padding: 12px;
-    border-radius: 8px;
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    color: var(--emerald);
+    padding: 14px;
+    border-radius: 10px;
     margin-bottom: 16px;
     font-size: 14px;
+    font-weight: 500;
+    text-align: center;
   }
+
   .alt-action {
     text-align: center;
+    margin-top: 24px;
     color: var(--muted);
     font-size: 14px;
-    margin-top: 20px;
   }
   .alt-action a {
     color: var(--accent);
     text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
   }
+  .alt-action a:hover {
+    color: var(--accent-2);
+  }
+
   @media (max-width: 500px) {
     .form-card {
-      padding: 28px 20px;
+      padding: 36px 24px;
     }
     .container {
-      padding: 100px 12px 40px;
+      padding: 32px 16px 40px;
+    }
+    h1 {
+      font-size: 28px;
     }
   }
 </style>
 {% endblock %} {% block body %}
 <body>
-  <div class="dot-grid"></div>
+  <div id="navbar-slot"></div>
+
+  <div
+    class="dot-grid"
+    aria-hidden="true"
+  ></div>
   <div
     class="spotlight"
     id="spotlight"
+    aria-hidden="true"
   ></div>
-  <div class="blobs">
+  <div
+    class="blobs"
+    aria-hidden="true"
+  >
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
   </div>
-  <div class="noise"></div>
+  <div
+    class="noise"
+    aria-hidden="true"
+  ></div>
 
   <div class="page-wrap">
-    <div id="navbar-slot"></div>
     <div class="container">
+      <div class="back-btn-wrap">
+        <a
+          href="/team"
+          class="btn-back"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line
+              x1="19"
+              y1="12"
+              x2="5"
+              y2="12"
+            ></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Back to Team
+        </a>
+      </div>
+
       <div class="form-card">
         <h1>Join a Team</h1>
-        <p class="subtitle">Enter the invite code you received from your team captain</p>
+        <p class="subtitle">Enter the invite code you received from your team captain.</p>
 
         <div
           id="error-msg"
           class="error-msg"
           style="display: none"
         ></div>
+
         <div
           id="success-area"
-          style="display: none"
+          style="display: none; text-align: center"
         >
-          <div class="success-msg">You joined the team!</div>
+          <div class="success-msg">You successfully joined the team!</div>
           <a
             href="/team"
             class="submit-btn"
-            style="
-              display: inline-block;
-              text-align: center;
-              text-decoration: none;
-              margin-top: 16px;
-            "
-            >Go to Team Dashboard</a
+            style="display: inline-block; text-decoration: none; margin-top: 8px"
           >
+            Go to Team Dashboard
+          </a>
         </div>
 
         <form
@@ -337,20 +462,14 @@
               id="join_code"
               name="join_code"
               required
-              placeholder="e.g. ABC123"
+              placeholder="E.G. ABC123"
               maxlength="20"
-              style="
-                text-transform: uppercase;
-                letter-spacing: 3px;
-                text-align: center;
-                font-size: 22px;
-                font-weight: 700;
-              "
             />
           </div>
           <button
             type="submit"
             class="submit-btn"
+            id="submitBtn"
           >
             Join Team
           </button>
@@ -360,7 +479,6 @@
       </div>
     </div>
   </div>
-  <!-- /page-wrap -->
 
   <script>
     /* Spotlight tracking */
@@ -396,9 +514,14 @@
     document.getElementById('joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const errEl = document.getElementById('error-msg');
+      const btn = document.getElementById('submitBtn');
+
       errEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Joining...';
 
       const joinCode = document.getElementById('join_code').value.trim();
+
       try {
         const res = await fetch('/api/teams/join', {
           method: 'POST',
@@ -406,16 +529,22 @@
           body: JSON.stringify({ join_code: joinCode }),
         });
         const data = await res.json();
+
         if (data.success) {
           document.getElementById('joinForm').style.display = 'none';
+          document.querySelector('.alt-action').style.display = 'none';
           document.getElementById('success-area').style.display = 'block';
         } else {
-          errEl.textContent = data.error;
+          errEl.textContent = data.error || 'Failed to join team.';
           errEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Join Team';
         }
       } catch {
-        errEl.textContent = 'Network error';
+        errEl.textContent = 'Network error. Please try again.';
         errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Join Team';
       }
     });
   </script>

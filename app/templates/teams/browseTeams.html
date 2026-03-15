@@ -1,18 +1,17 @@
-{% extends "base.html" %} {% block title %}Browse Teams — FMI Codes{% endblock %} {% block head %}
+{% extends "base.html" %} {% block title %}Browse Teams — Mission Control{% endblock %} {% block
+head %}
 <style>
   :root {
     --bg: #050816;
-    --bg-card: rgba(255, 255, 255, 0.03);
-    --border: rgba(255, 255, 255, 0.06);
-    --border-glow: rgba(96, 165, 250, 0.25);
     --text: #e2e8f0;
     --muted: #64748b;
     --accent: #60a5fa;
     --accent-2: #22d3ee;
     --purple: #a78bfa;
     --pink: #f472b6;
-    --danger: #ef4444;
-    --glow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    --emerald: #34d399;
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
   }
   *,
   *::before,
@@ -31,8 +30,10 @@
     min-height: 100vh;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    padding-bottom: 80px;
   }
 
+  /* ── Background layers ── */
   .dot-grid {
     position: fixed;
     inset: 0;
@@ -67,7 +68,7 @@
     position: absolute;
     border-radius: 50%;
     filter: blur(120px);
-    opacity: 0.15;
+    opacity: 0.13;
     will-change: transform;
   }
   .blob-1 {
@@ -89,7 +90,7 @@
   .blob-3 {
     width: 450px;
     height: 450px;
-    background: #7dd3fc;
+    background: #a78bfa;
     bottom: -10%;
     left: 25%;
     animation: blobFloat3 20s ease-in-out infinite;
@@ -131,12 +132,22 @@
     background-repeat: repeat;
     background-size: 128px 128px;
   }
+
   .page-wrap {
     position: relative;
     z-index: 2;
     width: 100%;
+    padding-top: 76px;
   }
 
+  /* ── Layout ── */
+  .container {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px 60px;
+    animation: fadeSlideUp 0.7s ease both;
+  }
   @keyframes fadeSlideUp {
     from {
       opacity: 0;
@@ -148,198 +159,235 @@
     }
   }
 
-  .container {
+  /* ── Slick Back Button ── */
+  .back-btn-wrap {
     width: 100%;
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 100px 16px 60px;
     display: flex;
-    flex-direction: column;
-    gap: 22px;
-  }
-
-  .page-header {
-    text-align: center;
+    justify-content: flex-start;
     margin-bottom: 8px;
     animation: fadeSlideUp 0.6s ease both;
   }
-  .page-header h1 {
-    font-size: 36px;
-    font-weight: 800;
-    background: linear-gradient(135deg, #7dd3fc, #f9a8d4);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 8px;
-  }
-  .page-header p {
-    color: var(--muted);
-    font-size: 16px;
-  }
-
-  .back-link {
+  .btn-back {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    padding: 10px 18px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
     color: var(--muted);
-    text-decoration: none;
-    font-size: 14px;
-    margin-bottom: 4px;
-    transition: color 0.2s;
-    animation: fadeSlideUp 0.5s ease both;
-  }
-  .back-link:hover {
-    color: var(--accent);
-  }
-
-  /* Toast notification */
-  .toast {
-    position: fixed;
-    top: 90px;
-    right: 20px;
-    z-index: 9999;
-    padding: 14px 22px;
-    border-radius: 10px;
     font-size: 14px;
     font-weight: 600;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-    transform: translateX(120%);
-    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    max-width: 380px;
+    text-decoration: none;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   }
-  .toast.show {
-    transform: translateX(0);
+  .btn-back svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    transition: transform 0.25s;
   }
-  .toast-success {
-    background: rgba(16, 185, 129, 0.2);
-    border: 1px solid rgba(16, 185, 129, 0.4);
-    color: #6ee7b7;
+  .btn-back:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--text);
   }
-  .toast-error {
-    background: rgba(239, 68, 68, 0.2);
-    border: 1px solid rgba(239, 68, 68, 0.4);
-    color: #fca5a5;
+  .btn-back:hover svg {
+    transform: translateX(-4px);
   }
 
-  /* Team grid */
+  /* ── Header ── */
+  .admin-header {
+    width: 100%;
+    padding: 20px 0 40px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .admin-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .admin-eyebrow::before,
+  .admin-eyebrow::after {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    border-radius: 2px;
+  }
+  .admin-title {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 900;
+    line-height: 1.2;
+    padding-bottom: 0.15em;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.02em;
+    animation: shimmer 4s linear infinite;
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
+  }
+  .admin-subtitle {
+    color: var(--muted);
+    font-size: 15px;
+    margin-top: -4px;
+    max-width: 600px;
+    line-height: 1.6;
+  }
+
+  /* ── Team Grid & Cards ── */
   .teams-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
   }
 
   .team-card {
     position: relative;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: var(--glow);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    padding: 28px;
+    box-shadow: var(--card-glow);
     backdrop-filter: blur(12px);
-    animation: fadeSlideUp 0.7s ease both;
+    -webkit-backdrop-filter: blur(12px);
     transition:
-      border-color 0.3s,
-      transform 0.25s;
+      transform 0.3s ease,
+      border-color 0.3s ease,
+      box-shadow 0.3s ease;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
   .team-card::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, #7dd3fc, #f9a8d4);
-    opacity: 0;
-    transition: opacity 0.3s;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
   }
+  .team-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
   .team-card:hover {
-    border-color: rgba(125, 211, 252, 0.25);
-    transform: translateY(-3px);
+    transform: translateY(-4px);
+    border-color: rgba(96, 165, 250, 0.3);
+    box-shadow:
+      0 15px 40px rgba(0, 0, 0, 0.3),
+      0 0 20px rgba(96, 165, 250, 0.1);
   }
-  .team-card:hover::before {
-    opacity: 1;
-  }
+
   .team-card-name {
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 10px;
-    background: linear-gradient(120deg, var(--text), #7dd3fc);
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, #e2e8f0, #94a3b8);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
+
   .team-card-meta {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 14px;
+    margin-bottom: 20px;
     flex-wrap: wrap;
   }
   .badge {
     display: inline-block;
-    padding: 3px 10px;
+    padding: 4px 12px;
     border-radius: 20px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
   .badge-active {
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    color: #86efac;
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    color: var(--emerald);
   }
   .badge-pending {
-    background: rgba(234, 179, 8, 0.15);
-    border: 1px solid rgba(234, 179, 8, 0.3);
-    color: #fde047;
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    color: #fbbf24;
   }
 
   /* Member bar */
   .member-bar-wrap {
-    margin-bottom: 18px;
+    margin-bottom: 24px;
+    margin-top: auto;
   }
   .member-bar-label {
     font-size: 13px;
+    font-weight: 600;
     color: var(--muted);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     display: flex;
     justify-content: space-between;
   }
+  .member-bar-label span:last-child {
+    color: var(--text);
+  }
   .member-bar {
-    height: 6px;
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.08);
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
     overflow: hidden;
   }
   .member-bar-fill {
     height: 100%;
-    border-radius: 3px;
-    background: linear-gradient(90deg, #7dd3fc, #f9a8d4);
-    transition: width 0.5s ease;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   /* Apply button */
   .btn-apply {
     width: 100%;
-    padding: 11px 0;
+    padding: 12px 0;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     transition:
-      transform 0.2s,
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 0.2s;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0b1021;
     position: relative;
     overflow: hidden;
-    background: linear-gradient(135deg, #7dd3fc, #f9a8d4);
-    color: #0b1021;
+    box-shadow: 0 4px 15px rgba(96, 165, 250, 0.25);
   }
   .btn-apply:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(125, 211, 252, 0.35);
+    box-shadow: 0 8px 20px rgba(96, 165, 250, 0.4);
   }
   .btn-apply::after {
     content: '';
@@ -360,16 +408,19 @@
   .btn-apply:hover:not(:disabled)::after {
     left: 120%;
   }
+
   .btn-apply:disabled {
-    opacity: 0.55;
-    cursor: default;
-    background: rgba(255, 255, 255, 0.08);
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.05);
     color: var(--muted);
+    box-shadow: none;
+    border: 1px solid var(--panel-border);
   }
   .btn-apply.applied {
-    background: rgba(16, 185, 129, 0.18);
-    border: 1px solid rgba(16, 185, 129, 0.35);
-    color: #6ee7b7;
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    color: var(--emerald);
   }
 
   /* Loading / empty states */
@@ -383,7 +434,7 @@
     width: 40px;
     height: 40px;
     border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #7dd3fc;
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin: 0 auto 16px;
@@ -393,9 +444,10 @@
       transform: rotate(360deg);
     }
   }
+
   .empty-wrap h2 {
     font-size: 22px;
-    color: var(--muted);
+    color: var(--text);
     margin-bottom: 8px;
   }
   .empty-wrap p {
@@ -403,9 +455,39 @@
     font-size: 15px;
   }
 
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    top: 90px;
+    right: 20px;
+    z-index: 9999;
+    padding: 14px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    transform: translateX(120%);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 380px;
+  }
+  .toast.show {
+    transform: translateX(0);
+  }
+  .toast-success {
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    color: var(--emerald);
+  }
+  .toast-error {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+  }
+
   @media (max-width: 768px) {
     .container {
-      padding: 76px 12px 40px;
+      padding: 24px 16px 40px;
     }
     .teams-grid {
       grid-template-columns: 1fr;
@@ -414,31 +496,60 @@
 </style>
 {% endblock %} {% block body %}
 <body>
-  <div class="dot-grid"></div>
+  <div id="navbar-slot"></div>
+
+  <div
+    class="dot-grid"
+    aria-hidden="true"
+  ></div>
   <div
     class="spotlight"
     id="spotlight"
+    aria-hidden="true"
   ></div>
-  <div class="blobs">
+  <div
+    class="blobs"
+    aria-hidden="true"
+  >
     <div class="blob blob-1"></div>
     <div class="blob blob-2"></div>
     <div class="blob blob-3"></div>
   </div>
-  <div class="noise"></div>
+  <div
+    class="noise"
+    aria-hidden="true"
+  ></div>
 
   <div class="page-wrap">
-    <div id="navbar-slot"></div>
-
     <div class="container">
-      <a
-        href="/team"
-        class="back-link"
-        >← Back to Team Dashboard</a
-      >
+      <div class="back-btn-wrap">
+        <a
+          href="/team"
+          class="btn-back"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line
+              x1="19"
+              y1="12"
+              x2="5"
+              y2="12"
+            ></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Back to Team
+        </a>
+      </div>
 
-      <div class="page-header">
-        <h1>Find a Team</h1>
-        <p>Browse teams with open spots and send a request to join</p>
+      <div class="admin-header">
+        <div class="admin-eyebrow">Discover</div>
+        <div class="admin-title">Browse Teams</div>
+        <p class="admin-subtitle">Find teams with open spots and send a request to join.</p>
       </div>
 
       <div
@@ -466,7 +577,6 @@
     </div>
   </div>
 
-  <!-- Toast container -->
   <div
     id="toast"
     class="toast"
@@ -508,6 +618,12 @@
       } catch {}
     }
 
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
+
     async function loadTeams() {
       try {
         const res = await fetch('/api/teams/available', {
@@ -539,43 +655,36 @@
 
           const card = document.createElement('div');
           card.className = 'team-card';
-          card.style.animationDelay = i * 0.07 + 's';
+          card.style.animationDelay = i * 0.05 + 's';
 
-          card.innerHTML =
-            '<div class="team-card-name">' +
-            escapeHtml(team.team_name) +
-            '</div>' +
-            '<div class="team-card-meta">' +
-            '  <span class="badge ' +
-            statusClass +
-            '">' +
-            escapeHtml(team.status) +
-            '</span>' +
-            '</div>' +
-            '<div class="member-bar-wrap">' +
-            '  <div class="member-bar-label">' +
-            '    <span>Members</span>' +
-            '    <span>' +
-            team.participant_count +
-            ' / 6</span>' +
-            '  </div>' +
-            '  <div class="member-bar">' +
-            '    <div class="member-bar-fill" style="width:' +
-            pct +
-            '%"></div>' +
-            '  </div>' +
-            '</div>' +
-            '<button class="btn-apply' +
-            (applied ? ' applied' : '') +
-            '"' +
-            (applied ? ' disabled' : '') +
-            ' data-team-id="' +
-            team.team_id +
-            '">' +
-            (applied ? 'Applied ✓' : 'Apply to Join') +
-            '</button>';
+          card.innerHTML = `
+            <div class="team-card-name">${escapeHtml(team.team_name)}</div>
+            <div class="team-card-meta">
+              <span class="badge ${statusClass}">${escapeHtml(team.status)}</span>
+            </div>
+            <div class="member-bar-wrap">
+              <div class="member-bar-label">
+                <span>Members</span>
+                <span>${team.participant_count} / 6</span>
+              </div>
+              <div class="member-bar">
+                <div class="member-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+            <button class="btn-apply ${applied ? 'applied' : ''}" ${applied ? 'disabled' : ''} data-team-id="${team.team_id}">
+              ${applied ? 'Applied ✓' : 'Apply to Join'}
+            </button>
+          `;
 
           grid.appendChild(card);
+
+          // Animate the bar width after element is added
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              const barFill = card.querySelector('.member-bar-fill');
+              if (barFill) barFill.style.width = pct + '%';
+            }, 50);
+          });
         });
 
         grid.querySelectorAll('.btn-apply:not(.applied)').forEach((btn) => {
@@ -607,7 +716,7 @@
           btn.className = 'btn-apply applied';
           btn.textContent = 'Applied ✓';
           btn.disabled = true;
-          showToast('Application sent!', 'success');
+          showToast('Application sent successfully!', 'success');
         } else {
           btn.disabled = false;
           btn.textContent = 'Apply to Join';
@@ -618,12 +727,6 @@
         btn.textContent = 'Apply to Join';
         showToast('Network error', 'error');
       }
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.appendChild(document.createTextNode(str));
-      return div.innerHTML;
     }
 
     loadNavbar();
