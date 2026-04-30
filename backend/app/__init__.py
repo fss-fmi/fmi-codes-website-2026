@@ -29,7 +29,6 @@ def create_app(config_name="development"):
 
     app = Flask(
         __name__,
-        template_folder=str(config.TEMPLATES_FOLDER),
         static_folder=str(config.STATIC_FOLDER),
     )
     app.config.from_object(config)
@@ -65,18 +64,16 @@ def create_app(config_name="development"):
         "app.routes.api_routes",
         "app.routes.auth",
         "app.routes.mentors",
-        "app.routes.pages",
         "app.routes.teams",
     ):
         import_module(module)
 
     # Register blueprints
-    from app.routes import api_bp, auth_bp, mentors_bp, pages_bp, teams_bp
+    from app.routes import api_bp, auth_bp, mentors_bp, teams_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(mentors_bp)
     app.register_blueprint(teams_bp)
-    app.register_blueprint(pages_bp)
     app.register_blueprint(api_bp)
 
     logger.info("✓ All blueprints registered successfully")

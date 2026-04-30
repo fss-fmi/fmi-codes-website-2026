@@ -38,6 +38,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       MENTORS_STAY_TUNED: ${MENTORS_STAY_TUNED}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}
@@ -47,6 +48,14 @@ services:
     depends_on:
       db:
         condition: service_healthy # App won't start until Postgres is ready
+
+  frontend:
+    container_name: fmi-codes-frontend
+    image: fssfmi/fmi-codes-frontend:latest
+    ports:
+      - '80:80'
+    depends_on:
+      - app
 
 volumes:
   postgres_data:

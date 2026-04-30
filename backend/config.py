@@ -52,7 +52,6 @@ class Config:
     CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
     CONTACT_PHONE = os.environ.get("CONTACT_PHONE", "")
 
-    TEMPLATES_FOLDER = BASE_DIR / "app" / "templates"
     STATIC_FOLDER = BASE_DIR / "app" / "static"
     MENTORS_STAY_TUNED = os.environ.get("MENTORS_STAY_TUNED", "false").lower() == "true"
     REGISTRATION_OPEN = os.environ.get("REGISTRATION_OPEN", "false").lower() == "true"
