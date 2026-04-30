@@ -10,7 +10,7 @@ services:
       # Persistent storage — data survives container restarts
       - postgres_data:/var/lib/postgresql/data
       # Init scripts: Postgres runs these once on first startup, in order
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     ports:
       - '5433:5432'
     healthcheck:
@@ -21,7 +21,8 @@ services:
 
   app:
     container_name: fmi-codes-app
-    build: .
+    build:
+      context: ./backend
     ports:
       - '5001:5001'
     environment:

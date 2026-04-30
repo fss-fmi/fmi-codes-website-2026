@@ -1,0 +1,53 @@
+services:
+  db:
+    container_name: fmi-codes-db-dev
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      - '5433:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    container_name: fmi-codes-app-dev
+    build:
+      context: ./backend
+    volumes:
+      - ./backend:/app
+    ports:
+      - '5001:5001'
+    environment:
+      FLASK_ENV: development
+      FLASK_DEBUG: '1'
+      DB_HOST: db
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      MENTORS_STAY_TUNED: ${MENTORS_STAY_TUNED}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_USE_TLS: ${MAIL_USE_TLS}
+      DISCORD_BUG_WEBHOOK_URL: ${DISCORD_BUG_WEBHOOK_URL}
+    command: python run_server.py
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data_dev:

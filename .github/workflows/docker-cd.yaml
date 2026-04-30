@@ -28,7 +28,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./backend
           push: true
           tags: fssfmi/fmi-codes-app:latest
           cache-from: type=gha
