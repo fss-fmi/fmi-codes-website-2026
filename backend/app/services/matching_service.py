@@ -101,6 +101,38 @@ def run_gale_shapley():
             f"{len(mentors_without_prefs)} mentor(s) have not submitted team preferences"
         )
 
+    assignments, warnings = _run_algorithm(
+        all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, warnings
+    )
+
+    msg = (
+        f"Matching complete: {len(assignments)} assignments"
+        f" across {len(all_teams)} teams and {len(all_mentors)} mentors"
+    )
+    logger.info(msg)
+    return True, msg, assignments, warnings
+
+
+def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, warnings=None):
+    """Pure Gale-Shapley (mentor-proposing) + greedy fill.
+
+    This is intentionally free of Flask/DB dependencies so it can be unit-tested
+    with arbitrary in-memory data.
+
+    Args:
+        all_teams:        list of team IDs eligible for matching
+        all_mentors:      list of mentor IDs participating in matching
+        mentor_pref_lists: dict mapping mentor_id -> [team_id, ...] ordered by preference
+        team_pref_ranks:  dict mapping team_id -> {mentor_id: rank} (1 = most preferred)
+        warnings:         optional list to accumulate advisory strings (mutated in-place)
+
+    Returns:
+        (assignments, warnings) where assignments is a sorted list of (team_id, mentor_id)
+        tuples and warnings is the (possibly empty) advisory list.
+    """
+    if warnings is None:
+        warnings = []
+
     # ── Phase 1: Extended Gale-Shapley ───────────────────────────────────────
     mentor_proposal_idx = {m: 0 for m in all_mentors}
     mentor_assignments = {m: [] for m in all_mentors}   # mentor -> [team_ids]
@@ -212,12 +244,7 @@ def run_gale_shapley():
             " — not enough mentors available to fill all slots"
         )
 
-    msg = (
-        f"Matching complete: {len(assignments)} assignments"
-        f" across {len(all_teams)} teams and {len(all_mentors)} mentors"
-    )
-    logger.info(msg)
-    return True, msg, assignments, warnings
+    return assignments, warnings
 
 
 
