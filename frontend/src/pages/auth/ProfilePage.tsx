@@ -68,6 +68,7 @@ function ProfileContent() {
 
   const initials = name
     .split(' ')
+    .filter(Boolean)
     .map((w) => w[0])
     .join('')
     .toUpperCase()

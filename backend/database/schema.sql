@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS teams (
     is_registered BOOLEAN NOT NULL DEFAULT FALSE,
     registered_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     queue_position INTEGER DEFAULT NULL,
+    score DOUBLE PRECISION DEFAULT NULL,
+    score_updated_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     hackathon_event_id BIGINT REFERENCES hackathon_events(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -119,6 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_teams_hackathon ON teams(hackathon_event_id);
 CREATE INDEX IF NOT EXISTS idx_teams_created_at ON teams(created_at);
 CREATE INDEX IF NOT EXISTS idx_teams_registered ON teams(is_registered) WHERE is_registered = TRUE;
 CREATE INDEX IF NOT EXISTS idx_teams_queue ON teams(queue_position) WHERE queue_position IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_teams_score ON teams (score DESC NULLS LAST) WHERE score IS NOT NULL;
 
 -- Mentors table
 CREATE TABLE IF NOT EXISTS mentors (
@@ -343,6 +346,17 @@ FOR EACH ROW EXECUTE FUNCTION update_team_participant_count();
 CREATE TRIGGER trig_update_timestamp_team_join_requests
 BEFORE UPDATE ON team_join_requests
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+-- Matching confirmation state (single-row table, admin-controlled)
+CREATE TABLE IF NOT EXISTS matching_state (
+    id           INTEGER PRIMARY KEY DEFAULT 1,
+    is_confirmed BOOLEAN     NOT NULL DEFAULT FALSE,
+    confirmed_at TIMESTAMPTZ DEFAULT NULL,
+    CONSTRAINT single_row CHECK (id = 1)
+);
+INSERT INTO matching_state (id, is_confirmed)
+VALUES (1, FALSE)
+ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
 -- SECTION 6: VIEWS FOR REPORTING

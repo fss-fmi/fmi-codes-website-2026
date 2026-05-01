@@ -336,7 +336,7 @@ function ChooseMentorContent() {
           </p>
           <DragRankSlots
             mentors={selected}
-            value={ranked}
+            initialPreferences={ranked}
             onChange={setRanked}
           />
           <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
@@ -362,7 +362,7 @@ function ChooseMentorContent() {
 
 export default function ChooseMentorPage() {
   return (
-    <RequireAuth allowedRole="participant">
+    <RequireAuth roles={['participant']}>
       <Navbar />
       <ChooseMentorContent />
     </RequireAuth>

@@ -14,7 +14,7 @@ export default function ScoreInput({ teamId, teamName, currentScore, onSave }: P
 
   async function handleSave() {
     const num = parseFloat(value);
-    if (isNaN(num)) return;
+    if (isNaN(num) || num < 0 || num > 100) return;
     setSaving(true);
     try {
       await onSave(teamId, num);

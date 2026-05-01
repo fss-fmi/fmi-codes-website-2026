@@ -99,9 +99,13 @@ def get_all_mentors() -> list:
             return cached
 
         query = """
-            SELECT id, first_name, last_name, email, phone_number, company_name,
-                   bio, status, technologies, picture_url, availability_text, created_at
+            SELECT id AS mentor_id,
+                   first_name || ' ' || last_name AS name,
+                   first_name, last_name, email, phone_number, company_name,
+                   bio, status, technologies, picture_url, picture_filename,
+                   availability_text, created_at
             FROM mentors
+            WHERE status = 'active'
             ORDER BY created_at DESC
         """
         try:

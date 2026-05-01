@@ -37,8 +37,10 @@ def get_regulations() -> list:
 def _load_regulations() -> list:
     try:
         possible_paths = [
-            Path(current_app.root_path).parent / "regulations.json",
+            # __file__-relative path is always correct regardless of CWD or root_path
+            Path(__file__).resolve().parent.parent.parent / "database" / "seeds" / "regulations.json",
             Path(current_app.root_path).parent / "database" / "seeds" / "regulations.json",
+            Path(current_app.root_path).parent / "regulations.json",
         ]
 
         path = None

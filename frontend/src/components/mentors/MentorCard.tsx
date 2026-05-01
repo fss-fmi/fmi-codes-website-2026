@@ -7,12 +7,8 @@ interface Props {
 }
 
 export default function MentorCard({ mentor }: Props) {
-  const techs = mentor.technologies
-    ? mentor.technologies
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-    : [];
+  // technologies comes from Postgres TEXT[] — already an array
+  const techs = Array.isArray(mentor.technologies) ? mentor.technologies.filter(Boolean) : [];
 
   return (
     <div
@@ -23,7 +19,11 @@ export default function MentorCard({ mentor }: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         {mentor.picture_filename ? (
           <img
-            src={`/mentorPictures/${mentor.picture_filename}`}
+            src={
+              mentor.picture_url?.startsWith('/')
+                ? mentor.picture_url
+                : `/static/mentorPictures/${mentor.picture_filename}`
+            }
             alt={mentor.name}
             style={{
               width: '60px',

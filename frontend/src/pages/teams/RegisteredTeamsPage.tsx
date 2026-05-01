@@ -92,10 +92,9 @@ export default function RegisteredTeamsPage() {
               }}
             >
               <SVGProgressRing
-                value={teams.length}
-                max={maxRegistered}
+                value={teams.length / (maxRegistered || 1)}
                 size={140}
-                stroke={10}
+                strokeWidth={10}
               />
               <div style={{ textAlign: 'center' }}>
                 <div

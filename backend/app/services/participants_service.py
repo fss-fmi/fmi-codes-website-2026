@@ -266,13 +266,18 @@ class ParticipantService:
         if not participant:
             return False, f"Participant {participant_id} not found"
 
-        # Build update query
+        # Build update query — only allow explicitly whitelisted column names
+        # to prevent SQL injection via unsanitized kwargs keys.
+        ALLOWED_FIELDS = {
+            "first_name", "last_name", "email", "phone_number",
+            "faculty_number", "course", "specialty_id", "university_id", "status",
+        }
         update_fields = []
         params = []
         param_count = 1
 
         for field, value in kwargs.items():
-            if field not in ["team_id"]:  # Don't allow changing team via this method
+            if field in ALLOWED_FIELDS:
                 update_fields.append(f"{field} = %s")
                 params.append(value)
                 param_count += 1

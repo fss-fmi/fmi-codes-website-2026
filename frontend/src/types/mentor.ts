@@ -6,6 +6,7 @@ export interface Mentor {
   email?: string;
   company_name?: string;
   bio?: string;
+  picture_url?: string;
   picture_filename?: string;
   technologies?: string[];
   availability_text?: string;

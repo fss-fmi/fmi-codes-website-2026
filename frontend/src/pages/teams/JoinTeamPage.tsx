@@ -185,7 +185,7 @@ function JoinTeamContent() {
 
 export default function JoinTeamPage() {
   return (
-    <RequireAuth allowedRole="participant">
+    <RequireAuth roles={['participant']}>
       <Navbar />
       <JoinTeamContent />
     </RequireAuth>

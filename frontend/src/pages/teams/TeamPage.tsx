@@ -123,7 +123,7 @@ function NoTeamView() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{a.team_name}</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-                  <StatusBadge status={a.status as 'pending' | 'accepted' | 'declined'} />
+                  <StatusBadge variant={a.status as 'pending' | 'accepted' | 'declined'} />
                   <span style={{ color: 'var(--muted)', fontSize: 12 }}>
                     {a.participant_count}/6 members
                   </span>
@@ -159,16 +159,17 @@ function TeamDashboardView({
 }) {
   const { show, el } = useToast();
   const isCaptain = String(team.captain_id) === String(userId);
+  const teamId = team.id ?? team.team_id!;
 
   const { data: reqData, refetch: refetchReqs } = useQuery<{ requests: JoinRequest[] }>({
-    queryKey: ['join-requests', team.id],
-    queryFn: () => api.get(`/api/teams/${team.id}/requests`),
+    queryKey: ['join-requests', teamId],
+    queryFn: () => api.get(`/api/teams/${teamId}/requests`),
     enabled: isCaptain,
   });
 
   const { data: prefData } = useQuery<{ preferences: MentorPref[] }>({
-    queryKey: ['team-mentor-preferences', team.id],
-    queryFn: () => api.get(`/api/teams/${team.id}/mentor-preferences`),
+    queryKey: ['team-mentor-preferences', teamId],
+    queryFn: () => api.get(`/api/teams/${teamId}/mentor-preferences`),
     enabled: team.status === 'active',
   });
 
@@ -180,7 +181,7 @@ function TeamDashboardView({
   async function removeMember(mid: number) {
     if (!confirm('Remove this member from the team?')) return;
     const d = await api.delete<{ success: boolean; error?: string }>(
-      `/api/teams/${team.id}/members/${mid}`,
+      `/api/teams/${teamId}/members/${mid}`,
     );
     if (d.success) {
       show('Member removed');
@@ -191,7 +192,7 @@ function TeamDashboardView({
   async function leaveTeam() {
     if (!confirm('Are you sure you want to leave this team?')) return;
     const d = await api.post<{ success: boolean; error?: string }>(
-      `/api/teams/${team.id}/leave`,
+      `/api/teams/${teamId}/leave`,
       {},
     );
     if (d.success) onRefresh();
@@ -206,7 +207,7 @@ function TeamDashboardView({
       )
     )
       return;
-    const d = await api.delete<{ success: boolean; error?: string }>(`/api/teams/${team.id}`);
+    const d = await api.delete<{ success: boolean; error?: string }>(`/api/teams/${teamId}`);
     if (d.success) onRefresh();
     else show(d.error ?? 'Failed', 'error');
   }
@@ -242,9 +243,9 @@ function TeamDashboardView({
           }}
         >
           <h1 style={{ fontSize: '2rem', fontWeight: 900 }}>{team.team_name}</h1>
-          <StatusBadge status={team.status as 'active' | 'inactive' | 'queued' | 'registered'} />
-          {team.is_registered && <StatusBadge status="registered" />}
-          {team.queue_position && <StatusBadge status="queued" />}
+          <StatusBadge variant={(team.status ?? 'inactive') as 'active' | 'inactive' | 'queued' | 'registered'} />
+          {team.is_registered && <StatusBadge variant="registered" />}
+          {team.queue_position && <StatusBadge variant="queued" />}
         </div>
         {team.status !== 'active' && (
           <div
@@ -334,7 +335,7 @@ function TeamDashboardView({
               borderBottom: '1px solid rgba(255,255,255,0.05)',
             }}
           >
-            <MemberBar member={m} />
+            <MemberBar name={`${m.first_name} ${m.last_name}`} isCaptain={m.is_captain} />
             {isCaptain && !m.is_captain && (
               <button
                 className="btn"
@@ -586,7 +587,7 @@ function TeamPageContent() {
   return (
     <TeamDashboardView
       team={teamData.team}
-      userId={meData?.user?.id}
+      userId={meData?.user?.id ?? 0}
       onRefresh={onRefresh}
     />
   );
@@ -594,7 +595,7 @@ function TeamPageContent() {
 
 export default function TeamPage() {
   return (
-    <RequireAuth allowedRole="participant">
+    <RequireAuth roles={['participant']}>
       <Navbar />
       <TeamPageContent />
     </RequireAuth>

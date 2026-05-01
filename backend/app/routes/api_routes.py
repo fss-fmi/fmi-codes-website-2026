@@ -404,7 +404,7 @@ def submit_bug_report():
             elif role == "mentor":
                 row = execute_query(
                     current_app,
-                    "SELECT name, email FROM mentors WHERE id = %s",
+                    "SELECT first_name || ' ' || last_name AS name, email FROM mentors WHERE id = %s",
                     (user_id,),
                     fetch_one=True,
                 )

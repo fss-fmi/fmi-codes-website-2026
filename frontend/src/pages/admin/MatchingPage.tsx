@@ -15,16 +15,16 @@ interface RegStatus {
   max_registered: number;
   queue_count: number;
   registered_teams: { id: number; team_name: string }[];
-  queue_teams: { id: number; team_name: string }[];
+  queued_teams: { id: number; team_name: string }[];
 }
 
 interface PrefStatus {
-  teams_with_prefs: number;
-  total_registered: number;
-  mentors_with_prefs: number;
-  total_mentors: number;
-  team_details: { team_id: number; team_name: string; submitted: boolean }[];
-  mentor_details: { mentor_id: number; mentor_name: string; submitted: boolean }[];
+  teams_submitted: number;
+  teams_total: number;
+  mentors_submitted: number;
+  mentors_total: number;
+  teams: { id: number; name: string; submitted: boolean }[];
+  mentors: { id: number; name: string; submitted: boolean }[];
 }
 
 interface TeamScore {
@@ -84,7 +84,7 @@ function RegistrationPanel() {
   if (isLoading) return <LoadingSpinner />;
   if (!data) return null;
 
-  const { registered_count, max_registered, queue_count, registered_teams, queue_teams } = data;
+  const { registered_count, max_registered, queue_count, registered_teams, queued_teams } = data;
   const pct = Math.round((registered_count / (max_registered || 1)) * 100);
 
   return (
@@ -175,10 +175,10 @@ function RegistrationPanel() {
         <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
           ⏳ Queue ({queue_count})
         </h3>
-        {queue_teams.length === 0 && (
+        {queued_teams.length === 0 && (
           <p style={{ color: 'var(--muted)', fontSize: 13 }}>Queue is empty.</p>
         )}
-        {queue_teams.map((t) => (
+        {queued_teams.map((t) => (
           <div
             key={t.id}
             style={{
@@ -245,11 +245,11 @@ function PreferencesPanel() {
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
       <GlassCard style={{ padding: 24 }}>
         <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
-          🏷 Teams ({data.teams_with_prefs}/{data.total_registered})
+          🏷 Teams ({data.teams_submitted}/{data.teams_total})
         </h3>
-        {data.team_details.map((t) => (
+        {(data.teams ?? []).map((t) => (
           <div
-            key={t.team_id}
+            key={t.id}
             style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -258,7 +258,7 @@ function PreferencesPanel() {
               fontSize: 13,
             }}
           >
-            <span>{t.team_name}</span>
+            <span>{t.name}</span>
             <span style={{ color: t.submitted ? '#34d399' : '#f87171', fontWeight: 700 }}>
               {t.submitted ? '✓' : '—'}
             </span>
@@ -267,11 +267,11 @@ function PreferencesPanel() {
       </GlassCard>
       <GlassCard style={{ padding: 24 }}>
         <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
-          🧑‍🏫 Mentors ({data.mentors_with_prefs}/{data.total_mentors})
+          🧑‍🏫 Mentors ({data.mentors_submitted}/{data.mentors_total})
         </h3>
-        {data.mentor_details.map((m) => (
+        {(data.mentors ?? []).map((m) => (
           <div
-            key={m.mentor_id}
+            key={m.id}
             style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -280,7 +280,7 @@ function PreferencesPanel() {
               fontSize: 13,
             }}
           >
-            <span>{m.mentor_name}</span>
+            <span>{m.name}</span>
             <span style={{ color: m.submitted ? '#34d399' : '#f87171', fontWeight: 700 }}>
               {m.submitted ? '✓' : '—'}
             </span>
@@ -666,7 +666,7 @@ function MatchingContent() {
     {
       key: 'preferences',
       label: '🎯 Preferences',
-      badge: prefData ? `${prefData.teams_with_prefs}` : undefined,
+      badge: prefData ? `${prefData.teams_submitted}` : undefined,
     },
     { key: 'matching', label: '🔗 Matching', badge: matchData?.state },
     { key: 'scores', label: '📊 Scores' },
@@ -721,11 +721,11 @@ function MatchingContent() {
         />
         <KPICard
           label="Teams w/ Prefs"
-          value={prefData ? `${prefData.teams_with_prefs}/${prefData.total_registered}` : '—'}
+          value={prefData ? `${prefData.teams_submitted}/${prefData.teams_total}` : '—'}
         />
         <KPICard
           label="Mentors w/ Prefs"
-          value={prefData ? `${prefData.mentors_with_prefs}/${prefData.total_mentors}` : '—'}
+          value={prefData ? `${prefData.mentors_submitted}/${prefData.mentors_total}` : '—'}
         />
         <KPICard
           label="Matching State"
@@ -792,7 +792,7 @@ function MatchingContent() {
 
 export default function MatchingPage() {
   return (
-    <RequireAuth allowedRole="admin">
+    <RequireAuth roles={['admin']}>
       <Navbar />
       <MatchingContent />
     </RequireAuth>

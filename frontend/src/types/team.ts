@@ -1,7 +1,10 @@
 export interface Team {
-  team_id: number;
+  id?: number;
+  team_id?: number;
   team_name: string;
   join_code?: string;
+  status?: string;
+  captain_id?: number;
   is_active?: boolean;
   is_registered?: boolean;
   queue_position?: number | null;
@@ -25,24 +28,28 @@ export interface Member {
 
 export interface TeamMentor {
   mentor_id: number;
-  name: string;
+  mentor_name?: string;
   company_name?: string;
   picture_filename?: string;
 }
 
 export interface JoinRequest {
-  id: number;
+  request_id: number;
   participant_id: number;
-  participant_name: string;
-  participant_email?: string;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  specialty?: string;
+  university?: string;
   created_at: string;
-  status: 'pending' | 'accepted' | 'declined' | 'invalidated' | 'cancelled';
+  status?: 'pending';
 }
 
 export interface Application {
-  id: number;
+  request_id: number;
   team_id: number;
   team_name: string;
   status: 'pending' | 'accepted' | 'declined' | 'invalidated' | 'cancelled';
+  participant_count?: number;
   created_at: string;
 }

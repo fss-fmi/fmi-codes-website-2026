@@ -14,8 +14,6 @@ interface Regulation {
 const ACCENT_COLORS = ['#60a5fa', '#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#f59e0b'];
 
 export default function RegulationsPage() {
-  useScrollReveal();
-
   const { data, isLoading, error } = useQuery<Regulation[]>({
     queryKey: ['regulations'],
     queryFn: () =>
@@ -24,6 +22,8 @@ export default function RegulationsPage() {
         .then((r) => r.regulations),
     staleTime: 5 * 60_000,
   });
+
+  useScrollReveal('.reveal', data?.length);
 
   return (
     <>

@@ -1,5 +1,6 @@
 """Authentication routes — JWT-based individual auth for participants, mentors, and admin"""
 
+import hmac
 import logging
 import os
 import secrets
@@ -189,7 +190,7 @@ def login():
     if role == "admin":
         admin_email = current_app.config.get("ADMIN_EMAIL", "")
         admin_password = current_app.config.get("ADMIN_PASSWORD", "")
-        if email == admin_email and password == admin_password:
+        if hmac.compare_digest(email, admin_email) and hmac.compare_digest(password, admin_password):
             token = generate_token(0, "admin")
             resp = make_response(
                 jsonify({"success": True, "user_id": 0, "role": "admin"}), 200
@@ -202,10 +203,14 @@ def login():
         return jsonify({"success": False, "error": "Invalid role"}), 400
 
     # Fetch hash from DB then RELEASE the connection before the expensive bcrypt check
-    table = "participants" if role == "participant" else "mentors"
+    # Use explicit branches instead of f-string table interpolation to prevent SQL injection.
+    if role == "participant":
+        _login_query = "SELECT id, password_hash FROM participants WHERE email = %s AND status = 'active'"
+    else:
+        _login_query = "SELECT id, password_hash FROM mentors WHERE email = %s AND status = 'active'"
     user = execute_query(
         current_app,
-        f"SELECT id, password_hash FROM {table} WHERE email = %s AND status = 'active'",
+        _login_query,
         (email,),
         fetch_one=True,
     )
@@ -296,10 +301,15 @@ def change_password():
             {"success": False, "error": "New password must be at least 6 characters"}
         ), 400
 
-    table = "participants" if user["role"] == "participant" else "mentors"
+    if user["role"] == "participant":
+        _hash_select_query = "SELECT password_hash FROM participants WHERE id = %s"
+        _hash_update_query = "UPDATE participants SET password_hash = %s, password_reset_requested_at = NULL WHERE id = %s"
+    else:
+        _hash_select_query = "SELECT password_hash FROM mentors WHERE id = %s"
+        _hash_update_query = "UPDATE mentors SET password_hash = %s, password_reset_requested_at = NULL WHERE id = %s"
     row = execute_query(
         current_app,
-        f"SELECT password_hash FROM {table} WHERE id = %s",
+        _hash_select_query,
         (user["user_id"],),
         fetch_one=True,
     )
@@ -314,7 +324,7 @@ def change_password():
     # makes that UPDATE a no-op, so this manual change is never silently overwritten.
     execute_query(
         current_app,
-        f"UPDATE {table} SET password_hash = %s, password_reset_requested_at = NULL WHERE id = %s",
+        _hash_update_query,
         (new_hash, user["user_id"]),
     )
 
@@ -363,15 +373,14 @@ def reset_password():
     if role not in ("participant", "mentor"):
         return jsonify({"success": False, "error": "Role must be participant or mentor"}), 400
 
-    table = "participants" if role == "participant" else "mentors"
     generic_msg = "If this email is registered, a new password has been sent to it."
 
     # Step 1 — atomically claim the reset slot.
     # Returns the user id only if the claim succeeded (user active + slot free/expired).
-    with get_db_cursor() as cursor:
-        cursor.execute(
-            f"""
-            UPDATE {table}
+    # Explicit table names (no f-string interpolation) to prevent SQL injection.
+    if role == "participant":
+        _reset_claim_query = """
+            UPDATE participants
                SET password_reset_requested_at = NOW()
              WHERE email = %s
                AND status = 'active'
@@ -380,7 +389,22 @@ def reset_password():
                   OR password_reset_requested_at < NOW() - INTERVAL '60 seconds'
                )
              RETURNING id
-            """,
+            """
+    else:
+        _reset_claim_query = """
+            UPDATE mentors
+               SET password_reset_requested_at = NOW()
+             WHERE email = %s
+               AND status = 'active'
+               AND (
+                     password_reset_requested_at IS NULL
+                  OR password_reset_requested_at < NOW() - INTERVAL '60 seconds'
+               )
+             RETURNING id
+            """
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            _reset_claim_query,
             (email,),
         )
         row = cursor.fetchone()
@@ -405,9 +429,13 @@ def reset_password():
 
     if not sent:
         # Release the claim so the user can retry immediately instead of waiting 60 s.
+        if role == "participant":
+            _reset_release_query = "UPDATE participants SET password_reset_requested_at = NULL WHERE id = %s"
+        else:
+            _reset_release_query = "UPDATE mentors SET password_reset_requested_at = NULL WHERE id = %s"
         execute_query(
             current_app,
-            f"UPDATE {table} SET password_reset_requested_at = NULL WHERE id = %s",
+            _reset_release_query,
             (user_id,),
         )
         return jsonify(
@@ -417,15 +445,25 @@ def reset_password():
     # Step 4 — write the new hash only if we still own the slot.
     # If change_password() ran during the SMTP window it cleared the column to NULL,
     # which causes this UPDATE to match 0 rows — the manual change is preserved.
-    with get_db_cursor() as cursor:
-        cursor.execute(
-            f"""
-            UPDATE {table}
+    if role == "participant":
+        _reset_hash_query = """
+            UPDATE participants
                SET password_hash = %s,
                    password_reset_requested_at = NULL
              WHERE id = %s
                AND password_reset_requested_at IS NOT NULL
-            """,
+            """
+    else:
+        _reset_hash_query = """
+            UPDATE mentors
+               SET password_hash = %s,
+                   password_reset_requested_at = NULL
+             WHERE id = %s
+               AND password_reset_requested_at IS NOT NULL
+            """
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            _reset_hash_query,
             (new_hash, user_id),
         )
         updated = cursor.rowcount

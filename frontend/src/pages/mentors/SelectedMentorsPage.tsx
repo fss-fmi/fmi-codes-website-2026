@@ -38,6 +38,13 @@ function SelectedMentorsContent() {
 
       {isLoading && <LoadingSpinner />}
 
+      {!isLoading && error && (
+        <GlassCard style={{ padding: 48, textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+          <p style={{ color: 'var(--muted)' }}>Failed to load mentor selection. Please try again.</p>
+        </GlassCard>
+      )}
+
       {!isLoading && !error && selected.length === 0 && (
         <GlassCard style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
@@ -142,7 +149,7 @@ function SelectedMentorsContent() {
 
 export default function SelectedMentorsPage() {
   return (
-    <RequireAuth allowedRole="participant">
+    <RequireAuth roles={['participant']}>
       <Navbar />
       <SelectedMentorsContent />
     </RequireAuth>

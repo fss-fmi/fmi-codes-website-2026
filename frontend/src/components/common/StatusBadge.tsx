@@ -27,7 +27,7 @@ interface Props {
 }
 
 export default function StatusBadge({ variant, label }: Props) {
-  const cfg = configs[variant];
+  const cfg = configs[variant] ?? configs['inactive'];
   return (
     <span
       style={{

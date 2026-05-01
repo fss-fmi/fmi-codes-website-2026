@@ -155,7 +155,7 @@ function BrowseTeamsContent() {
 
 export default function BrowseTeamsPage() {
   return (
-    <RequireAuth allowedRole="participant">
+    <RequireAuth roles={['participant']}>
       <Navbar />
       <BrowseTeamsContent />
     </RequireAuth>

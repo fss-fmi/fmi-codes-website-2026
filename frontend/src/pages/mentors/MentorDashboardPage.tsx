@@ -441,7 +441,7 @@ function MentorDashboardContent() {
 
 export default function MentorDashboardPage() {
   return (
-    <RequireAuth allowedRole="mentor">
+    <RequireAuth roles={['mentor']}>
       <Navbar />
       <MentorDashboardContent />
     </RequireAuth>

@@ -151,7 +151,7 @@ function CreateTeamContent() {
 
 export default function CreateTeamPage() {
   return (
-    <RequireAuth allowedRole="participant">
+    <RequireAuth roles={['participant']}>
       <Navbar />
       <CreateTeamContent />
     </RequireAuth>
