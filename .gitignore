@@ -65,6 +65,9 @@ cython_debug/
 .claude/
 /github
 
+# Security audits — never commit
+.github/security/
+
 # OS
 .DS_Store
 Thumbs.db
