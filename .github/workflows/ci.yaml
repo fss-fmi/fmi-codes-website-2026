@@ -38,7 +38,7 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Run unit tests
-        run: pytest tests/unit/ -v
+        run: pytest tests/ --ignore=tests/e2e -v
 
       - name: Run E2E tests
         env:
