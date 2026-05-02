@@ -157,7 +157,7 @@ export default function RegistrationPage() {
       if (data.success) {
         login(data.role, data.user_id, data.user);
         setSuccess('Registration successful! Redirecting...');
-        setTimeout(() => navigate('/team'), 1000);
+        setTimeout(() => navigate('/team', { replace: true }), 1000);
       } else {
         setError(data.error ?? 'Registration failed');
       }
@@ -278,7 +278,7 @@ export default function RegistrationPage() {
                 type="password"
                 required
                 minLength={6}
-                placeholder="Min 6 characters"
+                placeholder="Min 12 characters"
                 value={form.password}
                 onChange={(e) => set('password', e.target.value)}
                 style={inputStyle}

@@ -39,6 +39,7 @@ services:
     environment:
       FLASK_ENV: development
       FLASK_DEBUG: '1'
+      FLASK_HOST: 0.0.0.0
       DB_HOST: db
       DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
@@ -49,6 +50,9 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
       MENTORS_STAY_TUNED: ${MENTORS_STAY_TUNED}
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN}
+      RANKINGS_LIVE: ${RANKINGS_LIVE}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}

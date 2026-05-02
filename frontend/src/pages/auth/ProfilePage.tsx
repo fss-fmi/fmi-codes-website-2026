@@ -79,7 +79,7 @@ function ProfileContent() {
     setPwError('');
     setPwSuccess('');
     if (newPw.length < 6) {
-      setPwError('New password must be at least 6 characters.');
+      setPwError('New password must be at least 12 characters.');
       return;
     }
     if (newPw !== confPw) {
@@ -336,7 +336,7 @@ function ProfileContent() {
               type="password"
               required
               autoComplete="new-password"
-              placeholder="Min 6 characters"
+              placeholder="Min 12 characters"
               value={newPw}
               onChange={(e) => setNewPw(e.target.value)}
               style={inputStyle}

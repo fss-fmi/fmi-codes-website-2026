@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import RequireAuth from '@/components/layout/RequireAuth';
 import GlassCard from '@/components/common/GlassCard';
 import GradientText from '@/components/common/GradientText';
+import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 
 const inputStyle: React.CSSProperties = {
@@ -21,6 +23,8 @@ const inputStyle: React.CSSProperties = {
 
 function CreateTeamContent() {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,8 +38,11 @@ function CreateTeamContent() {
       const d = await api.post<{ success: boolean; error?: string }>('/api/teams', {
         team_name: name.trim(),
       });
-      if (d.success) navigate('/team');
-      else setError(d.error ?? 'Failed to create team.');
+      if (d.success) {
+        await refreshUser();
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+        navigate('/team', { replace: true });
+      } else setError(d.error ?? 'Failed to create team.');
     } catch {
       setError('Network error. Please try again.');
     } finally {

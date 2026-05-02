@@ -21,6 +21,44 @@ logger = logging.getLogger(__name__)
 _COOKIE_MAX_AGE = 3 * 24 * 60 * 60  # 3 days, matches JWT expiry
 
 
+def _fetch_user_profile(app, user_id: int, role: str) -> dict:
+    """Return a user dict suitable for embedding in API responses.
+
+    Mirrors the query used by /api/auth/me so the frontend receives the same
+    shape whether it calls login/register or refreshes the page.
+    """
+    if role == "admin":
+        return {"role": "admin"}
+    if role == "participant":
+        row = execute_query(
+            app,
+            """SELECT p.id, p.first_name, p.last_name, p.email, p.phone_number,
+                      p.faculty_number, p.course, p.is_captain, p.team_id, p.status,
+                      s.name AS specialty, u.name AS university, t.team_name, t.join_code
+               FROM participants p
+               LEFT JOIN specialties s ON p.specialty_id = s.id
+               LEFT JOIN universities u ON p.university_id = u.id
+               LEFT JOIN teams t ON p.team_id = t.id
+               WHERE p.id = %s""",
+            (user_id,),
+            fetch_one=True,
+        )
+    else:
+        row = execute_query(
+            app,
+            """SELECT id, first_name, last_name, email, phone_number,
+                      company_name, bio, status
+               FROM mentors WHERE id = %s""",
+            (user_id,),
+            fetch_one=True,
+        )
+    if not row:
+        return {"role": role}
+    result = dict(row)
+    result["role"] = role
+    return result
+
+
 def _is_secure() -> bool:
     """Return True when the cookie Secure flag should be set (production only)."""
     return os.environ.get("FLASK_ENV", "development") == "production"
@@ -167,7 +205,11 @@ def register_participant():
         return jsonify({"success": False, "error": "Registration failed"}), 500
 
     token = generate_token(pid, "participant")
-    resp = make_response(jsonify({"success": True, "user_id": pid, "role": "participant"}), 201)
+    user_profile = _fetch_user_profile(current_app, pid, "participant")
+    resp = make_response(
+        jsonify({"success": True, "user_id": pid, "role": "participant", "user": user_profile}),
+        201,
+    )
     _set_auth_cookies(resp, token, "participant")
     return resp
 
@@ -199,7 +241,12 @@ def login():
             password, admin_password_hash
         ):
             token = generate_token(0, "admin")
-            resp = make_response(jsonify({"success": True, "user_id": 0, "role": "admin"}), 200)
+            resp = make_response(
+                jsonify(
+                    {"success": True, "user_id": 0, "role": "admin", "user": {"role": "admin"}}
+                ),
+                200,
+            )
             _set_auth_cookies(resp, token, "admin")
             return resp
         return jsonify({"success": False, "error": "Invalid admin credentials"}), 401
@@ -232,7 +279,11 @@ def login():
         return jsonify({"success": False, "error": "Invalid credentials"}), 401
 
     token = generate_token(user["id"], role)
-    resp = make_response(jsonify({"success": True, "user_id": user["id"], "role": role}), 200)
+    user_profile = _fetch_user_profile(current_app, user["id"], role)
+    resp = make_response(
+        jsonify({"success": True, "user_id": user["id"], "role": role, "user": user_profile}),
+        200,
+    )
     _set_auth_cookies(resp, token, role)
     return resp
 
@@ -430,15 +481,15 @@ def reset_password():
 
     sent = send_password_reset_link_email(dict(current_app.config), email, reset_url, role)
     if not sent:
-        # Clean up the token so the user can retry immediately
+        # Clean up the token so the user can retry immediately.
+        # Return the same generic 200 to avoid leaking whether the account exists.
         execute_query(
             current_app,
             "DELETE FROM password_reset_tokens WHERE token_hash = %s",
             (token_hash,),
         )
-        return jsonify(
-            {"success": False, "error": "Could not send email. Please try again later."}
-        ), 502
+        logger.error("Failed to send password reset email to %s (role=%s)", email, role)
+        return jsonify({"success": True, "message": generic_msg}), 200
 
     logger.info("Password reset link sent to %s (role=%s, id=%s)", email, role, user_id)
     return jsonify({"success": True, "message": generic_msg}), 200
@@ -468,6 +519,10 @@ def confirm_password_reset():
 
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
+    # Pre-compute the bcrypt hash BEFORE acquiring the DB cursor so we don't hold
+    # a row-level lock during the CPU-heavy hashing operation.
+    new_hash = hash_password(new_password)
+
     with get_db_cursor() as cursor:
         cursor.execute(
             """SELECT id, user_id, expires_at FROM password_reset_tokens
@@ -480,11 +535,13 @@ def confirm_password_reset():
         if not token_row:
             return jsonify({"success": False, "error": "Invalid or expired reset token"}), 400
 
-        if datetime.now(UTC) > token_row["expires_at"].replace(tzinfo=UTC):
+        expires_at = token_row["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if datetime.now(UTC) > expires_at:
             return jsonify({"success": False, "error": "Reset token has expired"}), 400
 
         user_id = token_row["user_id"]
-        new_hash = hash_password(new_password)  # CPU-heavy; cursor still open but commit waits
 
         if role == "participant":
             cursor.execute(
