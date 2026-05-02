@@ -16,12 +16,12 @@
       "prettier --write"
     ],
     "frontend/**/*.{ts,tsx}": [
-      "eslint --fix --config frontend/eslint.config.js",
+      "node ./frontend/node_modules/eslint/bin/eslint.js --fix --config frontend/eslint.config.js",
       "prettier --write"
     ],
     "*.py": [
-      "ruff check --fix",
-      "ruff format"
+      "./.venv/Scripts/ruff.exe check --fix",
+      "./.venv/Scripts/ruff.exe format"
     ]
   }
 }

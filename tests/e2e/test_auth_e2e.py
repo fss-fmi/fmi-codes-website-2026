@@ -10,8 +10,8 @@ Covers:
 """
 
 import sys
-from pathlib import Path
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import jwt
 import pytest
@@ -19,9 +19,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
 from tests.e2e.conftest import (
-    DEFAULT_PW,
     ADMIN_EMAIL,
     ADMIN_PW,
+    DEFAULT_PW,
     admin_token,
     bearer,
     login_token,
@@ -37,6 +37,7 @@ pytestmark = pytest.mark.e2e
 # Registration
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRegistration:
     def test_happy_path_returns_201_with_token_cookie(self, client, seeds):
         rv = register(client, 1, seeds)
@@ -47,7 +48,8 @@ class TestRegistration:
         # httpOnly token cookie must be present
         cookie_names = [c.split("=")[0] for c in rv.headers.getlist("Set-Cookie")]
         assert "token" in cookie_names
-        assert "role" in cookie_names
+        # M7: role cookie removed — role is sourced from /api/auth/me, not a cookie
+        assert "role" not in cookie_names
 
     def test_registration_sets_httponly_flag_on_token_cookie(self, client, seeds):
         rv = register(client, 1, seeds)
@@ -58,13 +60,12 @@ class TestRegistration:
         assert "HttpOnly" in token_cookie
 
     def test_role_cookie_is_not_httponly(self, client, seeds):
-        """role cookie must be readable by React JS; token must not."""
+        """M7: role cookie is not set at all; JS reads role from /api/auth/me."""
         rv = register(client, 1, seeds)
         role_cookie = next(
             (h for h in rv.headers.getlist("Set-Cookie") if h.startswith("role=")), None
         )
-        assert role_cookie is not None
-        assert "HttpOnly" not in role_cookie
+        assert role_cookie is None
 
     def test_missing_required_fields_returns_400(self, client, seeds):
         payload = make_payload(1, univ_id=seeds["univ_id"], spec_id=seeds["spec_id"])
@@ -88,13 +89,15 @@ class TestRegistration:
         register(client, 1, seeds)
         rv = register(client, 2, seeds, email="user1@e2e.test")
         assert rv.status_code == 409
-        assert "email" in rv.get_json()["error"].lower()
+        # M2: generic message — does not reveal which field caused the conflict
+        assert "already exists" in rv.get_json()["error"].lower()
 
     def test_duplicate_faculty_number_returns_409(self, client, seeds):
         register(client, 1, seeds)
         rv = register(client, 2, seeds, faculty_number="FAC000001")
         assert rv.status_code == 409
-        assert "faculty" in rv.get_json()["error"].lower()
+        # M2: generic message — does not reveal which field caused the conflict
+        assert "already exists" in rv.get_json()["error"].lower()
 
     def test_registration_closed_returns_403(self, flask_app, seeds):
         flask_app.config["REGISTRATION_OPEN"] = False
@@ -117,14 +120,13 @@ class TestRegistration:
         assert rv.status_code < 500
 
     def test_xss_payload_in_name_stored_not_executed(self, client, seeds):
-        """XSS payload stored in a name field must not be reflected unescaped."""
+        """C7: HTML injection in name fields is rejected at the backend boundary."""
         xss = "<script>alert(1)</script>"
         rv = register(client, 1, seeds, first_name=xss)
-        # Registration must succeed (name is stored) but the JSON must not
-        # reflect the payload in a way that could execute
-        assert rv.status_code == 201
-        body_text = rv.get_data(as_text=True)
-        assert "<script>" not in body_text
+        # C7 validation rejects HTML injection characters → 400
+        assert rv.status_code == 400
+        assert rv.get_json()["success"] is False
+        assert "<script>" not in rv.get_data(as_text=True)
 
     def test_response_never_contains_password_hash(self, client, seeds):
         rv = register(client, 1, seeds)
@@ -145,6 +147,7 @@ class TestRegistration:
 # ═══════════════════════════════════════════════════════════════════════════
 # Login
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestLogin:
     def test_participant_login_returns_200_with_token(self, client, seeds):
@@ -215,6 +218,7 @@ class TestLogin:
 # Logout
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLogout:
     def test_logout_clears_cookies(self, client, seeds):
         register(client, 1, seeds)
@@ -237,6 +241,7 @@ class TestLogout:
 # ═══════════════════════════════════════════════════════════════════════════
 # /me endpoint
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestGetMe:
     def test_returns_participant_profile(self, client, seeds):
@@ -298,7 +303,8 @@ class TestGetMe:
     def test_wrong_secret_returns_401(self, flask_app, seeds):
         """Token signed with the wrong key must be rejected."""
         payload = {
-            "user_id": 1, "role": "participant",
+            "user_id": 1,
+            "role": "participant",
             "iat": datetime.now(UTC),
             "exp": datetime.now(UTC) + timedelta(days=3),
         }
@@ -311,6 +317,7 @@ class TestGetMe:
 # ═══════════════════════════════════════════════════════════════════════════
 # Change password
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestChangePassword:
     def test_happy_path_changes_password(self, client, seeds):
@@ -371,6 +378,7 @@ class TestChangePassword:
 # Reset password
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestResetPassword:
     def test_missing_email_returns_400(self, client):
         rv = client.post("/api/auth/reset-password", json={"role": "participant"})
@@ -395,11 +403,11 @@ class TestResetPassword:
         assert body["success"] is True
         # The message must be identical to what a known user would receive
         # so attackers cannot enumerate accounts
-        assert "email is registered" in body["message"].lower() or \
-               "sent" in body["message"].lower()
+        assert "email is registered" in body["message"].lower() or "sent" in body["message"].lower()
 
 
 # ─── Internal helpers used only within this module ────────────────────────
+
 
 def _extract_token(response):
     for h in response.headers.getlist("Set-Cookie"):
@@ -412,8 +420,8 @@ def flask_app_client(app):
     return app.test_client()
 
 
-
 def mentor_token_for_seed(app, seeds):
     with app.app_context():
         from app.services.auth_service import generate_token
+
         return generate_token(seeds["mentor_ids"][0], "mentor")

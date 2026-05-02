@@ -40,44 +40,44 @@ pytestmark = pytest.mark.e2e
 
 PROTECTED_ENDPOINTS = [
     # Auth
-    ("GET",    "/api/auth/me"),
-    ("PATCH",  "/api/auth/change-password"),
+    ("GET", "/api/auth/me"),
+    ("PATCH", "/api/auth/change-password"),
     # Teams — participant-only
-    ("POST",   "/api/teams"),
-    ("POST",   "/api/teams/join"),
-    ("POST",   "/api/teams/1/leave"),
-    ("GET",    "/api/teams/available"),
-    ("GET",    "/api/teams/my-applications"),
-    ("POST",   "/api/teams/1/apply"),
+    ("POST", "/api/teams"),
+    ("POST", "/api/teams/join"),
+    ("POST", "/api/teams/1/leave"),
+    ("GET", "/api/teams/available"),
+    ("GET", "/api/teams/my-applications"),
+    ("POST", "/api/teams/1/apply"),
     # Teams — token_required
-    ("GET",    "/api/teams/1"),
+    ("GET", "/api/teams/1"),
     # Teams — captain_required
     ("DELETE", "/api/teams/1"),
     ("DELETE", "/api/teams/1/members/2"),
-    ("GET",    "/api/teams/1/requests"),
-    ("POST",   "/api/teams/requests/1/accept"),
-    ("POST",   "/api/teams/requests/1/decline"),
-    ("POST",   "/api/teams/requests/1/cancel"),
+    ("GET", "/api/teams/1/requests"),
+    ("POST", "/api/teams/requests/1/accept"),
+    ("POST", "/api/teams/requests/1/decline"),
+    ("POST", "/api/teams/requests/1/cancel"),
     # Mentors — captain_required
-    ("GET",    "/api/teams/1/available-mentors"),
-    ("POST",   "/api/teams/1/mentor-preferences"),
-    ("GET",    "/api/teams/1/mentor-preferences"),
+    ("GET", "/api/teams/1/available-mentors"),
+    ("POST", "/api/teams/1/mentor-preferences"),
+    ("GET", "/api/teams/1/mentor-preferences"),
     # Mentors — mentor_required
-    ("GET",    "/api/mentors/available-teams"),
-    ("POST",   "/api/mentors/team-preferences"),
-    ("GET",    "/api/mentors/team-preferences"),
-    ("GET",    "/api/mentors/assigned-teams"),
+    ("GET", "/api/mentors/available-teams"),
+    ("POST", "/api/mentors/team-preferences"),
+    ("GET", "/api/mentors/team-preferences"),
+    ("GET", "/api/mentors/assigned-teams"),
     # Admin
-    ("GET",    "/api/admin/preference-status"),
-    ("POST",   "/api/admin/run-matching"),
-    ("POST",   "/api/admin/confirm-matching"),
-    ("GET",    "/api/admin/matching-results"),
-    ("GET",    "/api/admin/matching-export"),
-    ("GET",    "/api/admin/teams/registration-status"),
-    ("POST",   "/api/admin/teams/1/register"),
-    ("POST",   "/api/admin/teams/1/unregister"),
-    ("PUT",    "/api/admin/teams/1/score"),
-    ("GET",    "/api/admin/teams/scores"),
+    ("GET", "/api/admin/preference-status"),
+    ("POST", "/api/admin/run-matching"),
+    ("POST", "/api/admin/confirm-matching"),
+    ("GET", "/api/admin/matching-results"),
+    ("GET", "/api/admin/matching-export"),
+    ("GET", "/api/admin/teams/registration-status"),
+    ("POST", "/api/admin/teams/1/register"),
+    ("POST", "/api/admin/teams/1/unregister"),
+    ("PUT", "/api/admin/teams/1/score"),
+    ("GET", "/api/admin/teams/scores"),
 ]
 
 
@@ -85,25 +85,24 @@ PROTECTED_ENDPOINTS = [
 # 1. Unauthenticated access
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestUnauthenticatedAccess:
     @pytest.mark.parametrize("method,path", PROTECTED_ENDPOINTS)
     def test_protected_endpoint_requires_token(self, client, method, path):
         rv = getattr(client, method.lower())(path, json={})
-        assert rv.status_code == 401, (
-            f"{method} {path} returned {rv.status_code}; expected 401"
-        )
+        assert rv.status_code == 401, f"{method} {path} returned {rv.status_code}; expected 401"
 
     def test_public_endpoints_accessible_without_token(self, client):
         public = [
-            ("GET",  "/api/teams"),
-            ("GET",  "/api/mentors"),
-            ("GET",  "/api/teams/registered"),
-            ("GET",  "/api/config"),
-            ("GET",  "/api/universities"),
-            ("GET",  "/api/specialties"),
-            ("GET",  "/api/ranking"),
-            ("GET",  "/api/regulations"),
-            ("GET",  "/api/matching-status"),
+            ("GET", "/api/teams"),
+            ("GET", "/api/mentors"),
+            ("GET", "/api/teams/registered"),
+            ("GET", "/api/config"),
+            ("GET", "/api/universities"),
+            ("GET", "/api/specialties"),
+            ("GET", "/api/ranking"),
+            ("GET", "/api/regulations"),
+            ("GET", "/api/matching-status"),
         ]
         for method, path in public:
             rv = getattr(client, method.lower())(path)
@@ -116,20 +115,24 @@ class TestUnauthenticatedAccess:
 # 2. Role escalation attacks
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRoleEscalation:
     # — Participant → admin —
-    @pytest.mark.parametrize("method,path", [
-        ("GET",    "/api/admin/preference-status"),
-        ("POST",   "/api/admin/run-matching"),
-        ("POST",   "/api/admin/confirm-matching"),
-        ("GET",    "/api/admin/matching-results"),
-        ("GET",    "/api/admin/matching-export"),
-        ("GET",    "/api/admin/teams/registration-status"),
-        ("POST",   "/api/admin/teams/1/register"),
-        ("POST",   "/api/admin/teams/1/unregister"),
-        ("PUT",    "/api/admin/teams/1/score"),
-        ("GET",    "/api/admin/teams/scores"),
-    ])
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("GET", "/api/admin/preference-status"),
+            ("POST", "/api/admin/run-matching"),
+            ("POST", "/api/admin/confirm-matching"),
+            ("GET", "/api/admin/matching-results"),
+            ("GET", "/api/admin/matching-export"),
+            ("GET", "/api/admin/teams/registration-status"),
+            ("POST", "/api/admin/teams/1/register"),
+            ("POST", "/api/admin/teams/1/unregister"),
+            ("PUT", "/api/admin/teams/1/score"),
+            ("GET", "/api/admin/teams/scores"),
+        ],
+    )
     def test_participant_cannot_reach_admin_endpoint(self, client, seeds, method, path):
         token = register_and_token(client, 1, seeds)
         rv = getattr(client, method.lower())(path, json={}, headers=bearer(token))
@@ -138,14 +141,18 @@ class TestRoleEscalation:
         )
 
     # — Mentor → participant/captain endpoints —
-    @pytest.mark.parametrize("method,path", [
-        ("POST",   "/api/teams"),
-        ("POST",   "/api/teams/join"),
-        ("GET",    "/api/teams/available"),
-        ("GET",    "/api/teams/my-applications"),
-    ])
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("POST", "/api/teams"),
+            ("POST", "/api/teams/join"),
+            ("GET", "/api/teams/available"),
+            ("GET", "/api/teams/my-applications"),
+        ],
+    )
     def test_mentor_cannot_reach_participant_endpoint(self, flask_app, seeds, method, path):
         from app.services.auth_service import generate_token
+
         with flask_app.app_context():
             token = generate_token(seeds["mentor_ids"][0], "mentor")
         with flask_app.test_client() as c:
@@ -155,12 +162,15 @@ class TestRoleEscalation:
         )
 
     # — Participant → mentor-only endpoints —
-    @pytest.mark.parametrize("method,path", [
-        ("GET",    "/api/mentors/available-teams"),
-        ("POST",   "/api/mentors/team-preferences"),
-        ("GET",    "/api/mentors/team-preferences"),
-        ("GET",    "/api/mentors/assigned-teams"),
-    ])
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("GET", "/api/mentors/available-teams"),
+            ("POST", "/api/mentors/team-preferences"),
+            ("GET", "/api/mentors/team-preferences"),
+            ("GET", "/api/mentors/assigned-teams"),
+        ],
+    )
     def test_participant_cannot_reach_mentor_endpoint(self, client, seeds, method, path):
         token = register_and_token(client, 1, seeds)
         rv = getattr(client, method.lower())(path, json={}, headers=bearer(token))
@@ -169,11 +179,14 @@ class TestRoleEscalation:
         )
 
     # — Admin → participant/captain actions —
-    @pytest.mark.parametrize("method,path", [
-        ("POST",   "/api/teams"),
-        ("POST",   "/api/teams/join"),
-        ("GET",    "/api/teams/available"),
-    ])
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("POST", "/api/teams"),
+            ("POST", "/api/teams/join"),
+            ("GET", "/api/teams/available"),
+        ],
+    )
     def test_admin_cannot_reach_participant_endpoint(self, flask_app, method, path):
         token = admin_token(flask_app)
         with flask_app.test_client() as c:
@@ -186,6 +199,7 @@ class TestRoleEscalation:
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. IDOR attacks
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestIDOR:
     """Each test verifies that User A cannot perform an operation on resources
@@ -249,7 +263,9 @@ class TestIDOR:
     def test_participant_cannot_accept_random_request_id(self, client, seeds, flask_app):
         """A non-captain participant guesses a request ID and tries to accept it."""
         token1 = register_and_token(client, 1, seeds)
-        rv_a = client.post("/api/teams", json={"team_name": "IDOR RequestTeam"}, headers=bearer(token1))
+        rv_a = client.post(
+            "/api/teams", json={"team_name": "IDOR RequestTeam"}, headers=bearer(token1)
+        )
         team_a_id = rv_a.get_json()["team"]["id"]
 
         with flask_app.test_client() as c2:
@@ -266,6 +282,7 @@ class TestIDOR:
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. Data leakage
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestDataLeakage:
     def test_join_code_absent_from_public_team_list(self, client, seeds):
@@ -341,23 +358,30 @@ class TestDataLeakage:
 # 5. Injection & output encoding
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestInjectionAndEncoding:
-    @pytest.mark.parametrize("payload", [
-        "'; DROP TABLE participants; --",
-        "\" OR 1=1 --",
-        "' OR '1'='1",
-        "1; SELECT * FROM participants --",
-    ])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "'; DROP TABLE participants; --",
+            '" OR 1=1 --',
+            "' OR '1'='1",
+            "1; SELECT * FROM participants --",
+        ],
+    )
     def test_sql_injection_in_registration_email_does_not_cause_500(self, client, seeds, payload):
         rv = register(client, 1, seeds, email=f"{payload}@test.invalid")
         # Parameterized queries safely store the injection string as data (201 is
         # acceptable); the security property is no 5xx (SQL was never executed).
         assert rv.status_code < 500
 
-    @pytest.mark.parametrize("payload", [
-        "'; DROP TABLE teams; --",
-        "\" OR 1=1 --",
-    ])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "'; DROP TABLE teams; --",
+            '" OR 1=1 --',
+        ],
+    )
     def test_sql_injection_in_team_name_does_not_cause_500(self, client, seeds, payload):
         token = register_and_token(client, 1, seeds)
         rv = client.post("/api/teams", json={"team_name": payload}, headers=bearer(token))
@@ -375,28 +399,32 @@ class TestInjectionAndEncoding:
         assert rv.content_type.startswith("application/json")
 
     def test_xss_in_first_name_not_reflected_unescaped(self, client, seeds):
+        """C7: HTML injection in first_name is rejected at the backend boundary."""
         xss = "<img src=x onerror=alert(1)>"
         rv = register(client, 1, seeds, first_name=xss)
-        assert rv.status_code == 201
+        # C7: backend rejects HTML injection characters → 400
+        assert rv.status_code == 400
         assert "<img" not in rv.get_data(as_text=True)
 
-    @pytest.mark.parametrize("payload", [
-        "'; DROP TABLE mentors; --",
-        "\" OR 1=1 --",
-    ])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "'; DROP TABLE mentors; --",
+            '" OR 1=1 --',
+        ],
+    )
     def test_sql_injection_in_login_email_returns_401_not_500(self, client, payload):
         rv = client.post(
             "/api/auth/login",
             json={"email": payload, "password": "anything", "role": "participant"},
         )
-        assert rv.status_code in (400, 401), (
-            f"SQL injection in login email caused {rv.status_code}"
-        )
+        assert rv.status_code in (400, 401), f"SQL injection in login email caused {rv.status_code}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 6. Input validation
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestInputValidation:
     def test_score_with_string_value_returns_400(self, flask_app, seeds, client):
@@ -457,11 +485,13 @@ class TestInputValidation:
         mid = seeds["mentor_ids"][0]
         rv = client.post(
             f"/api/teams/{team_id}/mentor-preferences",
-            json={"preferences": [
-                {"mentor_id": mid, "rank": 1},
-                {"mentor_id": mid, "rank": 2},
-                {"mentor_id": mid, "rank": 3},
-            ]},
+            json={
+                "preferences": [
+                    {"mentor_id": mid, "rank": 1},
+                    {"mentor_id": mid, "rank": 2},
+                    {"mentor_id": mid, "rank": 3},
+                ]
+            },
             headers=bearer(token1),
         )
         assert rv.status_code == 400
@@ -470,6 +500,7 @@ class TestInputValidation:
 # ═══════════════════════════════════════════════════════════════════════════
 # 7. Feature-flag enforcement
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestFeatureFlags:
     def test_registration_closed_returns_403(self, flask_app, seeds):
@@ -498,6 +529,7 @@ class TestFeatureFlags:
 # 8. Business-logic abuse
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestBusinessLogicAbuse:
     def test_applying_to_own_team_is_rejected(self, client, seeds):
         token = register_and_token(client, 1, seeds)
@@ -516,7 +548,9 @@ class TestBusinessLogicAbuse:
 
     def test_joining_team_when_already_on_a_team_is_rejected(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
-        rv_a = client.post("/api/teams", json={"team_name": "AlreadyIn Team"}, headers=bearer(token1))
+        rv_a = client.post(
+            "/api/teams", json={"team_name": "AlreadyIn Team"}, headers=bearer(token1)
+        )
         join_code_a = rv_a.get_json()["team"]["join_code"]
 
         with flask_app.test_client() as c2:
@@ -546,17 +580,20 @@ class TestBusinessLogicAbuse:
         mid0, mid1, mid2 = seeds["mentor_ids"]
         rv = client.post(
             f"/api/teams/{team_id}/mentor-preferences",
-            json={"preferences": [
-                {"mentor_id": mid0, "rank": 1},
-                {"mentor_id": mid1, "rank": 2},
-                {"mentor_id": mid2, "rank": 3},
-            ]},
+            json={
+                "preferences": [
+                    {"mentor_id": mid0, "rank": 1},
+                    {"mentor_id": mid1, "rank": 2},
+                    {"mentor_id": mid2, "rank": 3},
+                ]
+            },
             headers=bearer(token),
         )
         assert rv.status_code == 200
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────
+
 
 def _get_token_from_login(response):
     for h in response.headers.getlist("Set-Cookie"):
