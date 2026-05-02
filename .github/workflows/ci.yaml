@@ -16,13 +16,13 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: ${{ secrets.TEST_DB_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
-          POSTGRES_DB: ${{ secrets.TEST_DB_NAME }}
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: fmi_hackathon_db
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ${{ secrets.TEST_DB_USER }}"
+          --health-cmd "pg_isready -U ci_user"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -45,5 +45,5 @@ jobs:
 
       - name: Run E2E tests
         env:
-          TEST_DATABASE_URL: postgresql://${{ secrets.TEST_DB_USER }}:${{ secrets.TEST_DB_PASSWORD }}@localhost:5432/${{ secrets.TEST_DB_NAME }}
+          TEST_DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/fmi_hackathon_db
         run: pytest tests/e2e/ -v
