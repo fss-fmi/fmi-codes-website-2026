@@ -261,6 +261,29 @@ CREATE INDEX IF NOT EXISTS idx_tjr_participant_id ON team_join_requests (partici
 CREATE INDEX IF NOT EXISTS idx_tjr_team_id ON team_join_requests (team_id);
 CREATE INDEX IF NOT EXISTS idx_tjr_status ON team_join_requests (status);
 
+-- Password reset tokens (C4: secure token-link reset flow)
+-- The raw token is NEVER stored — only a SHA-256 hex hash so a DB breach
+-- cannot be used to immediately reset passwords.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id         SERIAL      PRIMARY KEY,
+    user_id    INTEGER     NOT NULL,
+    role       VARCHAR(20) NOT NULL CHECK (role IN ('participant', 'mentor')),
+    token_hash VARCHAR(64) NOT NULL UNIQUE,  -- SHA-256 hex digest, 64 chars
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at    TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Fast lookup by hash on the confirm endpoint (only for unused tokens)
+CREATE INDEX IF NOT EXISTS idx_prt_token_hash
+    ON password_reset_tokens (token_hash)
+    WHERE used_at IS NULL;
+
+-- Periodic cleanup of expired unused tokens
+CREATE INDEX IF NOT EXISTS idx_prt_expires_unused
+    ON password_reset_tokens (expires_at)
+    WHERE used_at IS NULL;
+
 -- ============================================================================
 -- SECTION 4: TRIGGER FUNCTIONS FOR DATA INTEGRITY
 -- ============================================================================

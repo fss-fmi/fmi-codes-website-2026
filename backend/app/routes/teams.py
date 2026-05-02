@@ -64,6 +64,7 @@ def get_registered_teams():
     if auth_header.startswith("Bearer "):
         try:
             from app.services.auth_service import decode_token
+
             payload = decode_token(auth_header[7:])
             if payload.get("role") == "participant":
                 participant_id = payload["user_id"]
@@ -85,20 +86,22 @@ def get_registered_teams():
             SELECT team_id FROM team_join_requests
             WHERE participant_id = %s AND status = 'pending'
         """
-        applied_rows = execute_query(
-            current_app, applied_query, (participant_id,), fetch_all=True
-        ) or []
+        applied_rows = (
+            execute_query(current_app, applied_query, (participant_id,), fetch_all=True) or []
+        )
         applied_set = {r["team_id"] for r in applied_rows}
         for t in teams_list:
             t["already_applied"] = t["team_id"] in applied_set
             t["is_full"] = t["participant_count"] >= MAX_TEAM_MEMBERS
 
-    return jsonify({
-        "success": True,
-        "teams": teams_list,
-        "can_apply": can_apply,
-        "max_registered": 18,
-    }), 200
+    return jsonify(
+        {
+            "success": True,
+            "teams": teams_list,
+            "can_apply": can_apply,
+            "max_registered": 18,
+        }
+    ), 200
 
 
 @teams_bp.route("/api/teams/<int:team_id>/members/public", methods=["GET"])
@@ -117,22 +120,30 @@ def get_team_members_public(team_id):
     if not team:
         return jsonify({"success": False, "error": "Team not found"}), 404
 
-    members = execute_query(
-        current_app,
-        """
+    members = (
+        execute_query(
+            current_app,
+            """
         SELECT first_name, last_name
         FROM participants
         WHERE team_id = %s AND status = 'active'
         ORDER BY is_captain DESC, created_at
         """,
-        (team_id,),
-        fetch_all=True,
-    ) or []
+            (team_id,),
+            fetch_all=True,
+        )
+        or []
+    )
 
-    return jsonify({
-        "success": True,
-        "members": [{"first_name": m["first_name"], "last_name": m["last_name"]} for m in members],
-    }), 200
+    return jsonify(
+        {
+            "success": True,
+            "members": [
+                {"first_name": m["first_name"], "last_name": m["last_name"]} for m in members
+            ],
+        }
+    ), 200
+
 
 @teams_bp.route("/api/teams", methods=["POST"])
 @participant_required
@@ -142,6 +153,14 @@ def create_team():
     team_name = (data.get("team_name") or "").strip()
     if not team_name:
         return jsonify({"success": False, "error": "Team name is required"}), 400
+
+    # C7: Reject HTML injection characters in team name
+    from app.utils import validate_name_field
+
+    ok, result = validate_name_field(team_name, "Team name")
+    if not ok:
+        return jsonify({"success": False, "error": result}), 400
+    team_name = result  # use the stripped value
 
     success, message, team = TeamService.create_team_with_captain(
         team_name, g.current_user["user_id"]
@@ -181,14 +200,33 @@ def get_teams():
 @teams_bp.route("/api/teams/<int:team_id>", methods=["GET"])
 @token_required
 def get_team(team_id):
-    """Get a specific team with members"""
+    """Get a specific team with members.
+
+    H3: Full member details (including email) are restricted to team members
+    and admins.  Everyone else gets a public view with names only.
+    """
     team = TeamService.get_team_by_id(team_id)
     if not team:
         return jsonify({"success": False, "error": "Team not found"}), 404
 
     team_dict = dict(team)
     members = TeamService.get_team_members(team_id)
-    team_dict["members"] = [dict(m) for m in members]
+
+    user = g.current_user
+    is_member = (
+        any(m["id"] == user["user_id"] for m in members) if user["role"] == "participant" else False
+    )
+    is_privileged = is_member or user["role"] == "admin"
+
+    # H3: Only team members / admin see emails
+    members_out = []
+    for m in members:
+        row = dict(m)
+        if not is_privileged:
+            row.pop("email", None)
+        members_out.append(row)
+
+    team_dict["members"] = members_out
 
     # Fetch assigned mentors
     mentors = (
@@ -210,10 +248,6 @@ def get_team(team_id):
     team_dict["mentors"] = [dict(mt) for mt in mentors]
 
     # Only show join_code to team members
-    user = g.current_user
-    is_member = (
-        any(m["id"] == user["user_id"] for m in members) if user["role"] == "participant" else False
-    )
     if not is_member and user["role"] != "admin":
         team_dict.pop("join_code", None)
     team_dict.pop("password_hash", None)
@@ -335,7 +369,9 @@ def apply_to_team(team_id):
 def get_team_requests(team_id):
     """List pending join requests for the captain's team."""
     if g.current_user.get("team_id") != team_id:
-        return jsonify({"success": False, "error": "You can only view your own team's requests"}), 403
+        return jsonify(
+            {"success": False, "error": "You can only view your own team's requests"}
+        ), 403
 
     requests = TeamService.get_pending_requests_for_team(team_id)
     return jsonify({"success": True, "requests": [dict(r) for r in requests]}), 200

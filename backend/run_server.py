@@ -40,8 +40,10 @@ def main():
     print("✓ Press Ctrl+C to stop the server\n")
 
     # Run the app
+    # Bind to loopback only in development — never expose Werkzeug debugger
+    # to the network.  Set FLASK_HOST=0.0.0.0 only when proxied by an ingress.
     app.run(
-        host=os.environ.get("FLASK_HOST", "0.0.0.0"),
+        host=os.environ.get("FLASK_HOST", "127.0.0.1"),
         port=int(os.environ.get("FLASK_PORT", 5001)),
         debug=env == "development",
     )

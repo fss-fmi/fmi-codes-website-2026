@@ -1,10 +1,11 @@
 """Authentication routes — JWT-based individual auth for participants, mentors, and admin"""
 
+import hashlib
 import hmac
 import logging
 import os
 import secrets
-import string
+from datetime import UTC, datetime, timedelta
 
 import psycopg2
 from flask import current_app, g, jsonify, make_response, render_template, request
@@ -13,7 +14,6 @@ from app import limiter
 from app.database import execute_query, get_db_cursor
 from app.routes import auth_bp
 from app.services.auth_service import generate_token, hash_password, verify_password
-from app.services.email_service import send_password_reset_email
 from app.utils.auth_decorators import token_required
 
 logger = logging.getLogger(__name__)
@@ -26,23 +26,17 @@ def _is_secure() -> bool:
     return os.environ.get("FLASK_ENV", "development") == "production"
 
 
-def _set_auth_cookies(response, token: str, role: str) -> None:
-    """Attach httpOnly token cookie + readable role cookie to *response* in-place."""
+def _set_auth_cookies(response, token: str, role: str) -> None:  # noqa: ARG001
+    """Attach httpOnly token cookie to *response* in-place.
+
+    M7: The role cookie has been removed.  Role is derived exclusively from
+    /api/auth/me so JavaScript can never read or manipulate it.
+    """
     secure = _is_secure()
     response.set_cookie(
         "token",
         token,
         httponly=True,
-        samesite="Lax",
-        path="/",
-        max_age=_COOKIE_MAX_AGE,
-        secure=secure,
-    )
-    # role cookie is NOT httpOnly — React reads it for UI routing decisions
-    response.set_cookie(
-        "role",
-        role,
-        httponly=False,
         samesite="Lax",
         path="/",
         max_age=_COOKIE_MAX_AGE,
@@ -92,6 +86,14 @@ def register_participant():
     if missing:
         return jsonify({"success": False, "error": f"Missing fields: {', '.join(missing)}"}), 400
 
+    # C7: Reject HTML injection characters in name fields at the backend boundary
+    from app.utils import validate_name_field
+
+    for field_key, label in (("first_name", "First name"), ("last_name", "Last name")):
+        ok, result = validate_name_field(data[field_key], label)
+        if not ok:
+            return jsonify({"success": False, "error": result}), 400
+
     email = data["email"].strip().lower()
     fac = data["faculty_number"].strip()
 
@@ -111,6 +113,10 @@ def register_participant():
     if course not in valid_courses:
         return jsonify({"success": False, "error": "Invalid course selection"}), 400
 
+    # M4: Enforce minimum password length
+    if len(data["password"]) < 12:
+        return jsonify({"success": False, "error": "Password must be at least 12 characters"}), 400
+
     # CPU-heavy work first — no DB connection held, doesn't block the pool
     pw_hash = hash_password(data["password"])
 
@@ -124,11 +130,10 @@ def register_participant():
                 (email, fac),
             )
             check = cursor.fetchone()
-            if check["email_taken"]:
-                return jsonify({"success": False, "error": "Email already registered"}), 409
-            if check["fac_taken"]:
+            if check["email_taken"] or check["fac_taken"]:
+                # M2: Single generic message — don't reveal which field is taken
                 return jsonify(
-                    {"success": False, "error": "Faculty number already registered"}
+                    {"success": False, "error": "An account with these details already exists."}
                 ), 409
 
             # Insert in the same transaction — DB UNIQUE constraints guard against races
@@ -152,21 +157,17 @@ def register_participant():
             )
             pid = cursor.fetchone()["id"]
 
-    except psycopg2.IntegrityError as e:
-        err = str(e).lower()
-        if "email" in err:
-            return jsonify({"success": False, "error": "Email already registered"}), 409
-        if "faculty_number" in err:
-            return jsonify({"success": False, "error": "Faculty number already registered"}), 409
-        return jsonify({"success": False, "error": "Registration failed (duplicate data)"}), 409
+    except psycopg2.IntegrityError:
+        # M2: Generic message regardless of which field caused the conflict
+        return jsonify(
+            {"success": False, "error": "An account with these details already exists."}
+        ), 409
     except Exception as e:
         logger.error(f"Registration error: {e}")
         return jsonify({"success": False, "error": "Registration failed"}), 500
 
     token = generate_token(pid, "participant")
-    resp = make_response(
-        jsonify({"success": True, "user_id": pid, "role": "participant"}), 201
-    )
+    resp = make_response(jsonify({"success": True, "user_id": pid, "role": "participant"}), 201)
     _set_auth_cookies(resp, token, "participant")
     return resp
 
@@ -186,15 +187,19 @@ def login():
     if not email or not password:
         return jsonify({"success": False, "error": "Email and password are required"}), 400
 
-    # Admin login — no DB needed
+    # Admin login — C1: compare against bcrypt hash, never plaintext
     if role == "admin":
         admin_email = current_app.config.get("ADMIN_EMAIL", "")
-        admin_password = current_app.config.get("ADMIN_PASSWORD", "")
-        if hmac.compare_digest(email, admin_email) and hmac.compare_digest(password, admin_password):
+        admin_password_hash = current_app.config.get("ADMIN_PASSWORD_HASH") or ""
+        if not admin_password_hash:
+            logger.error("ADMIN_PASSWORD_HASH is not configured — admin login disabled")
+            return jsonify({"success": False, "error": "Admin login not configured"}), 503
+        # Timing-safe email comparison, then bcrypt verify for password
+        if hmac.compare_digest(email.encode(), admin_email.encode()) and verify_password(
+            password, admin_password_hash
+        ):
             token = generate_token(0, "admin")
-            resp = make_response(
-                jsonify({"success": True, "user_id": 0, "role": "admin"}), 200
-            )
+            resp = make_response(jsonify({"success": True, "user_id": 0, "role": "admin"}), 200)
             _set_auth_cookies(resp, token, "admin")
             return resp
         return jsonify({"success": False, "error": "Invalid admin credentials"}), 401
@@ -205,9 +210,13 @@ def login():
     # Fetch hash from DB then RELEASE the connection before the expensive bcrypt check
     # Use explicit branches instead of f-string table interpolation to prevent SQL injection.
     if role == "participant":
-        _login_query = "SELECT id, password_hash FROM participants WHERE email = %s AND status = 'active'"
+        _login_query = (
+            "SELECT id, password_hash FROM participants WHERE email = %s AND status = 'active'"
+        )
     else:
-        _login_query = "SELECT id, password_hash FROM mentors WHERE email = %s AND status = 'active'"
+        _login_query = (
+            "SELECT id, password_hash FROM mentors WHERE email = %s AND status = 'active'"
+        )
     user = execute_query(
         current_app,
         _login_query,
@@ -223,19 +232,38 @@ def login():
         return jsonify({"success": False, "error": "Invalid credentials"}), 401
 
     token = generate_token(user["id"], role)
-    resp = make_response(
-        jsonify({"success": True, "user_id": user["id"], "role": role}), 200
-    )
+    resp = make_response(jsonify({"success": True, "user_id": user["id"], "role": role}), 200)
     _set_auth_cookies(resp, token, role)
     return resp
 
 
 @auth_bp.route("/api/auth/logout", methods=["POST"])
 def logout():
-    """Clear auth cookies server-side. No token validation needed — clearing is always safe."""
+    """Clear auth cookies and revoke the JWT so it can't be replayed (H1)."""
+    # H1: Read and revoke the token before clearing the cookie
+    token = request.cookies.get("token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if token:
+        try:
+            from app.services.auth_service import decode_token as _decode
+
+            payload = _decode(token)
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            if jti and exp:
+                remaining = int(exp - datetime.now(UTC).timestamp())
+                if remaining > 0:
+                    from app.services.token_blocklist import revoke_token
+
+                    revoke_token(jti, remaining)
+        except Exception:
+            pass  # Expired / invalid token — nothing to revoke
+
     resp = make_response(jsonify({"success": True}), 200)
     resp.delete_cookie("token", path="/", samesite="Lax")
-    resp.delete_cookie("role", path="/", samesite="Lax")
     return resp
 
 
@@ -296,9 +324,9 @@ def change_password():
             {"success": False, "error": "Current password and new password are required"}
         ), 400
 
-    if len(new_password) < 6:
+    if len(new_password) < 12:
         return jsonify(
-            {"success": False, "error": "New password must be at least 6 characters"}
+            {"success": False, "error": "New password must be at least 12 characters"}
         ), 400
 
     if user["role"] == "participant":
@@ -328,156 +356,153 @@ def change_password():
         (new_hash, user["user_id"]),
     )
 
+    # H1: Revoke the current token so it can't be replayed after a password change
+    jti = g.current_user.get("jti")
+    exp = g.current_user.get("exp")
+    if jti and exp:
+        remaining = int(exp - datetime.now(UTC).timestamp())
+        if remaining > 0:
+            from app.services.token_blocklist import revoke_token
+
+            revoke_token(jti, remaining)
+
     return jsonify({"success": True, "message": "Password changed successfully"}), 200
 
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
 @limiter.limit("5 per hour")
 def reset_password():
-    """Generate a new random password and email it to the user.
+    """C4: Initiate a secure password reset.
 
-    Concurrency model (safe for 500 concurrent users across all Gunicorn workers):
+    Generates a cryptographically random token, stores its SHA-256 hash in DB,
+    and emails ONLY a reset link to the user.  The plaintext token never touches
+    the database — only the hash is stored, so a DB breach doesn't hand out
+    working reset tokens.
 
-    Step 1 — Atomic claim:
-      A single UPDATE atomically marks the user row as "reset in progress" and
-      returns the user id. The WHERE clause enforces:
-        (a) user exists and is active
-        (b) no reset is already in progress (NULL), OR the last claim expired
-            (> 60 s ago — handles worker crashes and SMTP hangs)
-      Because this is one atomic SQL statement, all workers share a single source
-      of truth via PostgreSQL. No application-level locks needed.
-      If 0 rows updated: user not found, inactive, or cooldown active — return
-      the same generic success message so no email existence is revealed.
-
-    Step 2 — SMTP (no DB connection held):
-      Password generation and the SMTP call happen while no DB connection is held,
-      keeping the connection pool free for the rest of the app.
-
-    Step 3 — Conditional write:
-      The final hash update checks `password_reset_requested_at IS NOT NULL`.
-      If the user changed their password manually (via change_password, which
-      clears the column), this UPDATE matches 0 rows — the manual change wins
-      and is never silently overwritten by a stale in-flight reset.
-
-    Step 4 — SMTP failure release:
-      If the email send fails, the claim is released immediately (set to NULL)
-      so the user can retry without waiting for the 60-second expiry.
+    Returns the same generic success message whether or not the email exists
+    to prevent account enumeration.
     """
+    from app.services.email_service import send_password_reset_link_email
+
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     role = (data.get("role") or "").strip().lower()
 
     if not email:
         return jsonify({"success": False, "error": "Email is required"}), 400
-
     if role not in ("participant", "mentor"):
         return jsonify({"success": False, "error": "Role must be participant or mentor"}), 400
 
-    generic_msg = "If this email is registered, a new password has been sent to it."
+    generic_msg = "If this email is registered, a password reset link has been sent to it."
 
-    # Step 1 — atomically claim the reset slot.
-    # Returns the user id only if the claim succeeded (user active + slot free/expired).
-    # Explicit table names (no f-string interpolation) to prevent SQL injection.
+    # Look up user — same generic response on miss so email existence is never revealed
     if role == "participant":
-        _reset_claim_query = """
-            UPDATE participants
-               SET password_reset_requested_at = NOW()
-             WHERE email = %s
-               AND status = 'active'
-               AND (
-                     password_reset_requested_at IS NULL
-                  OR password_reset_requested_at < NOW() - INTERVAL '60 seconds'
-               )
-             RETURNING id
-            """
+        _user_query = "SELECT id FROM participants WHERE email = %s AND status = 'active'"
     else:
-        _reset_claim_query = """
-            UPDATE mentors
-               SET password_reset_requested_at = NOW()
-             WHERE email = %s
-               AND status = 'active'
-               AND (
-                     password_reset_requested_at IS NULL
-                  OR password_reset_requested_at < NOW() - INTERVAL '60 seconds'
-               )
-             RETURNING id
-            """
-    with get_db_cursor() as cursor:
-        cursor.execute(
-            _reset_claim_query,
-            (email,),
-        )
-        row = cursor.fetchone()
-
-    if not row:
-        # User doesn't exist, is inactive, or a reset is already in progress —
-        # return generic success so no information is leaked about account existence.
-        logger.debug(
-            "Reset claim failed for %s/%s (not found, inactive, or cooldown active)", role, email
-        )
+        _user_query = "SELECT id FROM mentors WHERE email = %s AND status = 'active'"
+    user = execute_query(current_app, _user_query, (email,), fetch_one=True)
+    if not user:
         return jsonify({"success": True, "message": generic_msg}), 200
 
-    user_id = row["id"]
+    user_id = user["id"]
 
-    # Step 2 — generate outside the DB transaction; no connection is held.
-    alphabet = string.ascii_letters + string.digits + string.punctuation
-    new_password = "".join(secrets.choice(alphabet) for _ in range(16))
-    new_hash = hash_password(new_password)  # CPU-heavy, ~300ms, no connection held
+    # Generate a 32-byte URL-safe token (256-bit entropy — safe with SHA-256 storage)
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires_at = datetime.now(UTC) + timedelta(hours=1)
 
-    # Step 3 — send email (SMTP, ~1–10 s, no DB connection held).
-    sent = send_password_reset_email(dict(current_app.config), email, new_password, role)
+    # Invalidate any existing unused tokens for this user before inserting a new one
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            """DELETE FROM password_reset_tokens
+               WHERE user_id = %s AND role = %s AND used_at IS NULL""",
+            (user_id, role),
+        )
+        cursor.execute(
+            """INSERT INTO password_reset_tokens (user_id, role, token_hash, expires_at)
+               VALUES (%s, %s, %s, %s)""",
+            (user_id, role, token_hash, expires_at),
+        )
 
+    # Build reset URL using FRONTEND_ORIGIN env var
+    frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+    reset_url = f"{frontend_origin}/reset-password?token={raw_token}&role={role}"
+
+    sent = send_password_reset_link_email(dict(current_app.config), email, reset_url, role)
     if not sent:
-        # Release the claim so the user can retry immediately instead of waiting 60 s.
-        if role == "participant":
-            _reset_release_query = "UPDATE participants SET password_reset_requested_at = NULL WHERE id = %s"
-        else:
-            _reset_release_query = "UPDATE mentors SET password_reset_requested_at = NULL WHERE id = %s"
+        # Clean up the token so the user can retry immediately
         execute_query(
             current_app,
-            _reset_release_query,
-            (user_id,),
+            "DELETE FROM password_reset_tokens WHERE token_hash = %s",
+            (token_hash,),
         )
         return jsonify(
             {"success": False, "error": "Could not send email. Please try again later."}
         ), 502
 
-    # Step 4 — write the new hash only if we still own the slot.
-    # If change_password() ran during the SMTP window it cleared the column to NULL,
-    # which causes this UPDATE to match 0 rows — the manual change is preserved.
-    if role == "participant":
-        _reset_hash_query = """
-            UPDATE participants
-               SET password_hash = %s,
-                   password_reset_requested_at = NULL
-             WHERE id = %s
-               AND password_reset_requested_at IS NOT NULL
-            """
-    else:
-        _reset_hash_query = """
-            UPDATE mentors
-               SET password_hash = %s,
-                   password_reset_requested_at = NULL
-             WHERE id = %s
-               AND password_reset_requested_at IS NOT NULL
-            """
+    logger.info("Password reset link sent to %s (role=%s, id=%s)", email, role, user_id)
+    return jsonify({"success": True, "message": generic_msg}), 200
+
+
+@auth_bp.route("/api/auth/reset-password/confirm", methods=["POST"])
+@limiter.limit("10 per hour")
+def confirm_password_reset():
+    """C4: Verify the reset token and set a new password.
+
+    The raw token from the email link is hashed with SHA-256 and looked up in DB.
+    On success, the token is marked used and the user's password is updated.
+    """
+    data = request.get_json(silent=True) or {}
+    raw_token = (data.get("token") or "").strip()
+    new_password = data.get("new_password", "")
+    role = (data.get("role") or "").strip().lower()
+
+    if not raw_token or not new_password or role not in ("participant", "mentor"):
+        return jsonify(
+            {"success": False, "error": "Token, new_password, and role are required"}
+        ), 400
+
+    # M4: enforce minimum password length
+    if len(new_password) < 12:
+        return jsonify({"success": False, "error": "Password must be at least 12 characters"}), 400
+
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
     with get_db_cursor() as cursor:
         cursor.execute(
-            _reset_hash_query,
-            (new_hash, user_id),
+            """SELECT id, user_id, expires_at FROM password_reset_tokens
+               WHERE token_hash = %s AND role = %s AND used_at IS NULL
+               FOR UPDATE""",
+            (token_hash, role),
         )
-        updated = cursor.rowcount
+        token_row = cursor.fetchone()
 
-    if updated == 0:
-        # The user changed their password manually during the SMTP window.
-        # Their chosen password is intact; the emailed password is now stale but harmless.
-        logger.info(
-            "Reset hash NOT written for %s (id=%s, role=%s): manual change took precedence",
-            email,
-            user_id,
-            role,
+        if not token_row:
+            return jsonify({"success": False, "error": "Invalid or expired reset token"}), 400
+
+        if datetime.now(UTC) > token_row["expires_at"].replace(tzinfo=UTC):
+            return jsonify({"success": False, "error": "Reset token has expired"}), 400
+
+        user_id = token_row["user_id"]
+        new_hash = hash_password(new_password)  # CPU-heavy; cursor still open but commit waits
+
+        if role == "participant":
+            cursor.execute(
+                "UPDATE participants SET password_hash = %s WHERE id = %s",
+                (new_hash, user_id),
+            )
+        else:
+            cursor.execute(
+                "UPDATE mentors SET password_hash = %s WHERE id = %s",
+                (new_hash, user_id),
+            )
+
+        cursor.execute(
+            "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = %s",
+            (token_row["id"],),
         )
-    else:
-        logger.info("Password reset completed for %s (role=%s, id=%s)", email, role, user_id)
 
-    return jsonify({"success": True, "message": generic_msg}), 200
+    logger.info("Password reset confirmed for user_id=%s role=%s", user_id, role)
+    return jsonify(
+        {"success": True, "message": "Password has been reset. You can now log in."}
+    ), 200

@@ -17,6 +17,17 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    container_name: fmi-codes-redis-dev
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     container_name: fmi-codes-app-dev
     build:
@@ -36,7 +47,7 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
       MENTORS_STAY_TUNED: ${MENTORS_STAY_TUNED}
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
@@ -44,9 +55,12 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_USE_TLS: ${MAIL_USE_TLS}
       DISCORD_BUG_WEBHOOK_URL: ${DISCORD_BUG_WEBHOOK_URL}
+      REDIS_URL: redis://redis:6379
     command: python run_server.py
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:

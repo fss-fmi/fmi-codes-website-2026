@@ -16,7 +16,8 @@ def token_required(f):
 
     Reads from request.cookies['token'] first (httpOnly cookie, XSS-safe).
     Falls back to Authorization: Bearer <token> header for internal/tooling use.
-    Sets g.current_user = {'user_id': int, 'role': str} on success.
+    Sets g.current_user = {'user_id': int, 'role': str, 'jti': str, 'exp': int} on success.
+    H1: Checks the Redis revocation blocklist before accepting the token.
     """
 
     @functools.wraps(f)
@@ -31,9 +32,7 @@ def token_required(f):
                 token = auth_header[7:]
 
         if not token:
-            return jsonify(
-                {"success": False, "error": "Authentication required"}
-            ), 401
+            return jsonify({"success": False, "error": "Authentication required"}), 401
 
         try:
             payload = decode_token(token)
@@ -42,9 +41,19 @@ def token_required(f):
         except jwt.InvalidTokenError:
             return jsonify({"success": False, "error": "Invalid token"}), 401
 
+        # H1: Check revocation blocklist before trusting the token
+        jti = payload.get("jti")
+        if jti:
+            from app.services.token_blocklist import is_revoked
+
+            if is_revoked(jti):
+                return jsonify({"success": False, "error": "Token has been revoked"}), 401
+
         g.current_user = {
             "user_id": payload["user_id"],
             "role": payload["role"],
+            "jti": jti,
+            "exp": payload.get("exp"),
         }
         return f(*args, **kwargs)
 
