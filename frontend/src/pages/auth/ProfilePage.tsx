@@ -78,7 +78,7 @@ function ProfileContent() {
     e.preventDefault();
     setPwError('');
     setPwSuccess('');
-    if (newPw.length < 6) {
+    if (newPw.length < 12) {
       setPwError('New password must be at least 12 characters.');
       return;
     }
@@ -100,8 +100,8 @@ function ProfileContent() {
       } else {
         setPwError(data.error ?? 'Failed to update password.');
       }
-    } catch {
-      setPwError('Network error. Please try again.');
+    } catch (err: unknown) {
+      setPwError((err as Error)?.message ?? 'Network error. Please try again.');
     } finally {
       setPwLoading(false);
     }

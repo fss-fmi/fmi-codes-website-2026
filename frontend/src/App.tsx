@@ -14,6 +14,7 @@ import LoginPage from '@/pages/auth/LoginPage';
 import RegistrationPage from '@/pages/auth/RegistrationPage';
 import RegistrationClosedPage from '@/pages/auth/RegistrationClosedPage';
 import ProfilePage from '@/pages/auth/ProfilePage';
+import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 
 import MentorsPage from '@/pages/mentors/MentorsPage';
 import ChooseMentorPage from '@/pages/mentors/ChooseMentorPage';
@@ -79,6 +80,10 @@ export default function App() {
                 <Route
                   path="/login"
                   element={<LoginPage />}
+                />
+                <Route
+                  path="/reset-password"
+                  element={<ResetPasswordPage />}
                 />
                 <Route
                   path="/registration"

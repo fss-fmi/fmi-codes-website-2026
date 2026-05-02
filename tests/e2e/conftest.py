@@ -213,6 +213,7 @@ def _wipe_entities(conn):
     with conn.cursor() as cur:
         cur.execute(
             "TRUNCATE TABLE "
+            "  password_reset_tokens, "
             "  team_join_requests, "
             "  team_mentor_preferences, "
             "  mentor_team_preferences, "

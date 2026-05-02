@@ -272,11 +272,11 @@ def login():
     )
 
     if not user or not user.get("password_hash"):
-        return jsonify({"success": False, "error": "Invalid credentials"}), 401
+        return jsonify({"success": False, "error": "No account found with this email"}), 401
 
     # CPU-heavy — no DB connection held
     if not verify_password(password, user["password_hash"]):
-        return jsonify({"success": False, "error": "Invalid credentials"}), 401
+        return jsonify({"success": False, "error": "Incorrect password. Please try again."}), 401
 
     token = generate_token(user["id"], role)
     user_profile = _fetch_user_profile(current_app, user["id"], role)

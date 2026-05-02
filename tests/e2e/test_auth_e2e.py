@@ -7,8 +7,11 @@ Covers:
  - /me: returns correct profile, rejects bad tokens
  - Change-password: happy path, wrong current pw, too short, admin blocked
  - Reset-password: user-enumeration safety, validation
+ - Confirm-password-reset: happy path, token reuse, expired token, validation
 """
 
+import hashlib
+import secrets
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -184,16 +187,28 @@ class TestLogin:
         )
         assert rv.status_code == 401
 
-    def test_nonexistent_user_returns_same_401_as_wrong_password(self, client):
+    def test_nonexistent_user_returns_same_401_as_wrong_password(self, client, seeds):
         """No user-enumeration: unknown email must produce the same response as wrong password."""
-        rv = client.post(
+        register(client, 1, seeds)
+        rv_bad_email = client.post(
             "/api/auth/login",
             json={"email": "nobody@e2e.test", "password": "anything", "role": "participant"},
         )
-        assert rv.status_code == 401
-        # Error message must be generic, not "user not found"
-        error = rv.get_json()["error"].lower()
-        assert "invalid credentials" in error or "invalid" in error
+        rv_bad_pw = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": "WRONGPASSWORD", "role": "participant"},
+        )
+        assert rv_bad_email.status_code == 401
+        assert rv_bad_pw.status_code == 401
+        # Both must return the SAME error message — different messages would let
+        # an attacker enumerate which emails are registered in the system.
+        error_unknown = rv_bad_email.get_json()["error"].lower()
+        error_wrong_pw = rv_bad_pw.get_json()["error"].lower()
+        assert error_unknown == error_wrong_pw, (
+            f"Login error differs between unknown email ({error_unknown!r}) "
+            f"and wrong password ({error_wrong_pw!r}) — user enumeration risk"
+        )
+        assert "invalid credentials" in error_unknown
 
     def test_wrong_admin_password_returns_401_not_500(self, client):
         rv = client.post(
@@ -404,6 +419,167 @@ class TestResetPassword:
         # The message must be identical to what a known user would receive
         # so attackers cannot enumerate accounts
         assert "email is registered" in body["message"].lower() or "sent" in body["message"].lower()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Confirm password reset
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _insert_reset_token(
+    db_conn,
+    user_id: int,
+    role: str,
+    *,
+    expired: bool = False,
+    used: bool = False,
+) -> str:
+    """Insert a password_reset_tokens row directly and return the raw token."""
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    if expired:
+        expires_at = datetime.now(UTC) - timedelta(hours=2)
+    else:
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+    used_at = datetime.now(UTC) if used else None
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO password_reset_tokens (user_id, role, token_hash, expires_at, used_at)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (user_id, role, token_hash, expires_at, used_at),
+        )
+    return raw_token
+
+
+class TestConfirmPasswordReset:
+    # ── Input validation (no valid token needed) ───────────────────────────
+
+    def test_missing_fields_returns_400(self, client):
+        rv = client.post("/api/auth/reset-password/confirm", json={})
+        assert rv.status_code == 400
+        assert rv.get_json()["success"] is False
+
+    def test_invalid_role_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": "abc", "new_password": "ValidPassword1!", "role": "admin"},
+        )
+        assert rv.status_code == 400
+
+    def test_password_too_short_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": "sometoken", "new_password": "short", "role": "participant"},
+        )
+        assert rv.status_code == 400
+        assert "12" in rv.get_json()["error"]
+
+    def test_unknown_token_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={
+                "token": secrets.token_urlsafe(32),
+                "new_password": "ValidPassword1!",
+                "role": "participant",
+            },
+        )
+        assert rv.status_code == 400
+        assert (
+            "invalid" in rv.get_json()["error"].lower()
+            or "expired" in rv.get_json()["error"].lower()
+        )
+
+    # ── Happy path ─────────────────────────────────────────────────────────
+
+    def test_happy_path_updates_password_and_allows_login(self, client, seeds, db_conn):
+        register(client, 1, seeds)
+        # Fetch the participant id directly from the DB
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        raw_token = _insert_reset_token(db_conn, user_id, "participant")
+        new_pw = "BrandNewPassword1!"
+
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": new_pw, "role": "participant"},
+        )
+        assert rv.status_code == 200
+        assert rv.get_json()["success"] is True
+
+        # Old password must no longer work
+        rv_old = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": DEFAULT_PW, "role": "participant"},
+        )
+        assert rv_old.status_code == 401
+
+        # New password must work
+        rv_new = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": new_pw, "role": "participant"},
+        )
+        assert rv_new.status_code == 200
+
+    # ── Token reuse ────────────────────────────────────────────────────────
+
+    def test_token_cannot_be_reused_after_success(self, client, seeds, db_conn):
+        register(client, 1, seeds)
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        raw_token = _insert_reset_token(db_conn, user_id, "participant")
+
+        # First use succeeds
+        rv1 = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "FirstNewPassword1!", "role": "participant"},
+        )
+        assert rv1.status_code == 200
+
+        # Second use must be rejected
+        rv2 = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "SecondNewPassword1!", "role": "participant"},
+        )
+        assert rv2.status_code == 400
+
+    # ── Expired token ──────────────────────────────────────────────────────
+
+    def test_expired_token_returns_400(self, client, seeds, db_conn):
+        register(client, 1, seeds)
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        raw_token = _insert_reset_token(db_conn, user_id, "participant", expired=True)
+
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "ValidPassword1!", "role": "participant"},
+        )
+        assert rv.status_code == 400
+        assert "expired" in rv.get_json()["error"].lower()
+
+    # ── Role mismatch ──────────────────────────────────────────────────────
+
+    def test_role_mismatch_returns_400(self, client, seeds, db_conn):
+        """A token issued for 'participant' must not work when role='mentor' is supplied."""
+        register(client, 1, seeds)
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        # Token stored with role='participant'
+        raw_token = _insert_reset_token(db_conn, user_id, "participant")
+
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "ValidPassword1!", "role": "mentor"},
+        )
+        assert rv.status_code == 400
 
 
 # ─── Internal helpers used only within this module ────────────────────────
