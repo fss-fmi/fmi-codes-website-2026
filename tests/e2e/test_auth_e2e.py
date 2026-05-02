@@ -208,7 +208,7 @@ class TestLogin:
             f"Login error differs between unknown email ({error_unknown!r}) "
             f"and wrong password ({error_wrong_pw!r}) — user enumeration risk"
         )
-        assert "invalid credentials" in error_unknown
+        assert "invalid email or password" in error_unknown
 
     def test_wrong_admin_password_returns_401_not_500(self, client):
         rv = client.post(
