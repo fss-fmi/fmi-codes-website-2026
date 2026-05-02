@@ -470,22 +470,6 @@ class TestJoinRequestFlow:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestTeamActivation:
-    def _build_team_with_n_members(self, flask_app, seeds, n):
-        """Create a team and add n-1 more members via join code. Returns (captain_client, team_id)."""
-        captain_client = flask_app.test_client().__enter__()
-        token1 = register_and_token(captain_client, 100, seeds)
-        rv = _create_team(captain_client, token1, "ActivationTeam")
-        assert rv.status_code == 201
-        team_id   = _get_team_id(rv)
-        join_code = _get_join_code(rv)
-
-        for i in range(101, 100 + n):
-            with flask_app.test_client() as cx:
-                tok = register_and_token(cx, i, seeds)
-                _join_team(cx, tok, join_code)
-
-        return captain_client, token1, team_id
-
     def test_team_activates_at_3_members(self, flask_app, seeds):
         with flask_app.test_client() as cap_client:
             token1 = register_and_token(cap_client, 100, seeds)

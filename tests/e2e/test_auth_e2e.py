@@ -22,6 +22,7 @@ from tests.e2e.conftest import (
     DEFAULT_PW,
     ADMIN_EMAIL,
     ADMIN_PW,
+    admin_token,
     bearer,
     login_token,
     make_payload,
@@ -410,11 +411,6 @@ def _extract_token(response):
 def flask_app_client(app):
     return app.test_client()
 
-
-def admin_token(app):
-    with app.app_context():
-        from app.services.auth_service import generate_token
-        return generate_token(0, "admin")
 
 
 def mentor_token_for_seed(app, seeds):

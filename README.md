@@ -303,7 +303,7 @@ PostgreSQL `ThreadedConnectionPool` (min 2, max 20 per worker, 5 s timeout). Pro
 No database or `.env` needed.
 
 ```bash
-pytest tests/unit/ -v
+pytest tests/ --ignore=tests/e2e -v
 ```
 
 ### E2E tests

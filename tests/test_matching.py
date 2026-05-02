@@ -7,8 +7,6 @@ context or database connection required.
 import sys
 from pathlib import Path
 
-import pytest
-
 BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
@@ -44,7 +42,7 @@ class TestPerfectMatch:
 
         assert (1, 10) in assignments
 
-    def test_no_underfill_warning_when_not_enough_mentors(self):
+    def test_underfill_warning_when_not_enough_mentors(self):
         """1 team needs 3 mentors but only 1 mentor exists → underfill warning."""
         teams   = [1]
         mentors = [10]

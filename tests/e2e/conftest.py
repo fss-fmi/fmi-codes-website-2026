@@ -6,10 +6,8 @@ reachable.  To run them:
     # Start local Postgres (or docker-compose.dev.yml)
     # Create the test database:
     psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026_test;"
-    # Apply schema:
-    psql -U postgres -d fmi_hackathon_2026_test -f backend/database/schema.sql
 
-    # Then run:
+    # Then run (schema is applied automatically on first run):
     pytest tests/e2e/ -v
 
     # Or point at a different DB:
