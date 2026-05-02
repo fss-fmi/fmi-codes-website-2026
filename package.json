@@ -10,18 +10,5 @@
     "prettier": "^3.2.5",
     "husky": "^9.0.11",
     "lint-staged": "^15.2.2"
-  },
-  "lint-staged": {
-    "*.{html,js,json,css,md}": [
-      "prettier --write"
-    ],
-    "frontend/**/*.{ts,tsx}": [
-      "node ./frontend/node_modules/eslint/bin/eslint.js --fix --config frontend/eslint.config.js",
-      "prettier --write"
-    ],
-    "*.py": [
-      "./.venv/Scripts/ruff.exe check --fix",
-      "./.venv/Scripts/ruff.exe format"
-    ]
   }
 }
