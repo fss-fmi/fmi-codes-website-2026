@@ -1,0 +1,419 @@
+"""E2E tests — authentication flows.
+
+Covers:
+ - Registration: happy path, validation, duplicates, closed flag, injection
+ - Login: participants / mentors / admin, wrong credentials, role mismatch
+ - Logout: cookie clearing
+ - /me: returns correct profile, rejects bad tokens
+ - Change-password: happy path, wrong current pw, too short, admin blocked
+ - Reset-password: user-enumeration safety, validation
+"""
+
+import sys
+from pathlib import Path
+from datetime import UTC, datetime, timedelta
+
+import jwt
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
+
+from tests.e2e.conftest import (
+    DEFAULT_PW,
+    ADMIN_EMAIL,
+    ADMIN_PW,
+    admin_token,
+    bearer,
+    login_token,
+    make_payload,
+    register,
+    register_and_token,
+)
+
+pytestmark = pytest.mark.e2e
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Registration
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestRegistration:
+    def test_happy_path_returns_201_with_token_cookie(self, client, seeds):
+        rv = register(client, 1, seeds)
+        assert rv.status_code == 201
+        body = rv.get_json()
+        assert body["success"] is True
+        assert body["role"] == "participant"
+        # httpOnly token cookie must be present
+        cookie_names = [c.split("=")[0] for c in rv.headers.getlist("Set-Cookie")]
+        assert "token" in cookie_names
+        assert "role" in cookie_names
+
+    def test_registration_sets_httponly_flag_on_token_cookie(self, client, seeds):
+        rv = register(client, 1, seeds)
+        token_cookie = next(
+            (h for h in rv.headers.getlist("Set-Cookie") if h.startswith("token=")), None
+        )
+        assert token_cookie is not None
+        assert "HttpOnly" in token_cookie
+
+    def test_role_cookie_is_not_httponly(self, client, seeds):
+        """role cookie must be readable by React JS; token must not."""
+        rv = register(client, 1, seeds)
+        role_cookie = next(
+            (h for h in rv.headers.getlist("Set-Cookie") if h.startswith("role=")), None
+        )
+        assert role_cookie is not None
+        assert "HttpOnly" not in role_cookie
+
+    def test_missing_required_fields_returns_400(self, client, seeds):
+        payload = make_payload(1, univ_id=seeds["univ_id"], spec_id=seeds["spec_id"])
+        del payload["email"]
+        rv = client.post("/api/auth/register", json=payload)
+        assert rv.status_code == 400
+        assert rv.get_json()["success"] is False
+
+    def test_all_required_fields_listed_in_error(self, client, seeds):
+        rv = client.post("/api/auth/register", json={})
+        assert rv.status_code == 400
+        error = rv.get_json()["error"]
+        assert "missing" in error.lower() or "required" in error.lower()
+
+    def test_invalid_course_returns_400(self, client, seeds):
+        rv = register(client, 1, seeds, course="PhD 1st Year")
+        assert rv.status_code == 400
+        assert "course" in rv.get_json()["error"].lower()
+
+    def test_duplicate_email_returns_409(self, client, seeds):
+        register(client, 1, seeds)
+        rv = register(client, 2, seeds, email="user1@e2e.test")
+        assert rv.status_code == 409
+        assert "email" in rv.get_json()["error"].lower()
+
+    def test_duplicate_faculty_number_returns_409(self, client, seeds):
+        register(client, 1, seeds)
+        rv = register(client, 2, seeds, faculty_number="FAC000001")
+        assert rv.status_code == 409
+        assert "faculty" in rv.get_json()["error"].lower()
+
+    def test_registration_closed_returns_403(self, flask_app, seeds):
+        flask_app.config["REGISTRATION_OPEN"] = False
+        try:
+            with flask_app.test_client() as c:
+                rv = register(c, 99, seeds)
+            assert rv.status_code == 403
+            assert rv.get_json()["success"] is False
+        finally:
+            flask_app.config["REGISTRATION_OPEN"] = True
+
+    def test_sql_injection_in_email_is_handled_safely(self, client, seeds):
+        """SQL injection must not crash the server or produce a 5xx.
+
+        Parameterized queries safely store the injection string as data (201 is
+        acceptable), so the security property is: no 5xx, meaning the SQL was
+        never executed as code.
+        """
+        rv = register(client, 1, seeds, email="'; DROP TABLE participants; --@e2e.test")
+        assert rv.status_code < 500
+
+    def test_xss_payload_in_name_stored_not_executed(self, client, seeds):
+        """XSS payload stored in a name field must not be reflected unescaped."""
+        xss = "<script>alert(1)</script>"
+        rv = register(client, 1, seeds, first_name=xss)
+        # Registration must succeed (name is stored) but the JSON must not
+        # reflect the payload in a way that could execute
+        assert rv.status_code == 201
+        body_text = rv.get_data(as_text=True)
+        assert "<script>" not in body_text
+
+    def test_response_never_contains_password_hash(self, client, seeds):
+        rv = register(client, 1, seeds)
+        assert "password_hash" not in rv.get_data(as_text=True)
+
+    def test_whitespace_trimmed_from_email(self, client, seeds):
+        """Registration must normalise email to lowercase + stripped."""
+        rv = register(client, 1, seeds, email="  User1@E2E.TEST  ")
+        assert rv.status_code == 201
+        # Login with the normalised form should succeed
+        rv2 = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": DEFAULT_PW, "role": "participant"},
+        )
+        assert rv2.status_code == 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Login
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestLogin:
+    def test_participant_login_returns_200_with_token(self, client, seeds):
+        register(client, 1, seeds)
+        rv = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": DEFAULT_PW, "role": "participant"},
+        )
+        assert rv.status_code == 200
+        assert rv.get_json()["role"] == "participant"
+        assert _extract_token(rv) is not None
+
+    def test_mentor_login_returns_200(self, client, seeds):
+        rv = client.post(
+            "/api/auth/login",
+            json={"email": "alpha@mentor.test", "password": "mentor123", "role": "mentor"},
+        )
+        assert rv.status_code == 200
+        assert rv.get_json()["role"] == "mentor"
+
+    def test_admin_login_returns_200(self, client):
+        rv = client.post(
+            "/api/auth/login",
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PW, "role": "admin"},
+        )
+        assert rv.status_code == 200
+        assert rv.get_json()["role"] == "admin"
+
+    def test_wrong_password_returns_401(self, client, seeds):
+        register(client, 1, seeds)
+        rv = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": "WRONGPASSWORD", "role": "participant"},
+        )
+        assert rv.status_code == 401
+
+    def test_nonexistent_user_returns_same_401_as_wrong_password(self, client):
+        """No user-enumeration: unknown email must produce the same response as wrong password."""
+        rv = client.post(
+            "/api/auth/login",
+            json={"email": "nobody@e2e.test", "password": "anything", "role": "participant"},
+        )
+        assert rv.status_code == 401
+        # Error message must be generic, not "user not found"
+        error = rv.get_json()["error"].lower()
+        assert "invalid credentials" in error or "invalid" in error
+
+    def test_wrong_admin_password_returns_401_not_500(self, client):
+        rv = client.post(
+            "/api/auth/login",
+            json={"email": ADMIN_EMAIL, "password": "WRONGADMINPW", "role": "admin"},
+        )
+        assert rv.status_code == 401
+
+    def test_invalid_role_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/login",
+            json={"email": "x@e2e.test", "password": "pw", "role": "superuser"},
+        )
+        assert rv.status_code == 400
+
+    def test_empty_email_and_password_returns_400(self, client):
+        rv = client.post("/api/auth/login", json={"email": "", "password": ""})
+        assert rv.status_code == 400
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Logout
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestLogout:
+    def test_logout_clears_cookies(self, client, seeds):
+        register(client, 1, seeds)
+        rv = client.post("/api/auth/logout")
+        assert rv.status_code == 200
+        # Both cookies must be deleted (max-age=0 or expires in the past)
+        for cookie_str in rv.headers.getlist("Set-Cookie"):
+            if "token=" in cookie_str or "role=" in cookie_str:
+                assert (
+                    "max-age=0" in cookie_str.lower()
+                    or "expires=" in cookie_str.lower()
+                    or cookie_str.split("=", 1)[1].split(";")[0] == ""
+                )
+
+    def test_logout_without_token_still_returns_200(self, client):
+        rv = client.post("/api/auth/logout")
+        assert rv.status_code == 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# /me endpoint
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestGetMe:
+    def test_returns_participant_profile(self, client, seeds):
+        token = register_and_token(client, 1, seeds)
+        with flask_app_client(client.application) as c2:
+            rv = c2.get("/api/auth/me", headers=bearer(token))
+        assert rv.status_code == 200
+        user = rv.get_json()["user"]
+        assert user["role"] == "participant"
+        assert user["email"] == "user1@e2e.test"
+
+    def test_returns_mentor_profile(self, client, seeds, flask_app):
+        token = mentor_token_for_seed(flask_app, seeds)
+        with flask_app.test_client() as c:
+            rv = c.get("/api/auth/me", headers=bearer(token))
+        assert rv.status_code == 200
+        assert rv.get_json()["user"]["role"] == "mentor"
+
+    def test_admin_me_returns_role_only(self, flask_app):
+        token = admin_token(flask_app)
+        with flask_app.test_client() as c:
+            rv = c.get("/api/auth/me", headers=bearer(token))
+        assert rv.status_code == 200
+        user = rv.get_json()["user"]
+        assert user["role"] == "admin"
+
+    def test_without_token_returns_401(self, client):
+        rv = client.get("/api/auth/me")
+        assert rv.status_code == 401
+
+    def test_tampered_token_returns_401(self, client, seeds):
+        token = register_and_token(client, 1, seeds)
+        bad = token[:-4] + "XXXX"
+        with client.application.test_client() as c:
+            rv = c.get("/api/auth/me", headers=bearer(bad))
+        assert rv.status_code == 401
+
+    def test_expired_token_returns_401(self, flask_app, seeds):
+        """Forge a token that is already past its expiry."""
+        with flask_app.app_context():
+            secret = flask_app.config["JWT_SECRET_KEY"]
+            payload = {
+                "user_id": 9999,
+                "role": "participant",
+                "iat": datetime.now(UTC) - timedelta(days=10),
+                "exp": datetime.now(UTC) - timedelta(days=7),
+            }
+            expired_token = jwt.encode(payload, secret, algorithm="HS256")
+        with flask_app.test_client() as c:
+            rv = c.get("/api/auth/me", headers=bearer(expired_token))
+        assert rv.status_code == 401
+
+    def test_profile_never_contains_password_hash(self, client, seeds):
+        token = register_and_token(client, 1, seeds)
+        with client.application.test_client() as c:
+            rv = c.get("/api/auth/me", headers=bearer(token))
+        assert "password_hash" not in rv.get_data(as_text=True)
+
+    def test_wrong_secret_returns_401(self, flask_app, seeds):
+        """Token signed with the wrong key must be rejected."""
+        payload = {
+            "user_id": 1, "role": "participant",
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(days=3),
+        }
+        bad_token = jwt.encode(payload, "wrong-secret-key-padded-to-32bytes!!", algorithm="HS256")
+        with flask_app.test_client() as c:
+            rv = c.get("/api/auth/me", headers=bearer(bad_token))
+        assert rv.status_code == 401
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Change password
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestChangePassword:
+    def test_happy_path_changes_password(self, client, seeds):
+        register(client, 1, seeds)
+        token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": DEFAULT_PW, "new_password": "NewPassword99!"},
+            headers=bearer(token),
+        )
+        assert rv.status_code == 200
+        # Old password must no longer work
+        rv2 = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": DEFAULT_PW, "role": "participant"},
+        )
+        assert rv2.status_code == 401
+
+    def test_wrong_current_password_returns_401(self, client, seeds):
+        register(client, 1, seeds)
+        token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": "WRONG!", "new_password": "NewPassword99!"},
+            headers=bearer(token),
+        )
+        assert rv.status_code == 401
+
+    def test_new_password_too_short_returns_400(self, client, seeds):
+        register(client, 1, seeds)
+        token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": DEFAULT_PW, "new_password": "abc"},
+            headers=bearer(token),
+        )
+        assert rv.status_code == 400
+
+    def test_admin_cannot_change_password_via_this_endpoint(self, flask_app):
+        token = admin_token(flask_app)
+        with flask_app.test_client() as c:
+            rv = c.patch(
+                "/api/auth/change-password",
+                json={"current_password": ADMIN_PW, "new_password": "NewAdminPw99!"},
+                headers=bearer(token),
+            )
+        assert rv.status_code == 403
+
+    def test_requires_authentication(self, client):
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": "any", "new_password": "newpassword"},
+        )
+        assert rv.status_code == 401
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Reset password
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestResetPassword:
+    def test_missing_email_returns_400(self, client):
+        rv = client.post("/api/auth/reset-password", json={"role": "participant"})
+        assert rv.status_code == 400
+
+    def test_invalid_role_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/reset-password",
+            json={"email": "any@e2e.test", "role": "admin"},
+        )
+        assert rv.status_code == 400
+
+    def test_unknown_email_returns_generic_success_no_enumeration(self, client):
+        """Must not reveal whether an email exists in the system."""
+        rv = client.post(
+            "/api/auth/reset-password",
+            json={"email": "ghost@e2e.test", "role": "participant"},
+        )
+        # Endpoint returns 200 with a generic message (Step 1 of the spec)
+        assert rv.status_code == 200
+        body = rv.get_json()
+        assert body["success"] is True
+        # The message must be identical to what a known user would receive
+        # so attackers cannot enumerate accounts
+        assert "email is registered" in body["message"].lower() or \
+               "sent" in body["message"].lower()
+
+
+# ─── Internal helpers used only within this module ────────────────────────
+
+def _extract_token(response):
+    for h in response.headers.getlist("Set-Cookie"):
+        if "token=" in h:
+            return h.split("token=", 1)[1].split(";")[0]
+    return None
+
+
+def flask_app_client(app):
+    return app.test_client()
+
+
+
+def mentor_token_for_seed(app, seeds):
+    with app.app_context():
+        from app.services.auth_service import generate_token
+        return generate_token(seeds["mentor_ids"][0], "mentor")

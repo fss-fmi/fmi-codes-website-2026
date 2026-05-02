@@ -53,13 +53,12 @@ coverage.xml
 !.vscode/extensions.json
 .idea/
 *.swp
-*.swo
 
 # Tools
 .mypy_cache/
 .dmypy.json
 .ruff_cache/
-pyrightconfig.json
+# pyrightconfig.json is intentionally tracked (project-level IDE config)
 .pytype/
 cython_debug/
 .claude/

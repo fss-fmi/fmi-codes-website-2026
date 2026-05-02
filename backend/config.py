@@ -94,6 +94,8 @@ class TestingConfig(Config):
         "DATABASE_URL",
         f"postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}",
     )
+    # Disable flask-limiter so E2E tests never trip rate-limit counters
+    RATELIMIT_ENABLED = False
 
 
 def get_config(config_name="development"):
