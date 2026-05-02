@@ -351,6 +351,26 @@ class TestChangePassword:
         )
         assert rv2.status_code == 401
 
+    def test_change_password_returns_fresh_token_cookie(self, client, seeds):
+        """After changing password the response must set a new token cookie so
+        the user stays logged in — no forced logout."""
+        register(client, 1, seeds)
+        token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": DEFAULT_PW, "new_password": "NewPassword99!"},
+            headers=bearer(token),
+        )
+        assert rv.status_code == 200
+        # A fresh token cookie must be present in the response
+        new_token = _extract_token(rv)
+        assert new_token is not None, "change-password must return a fresh token cookie"
+        # The new token must be different from the original (old one was revoked)
+        assert new_token != token
+        # The new token must be usable to reach a protected endpoint
+        rv2 = client.get("/api/auth/me", headers=bearer(new_token))
+        assert rv2.status_code == 200
+
     def test_wrong_current_password_returns_401(self, client, seeds):
         register(client, 1, seeds)
         token = login_token(client, "user1@e2e.test", DEFAULT_PW)

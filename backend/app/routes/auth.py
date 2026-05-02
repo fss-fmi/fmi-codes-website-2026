@@ -417,7 +417,14 @@ def change_password():
 
             revoke_token(jti, remaining)
 
-    return jsonify({"success": True, "message": "Password changed successfully"}), 200
+    # Issue a fresh token so the user stays logged in after the password change.
+    # The old token is already blocklisted above — the new one takes its place.
+    new_token = generate_token(user["user_id"], user["role"])
+    resp = make_response(
+        jsonify({"success": True, "message": "Password changed successfully"}), 200
+    )
+    _set_auth_cookies(resp, new_token, user["role"])
+    return resp
 
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
