@@ -19,6 +19,9 @@ from app.utils.auth_decorators import token_required
 logger = logging.getLogger(__name__)
 
 _COOKIE_MAX_AGE = 3 * 24 * 60 * 60  # 3 days, matches JWT expiry
+# Bcrypt hash generated once at startup and used as a timing equaliser when
+# no account exists, so response time is indistinguishable from a wrong-password attempt.
+_DUMMY_HASH: str = hash_password("__timing_dummy__")
 
 
 def _fetch_user_profile(app, user_id: int, role: str) -> dict:
@@ -271,12 +274,12 @@ def login():
         fetch_one=True,
     )
 
-    if not user or not user.get("password_hash"):
-        return jsonify({"success": False, "error": "No account found with this email"}), 401
+    # M8: Run bcrypt even when no user found to prevent timing-based enumeration
+    stored_hash = user["password_hash"] if (user and user.get("password_hash")) else _DUMMY_HASH
+    password_valid = verify_password(password, stored_hash)
 
-    # CPU-heavy — no DB connection held
-    if not verify_password(password, user["password_hash"]):
-        return jsonify({"success": False, "error": "Incorrect password. Please try again."}), 401
+    if not user or not user.get("password_hash") or not password_valid:
+        return jsonify({"success": False, "error": "Invalid email or password"}), 401
 
     token = generate_token(user["id"], role)
     user_profile = _fetch_user_profile(current_app, user["id"], role)
