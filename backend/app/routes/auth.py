@@ -529,13 +529,31 @@ def confirm_password_reset():
 
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
-    # Pre-compute the bcrypt hash BEFORE acquiring the DB cursor so we don't hold
-    # a row-level lock during the CPU-heavy hashing operation.
-    new_hash = hash_password(new_password)
-
+    # Step 1: Validate token quickly (no lock) — avoid bcrypt cost on invalid tokens.
     with get_db_cursor() as cursor:
         cursor.execute(
             """SELECT id, user_id, expires_at FROM password_reset_tokens
+               WHERE token_hash = %s AND role = %s AND used_at IS NULL""",
+            (token_hash, role),
+        )
+        token_row = cursor.fetchone()
+
+    if not token_row:
+        return jsonify({"success": False, "error": "Invalid or expired reset token"}), 400
+
+    expires_at = token_row["expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if datetime.now(UTC) > expires_at:
+        return jsonify({"success": False, "error": "Reset token has expired"}), 400
+
+    # Step 2: Token is valid — compute bcrypt hash outside any DB transaction.
+    new_hash = hash_password(new_password)
+
+    # Step 3: Re-lock and apply updates (re-verify token still unused in case of race).
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            """SELECT id, user_id FROM password_reset_tokens
                WHERE token_hash = %s AND role = %s AND used_at IS NULL
                FOR UPDATE""",
             (token_hash, role),
@@ -544,12 +562,6 @@ def confirm_password_reset():
 
         if not token_row:
             return jsonify({"success": False, "error": "Invalid or expired reset token"}), 400
-
-        expires_at = token_row["expires_at"]
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
-        if datetime.now(UTC) > expires_at:
-            return jsonify({"success": False, "error": "Reset token has expired"}), 400
 
         user_id = token_row["user_id"]
 

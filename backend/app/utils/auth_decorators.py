@@ -43,11 +43,13 @@ def token_required(f):
 
         # H1: Check revocation blocklist before trusting the token
         jti = payload.get("jti")
-        if jti:
-            from app.services.token_blocklist import is_revoked
+        if not jti:
+            return jsonify({"success": False, "error": "Token is missing required claims"}), 401
 
-            if is_revoked(jti):
-                return jsonify({"success": False, "error": "Token has been revoked"}), 401
+        from app.services.token_blocklist import is_revoked
+
+        if is_revoked(jti):
+            return jsonify({"success": False, "error": "Token has been revoked"}), 401
 
         g.current_user = {
             "user_id": payload["user_id"],
