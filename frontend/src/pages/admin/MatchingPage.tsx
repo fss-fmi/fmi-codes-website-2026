@@ -6,6 +6,8 @@ import PageHeader from '@/components/layout/PageHeader';
 import GlassCard from '@/components/common/GlassCard';
 import KPICard from '@/components/admin/KPICard';
 import ScoreInput from '@/components/admin/ScoreInput';
+import DonutChart from '@/components/admin/DonutChart';
+import HorizontalBar from '@/components/admin/HorizontalBar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import api from '@/lib/api';
 
@@ -131,6 +133,22 @@ function RegistrationPanel() {
         </div>
       </GlassCard>
 
+      {/* Slot allocation donut */}
+      <div style={{ gridColumn: '1 / -1' }}>
+        <DonutChart
+          title="Slot Allocation"
+          data={[
+            { name: 'Registered', value: registered_count, color: '#22c55e' },
+            { name: 'Queued', value: queue_count, color: '#f59e0b' },
+            {
+              name: 'Available',
+              value: Math.max(0, max_registered - registered_count - queue_count),
+              color: 'rgba(96,165,250,0.15)',
+            },
+          ].filter((d) => d.value > 0)}
+        />
+      </div>
+
       {/* Registered list */}
       <GlassCard style={{ padding: 24 }}>
         <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
@@ -242,51 +260,80 @@ function PreferencesPanel() {
   if (!data) return null;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-      <GlassCard style={{ padding: 24 }}>
-        <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
-          🏷 Teams ({data.teams_submitted}/{data.teams_total})
-        </h3>
-        {(data.teams ?? []).map((t) => (
-          <div
-            key={t.id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '7px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
-              fontSize: 13,
-            }}
-          >
-            <span>{t.name}</span>
-            <span style={{ color: t.submitted ? '#34d399' : '#f87171', fontWeight: 700 }}>
-              {t.submitted ? '✓' : '—'}
-            </span>
-          </div>
-        ))}
-      </GlassCard>
-      <GlassCard style={{ padding: 24 }}>
-        <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
-          🧑‍🏫 Mentors ({data.mentors_submitted}/{data.mentors_total})
-        </h3>
-        {(data.mentors ?? []).map((m) => (
-          <div
-            key={m.id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '7px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
-              fontSize: 13,
-            }}
-          >
-            <span>{m.name}</span>
-            <span style={{ color: m.submitted ? '#34d399' : '#f87171', fontWeight: 700 }}>
-              {m.submitted ? '✓' : '—'}
-            </span>
-          </div>
-        ))}
-      </GlassCard>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Submission rate donuts */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <DonutChart
+          title="Team Preference Submissions"
+          data={[
+            { name: 'Submitted', value: data.teams_submitted, color: '#22c55e' },
+            {
+              name: 'Pending',
+              value: data.teams_total - data.teams_submitted,
+              color: '#f87171',
+            },
+          ].filter((d) => d.value > 0)}
+        />
+        <DonutChart
+          title="Mentor Preference Submissions"
+          data={[
+            { name: 'Submitted', value: data.mentors_submitted, color: '#a78bfa' },
+            {
+              name: 'Pending',
+              value: data.mentors_total - data.mentors_submitted,
+              color: '#f87171',
+            },
+          ].filter((d) => d.value > 0)}
+        />
+      </div>
+
+      {/* Submission lists */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <GlassCard style={{ padding: 24 }}>
+          <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
+            🏷 Teams ({data.teams_submitted}/{data.teams_total})
+          </h3>
+          {(data.teams ?? []).map((t) => (
+            <div
+              key={t.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '7px 0',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                fontSize: 13,
+              }}
+            >
+              <span>{t.name}</span>
+              <span style={{ color: t.submitted ? '#34d399' : '#f87171', fontWeight: 700 }}>
+                {t.submitted ? '✓' : '—'}
+              </span>
+            </div>
+          ))}
+        </GlassCard>
+        <GlassCard style={{ padding: 24 }}>
+          <h3 style={{ fontWeight: 700, marginBottom: 14, fontSize: 15 }}>
+            🧑‍🏫 Mentors ({data.mentors_submitted}/{data.mentors_total})
+          </h3>
+          {(data.mentors ?? []).map((m) => (
+            <div
+              key={m.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '7px 0',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                fontSize: 13,
+              }}
+            >
+              <span>{m.name}</span>
+              <span style={{ color: m.submitted ? '#34d399' : '#f87171', fontWeight: 700 }}>
+                {m.submitted ? '✓' : '—'}
+              </span>
+            </div>
+          ))}
+        </GlassCard>
+      </div>
     </div>
   );
 }
@@ -580,8 +627,40 @@ function ScoresPanel() {
 
   if (isLoading) return <LoadingSpinner />;
 
+  const scoredTeams = [...(data?.teams ?? [])]
+    .filter((t) => t.score !== null)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const maxScore = Math.max(...scoredTeams.map((t) => t.score ?? 0), 1);
+
   return (
     <div>
+      {/* Score overview bars */}
+      {scoredTeams.length > 0 && (
+        <GlassCard style={{ padding: '20px 24px', marginBottom: 20 }}>
+          <p
+            style={{
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              color: 'var(--muted)',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              marginBottom: 12,
+            }}
+          >
+            Score Overview
+          </p>
+          {scoredTeams.map((t) => (
+            <HorizontalBar
+              key={t.team_id}
+              label={t.team_name}
+              value={t.score ?? 0}
+              max={maxScore}
+              color="#60a5fa"
+            />
+          ))}
+        </GlassCard>
+      )}
+
       <div
         style={{
           display: 'grid',

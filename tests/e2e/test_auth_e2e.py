@@ -7,11 +7,14 @@ Covers:
  - /me: returns correct profile, rejects bad tokens
  - Change-password: happy path, wrong current pw, too short, admin blocked
  - Reset-password: user-enumeration safety, validation
+ - Confirm-password-reset: happy path, token reuse, expired token, validation
 """
 
+import hashlib
+import secrets
 import sys
-from pathlib import Path
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import jwt
 import pytest
@@ -19,9 +22,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
 from tests.e2e.conftest import (
-    DEFAULT_PW,
     ADMIN_EMAIL,
     ADMIN_PW,
+    DEFAULT_PW,
     admin_token,
     bearer,
     login_token,
@@ -37,6 +40,7 @@ pytestmark = pytest.mark.e2e
 # Registration
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRegistration:
     def test_happy_path_returns_201_with_token_cookie(self, client, seeds):
         rv = register(client, 1, seeds)
@@ -47,7 +51,8 @@ class TestRegistration:
         # httpOnly token cookie must be present
         cookie_names = [c.split("=")[0] for c in rv.headers.getlist("Set-Cookie")]
         assert "token" in cookie_names
-        assert "role" in cookie_names
+        # M7: role cookie removed — role is sourced from /api/auth/me, not a cookie
+        assert "role" not in cookie_names
 
     def test_registration_sets_httponly_flag_on_token_cookie(self, client, seeds):
         rv = register(client, 1, seeds)
@@ -58,13 +63,12 @@ class TestRegistration:
         assert "HttpOnly" in token_cookie
 
     def test_role_cookie_is_not_httponly(self, client, seeds):
-        """role cookie must be readable by React JS; token must not."""
+        """M7: role cookie is not set at all; JS reads role from /api/auth/me."""
         rv = register(client, 1, seeds)
         role_cookie = next(
             (h for h in rv.headers.getlist("Set-Cookie") if h.startswith("role=")), None
         )
-        assert role_cookie is not None
-        assert "HttpOnly" not in role_cookie
+        assert role_cookie is None
 
     def test_missing_required_fields_returns_400(self, client, seeds):
         payload = make_payload(1, univ_id=seeds["univ_id"], spec_id=seeds["spec_id"])
@@ -88,13 +92,15 @@ class TestRegistration:
         register(client, 1, seeds)
         rv = register(client, 2, seeds, email="user1@e2e.test")
         assert rv.status_code == 409
-        assert "email" in rv.get_json()["error"].lower()
+        # M2: generic message — does not reveal which field caused the conflict
+        assert "already exists" in rv.get_json()["error"].lower()
 
     def test_duplicate_faculty_number_returns_409(self, client, seeds):
         register(client, 1, seeds)
         rv = register(client, 2, seeds, faculty_number="FAC000001")
         assert rv.status_code == 409
-        assert "faculty" in rv.get_json()["error"].lower()
+        # M2: generic message — does not reveal which field caused the conflict
+        assert "already exists" in rv.get_json()["error"].lower()
 
     def test_registration_closed_returns_403(self, flask_app, seeds):
         flask_app.config["REGISTRATION_OPEN"] = False
@@ -117,14 +123,13 @@ class TestRegistration:
         assert rv.status_code < 500
 
     def test_xss_payload_in_name_stored_not_executed(self, client, seeds):
-        """XSS payload stored in a name field must not be reflected unescaped."""
+        """C7: HTML injection in name fields is rejected at the backend boundary."""
         xss = "<script>alert(1)</script>"
         rv = register(client, 1, seeds, first_name=xss)
-        # Registration must succeed (name is stored) but the JSON must not
-        # reflect the payload in a way that could execute
-        assert rv.status_code == 201
-        body_text = rv.get_data(as_text=True)
-        assert "<script>" not in body_text
+        # C7 validation rejects HTML injection characters → 400
+        assert rv.status_code == 400
+        assert rv.get_json()["success"] is False
+        assert "<script>" not in rv.get_data(as_text=True)
 
     def test_response_never_contains_password_hash(self, client, seeds):
         rv = register(client, 1, seeds)
@@ -145,6 +150,7 @@ class TestRegistration:
 # ═══════════════════════════════════════════════════════════════════════════
 # Login
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestLogin:
     def test_participant_login_returns_200_with_token(self, client, seeds):
@@ -181,16 +187,28 @@ class TestLogin:
         )
         assert rv.status_code == 401
 
-    def test_nonexistent_user_returns_same_401_as_wrong_password(self, client):
+    def test_nonexistent_user_returns_same_401_as_wrong_password(self, client, seeds):
         """No user-enumeration: unknown email must produce the same response as wrong password."""
-        rv = client.post(
+        register(client, 1, seeds)
+        rv_bad_email = client.post(
             "/api/auth/login",
             json={"email": "nobody@e2e.test", "password": "anything", "role": "participant"},
         )
-        assert rv.status_code == 401
-        # Error message must be generic, not "user not found"
-        error = rv.get_json()["error"].lower()
-        assert "invalid credentials" in error or "invalid" in error
+        rv_bad_pw = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": "WRONGPASSWORD", "role": "participant"},
+        )
+        assert rv_bad_email.status_code == 401
+        assert rv_bad_pw.status_code == 401
+        # Both must return the SAME error message — different messages would let
+        # an attacker enumerate which emails are registered in the system.
+        error_unknown = rv_bad_email.get_json()["error"].lower()
+        error_wrong_pw = rv_bad_pw.get_json()["error"].lower()
+        assert error_unknown == error_wrong_pw, (
+            f"Login error differs between unknown email ({error_unknown!r}) "
+            f"and wrong password ({error_wrong_pw!r}) — user enumeration risk"
+        )
+        assert "invalid email or password" in error_unknown
 
     def test_wrong_admin_password_returns_401_not_500(self, client):
         rv = client.post(
@@ -215,6 +233,7 @@ class TestLogin:
 # Logout
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLogout:
     def test_logout_clears_cookies(self, client, seeds):
         register(client, 1, seeds)
@@ -237,6 +256,7 @@ class TestLogout:
 # ═══════════════════════════════════════════════════════════════════════════
 # /me endpoint
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestGetMe:
     def test_returns_participant_profile(self, client, seeds):
@@ -298,7 +318,8 @@ class TestGetMe:
     def test_wrong_secret_returns_401(self, flask_app, seeds):
         """Token signed with the wrong key must be rejected."""
         payload = {
-            "user_id": 1, "role": "participant",
+            "user_id": 1,
+            "role": "participant",
             "iat": datetime.now(UTC),
             "exp": datetime.now(UTC) + timedelta(days=3),
         }
@@ -311,6 +332,7 @@ class TestGetMe:
 # ═══════════════════════════════════════════════════════════════════════════
 # Change password
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestChangePassword:
     def test_happy_path_changes_password(self, client, seeds):
@@ -328,6 +350,26 @@ class TestChangePassword:
             json={"email": "user1@e2e.test", "password": DEFAULT_PW, "role": "participant"},
         )
         assert rv2.status_code == 401
+
+    def test_change_password_returns_fresh_token_cookie(self, client, seeds):
+        """After changing password the response must set a new token cookie so
+        the user stays logged in — no forced logout."""
+        register(client, 1, seeds)
+        token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": DEFAULT_PW, "new_password": "NewPassword99!"},
+            headers=bearer(token),
+        )
+        assert rv.status_code == 200
+        # A fresh token cookie must be present in the response
+        new_token = _extract_token(rv)
+        assert new_token is not None, "change-password must return a fresh token cookie"
+        # The new token must be different from the original (old one was revoked)
+        assert new_token != token
+        # The new token must be usable to reach a protected endpoint
+        rv2 = client.get("/api/auth/me", headers=bearer(new_token))
+        assert rv2.status_code == 200
 
     def test_wrong_current_password_returns_401(self, client, seeds):
         register(client, 1, seeds)
@@ -371,6 +413,7 @@ class TestChangePassword:
 # Reset password
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestResetPassword:
     def test_missing_email_returns_400(self, client):
         rv = client.post("/api/auth/reset-password", json={"role": "participant"})
@@ -395,11 +438,172 @@ class TestResetPassword:
         assert body["success"] is True
         # The message must be identical to what a known user would receive
         # so attackers cannot enumerate accounts
-        assert "email is registered" in body["message"].lower() or \
-               "sent" in body["message"].lower()
+        assert "email is registered" in body["message"].lower() or "sent" in body["message"].lower()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Confirm password reset
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _insert_reset_token(
+    db_conn,
+    user_id: int,
+    role: str,
+    *,
+    expired: bool = False,
+    used: bool = False,
+) -> str:
+    """Insert a password_reset_tokens row directly and return the raw token."""
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    if expired:
+        expires_at = datetime.now(UTC) - timedelta(hours=2)
+    else:
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+    used_at = datetime.now(UTC) if used else None
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO password_reset_tokens (user_id, role, token_hash, expires_at, used_at)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (user_id, role, token_hash, expires_at, used_at),
+        )
+    return raw_token
+
+
+class TestConfirmPasswordReset:
+    # ── Input validation (no valid token needed) ───────────────────────────
+
+    def test_missing_fields_returns_400(self, client):
+        rv = client.post("/api/auth/reset-password/confirm", json={})
+        assert rv.status_code == 400
+        assert rv.get_json()["success"] is False
+
+    def test_invalid_role_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": "abc", "new_password": "ValidPassword1!", "role": "admin"},
+        )
+        assert rv.status_code == 400
+
+    def test_password_too_short_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": "sometoken", "new_password": "short", "role": "participant"},
+        )
+        assert rv.status_code == 400
+        assert "12" in rv.get_json()["error"]
+
+    def test_unknown_token_returns_400(self, client):
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={
+                "token": secrets.token_urlsafe(32),
+                "new_password": "ValidPassword1!",
+                "role": "participant",
+            },
+        )
+        assert rv.status_code == 400
+        assert (
+            "invalid" in rv.get_json()["error"].lower()
+            or "expired" in rv.get_json()["error"].lower()
+        )
+
+    # ── Happy path ─────────────────────────────────────────────────────────
+
+    def test_happy_path_updates_password_and_allows_login(self, client, seeds, db_conn):
+        register(client, 1, seeds)
+        # Fetch the participant id directly from the DB
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        raw_token = _insert_reset_token(db_conn, user_id, "participant")
+        new_pw = "BrandNewPassword1!"
+
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": new_pw, "role": "participant"},
+        )
+        assert rv.status_code == 200
+        assert rv.get_json()["success"] is True
+
+        # Old password must no longer work
+        rv_old = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": DEFAULT_PW, "role": "participant"},
+        )
+        assert rv_old.status_code == 401
+
+        # New password must work
+        rv_new = client.post(
+            "/api/auth/login",
+            json={"email": "user1@e2e.test", "password": new_pw, "role": "participant"},
+        )
+        assert rv_new.status_code == 200
+
+    # ── Token reuse ────────────────────────────────────────────────────────
+
+    def test_token_cannot_be_reused_after_success(self, client, seeds, db_conn):
+        register(client, 1, seeds)
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        raw_token = _insert_reset_token(db_conn, user_id, "participant")
+
+        # First use succeeds
+        rv1 = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "FirstNewPassword1!", "role": "participant"},
+        )
+        assert rv1.status_code == 200
+
+        # Second use must be rejected
+        rv2 = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "SecondNewPassword1!", "role": "participant"},
+        )
+        assert rv2.status_code == 400
+
+    # ── Expired token ──────────────────────────────────────────────────────
+
+    def test_expired_token_returns_400(self, client, seeds, db_conn):
+        register(client, 1, seeds)
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        raw_token = _insert_reset_token(db_conn, user_id, "participant", expired=True)
+
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "ValidPassword1!", "role": "participant"},
+        )
+        assert rv.status_code == 400
+        assert "expired" in rv.get_json()["error"].lower()
+
+    # ── Role mismatch ──────────────────────────────────────────────────────
+
+    def test_role_mismatch_returns_400(self, client, seeds, db_conn):
+        """A token issued for 'participant' must not work when role='mentor' is supplied."""
+        register(client, 1, seeds)
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        # Token stored with role='participant'
+        raw_token = _insert_reset_token(db_conn, user_id, "participant")
+
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "ValidPassword1!", "role": "mentor"},
+        )
+        assert rv.status_code == 400
 
 
 # ─── Internal helpers used only within this module ────────────────────────
+
 
 def _extract_token(response):
     for h in response.headers.getlist("Set-Cookie"):
@@ -412,8 +616,8 @@ def flask_app_client(app):
     return app.test_client()
 
 
-
 def mentor_token_for_seed(app, seeds):
     with app.app_context():
         from app.services.auth_service import generate_token
+
         return generate_token(seeds["mentor_ids"][0], "mentor")

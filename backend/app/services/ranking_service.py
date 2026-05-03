@@ -105,9 +105,10 @@ def get_team_rankings() -> list:
         return _team_rankings_cache
 
     with _team_rankings_lock:
-        if _team_rankings_cache is not None and (
-            time.monotonic() - _team_rankings_cache_ts
-        ) < _CACHE_TTL:
+        if (
+            _team_rankings_cache is not None
+            and (time.monotonic() - _team_rankings_cache_ts) < _CACHE_TTL
+        ):
             return _team_rankings_cache
 
         result = _load_team_rankings()
@@ -141,7 +142,14 @@ def invalidate_team_rankings_cache():
 
 
 def update_team_score(team_id: int, score: float) -> bool:
-    """Atomically update a single team's score with row-level locking."""
+    """Atomically update a single team's score with row-level locking.
+
+    M9: Validation runs inside the service so internal callers can't bypass it.
+    """
+    valid, result = validate_score(score)
+    if not valid:
+        logger.error("update_team_score called with invalid score: %s", result)
+        return False
     with get_db_cursor() as cursor:
         cursor.execute("SELECT id FROM teams WHERE id = %s FOR UPDATE", (team_id,))
         row = cursor.fetchone()
@@ -149,7 +157,7 @@ def update_team_score(team_id: int, score: float) -> bool:
             return False
         cursor.execute(
             "UPDATE teams SET score = %s, score_updated_at = NOW() WHERE id = %s",
-            (score, team_id),
+            (result, team_id),
         )
     invalidate_team_rankings_cache()
     return True

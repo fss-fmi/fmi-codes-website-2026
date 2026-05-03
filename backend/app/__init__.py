@@ -4,28 +4,37 @@ import logging
 import os
 from importlib import import_module
 
+from config import get_config
 from flask import Flask
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-
-from config import get_config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Module-level limiter — attached to app in create_app()
+# H7: Use Redis when REDIS_URL is configured so the limit is shared across all
+# Gunicorn workers.  Falls back to in-memory for local dev without Redis.
+_redis_url = os.environ.get("REDIS_URL", "")
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per minute"],
-    storage_uri="memory://",
+    storage_uri=_redis_url if _redis_url else "memory://",
 )
 
 
 def create_app(config_name="development"):
     """Create and configure Flask application"""
     config = get_config(config_name)
+
+    # C2: Hard-fail on missing/weak secrets in production so misconfigured
+    # deployments are caught at startup rather than discovered after a breach.
+    if config_name == "production":
+        from config import validate_production_secrets
+
+        validate_production_secrets()
 
     app = Flask(
         __name__,

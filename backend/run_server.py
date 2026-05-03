@@ -26,22 +26,24 @@ def main():
     with app.app_context():
         seeded = mentor_service.load_universities_from_file(seeds_dir / "universities.json")
         if seeded:
-            print(f"✓ Seeded {seeded} university(s) from universities.json")
+            print(f"[OK] Seeded {seeded} university(s) from universities.json")
         seeded = mentor_service.load_specialties_from_file(seeds_dir / "specialties.json")
         if seeded:
-            print(f"✓ Seeded {seeded} specialty(s) from specialties.json")
+            print(f"[OK] Seeded {seeded} specialty(s) from specialties.json")
         seeded = mentor_service.load_mentors_from_file(seeds_dir / "mentors.json")
         if seeded:
-            print(f"✓ Seeded {seeded} mentor(s) from mentors.json")
+            print(f"[OK] Seeded {seeded} mentor(s) from mentors.json")
 
     # Print startup info
-    print(f"\n✓ Database: {app.config.get('DATABASE_URL', 'configured')}")
-    print("✓ Starting server at http://localhost:5001")
-    print("✓ Press Ctrl+C to stop the server\n")
+    print(f"\n[OK] Database: {app.config.get('DATABASE_URL', 'configured')}")
+    print("[OK] Starting server at http://localhost:5001")
+    print("[OK] Press Ctrl+C to stop the server\n")
 
     # Run the app
+    # Bind to loopback only in development — never expose Werkzeug debugger
+    # to the network.  Set FLASK_HOST=0.0.0.0 only when proxied by an ingress.
     app.run(
-        host=os.environ.get("FLASK_HOST", "0.0.0.0"),
+        host=os.environ.get("FLASK_HOST", "127.0.0.1"),
         port=int(os.environ.get("FLASK_PORT", 5001)),
         debug=env == "development",
     )

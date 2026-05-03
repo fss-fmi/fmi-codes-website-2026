@@ -14,11 +14,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:5001',
+        target: process.env.BACKEND_URL ?? 'http://localhost:5001',
         changeOrigin: true,
       },
       '/static': {
-        target: 'http://localhost:5001',
+        target: process.env.BACKEND_URL ?? 'http://localhost:5001',
         changeOrigin: true,
       },
     },

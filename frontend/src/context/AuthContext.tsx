@@ -8,6 +8,7 @@ interface AuthState {
   isLoading: boolean;
   login: (role: Role, userId: number, user: User) => void;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -17,6 +18,7 @@ export const AuthContext = createContext<AuthState>({
   isLoading: true,
   login: () => {},
   logout: () => {},
+  refreshUser: () => Promise.resolve(),
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -56,6 +58,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(newRole);
   }
 
+  async function refreshUser(): Promise<void> {
+    try {
+      const data = await fetch('/api/auth/me', { credentials: 'include' }).then((res) =>
+        res.ok ? (res.json() as Promise<{ success: boolean; user: User }>) : null,
+      );
+      if (data?.success && data.user) {
+        setUser(data.user);
+        setRole(data.user.role);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   function logout() {
     api
       .post('/api/auth/logout')
@@ -67,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, role, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, role, isLoading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

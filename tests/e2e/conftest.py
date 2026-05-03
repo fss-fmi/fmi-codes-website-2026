@@ -22,8 +22,8 @@ from pathlib import Path
 
 import flask
 import psycopg2
-from psycopg2.extras import RealDictCursor
 import pytest
+from psycopg2.extras import RealDictCursor
 
 # ── Path bootstrap ─────────────────────────────────────────────────────────
 BACKEND_DIR = Path(__file__).parent.parent.parent / "backend"
@@ -42,21 +42,22 @@ _SPEC_NAME = "E2E Test Specialty"
 # Three mentors are required so that preference-submission tests can rank exactly 3.
 _MENTOR_SEEDS = [
     {"first": "Alpha", "last": "Mentor", "email": "alpha@mentor.test", "company": "AlphaCorp"},
-    {"first": "Beta",  "last": "Mentor", "email": "beta@mentor.test",  "company": "BetaCorp"},
+    {"first": "Beta", "last": "Mentor", "email": "beta@mentor.test", "company": "BetaCorp"},
     {"first": "Gamma", "last": "Mentor", "email": "gamma@mentor.test", "company": "GammaCorp"},
 ]
 
-DEFAULT_PW   = "SecurePass1!"
+DEFAULT_PW = "SecurePass1!"
 DEFAULT_COURSE = "Bachelor 1st Year"
 
 # ── Admin credentials (matched to flask_app config) ────────────────────────
 ADMIN_EMAIL = "admin@fmicodes.bg"
-ADMIN_PW    = "test-admin-pw!"
+ADMIN_PW = "test-admin-pw!"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Session fixtures
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @pytest.fixture(scope="session")
 def db_url():
@@ -144,14 +145,15 @@ def flask_app(db_url, seeds):
     # Override the DATABASE_URL env var before any config class is evaluated.
     os.environ["DATABASE_URL"] = db_url
 
-    from app.database import close_pool
-
     # Patch TestingConfig at the class level so init_database connects to the
     # right DB regardless of what was cached at import time.
     import config as _cfg
+    from app.database import close_pool
+
     _cfg.TestingConfig.DATABASE_URL = db_url
 
     from app import create_app
+    from app.services.auth_service import hash_password as _hash_pw
 
     app = create_app("testing")
     app.config.update(
@@ -161,7 +163,7 @@ def flask_app(db_url, seeds):
         JWT_EXPIRY_DAYS=3,
         DATABASE_URL=db_url,
         ADMIN_EMAIL=ADMIN_EMAIL,
-        ADMIN_PASSWORD=ADMIN_PW,
+        ADMIN_PASSWORD_HASH=_hash_pw(ADMIN_PW),
         REGISTRATION_OPEN=True,
         # RATELIMIT_ENABLED already False via TestingConfig — set again to be safe
         RATELIMIT_ENABLED=False,
@@ -178,6 +180,7 @@ def flask_app(db_url, seeds):
 # ═══════════════════════════════════════════════════════════════════════════
 # Per-test fixtures
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @pytest.fixture(autouse=True)
 def clean_db(db_conn, flask_app):
@@ -210,6 +213,7 @@ def _wipe_entities(conn):
     with conn.cursor() as cur:
         cur.execute(
             "TRUNCATE TABLE "
+            "  password_reset_tokens, "
             "  team_join_requests, "
             "  team_mentor_preferences, "
             "  mentor_team_preferences, "
@@ -228,12 +232,14 @@ def _reset_caches():
     """Invalidate all module-level TTL caches so tests see fresh DB data."""
     try:
         import app.services.mentor_service as ms
+
         ms._cached_mentors = None  # type: ignore[attr-defined]
         ms._cache_ts = 0  # type: ignore[attr-defined]
     except Exception:
         pass
     try:
         import app.services.ranking_service as rs
+
         rs._cached_rankings = None
         rs._cache_ts = 0
         rs._team_rankings_cache = None
@@ -253,20 +259,27 @@ def client(flask_app):
 # Helper utilities (imported by test modules)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def make_payload(n: int, *, univ_id: int, spec_id: int,
-                 password: str = DEFAULT_PW, course: str = DEFAULT_COURSE,
-                 **overrides) -> dict:
+
+def make_payload(
+    n: int,
+    *,
+    univ_id: int,
+    spec_id: int,
+    password: str = DEFAULT_PW,
+    course: str = DEFAULT_COURSE,
+    **overrides,
+) -> dict:
     """Build a valid participant registration payload numbered N."""
     payload = {
         "first_name": f"First{n}",
-        "last_name":  f"Last{n}",
-        "email":           f"user{n}@e2e.test",
-        "password":        password,
-        "phone_number":    f"088800{n:04d}",
-        "faculty_number":  f"FAC{n:06d}",
-        "course":          course,
-        "specialty_id":    spec_id,
-        "university_id":   univ_id,
+        "last_name": f"Last{n}",
+        "email": f"user{n}@e2e.test",
+        "password": password,
+        "phone_number": f"088800{n:04d}",
+        "faculty_number": f"FAC{n:06d}",
+        "course": course,
+        "specialty_id": spec_id,
+        "university_id": univ_id,
     }
     payload.update(overrides)
     return payload
@@ -289,15 +302,15 @@ def register_extra(client, seeds: dict) -> "flask.Response":
     """
     uid = uuid.uuid4().hex[:12]
     payload = {
-        "first_name":     "Filler",
-        "last_name":      uid.upper(),
-        "email":          f"filler-{uid}@e2e.test",
-        "password":       DEFAULT_PW,
-        "phone_number":   f"07{uid[:9]}",
+        "first_name": "Filler",
+        "last_name": uid.upper(),
+        "email": f"filler-{uid}@e2e.test",
+        "password": DEFAULT_PW,
+        "phone_number": f"07{uid[:9]}",
         "faculty_number": f"F{uid[:7].upper()}",
-        "course":         DEFAULT_COURSE,
-        "specialty_id":   seeds["spec_id"],
-        "university_id":  seeds["univ_id"],
+        "course": DEFAULT_COURSE,
+        "specialty_id": seeds["spec_id"],
+        "university_id": seeds["univ_id"],
     }
     return client.post("/api/auth/register", json=payload)
 
@@ -349,6 +362,7 @@ def admin_token(flask_app) -> str:
     """Generate an admin JWT directly (no DB lookup needed)."""
     with flask_app.app_context():
         from app.services.auth_service import generate_token
+
         return generate_token(0, "admin")
 
 
@@ -356,6 +370,7 @@ def mentor_token_for(flask_app, mentor_id: int) -> str:
     """Generate a mentor JWT directly."""
     with flask_app.app_context():
         from app.services.auth_service import generate_token
+
         return generate_token(mentor_id, "mentor")
 
 

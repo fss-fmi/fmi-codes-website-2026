@@ -14,9 +14,13 @@ class Config:
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
     JWT_EXPIRY_DAYS = int(os.environ.get("JWT_EXPIRY_DAYS", 3))
 
-    # Admin credentials
+    # Admin credentials — store bcrypt hash, never plaintext
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fmicodes.bg")
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")  # Must be set in .env
+    # Generate with: python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())"
+    ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH")  # Must be set in .env
+
+    # Request size guard — large bodies are fully parsed before any truncation otherwise
+    MAX_CONTENT_LENGTH = 64 * 1024  # 64 KB hard limit
 
     # PostgreSQL database configuration
     DB_HOST = os.environ.get("DB_HOST", "localhost")
@@ -96,6 +100,39 @@ class TestingConfig(Config):
     )
     # Disable flask-limiter so E2E tests never trip rate-limit counters
     RATELIMIT_ENABLED = False
+
+
+_WEAK_SECRETS = {
+    "dev-secret-key-change-in-production",
+    "dev-secret-key-12345",
+    "dev-secret-key",
+    "",
+}
+
+
+def validate_production_secrets():
+    """Hard-fail if weak or missing secrets are detected in production.
+
+    Call this inside create_app() when config_name == 'production'.
+    """
+    secret = os.environ.get("SECRET_KEY", "")
+    jwt_secret = os.environ.get("JWT_SECRET_KEY", "")
+
+    if not secret or secret in _WEAK_SECRETS:
+        raise RuntimeError(
+            "CRITICAL: SECRET_KEY is missing or uses a known-weak default. "
+            "Set a strong random value in your deployment secrets."
+        )
+    if not jwt_secret or jwt_secret in _WEAK_SECRETS:
+        raise RuntimeError(
+            "CRITICAL: JWT_SECRET_KEY is missing or uses a known-weak default. "
+            "Set a strong random value in your deployment secrets."
+        )
+    if not os.environ.get("ADMIN_PASSWORD_HASH"):
+        raise RuntimeError(
+            "CRITICAL: ADMIN_PASSWORD_HASH is not set. "
+            "Generate with: python -c \"import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())\""
+        )
 
 
 def get_config(config_name="development"):

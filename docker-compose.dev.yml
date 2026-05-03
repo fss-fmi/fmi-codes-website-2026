@@ -17,6 +17,17 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    container_name: fmi-codes-redis-dev
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     container_name: fmi-codes-app-dev
     build:
@@ -28,6 +39,7 @@ services:
     environment:
       FLASK_ENV: development
       FLASK_DEBUG: '1'
+      FLASK_HOST: 0.0.0.0
       DB_HOST: db
       DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
@@ -36,18 +48,40 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
       MENTORS_STAY_TUNED: ${MENTORS_STAY_TUNED}
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN}
+      RANKINGS_LIVE: ${RANKINGS_LIVE}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_USE_TLS: ${MAIL_USE_TLS}
       DISCORD_BUG_WEBHOOK_URL: ${DISCORD_BUG_WEBHOOK_URL}
+      REDIS_URL: redis://redis:6379
     command: python run_server.py
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    container_name: fmi-codes-frontend-dev
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - '5173:5173'
+    environment:
+      BACKEND_URL: http://app:5001
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      - app
 
 volumes:
   postgres_data_dev:
+  frontend_node_modules:

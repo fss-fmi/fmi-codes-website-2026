@@ -7,8 +7,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the app
+# Run as a non-root user so container compromise doesn't grant root access.
+RUN addgroup --system app && adduser --system --ingroup app app
+
+# Copy the rest of the app and hand ownership over to the app user
 COPY . .
+RUN chown -R app:app /app
+
+USER app
 
 ENV FLASK_ENV=production
 
