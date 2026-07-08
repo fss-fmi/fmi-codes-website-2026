@@ -1541,4 +1541,46 @@ body.arcade-theme {
     animation: none !important;
     opacity: 1 !important;
   }
+  .sponsor-track {
+    animation: none !important;
+  }
+}
+
+/* ════════════════════════════════════════════
+   HOMEPAGE — briefing section inline emphasis
+   ════════════════════════════════════════════ */
+.briefing-emph {
+  color: var(--px-teal);
+  font-weight: 500;
+}
+
+/* ════════════════════════════════════════════
+   HOMEPAGE — sponsors + contact section interactions
+   ════════════════════════════════════════════ */
+.sponsors-link:hover {
+  color: var(--px-teal-strong);
+  border-bottom-color: var(--px-teal);
+}
+.sponsors-link:focus-visible {
+  outline: none;
+  box-shadow: var(--px-focus-glow);
+}
+.contact-channel-link:hover {
+  color: var(--px-teal);
+}
+.contact-channel-link:focus-visible {
+  outline: none;
+  box-shadow: var(--px-focus-glow);
+}
+
+/* Mobile stacking — briefing-style rails collapse to single column */
+@media (max-width: 780px) {
+  .sponsors-credits,
+  .contact-row {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+  .contact-body {
+    grid-template-columns: 1fr !important;
+  }
 }
