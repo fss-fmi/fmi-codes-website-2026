@@ -1786,3 +1786,29 @@ body.arcade-theme {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ════════════════════════════════════════════
+   MENTORS — Company Log interactions + responsive stacking
+   ════════════════════════════════════════════ */
+.companylog-techs-toggle:hover {
+  color: var(--px-teal-strong) !important;
+  border-color: var(--px-teal) !important;
+}
+.companylog-techs-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--px-focus-glow);
+}
+
+@media (max-width: 900px) {
+  .companylog-chapter {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+  .companylog-chapter__rail {
+    position: static !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    gap: 16px !important;
+  }
+}
