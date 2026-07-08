@@ -1,6 +1,5 @@
 import Navbar from '@/components/layout/Navbar';
-import GlassCard from '@/components/common/GlassCard';
-import GradientText from '@/components/common/GradientText';
+import Panel from '@/components/common/Panel';
 
 export default function RankingsTBDPage() {
   return (
@@ -15,22 +14,13 @@ export default function RankingsTBDPage() {
           padding: '60px 24px',
         }}
       >
-        <GlassCard style={{ padding: '60px 48px', textAlign: 'center', maxWidth: 520 }}>
-          <div style={{ fontSize: 72, marginBottom: 24 }}>🏆</div>
-          <h1
-            style={{
-              fontSize: '2.5rem',
-              fontWeight: 900,
-              letterSpacing: '-0.02em',
-              marginBottom: 12,
-            }}
-          >
-            <GradientText>Rankings</GradientText>
-          </h1>
-          <p style={{ color: 'var(--muted)', fontSize: 16, lineHeight: 1.6 }}>
-            Rankings will be published once the hackathon is underway. Check back soon!
-          </p>
-        </GlassCard>
+        <div style={{ maxWidth: 520, width: '100%' }}>
+          <Panel title="RANKINGS">
+            <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+              &gt; Rankings will go live when the event starts.
+            </p>
+          </Panel>
+        </div>
       </main>
     </>
   );

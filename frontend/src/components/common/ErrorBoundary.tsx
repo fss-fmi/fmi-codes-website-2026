@@ -27,6 +27,7 @@ class ErrorBoundaryInner extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div
+          role="alert"
           style={{
             display: 'flex',
             flexDirection: 'column',
@@ -34,17 +35,19 @@ class ErrorBoundaryInner extends Component<Props, State> {
             justifyContent: 'center',
             height: '100vh',
             gap: 16,
+            padding: 24,
           }}
         >
-          <h2 style={{ color: 'var(--text)', fontSize: '1.5rem', fontWeight: 700 }}>
-            Something went wrong
-          </h2>
-          <p style={{ color: 'var(--muted)' }}>Try refreshing the page or navigate away.</p>
+          <h2 className="px-prompt-heading">SOMETHING WENT WRONG</h2>
+          <p className="px-body" style={{ color: 'var(--px-muted-strong)' }}>
+            &gt; Try refreshing the page or navigate away.
+          </p>
           <button
+            type="button"
             onClick={() => this.setState({ hasError: false })}
-            className="btn btn-primary"
+            className="px-btn-primary"
           >
-            Try again
+            TRY AGAIN
           </button>
         </div>
       );

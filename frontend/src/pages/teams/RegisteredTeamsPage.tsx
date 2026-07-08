@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import PageHeader from '@/components/layout/PageHeader';
-import GlassCard from '@/components/common/GlassCard';
+import Panel from '@/components/common/Panel';
+import NestedCard from '@/components/common/NestedCard';
 import SVGProgressRing from '@/components/common/SVGProgressRing';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
+import Button from '@/components/common/Button';
+import { useToast } from '@/components/common/useToast';
 import api from '@/lib/api';
 
 interface RegTeam {
@@ -31,19 +34,14 @@ function relativeTime(dateStr: string) {
 }
 
 export default function RegisteredTeamsPage() {
+  const { showToast } = useToast();
   const [applying, setApplying] = useState<number | null>(null);
   const [applied, setApplied] = useState<Set<number>>(new Set());
-  const [toast, setToast] = useState('');
 
   const { data, isLoading } = useQuery<RegisteredTeamsResponse>({
     queryKey: ['registered-teams'],
     queryFn: () => api.get('/api/teams/registered'),
   });
-
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3500);
-  }
 
   async function applyToTeam(teamId: number) {
     setApplying(teamId);
@@ -54,12 +52,12 @@ export default function RegisteredTeamsPage() {
       );
       if (d.success) {
         setApplied((prev) => new Set([...prev, teamId]));
-        showToast('Application submitted!');
+        showToast({ kind: 'success', message: 'Application submitted.' });
       } else {
-        showToast(d.error ?? 'Failed to apply.');
+        showToast({ kind: 'danger', message: d.error ?? 'Failed to apply.' });
       }
     } catch {
-      showToast('Network error.');
+      showToast({ kind: 'danger', message: 'Network error.' });
     } finally {
       setApplying(null);
     }
@@ -68,69 +66,75 @@ export default function RegisteredTeamsPage() {
   const teams = data?.teams ?? [];
   const maxRegistered = data?.max_registered ?? 18;
   const canApply = data?.can_apply ?? false;
+  const progressValue = teams.length / (maxRegistered || 1);
 
   return (
     <>
       <Navbar />
-      <main style={{ padding: '80px 24px 80px', maxWidth: '860px', margin: '0 auto' }}>
+      <main style={{ padding: '80px 24px 80px', maxWidth: '900px', margin: '0 auto' }}>
         <PageHeader
-          eyebrow="Teams"
-          title="Registered Teams"
-          subtitle="Teams that have confirmed their participation."
+          title="REGISTERED TEAMS"
+          description="First 18 teams to hit 3 members auto-register for the event."
         />
 
-        {/* Progress ring */}
         {!isLoading && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 48 }}>
-            <GlassCard
-              style={{
-                padding: 40,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <SVGProgressRing
-                value={teams.length / (maxRegistered || 1)}
-                size={140}
-                strokeWidth={10}
-              />
-              <div style={{ textAlign: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 40 }}>
+            <Panel>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 16,
+                }}
+              >
                 <div
-                  style={{
-                    fontSize: 13,
-                    color: 'var(--muted)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                  }}
+                  role="progressbar"
+                  aria-valuenow={teams.length}
+                  aria-valuemin={0}
+                  aria-valuemax={maxRegistered}
+                  aria-label={`${teams.length} of ${maxRegistered} teams registered`}
                 >
-                  Teams Registered
+                  <SVGProgressRing
+                    value={progressValue}
+                    size={140}
+                    strokeWidth={10}
+                    strokeColor="#2dd4bf"
+                    trackColor="rgba(45, 212, 191, 0.18)"
+                  />
                 </div>
-                <div style={{ fontSize: 28, fontWeight: 900, marginTop: 2 }}>
-                  {teams.length}{' '}
-                  <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 18 }}>
-                    of {maxRegistered}
-                  </span>
+                <div style={{ textAlign: 'center' }}>
+                  <div className="px-label" style={{ marginBottom: 6 }}>
+                    TEAMS REGISTERED
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--px-font)',
+                      fontSize: '1.25rem',
+                      color: 'var(--px-salmon)',
+                    }}
+                  >
+                    {teams.length}
+                    <span style={{ color: 'var(--px-muted-strong)', marginLeft: 8 }}>
+                      / {maxRegistered}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </GlassCard>
+            </Panel>
           </div>
         )}
 
         {isLoading && <LoadingSpinner />}
 
         {!isLoading && teams.length === 0 && (
-          <GlassCard style={{ padding: 48, textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🏆</div>
-            <h2 style={{ fontWeight: 700, marginBottom: 8 }}>No teams registered yet</h2>
-            <p style={{ color: 'var(--muted)' }}>
-              Be the first — create a team and get 3 members to lock in your spot!
+          <Panel title="> NO TEAMS REGISTERED YET">
+            <p className="px-body" style={{ margin: 0, color: 'var(--px-muted-strong)' }}>
+              &gt; Be the first — create a team and get 3 members to lock in your spot.
             </p>
-          </GlassCard>
+          </Panel>
         )}
 
-        {/* Timeline */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {teams.map((team, i) => {
             const isFull = team.is_full || team.participant_count >= 6;
@@ -138,114 +142,105 @@ export default function RegisteredTeamsPage() {
             const isApplying = applying === team.team_id;
 
             return (
-              <GlassCard
-                key={team.team_id}
-                style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 20 }}
-              >
-                {/* Rank */}
+              <NestedCard key={team.team_id}>
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    flexShrink: 0,
-                    background:
-                      'linear-gradient(135deg, rgba(96,165,250,0.2), rgba(167,139,250,0.2))',
-                    border: '1px solid rgba(96,165,250,0.3)',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: 14,
-                    color: '#60a5fa',
+                    gap: 20,
+                    flexWrap: 'wrap',
                   }}
                 >
-                  {i + 1}
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>
-                    {team.team_name}
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--muted)' }}>
-                    <span>👥 {team.participant_count}/6 members</span>
-                    <span>🕒 {relativeTime(team.registered_at)}</span>
-                  </div>
-                </div>
-
-                {/* Member dots */}
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {Array.from({ length: 6 }, (_, j) => (
-                    <div
-                      key={j}
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        background:
-                          j < team.participant_count
-                            ? 'linear-gradient(135deg, #60a5fa, #22d3ee)'
-                            : 'rgba(255,255,255,0.1)',
-                        border:
-                          j < team.participant_count ? 'none' : '1px solid rgba(255,255,255,0.15)',
-                      }}
-                    />
-                  ))}
-                </div>
-
-                {/* Apply button (only for eligible participants) */}
-                {canApply && (
-                  <button
-                    disabled={isFull || !!isApplied || isApplying}
-                    onClick={() => !isFull && !isApplied && applyToTeam(team.team_id)}
-                    style={
-                      {
-                        padding: '8px 16px',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontFamily: 'inherit',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: isFull || isApplied ? 'default' : 'pointer',
-                        background: isFull
-                          ? 'rgba(255,255,255,0.05)'
-                          : isApplied
-                            ? 'rgba(52,211,153,0.15)'
-                            : 'linear-gradient(135deg, #60a5fa, #22d3ee)',
-                        color: isFull ? 'var(--muted)' : isApplied ? '#34d399' : '#0b1021',
-                        border: isApplied ? '1px solid rgba(52,211,153,0.3)' : 'none',
-                        opacity: isFull ? 0.5 : 1,
-                      } as React.CSSProperties
-                    }
+                  <span
+                    className="px-label"
+                    style={{
+                      color: 'var(--px-teal)',
+                      minWidth: 40,
+                      textAlign: 'center',
+                    }}
                   >
-                    {isFull ? 'Full' : isApplied ? 'Applied ✓' : isApplying ? '...' : 'Apply'}
-                  </button>
-                )}
-              </GlassCard>
+                    #{i + 1}
+                  </span>
+
+                  <div style={{ flex: 1, minWidth: '180px' }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--px-mono)',
+                        fontWeight: 700,
+                        fontSize: '0.95rem',
+                        color: 'var(--px-white)',
+                        marginBottom: 4,
+                      }}
+                    >
+                      {team.team_name}
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 12,
+                        fontFamily: 'var(--px-mono)',
+                        fontSize: '0.8rem',
+                        color: 'var(--px-muted-strong)',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <span>{team.participant_count}/6 members</span>
+                      <span>{relativeTime(team.registered_at)}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 4 }} aria-hidden="true">
+                    {Array.from({ length: 6 }, (_, j) => (
+                      <div
+                        key={j}
+                        style={{
+                          width: 8,
+                          height: 8,
+                          background:
+                            j < team.participant_count ? 'var(--px-teal)' : 'transparent',
+                          border: '1px solid var(--px-teal-dim)',
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {canApply && (
+                    <>
+                      {isApplied ? (
+                        <button
+                          type="button"
+                          className="px-btn-secondary"
+                          aria-pressed="true"
+                          aria-label="Application submitted"
+                          disabled
+                        >
+                          APPLIED
+                        </button>
+                      ) : isFull ? (
+                        <button
+                          type="button"
+                          className="px-btn-secondary"
+                          disabled
+                        >
+                          FULL
+                        </button>
+                      ) : (
+                        <Button
+                          variant="primary"
+                          onClick={() => applyToTeam(team.team_id)}
+                          disabled={isApplying}
+                        >
+                          {isApplying ? '…' : 'APPLY'}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </NestedCard>
             );
           })}
         </div>
       </main>
-
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 9999,
-            padding: '12px 20px',
-            borderRadius: 12,
-            background: 'rgba(52,211,153,0.15)',
-            border: '1px solid rgba(52,211,153,0.3)',
-            color: '#34d399',
-            fontWeight: 600,
-            fontSize: 14,
-          }}
-        >
-          {toast}
-        </div>
-      )}
     </>
   );
 }

@@ -1,10 +1,28 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Navbar from '@/components/layout/Navbar';
 import RequireAuth from '@/components/layout/RequireAuth';
 import PageHeader from '@/components/layout/PageHeader';
-import GlassCard from '@/components/common/GlassCard';
+import Panel from '@/components/common/Panel';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
+import Button from '@/components/common/Button';
 import api from '@/lib/api';
 
 interface TeamItem {
@@ -21,18 +39,81 @@ interface TeamPref {
 
 type Step = 'select' | 'rank' | 'done' | 'assigned';
 
-const RANK_LABELS = ['1st', '2nd', '3rd'];
-const RANK_COLORS = ['#60a5fa', '#a78bfa', '#f472b6'];
+function SortableTeamRow({
+  team,
+  rank,
+}: {
+  team: TeamItem;
+  rank: number;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: String(team.team_id),
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: '14px 16px',
+        background: isDragging ? 'var(--px-bg-elevated)' : 'var(--px-bg-card)',
+        border: isDragging
+          ? '2px solid var(--px-teal-strong)'
+          : '1px solid var(--px-teal-dim)',
+        cursor: 'grab',
+        userSelect: 'none',
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <span
+        className="px-label"
+        style={{
+          color: 'var(--px-teal)',
+          minWidth: 32,
+          textAlign: 'center',
+          fontSize: '0.65rem',
+        }}
+      >
+        #{rank}
+      </span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+          {team.team_name}
+        </div>
+        <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+          {team.participant_count} members
+        </div>
+      </div>
+      <span
+        aria-hidden="true"
+        style={{
+          color: 'var(--px-muted-strong)',
+          fontFamily: 'var(--px-font)',
+          fontSize: '0.65rem',
+        }}
+      >
+        ⠿
+      </span>
+    </div>
+  );
+}
 
 function MentorDashboardContent() {
-  // UI-only step state (select ↔ rank). 'done'/'assigned' derived from server.
   const [uiStep, setUiStep] = useState<'select' | 'rank'>('select');
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<TeamItem[]>([]);
   const [ranked, setRanked] = useState<TeamItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [dragOver, setDragOver] = useState<number | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const { data: matchingStatus, isLoading: statusLoading } = useQuery<{ confirmed: boolean }>({
     queryKey: ['matching-status'],
@@ -51,7 +132,6 @@ function MentorDashboardContent() {
     enabled: matchingStatus?.confirmed ?? false,
   });
 
-  // Derive step and submitted from server data (no useEffect needed)
   const serverPrefs = prefData?.preferences ?? [];
   const assigned = assignedData?.teams ?? [];
   const isConfirmed = matchingStatus?.confirmed ?? false;
@@ -104,94 +184,61 @@ function MentorDashboardContent() {
     }
   }
 
-  // Drag-and-drop for ranked slots
-  function handleDragStart(e: React.DragEvent, teamId: number) {
-    e.dataTransfer.setData('text/plain', String(teamId));
-    e.dataTransfer.effectAllowed = 'move';
-  }
-
-  function handleDrop(e: React.DragEvent, targetIndex: number) {
-    e.preventDefault();
-    setDragOver(null);
-    const draggedId = parseInt(e.dataTransfer.getData('text/plain'));
-    const sourceIndex = ranked.findIndex((t) => t.team_id === draggedId);
-    if (sourceIndex === -1 || sourceIndex === targetIndex) return;
-    const next = [...ranked];
-    const [item] = next.splice(sourceIndex, 1);
-    next.splice(targetIndex, 0, item);
-    setRanked(next);
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setRanked((prev) => {
+      const oldIndex = prev.findIndex((t) => String(t.team_id) === active.id);
+      const newIndex = prev.findIndex((t) => String(t.team_id) === over.id);
+      return arrayMove(prev, oldIndex, newIndex);
+    });
   }
 
   if (statusLoading) return <LoadingSpinner fullPage />;
 
+  const stepLabel =
+    step === 'select'
+      ? `STEP 1 — SELECT 3 TEAMS (${selected.length}/3)`
+      : step === 'rank'
+        ? 'STEP 2 — DRAG TO RANK'
+        : step === 'assigned'
+          ? 'ASSIGNMENTS CONFIRMED'
+          : 'PREFERENCES SUBMITTED';
+
   return (
-    <main style={{ padding: '80px 24px 80px', maxWidth: '900px', margin: '0 auto' }}>
+    <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
       <PageHeader
-        eyebrow="Mentor"
-        title="Mentor Dashboard"
-        subtitle="Select and rank the teams you'd prefer to mentor."
+        title="MENTOR DASHBOARD"
+        description="Select and rank the teams you'd prefer to mentor."
       />
 
-      {/* Step badge */}
       <div style={{ marginBottom: '24px' }}>
-        <span
-          style={{
-            padding: '6px 16px',
-            borderRadius: '999px',
-            fontSize: '13px',
-            fontWeight: 700,
-            ...(step === 'select'
-              ? {
-                  background: 'rgba(96,165,250,0.15)',
-                  color: '#60a5fa',
-                  border: '1px solid rgba(96,165,250,0.3)',
-                }
-              : step === 'rank'
-                ? {
-                    background: 'rgba(167,139,250,0.15)',
-                    color: '#a78bfa',
-                    border: '1px solid rgba(167,139,250,0.3)',
-                  }
-                : {
-                    background: 'rgba(52,211,153,0.15)',
-                    color: '#34d399',
-                    border: '1px solid rgba(52,211,153,0.3)',
-                  }),
-          }}
-        >
-          {step === 'select'
-            ? `Step 1 — Select 3 teams (${selected.length}/3)`
-            : step === 'rank'
-              ? 'Step 2 — Drag to rank'
-              : step === 'assigned'
-                ? '✅ Assignments confirmed'
-                : '✓ Preferences Submitted'}
-        </span>
+        <span className="px-status-chip">{stepLabel}</span>
       </div>
 
       {error && (
         <div
+          role="alert"
           style={{
-            background: 'rgba(239,68,68,0.15)',
-            border: '1px solid rgba(239,68,68,0.3)',
-            color: '#fca5a5',
-            padding: '14px',
-            borderRadius: '10px',
+            background: 'var(--px-bg-panel)',
+            border: '1px solid var(--px-danger)',
+            borderLeft: '2px solid var(--px-danger)',
+            color: 'var(--px-danger)',
+            fontFamily: 'var(--px-mono)',
+            fontSize: '0.85rem',
+            padding: '12px 14px',
             marginBottom: '24px',
-            fontSize: '14px',
           }}
         >
           {error}
         </div>
       )}
 
-      {/* Assigned teams state */}
       {step === 'assigned' && (
-        <GlassCard style={{ padding: 32 }}>
-          <h3 style={{ fontWeight: 800, fontSize: 20, marginBottom: 20 }}>Your Assigned Teams</h3>
+        <Panel title="ASSIGNED TEAMS">
           {assigned.length === 0 ? (
-            <p style={{ color: 'var(--muted)', textAlign: 'center', padding: '24px 0' }}>
-              No teams assigned.
+            <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+              &gt; No teams assigned.
             </p>
           ) : (
             assigned.map((t) => (
@@ -202,26 +249,34 @@ function MentorDashboardContent() {
                   alignItems: 'center',
                   gap: 16,
                   padding: '14px 0',
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  borderBottom: '1px solid var(--px-teal-dim)',
                 }}
               >
-                <span style={{ fontSize: 28 }}>🎯</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    background: 'var(--px-teal)',
+                    flexShrink: 0,
+                  }}
+                />
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 16 }}>{t.team_name}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 600 }}>
+                  <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+                    {t.team_name}
+                  </div>
+                  <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
                     {t.participant_count} members
                   </div>
                 </div>
               </div>
             ))
           )}
-        </GlassCard>
+        </Panel>
       )}
 
-      {/* Done state */}
       {step === 'done' && (
-        <GlassCard style={{ padding: 32 }}>
-          <h3 style={{ fontWeight: 800, fontSize: 20, marginBottom: 20 }}>Your Preferences</h3>
+        <Panel title="YOUR PREFERENCES">
           {[...submitted]
             .sort((a, b) => a.rank - b.rank)
             .map((p, i) => (
@@ -232,30 +287,28 @@ function MentorDashboardContent() {
                   alignItems: 'center',
                   gap: 16,
                   padding: '12px 0',
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  borderBottom: '1px solid var(--px-teal-dim)',
                 }}
               >
                 <span
+                  className="px-label"
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    background: `linear-gradient(135deg, ${RANK_COLORS[i]}, ${RANK_COLORS[(i + 1) % 3]})`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    color: '#0b1021',
-                    fontSize: 13,
+                    color: 'var(--px-teal)',
+                    minWidth: 36,
+                    textAlign: 'center',
+                    fontSize: '0.6rem',
                   }}
                 >
-                  {RANK_LABELS[i]}
+                  #{i + 1}
                 </span>
-                <span style={{ fontWeight: 700 }}>{p.team_name ?? `Team #${p.team_id}`}</span>
+                <span style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+                  {p.team_name ?? `Team #${p.team_id}`}
+                </span>
               </div>
             ))}
           <button
-            className="btn"
+            type="button"
+            className="px-btn-secondary"
             style={{ marginTop: 24 }}
             onClick={() => {
               setEditing(true);
@@ -263,12 +316,11 @@ function MentorDashboardContent() {
               setSelected([]);
             }}
           >
-            Change Preferences
+            CHANGE PREFERENCES
           </button>
-        </GlassCard>
+        </Panel>
       )}
 
-      {/* Select teams */}
       {step === 'select' && (
         <>
           {teamsLoading ? (
@@ -285,156 +337,128 @@ function MentorDashboardContent() {
               {teams.length === 0 && (
                 <div
                   style={{
-                    color: 'var(--muted)',
-                    textAlign: 'center',
-                    gridColumn: '1/-1',
+                    gridColumn: '1 / -1',
                     padding: 40,
                   }}
                 >
-                  No active teams available.
+                  <p className="px-body" style={{ color: 'var(--px-muted-strong)', textAlign: 'center', margin: 0 }}>
+                    &gt; No active teams available.
+                  </p>
                 </div>
               )}
               {teams.map((t) => {
                 const isSelected = !!selected.find((x) => x.team_id === t.team_id);
+                const disabled = !isSelected && selected.length >= 3;
                 return (
-                  <div
+                  <button
                     key={t.team_id}
-                    onClick={() => toggleTeam(t)}
+                    type="button"
+                    onClick={() => !disabled && toggleTeam(t)}
+                    aria-pressed={isSelected}
+                    disabled={disabled}
                     style={{
-                      cursor: 'pointer',
-                      borderRadius: 14,
+                      cursor: disabled ? 'not-allowed' : 'pointer',
                       padding: '20px',
-                      background: isSelected ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.03)',
+                      background: isSelected ? 'var(--px-bg-elevated)' : 'var(--px-bg-card)',
                       border: isSelected
-                        ? '1px solid rgba(96,165,250,0.4)'
-                        : '1px solid rgba(255,255,255,0.08)',
-                      opacity: !isSelected && selected.length >= 3 ? 0.4 : 1,
-                      transition: 'all 0.2s',
+                        ? '2px solid var(--px-teal-strong)'
+                        : '1px solid var(--px-teal-dim)',
+                      opacity: disabled ? 0.4 : 1,
+                      textAlign: 'left',
+                      color: 'var(--px-white)',
                       position: 'relative',
                     }}
                   >
                     {isSelected && (
                       <div
+                        aria-hidden="true"
                         style={{
                           position: 'absolute',
-                          top: 10,
-                          right: 10,
+                          top: 8,
+                          right: 8,
                           width: 24,
                           height: 24,
-                          borderRadius: '50%',
-                          background: '#60a5fa',
+                          background: 'var(--px-teal)',
+                          color: 'var(--px-bg)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontWeight: 900,
-                          color: '#0b1021',
-                          fontSize: 14,
+                          fontFamily: 'var(--px-font)',
+                          fontSize: '0.65rem',
                         }}
                       >
                         ✓
                       </div>
                     )}
-                    <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--px-mono)',
+                        fontWeight: 700,
+                        fontSize: '0.95rem',
+                        marginBottom: 6,
+                      }}
+                    >
                       {t.team_name}
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 13 }}>
+                    <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
                       {t.participant_count}/6 members
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              className="btn btn-primary"
+            <Button
+              variant="primary"
               disabled={selected.length !== 3}
               onClick={() => {
                 setRanked([...selected]);
                 setUiStep('rank');
               }}
             >
-              Next: Rank Teams →
-            </button>
+              NEXT: RANK TEAMS
+            </Button>
           </div>
         </>
       )}
 
-      {/* Rank teams */}
       {step === 'rank' && (
-        <GlassCard style={{ padding: 32 }}>
-          <p style={{ color: 'var(--muted)', marginBottom: 24, fontSize: 14 }}>
-            Drag teams between slots to reorder preferences.
+        <Panel title="RANK YOUR TEAMS">
+          <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}>
+            &gt; Drag or use Space + arrow keys to reorder your team preferences.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {ranked.map((t, i) => (
-              <div
-                key={t.team_id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, t.team_id)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(i);
-                }}
-                onDragLeave={() => setDragOver(null)}
-                onDrop={(e) => handleDrop(e, i)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  padding: '14px 16px',
-                  borderRadius: 10,
-                  cursor: 'grab',
-                  userSelect: 'none',
-                  background: dragOver === i ? 'rgba(96,165,250,0.1)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${dragOver === i ? 'rgba(96,165,250,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                  transition: 'all 0.2s',
-                }}
-              >
-                <span
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: '50%',
-                    background: `linear-gradient(135deg, ${RANK_COLORS[i]}, ${RANK_COLORS[(i + 1) % 3]})`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    color: '#0b1021',
-                    fontSize: 13,
-                    flexShrink: 0,
-                  }}
-                >
-                  {i + 1}
-                </span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700 }}>{t.team_name}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: 13 }}>
-                    {t.participant_count} members
-                  </div>
-                </div>
-                <span style={{ color: 'var(--muted)', fontSize: 18 }}>⠿</span>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext
+              items={ranked.map((t) => String(t.team_id))}
+              strategy={verticalListSortingStrategy}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {ranked.map((t, i) => (
+                  <SortableTeamRow key={t.team_id} team={t} rank={i + 1} />
+                ))}
               </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+            </SortableContext>
+          </DndContext>
+          <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap' }}>
             <button
-              className="btn"
+              type="button"
+              className="px-btn-secondary"
               onClick={() => setUiStep('select')}
             >
-              ← Back
+              BACK
             </button>
-            <button
-              className="btn btn-primary"
+            <Button
+              variant="primary"
               disabled={submitting}
               onClick={handleSubmit}
             >
-              {submitting ? 'Submitting...' : 'Submit Preferences'}
-            </button>
+              {submitting ? 'SUBMITTING…' : 'SUBMIT PREFERENCES'}
+            </Button>
           </div>
-        </GlassCard>
+        </Panel>
       )}
+
     </main>
   );
 }

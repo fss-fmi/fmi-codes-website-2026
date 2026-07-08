@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import RequireAuth from '@/components/layout/RequireAuth';
 import PageHeader from '@/components/layout/PageHeader';
-import GlassCard from '@/components/common/GlassCard';
+import Panel from '@/components/common/Panel';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import DragRankSlots from '@/components/common/DragRankSlots';
 import MentorCard from '@/components/mentors/MentorCard';
+import Button from '@/components/common/Button';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import type { Mentor, Preference } from '@/types/mentor';
@@ -20,7 +20,6 @@ function ChooseMentorContent() {
   const isCaptain = user?.is_captain;
   const qc = useQueryClient();
 
-  // UI-only step state (select ↔ rank). 'done'/'confirmed' are derived from server.
   const [uiStep, setUiStep] = useState<'select' | 'rank'>('select');
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<Mentor[]>([]);
@@ -39,7 +38,6 @@ function ChooseMentorContent() {
     enabled: !!teamId,
   });
 
-  // Derive step and submitted from server data (no useEffect needed)
   const serverPrefs = prefData?.preferences ?? [];
   const isConfirmed = matchingStatus?.confirmed ?? false;
   const step: Step = isConfirmed
@@ -91,172 +89,136 @@ function ChooseMentorContent() {
 
   if (!teamId) {
     return (
-      <main style={{ padding: '100px 24px', textAlign: 'center' }}>
-        <GlassCard style={{ maxWidth: 400, margin: '0 auto', padding: 32 }}>
-          <p style={{ color: 'var(--muted)', marginBottom: 20 }}>You must be on a team first.</p>
-          <Link
-            to="/team"
-            className="btn btn-primary"
-          >
-            Go to Team Page
-          </Link>
-        </GlassCard>
+      <main style={{ padding: '100px 24px', maxWidth: 480, margin: '0 auto' }}>
+        <Panel title="NO TEAM">
+          <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: '0 0 20px 0' }}>
+            &gt; You must be on a team first.
+          </p>
+          <Button variant="primary" href="/team">
+            GO TO TEAM PAGE
+          </Button>
+        </Panel>
       </main>
     );
   }
 
   if (!isCaptain) {
     return (
-      <main style={{ padding: '100px 24px', textAlign: 'center' }}>
-        <GlassCard style={{ maxWidth: 400, margin: '0 auto', padding: 32 }}>
-          <p style={{ color: 'var(--muted)' }}>Only the team captain can select mentors.</p>
-        </GlassCard>
+      <main style={{ padding: '100px 24px', maxWidth: 480, margin: '0 auto' }}>
+        <Panel title="ACCESS DENIED">
+          <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+            &gt; Only the team captain can select mentors.
+          </p>
+        </Panel>
       </main>
     );
   }
 
-  const RANK_LABELS = ['1st', '2nd', '3rd'];
+  const RANK_LABELS = ['#1', '#2', '#3'];
+  const stepLabel =
+    step === 'select'
+      ? `STEP 1 — SELECT 3 MENTORS (${selected.length}/3)`
+      : step === 'rank'
+        ? 'STEP 2 — DRAG TO RANK'
+        : step === 'confirmed'
+          ? 'MATCHING CONFIRMED'
+          : 'PREFERENCES SUBMITTED';
 
   return (
-    <main style={{ padding: '80px 24px 80px', maxWidth: '900px', margin: '0 auto' }}>
+    <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
       <PageHeader
-        eyebrow="Mentors"
-        title="Choose Your Mentors"
-        subtitle="Select and rank 3 mentors in order of preference."
+        title="CHOOSE YOUR MENTORS"
+        description="Select and rank 3 mentors in order of preference."
       />
 
-      {/* Step badge */}
       <div style={{ marginBottom: '24px' }}>
-        <span
-          style={{
-            padding: '6px 16px',
-            borderRadius: '999px',
-            fontSize: '13px',
-            fontWeight: 700,
-            ...(step === 'select'
-              ? {
-                  background: 'rgba(96,165,250,0.15)',
-                  color: '#60a5fa',
-                  border: '1px solid rgba(96,165,250,0.3)',
-                }
-              : step === 'rank'
-                ? {
-                    background: 'rgba(167,139,250,0.15)',
-                    color: '#a78bfa',
-                    border: '1px solid rgba(167,139,250,0.3)',
-                  }
-                : {
-                    background: 'rgba(52,211,153,0.15)',
-                    color: '#34d399',
-                    border: '1px solid rgba(52,211,153,0.3)',
-                  }),
-          }}
-        >
-          {step === 'select'
-            ? `Step 1 — Select 3 mentors (${selected.length}/3)`
-            : step === 'rank'
-              ? 'Step 2 — Drag to rank'
-              : step === 'confirmed'
-                ? '✅ Assignments confirmed'
-                : '✓ Preferences Submitted'}
-        </span>
+        <span className="px-status-chip">{stepLabel}</span>
       </div>
 
       {error && (
         <div
+          role="alert"
           style={{
-            background: 'rgba(239,68,68,0.15)',
-            border: '1px solid rgba(239,68,68,0.3)',
-            color: '#fca5a5',
-            padding: '14px',
-            borderRadius: '10px',
+            background: 'var(--px-bg-panel)',
+            border: '1px solid var(--px-danger)',
+            borderLeft: '2px solid var(--px-danger)',
+            color: 'var(--px-danger)',
+            fontFamily: 'var(--px-mono)',
+            fontSize: '0.85rem',
+            padding: '12px 14px',
             marginBottom: '24px',
-            fontSize: '14px',
           }}
         >
           {error}
         </div>
       )}
 
-      {/* Confirmed state */}
       {step === 'confirmed' && (
-        <GlassCard style={{ padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-          <h2 style={{ fontWeight: 800, marginBottom: 8 }}>Matching Confirmed</h2>
-          <p style={{ color: 'var(--muted)', marginBottom: 24 }}>
-            The admin has confirmed the matching results.
+        <Panel title="> MATCHING CONFIRMED">
+          <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}>
+            &gt; The admin has confirmed the matching results.
           </p>
-          <Link
-            to="/team"
-            className="btn btn-primary"
-          >
-            Go to Team Page
-          </Link>
-        </GlassCard>
+          <Button variant="primary" href="/team">
+            GO TO TEAM PAGE
+          </Button>
+        </Panel>
       )}
 
-      {/* Done state — submitted prefs */}
       {step === 'done' && (
-        <GlassCard style={{ padding: 32 }}>
-          <h3 style={{ fontWeight: 800, fontSize: 20, marginBottom: 20 }}>Your Preferences</h3>
-          {submitted
-            .sort((a, b) => a.rank - b.rank)
-            .map((p, i) => (
-              <div
-                key={p.mentor_id}
+        <Panel title="YOUR PREFERENCES">
+          {[...submitted].sort((a, b) => a.rank - b.rank).map((p, i) => (
+            <div
+              key={p.mentor_id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                padding: '12px 0',
+                borderBottom: '1px solid var(--px-teal-dim)',
+              }}
+            >
+              <span
+                className="px-label"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  padding: '12px 0',
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  color: 'var(--px-teal)',
+                  minWidth: 36,
+                  textAlign: 'center',
+                  fontSize: '0.6rem',
                 }}
               >
-                <span
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #60a5fa, #a78bfa)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    color: '#0b1021',
-                    fontSize: 14,
-                  }}
-                >
-                  {RANK_LABELS[i]}
-                </span>
-                <span style={{ fontWeight: 700 }}>
-                  {(p as Preference & { mentor_name?: string }).mentor_name ??
-                    `Mentor #${p.mentor_id}`}
-                </span>
-              </div>
-            ))}
-          <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+                {RANK_LABELS[i]}
+              </span>
+              <span
+                style={{
+                  fontFamily: 'var(--px-mono)',
+                  fontWeight: 700,
+                  color: 'var(--px-white)',
+                }}
+              >
+                {(p as Preference & { mentor_name?: string }).mentor_name ??
+                  `Mentor #${p.mentor_id}`}
+              </span>
+            </div>
+          ))}
+          <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <button
-              className="btn"
+              type="button"
+              className="px-btn-secondary"
               onClick={() => {
                 setEditing(true);
                 setUiStep('select');
                 setSelected([]);
               }}
             >
-              Change Preferences
+              CHANGE PREFERENCES
             </button>
-            <Link
-              to="/team"
-              className="btn btn-primary"
-              style={{ textDecoration: 'none' }}
-            >
-              Go to Team Page →
-            </Link>
+            <Button variant="primary" href="/team">
+              GO TO TEAM PAGE
+            </Button>
           </div>
-        </GlassCard>
+        </Panel>
       )}
 
-      {/* Select step */}
       {step === 'select' && (
         <>
           {isLoading ? (
@@ -272,89 +234,98 @@ function ChooseMentorContent() {
             >
               {mentors.map((m) => {
                 const isSelected = !!selected.find((x) => x.mentor_id === m.mentor_id);
+                const disabled = !isSelected && selected.length >= 3;
                 return (
-                  <div
+                  <button
                     key={m.mentor_id}
-                    onClick={() => toggleMentor(m)}
+                    type="button"
+                    onClick={() => !disabled && toggleMentor(m)}
+                    aria-pressed={isSelected}
+                    disabled={disabled}
                     style={{
-                      cursor: 'pointer',
-                      borderRadius: 16,
-                      outline: isSelected ? '2px solid #60a5fa' : 'none',
-                      opacity: !isSelected && selected.length >= 3 ? 0.4 : 1,
-                      transition: 'all 0.2s',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      border: isSelected
+                        ? '2px solid var(--px-teal-strong)'
+                        : '2px solid transparent',
+                      background: 'transparent',
+                      padding: 0,
+                      textAlign: 'left',
+                      opacity: disabled ? 0.4 : 1,
                       position: 'relative',
+                      width: '100%',
+                      display: 'block',
                     }}
                   >
                     {isSelected && (
                       <div
+                        aria-hidden="true"
                         style={{
                           position: 'absolute',
-                          top: 12,
-                          right: 12,
+                          top: 8,
+                          right: 8,
                           zIndex: 2,
                           width: 28,
                           height: 28,
-                          borderRadius: '50%',
-                          background: '#60a5fa',
+                          background: 'var(--px-teal)',
+                          color: 'var(--px-bg)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontWeight: 900,
-                          color: '#0b1021',
-                          fontSize: 16,
+                          fontFamily: 'var(--px-font)',
+                          fontSize: '0.7rem',
                         }}
                       >
                         ✓
                       </div>
                     )}
                     <MentorCard mentor={m} />
-                  </div>
+                  </button>
                 );
               })}
             </div>
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              className="btn btn-primary"
+            <Button
+              variant="primary"
               disabled={selected.length !== 3}
               onClick={() => {
                 setRanked(selected.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
                 setUiStep('rank');
               }}
             >
-              Next: Rank Mentors →
-            </button>
+              NEXT: RANK MENTORS
+            </Button>
           </div>
         </>
       )}
 
-      {/* Rank step */}
       {step === 'rank' && (
-        <GlassCard style={{ padding: 32 }}>
-          <p style={{ color: 'var(--muted)', marginBottom: 24, fontSize: 14 }}>
-            Drag to reorder your preferences. The top-ranked mentor is your first choice.
+        <Panel title="RANK YOUR MENTORS">
+          <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}>
+            &gt; Drag or use Space + arrow keys to reorder. Top-ranked is your first choice.
           </p>
           <DragRankSlots
             mentors={selected}
             initialPreferences={ranked}
             onChange={setRanked}
           />
-          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+          <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap' }}>
             <button
-              className="btn"
+              type="button"
+              className="px-btn-secondary"
               onClick={() => setUiStep('select')}
             >
-              ← Back
+              BACK
             </button>
-            <button
-              className="btn btn-primary"
+            <Button
+              variant="primary"
               disabled={ranked.length < 3 || submitting}
               onClick={handleSubmit}
             >
-              {submitting ? 'Submitting...' : 'Submit Preferences'}
-            </button>
+              {submitting ? 'SUBMITTING…' : 'SUBMIT PREFERENCES'}
+            </Button>
           </div>
-        </GlassCard>
+        </Panel>
       )}
     </main>
   );

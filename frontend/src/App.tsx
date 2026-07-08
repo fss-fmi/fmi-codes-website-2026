@@ -4,6 +4,7 @@ import queryClient from '@/lib/queryClient';
 import { AuthProvider } from '@/context/AuthContext';
 import { ConfigProvider } from '@/context/ConfigContext';
 import RouteErrorBoundary from '@/components/common/ErrorBoundary';
+import { ToastProvider } from '@/components/common/useToast';
 
 import HomePage from '@/pages/HomePage';
 import RegulationsPage from '@/pages/RegulationsPage';
@@ -44,8 +45,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ConfigProvider>
-          <BrowserRouter>
-            <RouteErrorBoundary>
+          <ToastProvider>
+            <BrowserRouter>
+              <RouteErrorBoundary>
               <Routes>
                 {/* Public */}
                 <Route
@@ -145,6 +147,7 @@ export default function App() {
               </Routes>
             </RouteErrorBoundary>
           </BrowserRouter>
+          </ToastProvider>
         </ConfigProvider>
       </AuthProvider>
     </QueryClientProvider>

@@ -25,6 +25,8 @@ export default function ScoreInput({ teamId, teamName, currentScore, onSave }: P
     }
   }
 
+  const inputId = `score-input-${teamId}`;
+
   return (
     <div
       style={{
@@ -32,36 +34,46 @@ export default function ScoreInput({ teamId, teamName, currentScore, onSave }: P
         alignItems: 'center',
         gap: '12px',
         padding: '10px 0',
-        borderBottom: '1px solid rgba(148,163,184,0.08)',
+        borderBottom: '1px solid var(--px-teal-dim)',
       }}
     >
-      <div style={{ flex: 1, fontSize: '0.9rem', fontWeight: 500 }}>{teamName}</div>
+      <label
+        htmlFor={inputId}
+        style={{
+          flex: 1,
+          fontFamily: 'var(--px-mono)',
+          fontSize: '0.9rem',
+          fontWeight: 500,
+          color: 'var(--px-white)',
+        }}
+      >
+        {teamName}
+      </label>
       <input
+        id={inputId}
         type="number"
         min={0}
         max={100}
         step={0.5}
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        aria-label={`Score for ${teamName}`}
+        className="px-input-field"
         style={{
-          width: '80px',
-          padding: '6px 10px',
-          borderRadius: '8px',
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          color: 'var(--text)',
-          fontSize: '0.9rem',
+          width: '90px',
+          padding: '8px 10px',
           textAlign: 'center',
-          outline: 'none',
         }}
       />
       <button
+        type="button"
         onClick={handleSave}
         disabled={saving}
-        className="btn btn-primary"
-        style={{ padding: '6px 14px', fontSize: '0.78rem' }}
+        className="px-btn-secondary"
+        aria-label={`Save score for ${teamName}`}
+        style={{ padding: '10px 14px', fontSize: '0.55rem' }}
       >
-        {saving ? '…' : saved ? '✓' : 'Save'}
+        {saving ? '…' : saved ? '✓' : 'SAVE'}
       </button>
     </div>
   );

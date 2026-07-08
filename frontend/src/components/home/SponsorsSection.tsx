@@ -25,13 +25,15 @@ const SCALE_OVERRIDES: Record<string, number> = {
   Waracle: 1.2,
 };
 
-// Duplicate for infinite scroll
 const TRACK = [...SPONSORS, ...SPONSORS];
 
 function useCarousel(trackRef: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
     let pos = 0;
     let rafId: number;
     const speed = 0.4;
@@ -51,35 +53,43 @@ function useCarousel(trackRef: React.RefObject<HTMLDivElement | null>) {
 function SponsorLogo({ file, alt, premium }: { file: string; alt: string; premium: boolean }) {
   const scale = SCALE_OVERRIDES[alt];
   return (
-    <div
+    <a
+      href="/partners"
+      aria-label={alt}
       style={{
         position: 'relative',
-        width: 'clamp(70px, calc(100vw / 12), 120px)',
+        width: 'clamp(80px, calc(100vw / 12), 130px)',
         flexShrink: 0,
-        borderRadius: '16px',
         margin: '8px',
-        padding: '6px',
-        border: `1px solid ${premium ? 'rgba(235,184,112,0.2)' : 'rgba(255,255,255,0.06)'}`,
-        background: premium ? 'rgba(174,129,81,0.05)' : 'rgba(255,255,255,0.02)',
+        padding: '10px',
+        border: premium ? '2px solid var(--px-teal-border)' : '1px solid var(--px-teal-dim)',
+        background: 'var(--px-bg-card)',
         display: 'grid',
         placeItems: 'center',
         aspectRatio: '1/1',
-        transition:
-          'transform 0.3s cubic-bezier(0.22,1,0.36,1), box-shadow 0.3s, border-color 0.3s',
-        overflow: 'hidden',
+        textDecoration: 'none',
+        outline: 'none',
+      }}
+      onFocus={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--px-focus-glow)';
+      }}
+      onBlur={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'none';
       }}
     >
       <img
         src={`/companyLogos/${file}`}
         alt={alt}
+        loading="lazy"
         style={{
           width: '78%',
           height: '78%',
           objectFit: 'contain',
+          filter: 'brightness(0.9) contrast(1.05)',
           ...(scale ? { transform: `scale(${scale})` } : {}),
         }}
       />
-    </div>
+    </a>
   );
 }
 
@@ -88,139 +98,72 @@ export default function SponsorsSection() {
   useCarousel(trackRef);
 
   return (
-    <section style={{ padding: '60px 24px 80px', position: 'relative' }}>
+    <section style={{ padding: '80px 24px 96px', maxWidth: 1200, margin: '0 auto' }}>
       <div
         style={{
-          position: 'absolute',
-          top: 0,
-          left: '10%',
-          right: '10%',
-          height: '1px',
-          background: 'linear-gradient(90deg, transparent, rgba(212,168,67,0.15), transparent)',
+          background: 'var(--px-bg-panel)',
+          border: '2px solid var(--px-teal-border)',
+          padding: '32px 24px',
         }}
-      />
-
-      {/* Header */}
-      <div
-        className="reveal"
-        style={{ textAlign: 'center', marginBottom: '48px' }}
       >
-        <div
-          style={{
-            display: 'inline-block',
-            fontSize: '0.62rem',
-            textTransform: 'uppercase',
-            letterSpacing: '0.18em',
-            color: 'var(--torch-gold)',
-            fontFamily: 'var(--font-heading)',
-            fontWeight: 700,
-            marginBottom: '12px',
-            padding: '4px 16px',
-            borderRadius: '100px',
-            background: 'rgba(212,168,67,0.07)',
-            border: '1px solid rgba(212,168,67,0.2)',
-          }}
-        >
-          ⚜️ Patrons of the Realm
-        </div>
-        <h2
-          style={{
-            fontFamily: 'var(--font-heading)',
-            fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
-            fontWeight: 700,
-            color: 'var(--parchment)',
-            marginBottom: '12px',
-            lineHeight: 1.2,
-          }}
-        >
-          Backed by Industry Leaders
-        </h2>
-        <p
-          style={{
-            fontSize: '0.95rem',
-            color: 'var(--parchment-dim)',
-            maxWidth: '500px',
-            margin: '0 auto 18px',
-            lineHeight: 1.7,
-          }}
-        >
-          The companies shaping tomorrow’s tech — supporting the next generation of builders.
-        </p>
-        <a
-          href="/partners"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.82rem',
-            fontFamily: 'var(--font-heading)',
-            fontWeight: 600,
-            color: 'var(--torch-gold)',
-            textDecoration: 'none',
-            letterSpacing: '0.06em',
-            opacity: 0.8,
-            transition: 'opacity 0.2s',
-          }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.opacity = '1')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.opacity = '0.8')}
-        >
-          View All Partners
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <h2 className="px-prompt-heading" style={{ margin: '0 0 12px 0' }}>
+            SPONSORS
+          </h2>
+          <p
+            className="px-body-sm"
+            style={{
+              color: 'var(--px-muted-strong)',
+              maxWidth: '52ch',
+              margin: '0 auto 16px',
+            }}
           >
-            <path d="M5 12h14" />
-            <path d="m12 5 7 7-7 7" />
-          </svg>
-        </a>
-      </div>
+            The companies backing the next generation of builders.
+          </p>
+          <a
+            href="/partners"
+            className="px-btn-ghost"
+            style={{ display: 'inline-block' }}
+          >
+            VIEW ALL PARTNERS →
+          </a>
+        </div>
 
-      {/* Carousel */}
-      <div
-        className="reveal"
-        style={{ overflow: 'hidden', position: 'relative', width: '100%' }}
-      >
-        {/* fade edges */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            bottom: 0,
-            width: '200px',
-            zIndex: 2,
-            background: 'linear-gradient(to right, var(--bg), transparent)',
-            pointerEvents: 'none',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: '200px',
-            zIndex: 2,
-            background: 'linear-gradient(to left, var(--bg), transparent)',
-            pointerEvents: 'none',
-          }}
-        />
-        <div
-          ref={trackRef}
-          style={{ display: 'flex', flexWrap: 'nowrap', willChange: 'transform' }}
-        >
-          {TRACK.map((s, i) => (
-            <SponsorLogo
-              key={i}
-              {...s}
-            />
-          ))}
+        <div style={{ overflow: 'hidden', position: 'relative', width: '100%' }}>
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: '80px',
+              zIndex: 2,
+              background: 'linear-gradient(to right, var(--px-bg-panel), transparent)',
+              pointerEvents: 'none',
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: '80px',
+              zIndex: 2,
+              background: 'linear-gradient(to left, var(--px-bg-panel), transparent)',
+              pointerEvents: 'none',
+            }}
+          />
+          <div
+            ref={trackRef}
+            style={{ display: 'flex', flexWrap: 'nowrap', willChange: 'transform' }}
+          >
+            {TRACK.map((s, i) => (
+              <SponsorLogo key={i} {...s} />
+            ))}
+          </div>
         </div>
       </div>
     </section>

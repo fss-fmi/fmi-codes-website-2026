@@ -89,15 +89,25 @@
   --px-bg: #0d1b2a;
   --px-bg-card: #0a2240;
   --px-bg-panel: #0c1f35;
+  --px-bg-elevated: #0e2a4a;
   --px-teal: #2dd4bf;
+  --px-teal-strong: #3fe0cc;
   --px-teal-dim: rgba(45, 212, 191, 0.18);
   --px-teal-border: rgba(45, 212, 191, 0.55);
   --px-salmon: #f4845f;
+  --px-salmon-hover: #f79373;
   --px-salmon-dim: rgba(244, 132, 95, 0.15);
   --px-white: #e8f4f8;
   --px-muted: #8baab8;
+  --px-muted-strong: #a8c3d0;
   --px-green: #4ecdc4;
+  --px-amber: #f9a825;
+  --px-danger: #e05252;
+  --px-focus-glow: 0 0 0 2px rgba(45, 212, 191, 0.35);
+  --px-focus-glow-salmon: 0 0 0 2px rgba(244, 132, 95, 0.35);
   --px-font: 'Press Start 2P', monospace;
+  --px-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --px-ease: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-gate: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -118,9 +128,9 @@ html {
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  background: var(--px-bg);
+  color: var(--px-white);
   min-height: 100vh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
@@ -1236,4 +1246,299 @@ body {
 /* body bg override when arcade theme active */
 body.arcade-theme {
   background: var(--px-bg) !important;
+}
+
+/* ════════════════════════════════════════════
+   ARCADE PRIMITIVES — headings, panels, buttons, inputs
+   ════════════════════════════════════════════ */
+.px-prompt-heading {
+  font-family: var(--px-font);
+  font-size: clamp(0.75rem, 1.6vw, 1rem);
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--px-white);
+  margin: 0 0 24px 0;
+}
+.px-prompt-heading::before {
+  content: '> ';
+  color: var(--px-teal);
+  margin-right: 6px;
+}
+.px-page-title {
+  font-family: var(--px-font);
+  font-size: clamp(1rem, 2.4vw, 1.6rem);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--px-salmon);
+  margin: 0;
+}
+.px-page-title::before {
+  content: '> ';
+  color: var(--px-teal);
+  margin-right: 6px;
+}
+.px-label {
+  font-family: var(--px-font);
+  font-size: 0.55rem;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--px-muted-strong);
+}
+.px-body {
+  font-family: var(--px-mono);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--px-white);
+}
+.px-body-sm {
+  font-family: var(--px-mono);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--px-white);
+  opacity: 0.9;
+}
+.px-muted-body {
+  font-family: var(--px-mono);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--px-muted-strong);
+}
+.px-panel-outer {
+  background: var(--px-bg-panel);
+  border: 2px solid var(--px-teal-border);
+  border-radius: 0;
+  padding: 24px;
+  color: var(--px-white);
+}
+.px-card-nested {
+  background: var(--px-bg-card);
+  border: 1px solid var(--px-teal-dim);
+  border-radius: 0;
+  padding: 20px;
+  color: var(--px-white);
+}
+.px-input-field {
+  width: 100%;
+  background: var(--px-bg-panel);
+  color: var(--px-white);
+  font-family: var(--px-mono);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  padding: 12px 14px;
+  border: 1px solid var(--px-teal-dim);
+  border-radius: 0;
+  outline: none;
+  transition:
+    border-color 180ms var(--px-ease),
+    box-shadow 180ms var(--px-ease);
+}
+.px-input-field::placeholder {
+  color: var(--px-muted);
+}
+.px-input-field:focus-visible,
+.px-input-field:focus {
+  border-color: var(--px-teal-strong);
+  box-shadow: var(--px-focus-glow);
+}
+.px-input-field:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.px-input-field[aria-invalid='true'] {
+  border-color: var(--px-danger);
+}
+.px-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--px-salmon);
+  color: var(--px-bg);
+  font-family: var(--px-font);
+  font-size: 0.65rem;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 14px 28px;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background 180ms var(--px-ease),
+    transform 100ms;
+  text-decoration: none;
+}
+.px-btn-primary:hover:not(:disabled) {
+  background: var(--px-salmon-hover);
+}
+.px-btn-primary:focus-visible {
+  outline: none;
+  box-shadow: var(--px-focus-glow-salmon);
+}
+.px-btn-primary:active:not(:disabled) {
+  transform: translateY(2px);
+}
+.px-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.px-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--px-bg-panel);
+  color: var(--px-teal);
+  font-family: var(--px-font);
+  font-size: 0.6rem;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 12px 24px;
+  border: 2px solid var(--px-teal-border);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background 180ms var(--px-ease),
+    color 180ms var(--px-ease),
+    border-color 180ms var(--px-ease);
+  text-decoration: none;
+}
+.px-btn-secondary:hover:not(:disabled) {
+  background: var(--px-bg-card);
+  color: var(--px-teal-strong);
+  border-color: var(--px-teal-strong);
+}
+.px-btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: var(--px-focus-glow);
+}
+.px-btn-secondary[aria-pressed='true'] {
+  border-color: var(--px-salmon);
+  color: var(--px-salmon);
+  background: var(--px-salmon-dim);
+}
+.px-btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.px-btn-ghost {
+  background: transparent;
+  color: var(--px-teal);
+  font-family: var(--px-font);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 150ms var(--px-ease);
+  text-decoration: none;
+}
+.px-btn-ghost:hover:not(:disabled) {
+  color: var(--px-teal-strong);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
+}
+.px-btn-ghost:focus-visible {
+  outline: none;
+  box-shadow: var(--px-focus-glow);
+}
+.px-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--px-danger);
+  font-family: var(--px-font);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 20px;
+  border: 2px solid var(--px-danger);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background 180ms var(--px-ease),
+    color 180ms var(--px-ease);
+}
+.px-btn-danger:hover:not(:disabled) {
+  background: var(--px-danger);
+  color: var(--px-white);
+}
+.px-btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(224, 82, 82, 0.35);
+}
+
+/* Terminal cursor blink */
+@keyframes pxCursorBlink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.px-cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1em;
+  background: var(--px-teal);
+  vertical-align: middle;
+  animation: pxCursorBlink 1s step-start infinite;
+}
+
+/* Progress bar (accessible, teal) */
+.px-progress-track {
+  height: 6px;
+  background: var(--px-teal-dim);
+  border-radius: 0;
+  overflow: hidden;
+}
+.px-progress-fill {
+  height: 100%;
+  background: var(--px-teal);
+  transition: width 200ms var(--px-ease);
+}
+
+/* Status chip (semantic pill) — only place pill radius is allowed */
+.px-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--px-font);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--px-bg-elevated);
+  color: var(--px-teal);
+}
+
+/* Reduced motion guard for arcade */
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-left,
+  .reveal-right,
+  .reveal-up {
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .px-btn-primary:active {
+    transform: none !important;
+  }
+  .px-cursor {
+    animation: none !important;
+    opacity: 1 !important;
+  }
 }
