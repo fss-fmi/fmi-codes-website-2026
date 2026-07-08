@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import GradientText from '@/components/common/GradientText';
 
 const SPONSORS = [
   { file: 'avenga.svg', alt: 'Avenga', premium: true },
@@ -97,54 +96,89 @@ export default function SponsorsSection() {
           left: '10%',
           right: '10%',
           height: '1px',
-          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)',
+          background: 'linear-gradient(90deg, transparent, rgba(212,168,67,0.15), transparent)',
         }}
       />
 
       {/* Header */}
       <div
         className="reveal"
-        style={{ textAlign: 'center', marginBottom: '56px' }}
+        style={{ textAlign: 'center', marginBottom: '48px' }}
       >
         <div
           style={{
             display: 'inline-block',
-            fontSize: '0.7rem',
+            fontSize: '0.62rem',
             textTransform: 'uppercase',
-            letterSpacing: '0.15em',
-            color: 'var(--accent)',
+            letterSpacing: '0.18em',
+            color: 'var(--torch-gold)',
+            fontFamily: 'var(--font-heading)',
             fontWeight: 700,
             marginBottom: '12px',
-            padding: '4px 14px',
+            padding: '4px 16px',
             borderRadius: '100px',
-            background: 'rgba(96,165,250,0.08)',
-            border: '1px solid rgba(96,165,250,0.15)',
+            background: 'rgba(212,168,67,0.07)',
+            border: '1px solid rgba(212,168,67,0.2)',
           }}
         >
-          Partners
+          ⚜️ Patrons of the Realm
         </div>
         <h2
           style={{
-            fontSize: 'clamp(1.8rem, 3.5vw, 2.8rem)',
-            fontWeight: 800,
-            color: '#fff',
-            marginBottom: '14px',
+            fontFamily: 'var(--font-heading)',
+            fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
+            fontWeight: 700,
+            color: 'var(--parchment)',
+            marginBottom: '12px',
             lineHeight: 1.2,
           }}
         >
-          Backed by <GradientText>Industry Leaders</GradientText>
+          Backed by Industry Leaders
         </h2>
         <p
           style={{
-            fontSize: '1rem',
-            color: 'var(--muted)',
-            maxWidth: '520px',
-            margin: '0 auto',
+            fontSize: '0.95rem',
+            color: 'var(--parchment-dim)',
+            maxWidth: '500px',
+            margin: '0 auto 18px',
             lineHeight: 1.7,
           }}
         >
-          The companies shaping tomorrow's tech — supporting the next generation of builders.
+          The companies shaping tomorrow’s tech — supporting the next generation of builders.
         </p>
+        <a
+          href="/partners"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.82rem',
+            fontFamily: 'var(--font-heading)',
+            fontWeight: 600,
+            color: 'var(--torch-gold)',
+            textDecoration: 'none',
+            letterSpacing: '0.06em',
+            opacity: 0.8,
+            transition: 'opacity 0.2s',
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.opacity = '1')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.opacity = '0.8')}
+        >
+          View All Partners
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
+        </a>
       </div>
 
       {/* Carousel */}

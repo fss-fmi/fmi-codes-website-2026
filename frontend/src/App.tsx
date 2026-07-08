@@ -8,6 +8,7 @@ import RouteErrorBoundary from '@/components/common/ErrorBoundary';
 import HomePage from '@/pages/HomePage';
 import RegulationsPage from '@/pages/RegulationsPage';
 import SchedulePage from '@/pages/SchedulePage';
+import PartnersPage from '@/pages/PartnersPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 
 import LoginPage from '@/pages/auth/LoginPage';
@@ -58,6 +59,10 @@ export default function App() {
                 <Route
                   path="/schedule"
                   element={<SchedulePage />}
+                />
+                <Route
+                  path="/partners"
+                  element={<PartnersPage />}
                 />
                 <Route
                   path="/mentors"

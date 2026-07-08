@@ -1,22 +1,65 @@
-import TechPill from '@/components/common/TechPill';
-import AvailChip from '@/components/common/AvailChip';
 import type { Mentor } from '@/types/mentor';
 
 interface Props {
   mentor: Mentor;
 }
 
+function AvailDot({ text }: { text: string }) {
+  const t = text.toLowerCase();
+  let color = 'rgba(176,190,197,0.7)';
+  if (t.includes('free') || t.includes('available') || t.includes('свободен')) {
+    color = '#4ade80';
+  } else if (t.includes('partial') || t.includes('частично')) {
+    color = 'var(--px-salmon)';
+  } else if (t.includes('full') || t.includes('taken') || t.includes('зает')) {
+    color = '#f87171';
+  }
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        fontFamily: 'var(--px-font)',
+        fontSize: '0.38rem',
+        color: 'var(--px-muted)',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.08em',
+      }}
+    >
+      <span
+        style={{
+          width: '8px',
+          height: '8px',
+          background: color,
+          flexShrink: 0,
+        }}
+      />
+      {text}
+    </div>
+  );
+}
+
 export default function MentorCard({ mentor }: Props) {
-  // technologies comes from Postgres TEXT[] — already an array
   const techs = Array.isArray(mentor.technologies) ? mentor.technologies.filter(Boolean) : [];
 
   return (
     <div
-      className="glass-card"
-      style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}
+      className="px-card"
+      style={{ padding: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      {/* Photo */}
+      <div
+        style={{
+          width: '100%',
+          aspectRatio: '1',
+          overflow: 'hidden',
+          borderBottom: '2px solid var(--px-teal-border)',
+          background: 'var(--px-bg)',
+          flexShrink: 0,
+          position: 'relative',
+        }}
+      >
         {mentor.picture_filename ? (
           <img
             src={
@@ -26,68 +69,95 @@ export default function MentorCard({ mentor }: Props) {
             }
             alt={mentor.name}
             style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: '50%',
+              width: '100%',
+              height: '100%',
               objectFit: 'cover',
-              flexShrink: 0,
-              border: '2px solid rgba(96,165,250,0.25)',
+              display: 'block',
             }}
           />
         ) : (
           <div
             style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: '50%',
-              flexShrink: 0,
-              background: 'linear-gradient(135deg, #6366f1, #60a5fa)',
+              width: '100%',
+              height: '100%',
+              background: 'var(--px-bg-panel)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '1.2rem',
-              fontWeight: 700,
-              color: '#fff',
+              fontFamily: 'var(--px-font)',
+              fontSize: '2rem',
+              color: 'var(--px-teal)',
             }}
           >
             {mentor.name[0]?.toUpperCase() ?? '?'}
           </div>
         )}
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3
-            style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)', marginBottom: '2px' }}
-          >
-            {mentor.name}
-          </h3>
-          <div style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 500 }}>
-            {mentor.company_name}
-          </div>
-        </div>
       </div>
 
-      {/* Availability */}
-      {mentor.availability_text && <AvailChip text={mentor.availability_text} />}
+      {/* Info */}
+      <div
+        style={{
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          flex: 1,
+        }}
+      >
+        <h3
+          style={{
+            fontFamily: 'var(--px-font)',
+            fontSize: '0.5rem',
+            color: 'var(--px-white)',
+            lineHeight: 1.5,
+            margin: 0,
+          }}
+        >
+          {mentor.name}
+        </h3>
 
-      {/* Bio */}
-      {mentor.bio && (
-        <p style={{ fontSize: '0.85rem', color: 'var(--muted)', lineHeight: 1.7, flexGrow: 1 }}>
-          {mentor.bio}
-        </p>
-      )}
+        {mentor.company_name && (
+          <div
+            style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.75rem',
+              color: 'var(--px-teal)',
+            }}
+          >
+            {mentor.company_name}
+          </div>
+        )}
 
-      {/* Technologies */}
-      {techs.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          {techs.map((tech, i) => (
-            <TechPill
-              key={tech}
-              tech={tech}
-              index={i}
-            />
-          ))}
-        </div>
-      )}
+        {mentor.availability_text && <AvailDot text={mentor.availability_text} />}
+
+        {mentor.bio && (
+          <p
+            style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.75rem',
+              color: 'var(--px-muted)',
+              lineHeight: 1.7,
+              flexGrow: 1,
+              margin: 0,
+            }}
+          >
+            {mentor.bio}
+          </p>
+        )}
+
+        {techs.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: 'auto' }}>
+            {techs.map((tech) => (
+              <span
+                key={tech}
+                className="px-chip"
+              >
+                {tech}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

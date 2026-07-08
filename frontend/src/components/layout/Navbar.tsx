@@ -7,7 +7,7 @@ export default function Navbar() {
   const { user, role, logout } = useAuth();
   const { REGISTRATION_OPEN } = useConfig();
   const navigate = useNavigate();
-  const [scrolled, setScrolled] = useState(false);
+  const [, setScrolled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
 
@@ -53,33 +53,27 @@ export default function Navbar() {
     navigate('/login');
   }
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `nav-link${isActive ? ' active drawer-nav-active' : ''}`;
-
   return (
     <>
       <nav
-        className={`navbar${scrolled ? ' scrolled' : ''}`}
+        className="px-navbar"
         id="mainNavbar"
         ref={navRef}
       >
-        <div className="navbar-container">
+        <div className="px-navbar-inner">
           {/* Logo */}
-          <div className="navbar-logo">
-            <Link
-              to="/"
-              aria-label="Go to home"
-            >
-              <img
-                src="/images/FSS_logo_vector_trans_white.svg"
-                alt="FSS"
-              />
-            </Link>
-          </div>
+          <Link
+            to="/"
+            className="px-logo"
+            aria-label="Go to home"
+          >
+            FMI <span>&#123;CODES&#125;</span> 2026
+          </Link>
 
           {/* Mobile hamburger */}
           <button
             className="mobile-toggle"
+            style={{ fontFamily: 'inherit', color: 'var(--px-teal)', marginLeft: 'auto' }}
             aria-label="Open navigation"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(true)}
@@ -87,7 +81,7 @@ export default function Navbar() {
             &#9776;
           </button>
 
-          {/* Nav drawer */}
+          {/* Nav links */}
           <div
             className={`navbar-menu${drawerOpen ? ' drawer-open' : ''}`}
             id="navDrawer"
@@ -96,128 +90,108 @@ export default function Navbar() {
               className="drawer-close"
               aria-label="Close navigation"
               onClick={closeDrawer}
+              style={{ color: 'var(--px-teal)' }}
             >
               &#10005;
             </button>
 
             <div
-              className="nav-links"
+              className="px-nav-links"
               onClick={closeDrawer}
             >
               <NavLink
-                to="/"
-                end
-                className={navLinkClass}
-              >
-                Home
-              </NavLink>
-              <NavLink
                 to="/regulations"
-                className={navLinkClass}
+                className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
               >
-                Regulations
+                REGULATIONS
               </NavLink>
               <NavLink
                 to="/schedule"
-                className={navLinkClass}
+                className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
               >
-                Schedule
+                SCHEDULE
               </NavLink>
               <NavLink
                 to="/mentors"
-                className={navLinkClass}
+                className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
               >
-                Mentors
+                MENTORS
               </NavLink>
               <NavLink
                 to="/registeredTeams"
-                className={navLinkClass}
+                className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
               >
-                Teams
+                TEAMS
               </NavLink>
               <NavLink
                 to="/rankings"
-                className={navLinkClass}
+                className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
               >
-                Rankings
+                RANKINGS
               </NavLink>
-
-              {/* Role-specific links */}
               {role === 'participant' && (
                 <NavLink
                   to="/team"
-                  className={navLinkClass}
+                  className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
                 >
-                  My Team
+                  MY TEAM
                 </NavLink>
               )}
               {role === 'mentor' && (
                 <NavLink
                   to="/mentorDashboard"
-                  className={navLinkClass}
+                  className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
                 >
-                  Dashboard
+                  DASHBOARD
                 </NavLink>
               )}
               {role === 'admin' && (
                 <NavLink
                   to="/admin/matching"
-                  className={navLinkClass}
+                  className={({ isActive }) => `px-nav-link${isActive ? ' active' : ''}`}
                 >
-                  Admin
+                  ADMIN
                 </NavLink>
               )}
             </div>
 
-            <div className="nav-actions">
+            <div
+              className="nav-actions"
+              style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' }}
+            >
               {user ? (
                 <>
                   <Link
                     to="/profile"
-                    className="profile-btn"
+                    className="px-nav-link"
                     aria-label="Profile"
                   >
-                    <svg
-                      width="22"
-                      height="22"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle
-                        cx="12"
-                        cy="7"
-                        r="4"
-                      />
-                    </svg>
+                    PROFILE
                   </Link>
                   <button
-                    className="login-btn logout-btn"
+                    className="px-nav-link"
                     onClick={handleLogout}
+                    style={{ background: 'none', cursor: 'pointer' }}
                   >
-                    Logout
+                    LOGOUT
                   </button>
                 </>
               ) : (
                 <>
                   <Link
                     to="/login"
-                    className="login-btn ghost-btn"
+                    className="px-nav-link"
                     onClick={closeDrawer}
                   >
-                    Login
+                    LOGIN
                   </Link>
                   {REGISTRATION_OPEN && (
                     <Link
                       to="/registration"
-                      className="login-btn"
+                      className="px-nav-link register"
                       onClick={closeDrawer}
                     >
-                      Register
+                      REGISTER
                     </Link>
                   )}
                 </>
@@ -235,22 +209,7 @@ export default function Navbar() {
       />
 
       {/* Spacer so content doesn't hide under navbar */}
-      <div className="navbar-spacer" />
-
-      {/* Floating geo shapes */}
-      <div
-        className="geo-shapes"
-        aria-hidden="true"
-      >
-        <div className="geo-shape geo-hex-1" />
-        <div className="geo-shape geo-circle-1" />
-        <div className="geo-shape geo-diamond-1" />
-        <div className="geo-shape geo-ring-1" />
-        <div className="geo-shape geo-triangle-1" />
-        <div className="geo-shape geo-dot-1" />
-        <div className="geo-shape geo-hex-2" />
-        <div className="geo-shape geo-circle-2" />
-      </div>
+      <div className="px-spacer" />
     </>
   );
 }
