@@ -25,7 +25,17 @@ const COURSES = [
     group: 'Bachelor',
     values: ['Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year'],
   },
-  { group: 'Master', values: ['Master 1st Year', 'Master 2nd Year'] },
+  {
+    group: 'Master',
+    values: [
+      'Masters 1st Year',
+      'Masters 2nd Year',
+      'Masters 3rd Year',
+      'Masters 4th Year',
+      'Masters 5th Year',
+      'Masters 6th Year',
+    ],
+  },
 ];
 
 export default function RegistrationPage() {

@@ -13,6 +13,7 @@ Covers:
 import hashlib
 import secrets
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -600,6 +601,70 @@ class TestConfirmPasswordReset:
             json={"token": raw_token, "new_password": "ValidPassword1!", "role": "mentor"},
         )
         assert rv.status_code == 400
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Session revocation epoch (R-25) — password change/reset must evict existing
+# sessions, not just the caller's own token.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestSessionRevocation:
+    def test_change_password_revokes_a_previously_issued_session(self, client, seeds):
+        """A token issued before a password change must stop working afterwards.
+
+        This is the multi-session case: the caller's own token is blocklisted by
+        jti, but a *second* live session (e.g. another device, or a stolen cookie)
+        is only killed by the tokens_valid_from epoch bump. In the test env Redis
+        is absent so the jti blocklist is a no-op — the epoch is what does the work.
+        """
+        register(client, 1, seeds)
+        # An earlier, independent session for the same user.
+        old_token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        assert client.get("/api/auth/me", headers=bearer(old_token)).status_code == 200
+
+        # JWT `iat` is whole-second; ensure the epoch bump lands in a strictly
+        # later second than the old token so the assertion is deterministic.
+        time.sleep(1.1)
+
+        # A second session performs the password change.
+        change_token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": DEFAULT_PW, "new_password": "NewPassword99!"},
+            headers=bearer(change_token),
+        )
+        assert rv.status_code == 200
+
+        # The pre-change session must now be rejected by the revocation epoch.
+        rv_old = client.get("/api/auth/me", headers=bearer(old_token))
+        assert rv_old.status_code == 401
+
+    def test_password_reset_revokes_existing_sessions(self, client, seeds, db_conn):
+        """The account-recovery case: after a reset, a session that predates the
+        reset (an attacker holding a stolen cookie) must be evicted."""
+        register(client, 1, seeds)
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
+            user_id = cur.fetchone()["id"]
+
+        # A live session obtained before the reset.
+        stolen_token = login_token(client, "user1@e2e.test", DEFAULT_PW)
+        assert client.get("/api/auth/me", headers=bearer(stolen_token)).status_code == 200
+
+        # Whole-second `iat` — ensure the reset epoch lands in a later second.
+        time.sleep(1.1)
+
+        raw_token = _insert_reset_token(db_conn, user_id, "participant")
+        rv = client.post(
+            "/api/auth/reset-password/confirm",
+            json={"token": raw_token, "new_password": "BrandNewPassword1!", "role": "participant"},
+        )
+        assert rv.status_code == 200
+
+        # The pre-reset session must no longer reach protected endpoints.
+        rv_stolen = client.get("/api/auth/me", headers=bearer(stolen_token))
+        assert rv_stolen.status_code == 401
 
 
 # ─── Internal helpers used only within this module ────────────────────────

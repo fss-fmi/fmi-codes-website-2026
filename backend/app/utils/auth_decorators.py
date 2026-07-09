@@ -2,6 +2,7 @@
 
 import functools
 import logging
+from datetime import UTC
 
 import jwt
 from flask import g, jsonify, request
@@ -9,6 +10,23 @@ from flask import g, jsonify, request
 from app.services.auth_service import decode_token
 
 logger = logging.getLogger(__name__)
+
+
+def extract_token():
+    """Return the raw JWT string from the request, or None.
+
+    Reads the httpOnly cookie first (React SPA), then falls back to the
+    Authorization: Bearer header. This is the single source of truth for
+    where a token lives on a request — optional-auth endpoints must use
+    this rather than reading one source directly, or they silently ignore
+    cookie-authenticated SPA callers.
+    """
+    token = request.cookies.get("token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    return token
 
 
 def token_required(f):
@@ -22,14 +40,7 @@ def token_required(f):
 
     @functools.wraps(f)
     def decorated(*args, **kwargs):
-        # Primary: httpOnly cookie (React SPA)
-        token = request.cookies.get("token")
-
-        # Fallback: Authorization header (internal tools, legacy)
-        if not token:
-            auth_header = request.headers.get("Authorization", "")
-            if auth_header.startswith("Bearer "):
-                token = auth_header[7:]
+        token = extract_token()
 
         if not token:
             return jsonify({"success": False, "error": "Authentication required"}), 401
@@ -51,6 +62,12 @@ def token_required(f):
         if is_revoked(jti):
             return jsonify({"success": False, "error": "Token has been revoked"}), 401
 
+        # R-25: Reject tokens issued before the user's revocation epoch. A password
+        # change/reset bumps tokens_valid_from, invalidating every session that
+        # predates the new credential — the per-jti blocklist can't do "all sessions".
+        if _token_predates_revocation_epoch(payload):
+            return jsonify({"success": False, "error": "Token has been revoked"}), 401
+
         g.current_user = {
             "user_id": payload["user_id"],
             "role": payload["role"],
@@ -60,6 +77,47 @@ def token_required(f):
         return f(*args, **kwargs)
 
     return decorated
+
+
+def _token_predates_revocation_epoch(payload):
+    """Return True if the token was issued before the user's tokens_valid_from.
+
+    Admins have no participant/mentor row (role is authoritative, id is unused),
+    so there is no epoch to compare against — they are never revoked this way.
+    A user with tokens_valid_from = NULL has no epoch set → all tokens valid.
+    """
+    role = payload.get("role")
+    if role not in ("participant", "mentor"):
+        return False
+
+    iat = payload.get("iat")
+    if iat is None:
+        return False
+
+    from flask import current_app
+
+    from app.database import execute_query
+
+    table = "participants" if role == "participant" else "mentors"
+    row = execute_query(
+        current_app,
+        f"SELECT tokens_valid_from FROM {table} WHERE id = %s",  # noqa: S608 — table from fixed allowlist
+        (payload["user_id"],),
+        fetch_one=True,
+    )
+    if not row or row["tokens_valid_from"] is None:
+        return False
+
+    valid_from = row["tokens_valid_from"]
+    if valid_from.tzinfo is None:
+        valid_from = valid_from.replace(tzinfo=UTC)
+
+    # JWT `iat` is whole-second (RFC 7518), while tokens_valid_from carries
+    # sub-second precision. Compare at second granularity so the fresh token the
+    # change-password endpoint mints in the same second as the epoch bump is NOT
+    # revoked, while any session from a prior second is. Strict `<` on the
+    # truncated epoch second gives exactly that.
+    return int(iat) < int(valid_from.timestamp())
 
 
 def participant_required(f):

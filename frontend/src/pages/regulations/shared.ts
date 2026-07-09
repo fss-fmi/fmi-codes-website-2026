@@ -7,7 +7,7 @@ export interface Regulation {
 }
 
 /**
- * Shared data hook used by all three Regulations variants.
+ * Shared data hook for the Regulations rulebook.
  * The API returns rules in a fixed order; we don't sort them client-side.
  */
 export function useRegulations() {
@@ -42,18 +42,3 @@ export const CHAPTERS: Chapter[] = [
   { key: 'compete', num: '04', title: 'COMPETE', ruleIndexes: [8, 9, 10, 11] },
   { key: 'legal', num: '05', title: 'LEGAL', ruleIndexes: [12] },
 ];
-
-/** Given a rule index, find which chapter it belongs to. */
-export function chapterOf(ruleIndex: number): Chapter {
-  return (
-    CHAPTERS.find((c) => c.ruleIndexes.includes(ruleIndex)) ?? CHAPTERS[0]
-  );
-}
-
-/**
- * Pad a rule index to a two-digit quest number, e.g. 0 → "01", 12 → "13".
- * Used by Variants B and C.
- */
-export function questNumber(ruleIndex: number): string {
-  return String(ruleIndex + 1).padStart(2, '0');
-}

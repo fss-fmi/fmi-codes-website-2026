@@ -375,10 +375,7 @@ function MatchingPanel() {
   const [exportData, setExportData] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(CLOSED_DIALOG);
 
-  const { data } = useQuery<{
-    state: string;
-    assignments?: { team_name: string; mentor_name: string }[];
-  }>({
+  const { data } = useQuery<{ success: boolean; confirmed: boolean }>({
     queryKey: ['matching-status'],
     queryFn: () => api.get('/api/matching-status'),
   });
@@ -389,7 +386,6 @@ function MatchingPanel() {
   }>({
     queryKey: ['matching-results'],
     queryFn: () => api.get('/api/admin/matching-results'),
-    enabled: false,
   });
 
   async function doRunMatching() {
@@ -468,15 +464,11 @@ function MatchingPanel() {
     }
   }
 
-  const state = data?.state ?? 'pending';
-  const assignments = results?.results ?? data?.assignments ?? [];
+  const assignments = results?.results ?? [];
+  const confirmed = data?.confirmed ?? false;
+  const hasRun = assignments.length > 0;
 
-  const stateLabel =
-    state === 'confirmed'
-      ? 'CONFIRMED'
-      : state === 'complete'
-        ? 'RAN — NOT CONFIRMED'
-        : 'PENDING';
+  const stateLabel = confirmed ? 'CONFIRMED' : hasRun ? 'RAN — NOT CONFIRMED' : 'PENDING';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -516,7 +508,7 @@ function MatchingPanel() {
               type="button"
               className="px-btn-secondary"
               onClick={askConfirm}
-              disabled={confirming || state === 'confirmed'}
+              disabled={confirming || confirmed || !hasRun}
             >
               {confirming ? 'CONFIRMING…' : 'CONFIRM'}
             </button>
@@ -627,7 +619,7 @@ function ScoresPanel() {
 
   async function saveScore(teamId: number, score: number) {
     try {
-      const d = await api.post<{ success: boolean; error?: string }>(
+      const d = await api.put<{ success: boolean; error?: string }>(
         `/api/admin/teams/${teamId}/score`,
         { score },
       );
@@ -730,10 +722,12 @@ function MatchingContent() {
     queryFn: () => api.get('/api/admin/preference-status'),
   });
 
-  const { data: matchData } = useQuery<{ state: string; assignment_count?: number }>({
+  const { data: matchData } = useQuery<{ success: boolean; confirmed: boolean }>({
     queryKey: ['matching-status'],
     queryFn: () => api.get('/api/matching-status'),
   });
+
+  const matchingLabel = matchData ? (matchData.confirmed ? 'CONFIRMED' : 'PENDING') : undefined;
 
   const tabs: { key: Tab; label: string; badge?: string | number }[] = [
     {
@@ -746,7 +740,7 @@ function MatchingContent() {
       label: 'PREFERENCES',
       badge: prefData ? `${prefData.teams_submitted}` : undefined,
     },
-    { key: 'matching', label: 'MATCHING', badge: matchData?.state?.toUpperCase() },
+    { key: 'matching', label: 'MATCHING', badge: matchingLabel },
     { key: 'scores', label: 'SCORES' },
   ];
 
@@ -803,7 +797,7 @@ function MatchingContent() {
           label="MENTORS W/ PREFS"
           value={prefData ? `${prefData.mentors_submitted}/${prefData.mentors_total}` : '—'}
         />
-        <KPICard label="MATCHING STATE" value={matchData?.state?.toUpperCase() ?? '—'} />
+        <KPICard label="MATCHING STATE" value={matchingLabel ?? '—'} />
       </div>
 
       <div

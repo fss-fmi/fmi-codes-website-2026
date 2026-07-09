@@ -30,7 +30,6 @@ import BrowseTeamsPage from '@/pages/teams/BrowseTeamsPage';
 import RegisteredTeamsPage from '@/pages/teams/RegisteredTeamsPage';
 
 import RankingsPage from '@/pages/rankings/RankingsPage';
-import RankingsLivePage from '@/pages/rankings/RankingsLivePage';
 
 import MatchingPage from '@/pages/admin/MatchingPage';
 import { useConfig } from '@/context/ConfigContext';
@@ -92,10 +91,6 @@ export default function App() {
                 <Route
                   path="/rankings"
                   element={<RankingsPage />}
-                />
-                <Route
-                  path="/rankings/live"
-                  element={<RankingsLivePage />}
                 />
 
                 {/* Auth */}

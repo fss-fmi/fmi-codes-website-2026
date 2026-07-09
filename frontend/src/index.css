@@ -1,90 +1,9 @@
 @import 'tailwindcss';
 
 /* ════════════════════════════════════════════
-   DESIGN SYSTEM — CSS VARIABLES
-   ════════════════════════════════════════════ */
-@theme {
-  /* Core palette */
-  --color-bg: #050816;
-  --color-bg-card: rgba(255, 255, 255, 0.03);
-  --color-border: rgba(255, 255, 255, 0.06);
-  --color-text: #e2e8f0;
-  --color-muted: #64748b;
-  --color-accent: #60a5fa;
-  --color-accent-2: #22d3ee;
-  --color-purple: #a78bfa;
-  --color-pink: #f472b6;
-  --color-emerald: #34d399;
-  --color-amber: #f59e0b;
-  --color-green: #22c55e;
-
-  /* shadcn/ui required tokens */
-  --color-background: #050816;
-  --color-foreground: #e2e8f0;
-  --color-primary: #60a5fa;
-  --color-primary-foreground: #0b1021;
-  --color-secondary: rgba(255, 255, 255, 0.06);
-  --color-secondary-foreground: #e2e8f0;
-  --color-muted-foreground: #64748b;
-  --color-destructive: #ef4444;
-  --color-ring: #60a5fa;
-  --color-radius: 0.75rem;
-
-  /* Fonts */
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-}
-
-/* ════════════════════════════════════════════
    CSS CUSTOM PROPERTIES (runtime, non-@theme)
    ════════════════════════════════════════════ */
 :root {
-  --bg: #050816;
-  --bg-card: rgba(255, 255, 255, 0.03);
-  --border: rgba(255, 255, 255, 0.06);
-  --text: #e2e8f0;
-  --muted: #64748b;
-  --accent: #60a5fa;
-  --accent-2: #22d3ee;
-  --purple: #a78bfa;
-  --pink: #f472b6;
-  --emerald: #34d399;
-  --amber: #f59e0b;
-  --green: #22c55e;
-  --panel-border: rgba(255, 255, 255, 0.08);
-  --card-glow: 0 20px 60px rgba(0, 0, 0, 0.45);
-
-  /* ── Castle Palette ───────────────────────────────── */
-  --castle-void: #08090f;
-  --castle-stone: #12151e;
-  --castle-keep: #1a1f2e;
-  --castle-mortar: rgba(255, 255, 255, 0.05);
-  --torch-gold: #d4a843;
-  --torch-gold-glow: rgba(212, 168, 67, 0.25);
-  --torch-amber: #e8791a;
-  --torch-ember: rgba(232, 121, 26, 0.18);
-  --steel-silver: #b0bec5;
-  --steel-blue: #546e7a;
-  --moon-blue: #7eb8d4;
-  --moon-glow: rgba(126, 184, 212, 0.2);
-  --royal-crimson: #c0392b;
-  --royal-purple: #6a1b9a;
-  --royal-emerald: #1b5e20;
-  --banner-gold: #f9a825;
-  --fog-light: rgba(200, 210, 230, 0.04);
-  --fog-mid: rgba(180, 195, 220, 0.07);
-  --parchment: #e8dcc8;
-  --parchment-dim: #a09070;
-  --parchment-faint: #5a5040;
-  --stone-edge: rgba(212, 168, 67, 0.12);
-  --armor-edge: rgba(176, 190, 197, 0.1);
-  --gradient-banner: linear-gradient(135deg, #d4a843 0%, #f9a825 40%, #e8791a 100%);
-  --gradient-torch: linear-gradient(135deg, #d4a843 0%, #e8791a 50%, #c0392b 100%);
-  --gradient-sky: radial-gradient(ellipse at 50% 0%, #1a1f2e 0%, #08090f 70%);
-  --font-display: 'Cinzel Decorative', serif;
-  --font-heading: 'Cinzel', serif;
-  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
-
   /* ── Pixel / Arcade Palette ─────────────────────────── */
   --px-bg: #0d1b2a;
   --px-bg-card: #0a2240;
@@ -108,8 +27,6 @@
   --px-font: 'Press Start 2P', monospace;
   --px-mono: 'JetBrains Mono', ui-monospace, monospace;
   --px-ease: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-gate: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* ════════════════════════════════════════════
@@ -137,121 +54,8 @@ body {
 }
 
 /* ════════════════════════════════════════════
-   BACKGROUND LAYERS
-   ════════════════════════════════════════════ */
-.dot-grid {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
-}
-
-.spotlight {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    600px circle at var(--mx, 50%) var(--my, 30%),
-    rgba(96, 165, 250, 0.07),
-    rgba(34, 211, 238, 0.04) 40%,
-    transparent 70%
-  );
-  transition: background 0.3s ease;
-}
-
-.blobs {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(120px);
-  opacity: 0.13;
-  will-change: transform;
-}
-
-.blob-1 {
-  width: 700px;
-  height: 700px;
-  background: #7dd3fc;
-  top: -15%;
-  left: -10%;
-  animation: blobFloat1 18s ease-in-out infinite;
-}
-.blob-2 {
-  width: 500px;
-  height: 500px;
-  background: #f9a8d4;
-  top: 40%;
-  right: -12%;
-  animation: blobFloat2 22s ease-in-out infinite;
-}
-.blob-3 {
-  width: 450px;
-  height: 450px;
-  background: #a78bfa;
-  bottom: -10%;
-  left: 25%;
-  animation: blobFloat3 20s ease-in-out infinite;
-}
-
-.noise {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 128px 128px;
-}
-
-.page-wrap {
-  position: relative;
-  z-index: 2;
-  width: 100%;
-}
-
-/* ════════════════════════════════════════════
    KEYFRAMES
    ════════════════════════════════════════════ */
-@keyframes blobFloat1 {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(120px, 80px) scale(1.1);
-  }
-}
-@keyframes blobFloat2 {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(-80px, -60px) scale(1.15);
-  }
-}
-@keyframes blobFloat3 {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(70px, -50px) scale(1.08);
-  }
-}
 @keyframes fadeSlideUp {
   from {
     opacity: 0;
@@ -312,24 +116,11 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .knight-figure {
-    display: none;
-  }
-  .fog-layer {
-    display: none;
-  }
 }
 
 /* ════════════════════════════════════════════
    PIXEL ART / ARCADE DESIGN SYSTEM
    ════════════════════════════════════════════ */
-
-/* Pixel border box — the fundamental panel */
-.px-panel {
-  background: var(--px-bg-card);
-  border: 2px solid var(--px-teal-border);
-  position: relative;
-}
 
 /* Pixel navbar */
 .px-navbar {
@@ -698,26 +489,6 @@ body {
 .px-card:hover {
   border-color: var(--px-teal);
   transform: translateY(-2px);
-}
-
-/* Pixel heading */
-.px-heading {
-  font-family: var(--px-font);
-  color: var(--px-salmon);
-  line-height: 1.6;
-}
-
-/* Pixel body text */
-.px-text {
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--px-white);
-  line-height: 1.7;
-}
-
-/* Pixel muted text */
-.px-muted {
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--px-muted);
 }
 
 /* Pixel tech chip */

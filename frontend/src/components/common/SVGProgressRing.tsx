@@ -9,8 +9,8 @@ interface Props {
 export default function SVGProgressRing({
   size = 60,
   value,
-  strokeColor = '#60a5fa',
-  trackColor = 'rgba(96,165,250,0.15)',
+  strokeColor = 'var(--px-teal)',
+  trackColor = 'var(--px-teal-dim)',
   strokeWidth = 5,
 }: Props) {
   const r = (size - strokeWidth * 2) / 2;

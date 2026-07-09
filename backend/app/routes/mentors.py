@@ -2,7 +2,7 @@
 
 from io import BytesIO
 
-from flask import current_app, g, jsonify, render_template, request, send_file
+from flask import current_app, g, jsonify, request, send_file
 
 from app.routes import mentors_bp
 from app.services import mentor_selection_service, mentor_service
@@ -10,26 +10,6 @@ from app.utils.auth_decorators import (
     captain_required,
     mentor_required,
 )
-
-
-@mentors_bp.route("/mentors", methods=["GET"])
-def mentors_page():
-    """Serve the public mentors listing page (or stay-tuned placeholder)"""
-    if current_app.config.get("MENTORS_STAY_TUNED"):
-        return render_template("mentors/mentorsStayTuned.html")
-    return render_template("mentors/mentors.html")
-
-
-@mentors_bp.route("/chooseMentor", methods=["GET"])
-def choose_mentor_page():
-    """Serve the captain's mentor preference page"""
-    return render_template("mentors/chooseMentor.html")
-
-
-@mentors_bp.route("/mentorDashboard", methods=["GET"])
-def mentor_dashboard_page():
-    """Serve the mentor dashboard / team preference page"""
-    return render_template("mentors/mentorDashboard.html")
 
 
 # ── Public mentor API ──────────────────────────────────────────────

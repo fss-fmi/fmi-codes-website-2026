@@ -5,8 +5,8 @@ export default function LoadingSpinner({ fullPage = false }: { fullPage?: boolea
         width: '40px',
         height: '40px',
         borderRadius: '50%',
-        border: '3px solid rgba(96,165,250,0.2)',
-        borderTopColor: 'var(--accent)',
+        border: '3px solid var(--px-teal-dim)',
+        borderTopColor: 'var(--px-teal)',
         animation: 'spin 0.8s linear infinite',
       }}
     />

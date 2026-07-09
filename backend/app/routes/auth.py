@@ -8,7 +8,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 import psycopg2
-from flask import current_app, g, jsonify, make_response, render_template, request
+from flask import current_app, g, jsonify, make_response, request
 
 from app import limiter
 from app.database import execute_query, get_db_cursor
@@ -83,20 +83,6 @@ def _set_auth_cookies(response, token: str, role: str) -> None:  # noqa: ARG001
         max_age=_COOKIE_MAX_AGE,
         secure=secure,
     )
-
-
-@auth_bp.route("/login", methods=["GET"])
-def login_page():
-    """Serve the login page"""
-    return render_template("auth/login.html")
-
-
-@auth_bp.route("/registration", methods=["GET"])
-def registration_page():
-    """Serve the registration page or the closed notice depending on REGISTRATION_OPEN config"""
-    if current_app.config.get("REGISTRATION_OPEN"):
-        return render_template("auth/registration.html")
-    return render_template("auth/registration_closed.html")
 
 
 @auth_bp.route("/api/auth/register", methods=["POST"])
@@ -385,10 +371,10 @@ def change_password():
 
     if user["role"] == "participant":
         _hash_select_query = "SELECT password_hash FROM participants WHERE id = %s"
-        _hash_update_query = "UPDATE participants SET password_hash = %s, password_reset_requested_at = NULL WHERE id = %s"
+        _hash_update_query = "UPDATE participants SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s"
     else:
         _hash_select_query = "SELECT password_hash FROM mentors WHERE id = %s"
-        _hash_update_query = "UPDATE mentors SET password_hash = %s, password_reset_requested_at = NULL WHERE id = %s"
+        _hash_update_query = "UPDATE mentors SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s"
     row = execute_query(
         current_app,
         _hash_select_query,
@@ -400,10 +386,10 @@ def change_password():
         return jsonify({"success": False, "error": "Current password is incorrect"}), 401
 
     new_hash = hash_password(new_password)
-    # Also clear any in-flight password reset for this user.
-    # If a reset email is currently mid-send (SMTP window), its final conditional
-    # UPDATE checks `password_reset_requested_at IS NOT NULL` — clearing it here
-    # makes that UPDATE a no-op, so this manual change is never silently overwritten.
+    # R-25: Bump the revocation epoch so every OTHER active session for this user
+    # is invalidated (the fresh token issued below is minted after this commits,
+    # so its `iat` is >= the epoch and it survives). The per-jti blocklist below
+    # still covers the caller's current token for immediate, Redis-fast rejection.
     execute_query(
         current_app,
         _hash_update_query,
@@ -567,12 +553,12 @@ def confirm_password_reset():
 
         if role == "participant":
             cursor.execute(
-                "UPDATE participants SET password_hash = %s WHERE id = %s",
+                "UPDATE participants SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s",
                 (new_hash, user_id),
             )
         else:
             cursor.execute(
-                "UPDATE mentors SET password_hash = %s WHERE id = %s",
+                "UPDATE mentors SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s",
                 (new_hash, user_id),
             )
 

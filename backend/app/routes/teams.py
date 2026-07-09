@@ -2,37 +2,18 @@
 
 import threading
 
-from flask import current_app, g, jsonify, render_template, request
+from flask import current_app, g, jsonify, request
 
 from app.database import execute_query
 from app.routes import teams_bp
 from app.services.email_service import send_join_request_notification
 from app.services.team_service import MAX_TEAM_MEMBERS, TeamService
-from app.utils.auth_decorators import captain_required, participant_required, token_required
-
-
-@teams_bp.route("/team", methods=["GET"])
-def team_page():
-    """Serve the team dashboard page"""
-    return render_template("teams/team.html")
-
-
-@teams_bp.route("/createTeam", methods=["GET"])
-def create_team_page():
-    """Serve the create team page"""
-    return render_template("teams/createTeam.html")
-
-
-@teams_bp.route("/joinTeam", methods=["GET"])
-def join_team_page():
-    """Serve the join team page"""
-    return render_template("teams/joinTeam.html")
-
-
-@teams_bp.route("/registeredTeams", methods=["GET"])
-def registered_teams_page():
-    """Serve the registered teams showcase page"""
-    return render_template("teams/registeredTeams.html")
+from app.utils.auth_decorators import (
+    captain_required,
+    extract_token,
+    participant_required,
+    token_required,
+)
 
 
 @teams_bp.route("/api/teams/registered", methods=["GET"])
@@ -59,13 +40,15 @@ def get_registered_teams():
     can_apply = False
     participant_id = None
 
-    # Optional auth: try to read JWT but don't fail if absent/invalid
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
+    # Optional auth: try to read JWT (cookie-first, like token_required) but
+    # don't fail if absent/invalid. Reading the cookie is essential — the SPA
+    # authenticates via httpOnly cookie and never sends an Authorization header.
+    token = extract_token()
+    if token:
         try:
             from app.services.auth_service import decode_token
 
-            payload = decode_token(auth_header[7:])
+            payload = decode_token(token)
             if payload.get("role") == "participant":
                 participant_id = payload["user_id"]
                 # Check if participant already has a team
@@ -292,12 +275,6 @@ def remove_member(team_id, member_id):
 
 
 # ── Browse / Join Request flow ─────────────────────────────────
-
-
-@teams_bp.route("/browseTeams", methods=["GET"])
-def browse_teams_page():
-    """Serve the browse available teams page"""
-    return render_template("teams/browseTeams.html")
 
 
 @teams_bp.route("/api/teams/available", methods=["GET"])

@@ -195,6 +195,12 @@ ALTER TABLE teams ADD COLUMN IF NOT EXISTS captain_id BIGINT REFERENCES particip
 CREATE INDEX IF NOT EXISTS idx_teams_captain_id ON teams(captain_id);
 CREATE INDEX IF NOT EXISTS idx_teams_join_code ON teams(join_code);
 
+-- Session revocation epoch: any JWT issued before this instant is rejected.
+-- Bumped on password change/reset so a compromised session cannot outlive the
+-- credential that authorized it. NULL means "no epoch set — all tokens valid".
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS tokens_valid_from TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE mentors ADD COLUMN IF NOT EXISTS tokens_valid_from TIMESTAMPTZ DEFAULT NULL;
+
 -- ============================================================================
 -- SECTION 3: JUNCTION TABLES (Many-to-Many Relationships)
 -- ============================================================================

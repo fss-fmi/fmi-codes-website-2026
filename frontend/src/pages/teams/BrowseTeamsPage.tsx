@@ -14,7 +14,7 @@ interface BrowseTeam {
   team_id: number;
   team_name: string;
   participant_count: number;
-  applied?: boolean;
+  already_applied?: boolean;
 }
 
 function BrowseTeamsContent() {
@@ -76,7 +76,7 @@ function BrowseTeamsContent() {
           }}
         >
           {teams.map((t) => {
-            const isApplied = applied.has(t.team_id) || !!t.applied;
+            const isApplied = applied.has(t.team_id) || !!t.already_applied;
             const isApplying = applyingTo === t.team_id;
             const pct = Math.round((t.participant_count / 6) * 100);
 

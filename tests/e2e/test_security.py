@@ -26,7 +26,6 @@ from tests.e2e.conftest import (
     DEFAULT_PW,
     admin_token,
     bearer,
-    new_client,
     register,
     register_and_token,
     register_extra_and_token,

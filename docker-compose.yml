@@ -32,8 +32,9 @@ services:
 
   app:
     container_name: fmi-codes-app
-    build:
-      context: ./backend
+    # Prod runs the immutable image published by the CD pipeline
+    # (.github/workflows/docker-cd.yaml). Local builds live in docker-compose.dev.yml.
+    image: fssfmi/fmi-codes-backend:latest
     # M6: No host port mapping in production — traffic flows through Nginx only.
     environment:
       FLASK_ENV: ${FLASK_ENV}
