@@ -142,7 +142,10 @@ export default function DragRankSlots({
 }: Props) {
   const [ranked, setRanked] = useState<Mentor[]>(() => {
     const sorted = [...initialPreferences].sort((a, b) => a.rank - b.rank);
-    return sorted.map((p) => mentors.find((m) => m.mentor_id === p.mentor_id)!).filter(Boolean);
+    const mapped: (Mentor | undefined)[] = sorted.map((p) =>
+      mentors.find((m) => m.mentor_id === p.mentor_id),
+    );
+    return mapped.filter((m): m is Mentor => Boolean(m));
   });
 
   const sensors = useSensors(
@@ -157,7 +160,7 @@ export default function DragRankSlots({
       const oldIndex = prev.findIndex((m) => String(m.mentor_id) === active.id);
       const newIndex = prev.findIndex((m) => String(m.mentor_id) === over.id);
       const next = arrayMove(prev, oldIndex, newIndex);
-      onChange(next.map((m, i) => ({ mentor_id: m.mentor_id, rank: (i + 1) as 1 | 2 | 3 })));
+      onChange(next.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
       return next;
     });
   }
@@ -167,7 +170,7 @@ export default function DragRankSlots({
     if (ranked.find((m) => m.mentor_id === mentor.mentor_id)) return;
     setRanked((prev) => {
       const next = [...prev, mentor];
-      onChange(next.map((m, i) => ({ mentor_id: m.mentor_id, rank: (i + 1) as 1 | 2 | 3 })));
+      onChange(next.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
       return next;
     });
   }
@@ -175,7 +178,7 @@ export default function DragRankSlots({
   function removeMentor(mentorId: number) {
     setRanked((prev) => {
       const next = prev.filter((m) => m.mentor_id !== mentorId);
-      onChange(next.map((m, i) => ({ mentor_id: m.mentor_id, rank: (i + 1) as 1 | 2 | 3 })));
+      onChange(next.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
       return next;
     });
   }

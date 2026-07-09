@@ -2,7 +2,7 @@
 
 from io import BytesIO
 
-from flask import current_app, g, jsonify, request, send_file
+from flask import g, jsonify, request, send_file
 
 from app.routes import mentors_bp
 from app.services import mentor_selection_service, mentor_service
@@ -10,7 +10,6 @@ from app.utils.auth_decorators import (
     captain_required,
     mentor_required,
 )
-
 
 # ── Public mentor API ──────────────────────────────────────────────
 

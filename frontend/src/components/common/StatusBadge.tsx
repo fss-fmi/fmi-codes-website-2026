@@ -7,7 +7,9 @@ type Variant =
   | 'member'
   | 'pending'
   | 'accepted'
-  | 'declined';
+  | 'declined'
+  | 'invalidated'
+  | 'cancelled';
 
 const configs: Record<Variant, { color: string; label?: string }> = {
   active: { color: 'var(--px-green)', label: 'ACTIVE' },
@@ -19,6 +21,8 @@ const configs: Record<Variant, { color: string; label?: string }> = {
   pending: { color: 'var(--px-amber)', label: 'PENDING' },
   accepted: { color: 'var(--px-green)', label: 'ACCEPTED' },
   declined: { color: 'var(--px-danger)', label: 'DECLINED' },
+  invalidated: { color: 'var(--px-muted-strong)', label: 'INVALIDATED' },
+  cancelled: { color: 'var(--px-muted-strong)', label: 'CANCELLED' },
 };
 
 interface Props {

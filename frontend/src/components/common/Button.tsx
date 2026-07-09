@@ -42,7 +42,9 @@ export default function Button(props: Props) {
     // Internal routes go through the router so navigation stays client-side
     // (a raw <a href="/..."> would trigger a full document reload).
     if (props.href.startsWith('/')) {
-      const { href: _href, ...linkRest } = anchorRest;
+      // Strip href before spreading onto <Link>, which navigates via `to`.
+      const linkRest = { ...anchorRest };
+      delete linkRest.href;
       return (
         <Link className={cls} to={props.href} {...linkRest}>
           {children}

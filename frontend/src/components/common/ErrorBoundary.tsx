@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
 interface Props {
@@ -14,6 +14,10 @@ class ErrorBoundaryInner extends Component<Props, State> {
 
   static getDerivedStateFromError(): State {
     return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('ErrorBoundary caught:', error, info.componentStack);
   }
 
   componentDidUpdate(prevProps: Props) {

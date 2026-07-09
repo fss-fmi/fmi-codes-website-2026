@@ -32,8 +32,8 @@ export default function DonutChart({ data, title }: Props) {
             dataKey="value"
             paddingAngle={3}
           >
-            {data.map((d, i) => (
-              <Cell key={i} fill={d.color} stroke="var(--px-bg-panel)" strokeWidth={2} />
+            {data.map((d) => (
+              <Cell key={d.name} fill={d.color} stroke="var(--px-bg-panel)" strokeWidth={2} />
             ))}
           </Pie>
           <Tooltip
@@ -58,9 +58,9 @@ export default function DonutChart({ data, title }: Props) {
           justifyContent: 'center',
         }}
       >
-        {data.map((d, i) => (
+        {data.map((d) => (
           <span
-            key={i}
+            key={d.name}
             style={{
               display: 'flex',
               alignItems: 'center',

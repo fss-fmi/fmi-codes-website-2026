@@ -185,6 +185,6 @@ def validate_score(value) -> tuple:
         return False, "Score must be a number"
     if math.isnan(score) or math.isinf(score):
         return False, "Score must be a finite number"
-    if score < 0:
-        return False, "Score must be >= 0"
+    if score < 0 or score > 100:
+        return False, "Score must be between 0 and 100"
     return True, score

@@ -1,5 +1,8 @@
 import { useState } from 'react';
 
+const MIN_SCORE = 0;
+const MAX_SCORE = 100;
+
 interface Props {
   teamId: number;
   teamName: string;
@@ -11,10 +14,15 @@ export default function ScoreInput({ teamId, teamName, currentScore, onSave }: P
   const [value, setValue] = useState(String(currentScore ?? ''));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
     const num = parseFloat(value);
-    if (isNaN(num) || num < 0 || num > 100) return;
+    if (isNaN(num) || num < MIN_SCORE || num > MAX_SCORE) {
+      setError(`Score must be ${MIN_SCORE}–${MAX_SCORE}`);
+      return;
+    }
+    setError(null);
     setSaving(true);
     try {
       await onSave(teamId, num);
@@ -49,22 +57,40 @@ export default function ScoreInput({ teamId, teamName, currentScore, onSave }: P
       >
         {teamName}
       </label>
-      <input
-        id={inputId}
-        type="number"
-        min={0}
-        max={100}
-        step={0.5}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        aria-label={`Score for ${teamName}`}
-        className="px-input-field"
-        style={{
-          width: '90px',
-          padding: '8px 10px',
-          textAlign: 'center',
-        }}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+        <input
+          id={inputId}
+          type="number"
+          min={MIN_SCORE}
+          max={MAX_SCORE}
+          step={0.5}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (error) setError(null);
+          }}
+          aria-label={`Score for ${teamName}`}
+          aria-invalid={error ? true : undefined}
+          className="px-input-field"
+          style={{
+            width: '90px',
+            padding: '8px 10px',
+            textAlign: 'center',
+          }}
+        />
+        {error && (
+          <span
+            role="alert"
+            style={{
+              fontFamily: 'var(--px-mono)',
+              fontSize: '0.7rem',
+              color: 'var(--px-danger)',
+            }}
+          >
+            {error}
+          </span>
+        )}
+      </div>
       <button
         type="button"
         onClick={handleSave}

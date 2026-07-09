@@ -1,6 +1,7 @@
 """API routes — rankings, regulations, admin matching, lookup data, and bug reports"""
 
 import logging
+from datetime import UTC
 
 from flask import current_app, jsonify, request
 
@@ -240,7 +241,7 @@ def get_matching_results():
 @admin_required
 def matching_export():
     """Get matching results grouped by team, with constraint validation, for export"""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     rows = [dict(r) for r in matching_service.get_matching_results()]
 
@@ -281,7 +282,7 @@ def matching_export():
             "teams": list(teams.values()),
             "total_assignments": len(rows),
             "violations": violations,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
     ), 200
 

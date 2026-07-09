@@ -20,8 +20,12 @@ export function useIsMobile(): boolean {
     const mql = window.matchMedia('(max-width: 768px)');
     const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mql.addEventListener('change', onChange);
-    // Sync once in case the value changed between render and mount.
-    setIsMobile(mql.matches);
+    // Reconcile once in case the value changed between render and mount —
+    // guarded so we only re-render when it actually differs. This mount-time
+    // sync is the intended pattern for a live MediaQueryList, so the
+    // set-state-in-effect rule is intentionally suppressed here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsMobile((prev) => (prev === mql.matches ? prev : mql.matches));
     return () => mql.removeEventListener('change', onChange);
   }, []);
 

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import PageHeader from '@/components/layout/PageHeader';
@@ -7,11 +8,13 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import api from '@/lib/api';
 import type { RankedTeam } from '@/types/ranking';
 
-const PODIUM_ORDER = [1, 0, 2]; // 2nd, 1st, 3rd left-to-right
+// Left-to-right podium slots map to ranks [2nd, 1st, 3rd]. PODIUM_HEIGHTS is
+// indexed by rank (0=1st, 1=2nd, 2=3rd) — values preserved from the original
+// design so the visual output is unchanged.
+const PODIUM_ORDER = [1, 0, 2];
+const PODIUM_HEIGHTS = ['160px', '200px', '130px'];
 
 function PodiumBlock({ team, rank }: { team: RankedTeam; rank: number }) {
-  const heights = ['160px', '200px', '130px'];
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 140 }}>
       <div style={{ textAlign: 'center', marginBottom: 12 }}>
@@ -45,7 +48,7 @@ function PodiumBlock({ team, rank }: { team: RankedTeam; rank: number }) {
       <div
         style={{
           width: 120,
-          height: heights[rank],
+          height: PODIUM_HEIGHTS[rank],
           background: 'var(--px-bg-card)',
           border: '2px solid var(--px-teal-border)',
           borderBottom: 'none',
@@ -123,18 +126,23 @@ function RankCard({ team, maxScore }: { team: RankedTeam; maxScore: number }) {
 }
 
 export default function RankingsLivePage() {
-  const { data, isLoading } = useQuery<{ success: boolean; rankings: RankedTeam[] }>({
+  const { data, isLoading, isError } = useQuery<{ success: boolean; rankings: RankedTeam[] }>({
     queryKey: ['rankings'],
     queryFn: () => api.get('/api/teams/rankings'),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
 
-  const rankings = data?.success ? (data.rankings ?? []) : [];
-  const hasScores = rankings.some((t) => t.score != null);
-  const top3 = rankings.slice(0, 3);
-  const rest = rankings.slice(3);
-  const maxScore = rankings.reduce((m, t) => Math.max(m, t.score ?? 0), 0);
+  const { hasScores, top3, rest, maxScore, rankingsLength } = useMemo(() => {
+    const rankings = data?.success ? (data.rankings ?? []) : [];
+    return {
+      hasScores: rankings.some((t) => t.score != null),
+      top3: rankings.slice(0, 3),
+      rest: rankings.slice(3),
+      maxScore: rankings.reduce((m, t) => Math.max(m, t.score ?? 0), 0),
+      rankingsLength: rankings.length,
+    };
+  }, [data]);
 
   return (
     <>
@@ -147,7 +155,15 @@ export default function RankingsLivePage() {
 
         {isLoading && <LoadingSpinner />}
 
-        {!isLoading && (!hasScores || rankings.length === 0) && (
+        {!isLoading && isError && (
+          <Panel title="> CONNECTION LOST">
+            <p className="px-body" style={{ color: 'var(--px-salmon)', margin: 0 }}>
+              &gt; Could not reach the scoreboard — retrying every 30 seconds…
+            </p>
+          </Panel>
+        )}
+
+        {!isLoading && !isError && (!hasScores || rankingsLength === 0) && (
           <Panel title="> NO SCORES YET">
             <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
               &gt; Scores will appear here once judging begins.
@@ -155,7 +171,7 @@ export default function RankingsLivePage() {
           </Panel>
         )}
 
-        {!isLoading && hasScores && (
+        {!isLoading && !isError && hasScores && (
           <div aria-live="polite">
             {top3.length >= 1 && (
               <div
@@ -169,7 +185,7 @@ export default function RankingsLivePage() {
                 }}
               >
                 {PODIUM_ORDER.map((idx) =>
-                  top3[idx] ? <PodiumBlock key={idx} team={top3[idx]} rank={idx} /> : null,
+                  top3[idx] ? <PodiumBlock key={top3[idx].team_id} team={top3[idx]} rank={idx} /> : null,
                 )}
               </div>
             )}

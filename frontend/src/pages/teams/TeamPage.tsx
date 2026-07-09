@@ -5,10 +5,16 @@ import RequireAuth from '@/components/layout/RequireAuth';
 import Panel from '@/components/common/Panel';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import StatusBadge from '@/components/common/StatusBadge';
-import MemberBar from '@/components/common/MemberBar';
 import Button from '@/components/common/Button';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import { useToast } from '@/components/common/useToast';
+import { useConfirmAction } from '@/hooks/useConfirmAction';
+import TeamStatusHeader from '@/components/teams/TeamStatusHeader';
+import JoinCodePanel from '@/components/teams/JoinCodePanel';
+import MembersPanel from '@/components/teams/MembersPanel';
+import MentorsPanel from '@/components/teams/MentorsPanel';
+import JoinRequestsPanel from '@/components/teams/JoinRequestsPanel';
+import DangerZone from '@/components/teams/DangerZone';
 import type { User } from '@/types/auth';
 import api from '@/lib/api';
 import type { Team, JoinRequest, Application } from '@/types/team';
@@ -19,24 +25,8 @@ interface MentorPref {
   mentor_name?: string;
 }
 
-interface DialogState {
-  open: boolean;
-  title: string;
-  description?: string;
-  confirmLabel?: string;
-  dangerous?: boolean;
-  onConfirm: () => void;
-}
-
-const CLOSED_DIALOG: DialogState = {
-  open: false,
-  title: '',
-  onConfirm: () => {},
-};
-
 function NoTeamView() {
-  const { showToast } = useToast();
-  const [dialog, setDialog] = useState<DialogState>(CLOSED_DIALOG);
+  const { confirm, dialogProps } = useConfirmAction();
 
   const { data: appsData, refetch } = useQuery<{ applications: Application[] }>({
     queryKey: ['my-applications'],
@@ -44,22 +34,14 @@ function NoTeamView() {
   });
 
   function requestWithdraw(requestId: number) {
-    setDialog({
-      open: true,
+    confirm({
       title: 'WITHDRAW APPLICATION',
       description: 'Withdraw this application?',
       confirmLabel: 'WITHDRAW',
       dangerous: true,
-      onConfirm: async () => {
-        setDialog(CLOSED_DIALOG);
-        try {
-          await api.post(`/api/teams/requests/${requestId}/cancel`, {});
-          showToast({ kind: 'success', message: 'Application withdrawn.' });
-          refetch();
-        } catch (e) {
-          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
-        }
-      },
+      action: () => api.post(`/api/teams/requests/${requestId}/cancel`, {}),
+      successMessage: 'Application withdrawn.',
+      onDone: refetch,
     });
   }
 
@@ -104,7 +86,7 @@ function NoTeamView() {
                     {a.team_name}
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-                    <StatusBadge variant={a.status as 'pending' | 'accepted' | 'declined'} />
+                    <StatusBadge variant={a.status} />
                     <span
                       style={{ color: 'var(--px-muted-strong)', fontFamily: 'var(--px-mono)', fontSize: '0.8rem' }}
                     >
@@ -128,110 +110,83 @@ function NoTeamView() {
         </Panel>
       )}
 
-      <ConfirmDialog
-        open={dialog.open}
-        title={dialog.title}
-        description={dialog.description}
-        confirmLabel={dialog.confirmLabel}
-        dangerous={dialog.dangerous}
-        onConfirm={dialog.onConfirm}
-        onCancel={() => setDialog(CLOSED_DIALOG)}
-      />
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
 
 function TeamDashboardView({
   team,
+  teamId,
   userId,
   onRefresh,
 }: {
   team: Team;
+  teamId: number;
   userId: number;
   onRefresh: () => void;
 }) {
   const { showToast } = useToast();
+  const { confirm, dialogProps } = useConfirmAction();
   const isCaptain = String(team.captain_id) === String(userId);
-  const teamId = team.id ?? team.team_id;
-  const [dialog, setDialog] = useState<DialogState>(CLOSED_DIALOG);
+  const [busyReqId, setBusyReqId] = useState<number | null>(null);
 
   const { data: reqData, refetch: refetchReqs } = useQuery<{ requests: JoinRequest[] }>({
     queryKey: ['join-requests', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/requests`),
-    enabled: isCaptain && !!teamId,
+    enabled: isCaptain,
   });
 
   const { data: prefData } = useQuery<{ preferences: MentorPref[] }>({
     queryKey: ['team-mentor-preferences', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/mentor-preferences`),
-    enabled: team.status === 'active' && !!teamId,
+    enabled: team.status === 'active',
   });
 
   const { data: statusData } = useQuery<{ confirmed: boolean }>({
     queryKey: ['matching-status'],
     queryFn: () => api.get('/api/matching-status'),
+    enabled: team.status === 'active',
   });
 
   function askRemoveMember(mid: number) {
-    setDialog({
-      open: true,
+    confirm({
       title: 'REMOVE MEMBER',
       description: 'Remove this member from the team?',
       confirmLabel: 'REMOVE',
       dangerous: true,
-      onConfirm: async () => {
-        setDialog(CLOSED_DIALOG);
-        try {
-          await api.delete(`/api/teams/${teamId}/members/${mid}`);
-          showToast({ kind: 'success', message: 'Member removed.' });
-          onRefresh();
-        } catch (e) {
-          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
-        }
-      },
+      action: () => api.delete(`/api/teams/${teamId}/members/${mid}`),
+      successMessage: 'Member removed.',
+      onDone: onRefresh,
     });
   }
 
   function askLeave() {
-    setDialog({
-      open: true,
+    confirm({
       title: 'LEAVE TEAM',
       description: 'Are you sure you want to leave this team?',
       confirmLabel: 'LEAVE',
       dangerous: true,
-      onConfirm: async () => {
-        setDialog(CLOSED_DIALOG);
-        try {
-          await api.post(`/api/teams/${teamId}/leave`, {});
-          onRefresh();
-        } catch (e) {
-          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
-        }
-      },
+      action: () => api.post(`/api/teams/${teamId}/leave`, {}),
+      onDone: onRefresh,
     });
   }
 
   function askDisband() {
-    setDialog({
-      open: true,
+    confirm({
       title: 'DISBAND TEAM',
       description:
         'Are you absolutely sure? All members will be removed and the team will be permanently deleted. This cannot be undone.',
       confirmLabel: 'DISBAND',
       dangerous: true,
-      onConfirm: async () => {
-        setDialog(CLOSED_DIALOG);
-        try {
-          await api.delete(`/api/teams/${teamId}`);
-          onRefresh();
-        } catch (e) {
-          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
-        }
-      },
+      action: () => api.delete(`/api/teams/${teamId}`),
+      onDone: onRefresh,
     });
   }
 
-  async function handleRequest(reqId: number, action: 'accept' | 'decline') {
+  async function respondToRequest(reqId: number, action: 'accept' | 'decline') {
+    if (busyReqId !== null) return;
+    setBusyReqId(reqId);
     try {
       await api.post(`/api/teams/requests/${reqId}/${action}`, {});
       showToast({
@@ -242,317 +197,45 @@ function TeamDashboardView({
       onRefresh();
     } catch (e) {
       showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
+    } finally {
+      setBusyReqId(null);
     }
   }
 
   const requests = reqData?.requests ?? [];
-  const confirmed = statusData?.confirmed;
-  const rawPrefs = prefData?.preferences ?? [];
-  const prefs: MentorPref[] = [...rawPrefs].sort((a, b) => a.rank - b.rank);
-  const count = team.participant_count ?? team.members?.length ?? 0;
+  const prefs: MentorPref[] = [...(prefData?.preferences ?? [])].sort((a, b) => a.rank - b.rank);
+  const memberCount = team.participant_count ?? team.members?.length ?? 0;
 
   return (
     <div style={{ padding: '80px 24px 80px', maxWidth: 820, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          className="px-page-title"
-          style={{ margin: '0 0 12px 0' }}
-        >
-          {team.team_name}
-        </h1>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flexWrap: 'wrap',
-            marginBottom: 12,
-          }}
-        >
-          <StatusBadge variant={(team.status ?? 'inactive') as 'active' | 'inactive' | 'queued' | 'registered'} />
-          {team.is_registered && <StatusBadge variant="registered" />}
-          {team.queue_position && <StatusBadge variant="queued" />}
-        </div>
-        {team.status !== 'active' && (
-          <div
-            style={{
-              background: 'var(--px-bg-panel)',
-              border: '1px solid var(--px-amber)',
-              borderLeft: '2px solid var(--px-amber)',
-              color: 'var(--px-amber)',
-              fontFamily: 'var(--px-mono)',
-              fontSize: '0.85rem',
-              padding: '10px 14px',
-              marginBottom: 12,
-            }}
-          >
-            &gt; Your team needs at least 3 members to be eligible for the hackathon.
-          </div>
-        )}
-        {team.is_registered && (
-          <div
-            style={{
-              background: 'var(--px-bg-panel)',
-              border: '1px solid var(--px-green)',
-              borderLeft: '2px solid var(--px-green)',
-              color: 'var(--px-green)',
-              fontFamily: 'var(--px-mono)',
-              fontSize: '0.85rem',
-              padding: '10px 14px',
-              marginBottom: 12,
-            }}
-          >
-            &gt; Your team is registered for the hackathon.
-          </div>
-        )}
-        {!team.is_registered && team.queue_position && (
-          <div
-            style={{
-              background: 'var(--px-bg-panel)',
-              border: '1px solid var(--px-amber)',
-              borderLeft: '2px solid var(--px-amber)',
-              color: 'var(--px-amber)',
-              fontFamily: 'var(--px-mono)',
-              fontSize: '0.85rem',
-              padding: '10px 14px',
-              marginBottom: 12,
-            }}
-          >
-            &gt; In the waiting queue at position #{team.queue_position}. You'll be registered
-            automatically when a slot opens.
-          </div>
-        )}
-        <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
-          {count}/6 members
-        </div>
-      </div>
+      <TeamStatusHeader team={team} memberCount={memberCount} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {isCaptain && team.join_code && (
-          <Panel title="JOIN CODE">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span className="px-label">CODE</span>
-              <code
-                style={{
-                  fontFamily: 'var(--px-font)',
-                  fontSize: '0.85rem',
-                  color: 'var(--px-teal)',
-                  letterSpacing: '0.15em',
-                  background: 'var(--px-bg-elevated)',
-                  padding: '8px 14px',
-                  border: '1px solid var(--px-teal-dim)',
-                }}
-              >
-                {team.join_code}
-              </code>
-            </div>
-          </Panel>
-        )}
+        {isCaptain && team.join_code && <JoinCodePanel joinCode={team.join_code} />}
 
-        <Panel title="MEMBERS">
-          {(team.members ?? []).map((m) => (
-            <div
-              key={m.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 0',
-                borderBottom: '1px solid var(--px-teal-dim)',
-                flexWrap: 'wrap',
-              }}
-            >
-              <MemberBar name={`${m.first_name} ${m.last_name}`} isCaptain={m.is_captain} />
-              {isCaptain && !m.is_captain && (
-                <button
-                  type="button"
-                  className="px-btn-danger"
-                  onClick={() => askRemoveMember(m.id)}
-                  style={{ marginLeft: 'auto', padding: '10px 16px', fontSize: '0.55rem' }}
-                >
-                  REMOVE
-                </button>
-              )}
-            </div>
-          ))}
-        </Panel>
+        <MembersPanel members={team.members ?? []} isCaptain={isCaptain} onRemove={askRemoveMember} />
 
         {team.status === 'active' && (
-          <Panel title="MENTORS">
-            {confirmed && (team.mentors ?? []).length > 0 ? (
-              (team.mentors ?? []).map((m) => (
-                <div
-                  key={m.mentor_id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '10px 0',
-                    borderBottom: '1px solid var(--px-teal-dim)',
-                  }}
-                >
-                  <img
-                    src={`/api/mentors/${m.mentor_id}/picture`}
-                    alt={m.mentor_name ?? 'Mentor'}
-                    loading="lazy"
-                    onError={(e) => (e.currentTarget.style.visibility = 'hidden')}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      objectFit: 'cover',
-                      border: '1px solid var(--px-teal-dim)',
-                    }}
-                  />
-                  <div>
-                    <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
-                      {m.mentor_name}
-                    </div>
-                    <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
-                      {m.company_name}
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : prefs.length > 0 ? (
-              <div>
-                <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', marginBottom: 12 }}>
-                  &gt; Preferences submitted. Waiting for matching.
-                </p>
-                {prefs.map((p, i) => (
-                  <div
-                    key={p.mentor_id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      padding: '8px 0',
-                    }}
-                  >
-                    <span className="px-label" style={{ color: 'var(--px-teal)', minWidth: 30 }}>
-                      #{i + 1}
-                    </span>
-                    <span style={{ fontFamily: 'var(--px-mono)', color: 'var(--px-white)' }}>
-                      {p.mentor_name ?? `Mentor #${p.mentor_id}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div>
-                {isCaptain ? (
-                  <>
-                    <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', marginBottom: 16 }}>
-                      &gt; Your team is active. As captain, rank your preferred mentors so the matching
-                      algorithm can find the best fit.
-                    </p>
-                    <Button variant="primary" href="/chooseMentor">
-                      CHOOSE MENTORS
-                    </Button>
-                  </>
-                ) : (
-                  <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
-                    &gt; Waiting for the captain to select mentor preferences.
-                  </p>
-                )}
-              </div>
-            )}
-          </Panel>
+          <MentorsPanel
+            confirmed={statusData?.confirmed}
+            mentors={team.mentors ?? []}
+            prefs={prefs}
+            isCaptain={isCaptain}
+          />
         )}
 
         {isCaptain && requests.length > 0 && (
-          <Panel title={`JOIN REQUESTS (${requests.length})`}>
-            {requests.map((r) => {
-              const initials = ((r.first_name?.[0] ?? '?') + (r.last_name?.[0] ?? '?')).toUpperCase();
-              return (
-                <div
-                  key={r.request_id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '12px 0',
-                    borderBottom: '1px solid var(--px-teal-dim)',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      width: 40,
-                      height: 40,
-                      background: 'var(--px-bg-elevated)',
-                      border: '1px solid var(--px-teal-dim)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontFamily: 'var(--px-font)',
-                      fontSize: '0.6rem',
-                      color: 'var(--px-teal)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {initials}
-                  </div>
-                  <div style={{ flex: 1, minWidth: '160px' }}>
-                    <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
-                      {r.first_name} {r.last_name}
-                    </div>
-                    <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
-                      {r.email}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      className="px-btn-primary"
-                      onClick={() => handleRequest(r.request_id, 'accept')}
-                      aria-label={`Accept ${r.first_name} ${r.last_name}`}
-                      style={{ padding: '10px 16px', fontSize: '0.55rem' }}
-                    >
-                      ACCEPT
-                    </button>
-                    <button
-                      type="button"
-                      className="px-btn-danger"
-                      onClick={() => handleRequest(r.request_id, 'decline')}
-                      aria-label={`Decline ${r.first_name} ${r.last_name}`}
-                      style={{ padding: '10px 16px', fontSize: '0.55rem' }}
-                    >
-                      DECLINE
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </Panel>
+          <JoinRequestsPanel
+            requests={requests}
+            busyReqId={busyReqId}
+            onRespond={respondToRequest}
+          />
         )}
 
-        <Panel title="DANGER ZONE">
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {!isCaptain && (
-              <button type="button" className="px-btn-danger" onClick={askLeave}>
-                LEAVE TEAM
-              </button>
-            )}
-            {isCaptain && (
-              <button type="button" className="px-btn-danger" onClick={askDisband}>
-                DISBAND TEAM
-              </button>
-            )}
-          </div>
-        </Panel>
+        <DangerZone isCaptain={isCaptain} onLeave={askLeave} onDisband={askDisband} />
       </div>
 
-      <ConfirmDialog
-        open={dialog.open}
-        title={dialog.title}
-        description={dialog.description}
-        confirmLabel={dialog.confirmLabel}
-        dangerous={dialog.dangerous}
-        onConfirm={dialog.onConfirm}
-        onCancel={() => setDialog(CLOSED_DIALOG)}
-      />
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }
@@ -598,9 +281,13 @@ function TeamPageContent() {
     );
   if (!teamData?.team) return <LoadingSpinner fullPage />;
 
+  const team = teamData.team;
+  const resolvedTeamId = team.id ?? team.team_id ?? teamId;
+
   return (
     <TeamDashboardView
-      team={teamData.team}
+      team={team}
+      teamId={resolvedTeamId}
       userId={meData?.user?.id ?? 0}
       onRefresh={onRefresh}
     />

@@ -27,6 +27,5 @@ export function useScrollReveal(selector: string = '.reveal', resetKey?: unknown
     targets.forEach((el) => observerRef.current!.observe(el));
 
     return () => observerRef.current?.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selector, resetKey]);
 }
