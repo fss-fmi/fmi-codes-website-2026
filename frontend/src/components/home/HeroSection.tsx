@@ -195,7 +195,7 @@ export default function HeroSection() {
                 gap: '6px',
               }}
             >
-              🏆 ELIGIBILITY
+              📜 REGULATIONS
             </Link>
             <Link
               to="/rankings"
@@ -215,7 +215,7 @@ export default function HeroSection() {
                 gap: '6px',
               }}
             >
-              🏅 PRIZES
+              🏆 RANKINGS
             </Link>
             <Link
               to="/mentors"

@@ -97,18 +97,18 @@ function MobileHero({ registrationOpen }: { registrationOpen: boolean }) {
       {/* Quick nav — three stacked full-width tiles */}
       <nav className="mhome-hero__nav" aria-label="Quick links">
         <Link to="/regulations" className="mhome-hero__nav-link">
-          <span className="mhome-hero__nav-icon" aria-hidden="true">🏆</span>
+          <span className="mhome-hero__nav-icon" aria-hidden="true">📜</span>
           <span>
-            <span className="mhome-hero__nav-title">ELIGIBILITY</span>
-            <span className="mhome-hero__nav-sub">Who can enter</span>
+            <span className="mhome-hero__nav-title">REGULATIONS</span>
+            <span className="mhome-hero__nav-sub">Rules, eligibility & prizes</span>
           </span>
           <span className="mhome-hero__nav-arrow" aria-hidden="true">→</span>
         </Link>
         <Link to="/rankings" className="mhome-hero__nav-link">
-          <span className="mhome-hero__nav-icon" aria-hidden="true">🏅</span>
+          <span className="mhome-hero__nav-icon" aria-hidden="true">🏆</span>
           <span>
-            <span className="mhome-hero__nav-title">PRIZES</span>
-            <span className="mhome-hero__nav-sub">2300€ · 1500€ · 1000€</span>
+            <span className="mhome-hero__nav-title">RANKINGS</span>
+            <span className="mhome-hero__nav-sub">The live leaderboard</span>
           </span>
           <span className="mhome-hero__nav-arrow" aria-hidden="true">→</span>
         </Link>
