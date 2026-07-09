@@ -1,19 +1,12 @@
 import type { Mentor } from '@/types/mentor';
-import { pictureFor, availabilityStatus, type AvailabilityStatus } from '@/pages/mentors/variants/shared';
+import { pictureFor, availabilityStatus, AVAILABILITY_COLORS } from '@/pages/mentors/variants/shared';
 
 interface Props {
   mentor: Mentor;
 }
 
-const AVAIL_COLORS: Record<AvailabilityStatus, string> = {
-  full: 'var(--px-green)',
-  partial: 'var(--px-amber)',
-  limited: 'var(--px-salmon)',
-  unknown: 'var(--px-muted)',
-};
-
 function AvailDot({ text }: { text: string }) {
-  const color = AVAIL_COLORS[availabilityStatus(text)];
+  const color = AVAILABILITY_COLORS[availabilityStatus(text)];
   return (
     <div
       style={{

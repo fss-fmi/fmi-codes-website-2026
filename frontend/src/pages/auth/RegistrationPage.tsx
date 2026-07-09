@@ -7,8 +7,10 @@ import Field from '@/components/common/Field';
 import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
 import Button from '@/components/common/Button';
+import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { MIN_PASSWORD_LENGTH } from '@/lib/validation';
 import type { User } from '@/types/auth';
 
 interface University {
@@ -128,9 +130,9 @@ export default function RegistrationPage() {
         error?: string;
       }>('/api/auth/register', { ...form, university_id: universityId, specialty_id: specialtyId });
       if (data.success) {
-        login(data.role, data.user_id, data.user);
+        login(data.role, data.user);
         setSuccess('Registration successful. Redirecting…');
-        setTimeout(() => navigate('/team', { replace: true }), 1000);
+        navigate('/team', { replace: true });
       } else {
         setError(data.error ?? 'Registration failed');
       }
@@ -161,40 +163,8 @@ export default function RegistrationPage() {
               Create your account to join the hackathon.
             </p>
 
-            {error && (
-              <div
-                role="alert"
-                style={{
-                  background: 'var(--px-bg-panel)',
-                  border: '1px solid var(--px-danger)',
-                  borderLeft: '2px solid var(--px-danger)',
-                  color: 'var(--px-danger)',
-                  fontFamily: 'var(--px-mono)',
-                  fontSize: '0.85rem',
-                  padding: '12px 14px',
-                  marginBottom: '20px',
-                }}
-              >
-                {error}
-              </div>
-            )}
-            {success && (
-              <div
-                role="status"
-                style={{
-                  background: 'var(--px-bg-panel)',
-                  border: '1px solid var(--px-green)',
-                  borderLeft: '2px solid var(--px-green)',
-                  color: 'var(--px-green)',
-                  fontFamily: 'var(--px-mono)',
-                  fontSize: '0.85rem',
-                  padding: '12px 14px',
-                  marginBottom: '20px',
-                }}
-              >
-                {success}
-              </div>
-            )}
+            {error && <FormAlert kind="error">{error}</FormAlert>}
+            {success && <FormAlert kind="success">{success}</FormAlert>}
 
             <form onSubmit={handleSubmit} autoComplete="off" noValidate>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -242,7 +212,7 @@ export default function RegistrationPage() {
                   <Input
                     type="password"
                     required
-                    minLength={12}
+                    minLength={MIN_PASSWORD_LENGTH}
                     placeholder="••••••••"
                     value={form.password}
                     onChange={(e) => set('password', e.target.value)}

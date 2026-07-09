@@ -5,6 +5,7 @@ import Panel from '@/components/common/Panel';
 import Field from '@/components/common/Field';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
+import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import type { User } from '@/types/auth';
@@ -53,7 +54,7 @@ export default function LoginPage() {
         error?: string;
       }>('/api/auth/login', { email, password, role });
       if (data.success) {
-        login(data.role, data.user_id, data.user);
+        login(data.role, data.user);
         const from =
           (location.state as { from?: { pathname: string } } | null)?.from?.pathname ??
           ROLE_DEFAULT[data.role];
@@ -143,23 +144,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            {error && !showReset && (
-              <div
-                role="alert"
-                style={{
-                  background: 'var(--px-bg-panel)',
-                  border: '1px solid var(--px-danger)',
-                  borderLeft: '2px solid var(--px-danger)',
-                  color: 'var(--px-danger)',
-                  fontFamily: 'var(--px-mono)',
-                  fontSize: '0.85rem',
-                  padding: '12px 14px',
-                  marginBottom: '20px',
-                }}
-              >
-                {error}
-              </div>
-            )}
+            {error && !showReset && <FormAlert kind="error">{error}</FormAlert>}
 
             {!showReset && (
               <form onSubmit={handleLogin} noValidate>
@@ -199,38 +184,14 @@ export default function LoginPage() {
             {showReset && (
               <div style={{ animation: 'fadeSlideUp 0.4s ease both' }}>
                 {resetError && (
-                  <div
-                    role="alert"
-                    style={{
-                      background: 'var(--px-bg-panel)',
-                      border: '1px solid var(--px-danger)',
-                      borderLeft: '2px solid var(--px-danger)',
-                      color: 'var(--px-danger)',
-                      fontFamily: 'var(--px-mono)',
-                      fontSize: '0.85rem',
-                      padding: '12px 14px',
-                      marginBottom: '16px',
-                    }}
-                  >
+                  <FormAlert kind="error" style={{ marginBottom: '16px' }}>
                     {resetError}
-                  </div>
+                  </FormAlert>
                 )}
                 {resetSuccess && (
-                  <div
-                    role="status"
-                    style={{
-                      background: 'var(--px-bg-panel)',
-                      border: '1px solid var(--px-green)',
-                      borderLeft: '2px solid var(--px-green)',
-                      color: 'var(--px-green)',
-                      fontFamily: 'var(--px-mono)',
-                      fontSize: '0.85rem',
-                      padding: '12px 14px',
-                      marginBottom: '16px',
-                    }}
-                  >
+                  <FormAlert kind="success" style={{ marginBottom: '16px' }}>
                     {resetSuccess}
-                  </div>
+                  </FormAlert>
                 )}
                 <form onSubmit={handleReset} noValidate>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

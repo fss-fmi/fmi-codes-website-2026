@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import PageHeader from '@/components/layout/PageHeader';
@@ -7,7 +6,7 @@ import NestedCard from '@/components/common/NestedCard';
 import SVGProgressRing from '@/components/common/SVGProgressRing';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Button from '@/components/common/Button';
-import { useToast } from '@/components/common/useToast';
+import { useApplyToTeam } from '@/hooks/useApplyToTeam';
 import api from '@/lib/api';
 
 interface RegTeam {
@@ -34,34 +33,12 @@ function relativeTime(dateStr: string) {
 }
 
 export default function RegisteredTeamsPage() {
-  const { showToast } = useToast();
-  const [applying, setApplying] = useState<number | null>(null);
-  const [applied, setApplied] = useState<Set<number>>(new Set());
+  const { applyToTeam, isApplied, isApplying } = useApplyToTeam(['registered-teams']);
 
   const { data, isLoading } = useQuery<RegisteredTeamsResponse>({
     queryKey: ['registered-teams'],
     queryFn: () => api.get('/api/teams/registered'),
   });
-
-  async function applyToTeam(teamId: number) {
-    setApplying(teamId);
-    try {
-      const d = await api.post<{ success: boolean; error?: string }>(
-        `/api/teams/${teamId}/apply`,
-        {},
-      );
-      if (d.success) {
-        setApplied((prev) => new Set([...prev, teamId]));
-        showToast({ kind: 'success', message: 'Application submitted.' });
-      } else {
-        showToast({ kind: 'danger', message: d.error ?? 'Failed to apply.' });
-      }
-    } catch {
-      showToast({ kind: 'danger', message: 'Network error.' });
-    } finally {
-      setApplying(null);
-    }
-  }
 
   const teams = data?.teams ?? [];
   const maxRegistered = data?.max_registered ?? 18;
@@ -138,8 +115,8 @@ export default function RegisteredTeamsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {teams.map((team, i) => {
             const isFull = team.is_full || team.participant_count >= 6;
-            const isApplied = applied.has(team.team_id) || team.already_applied;
-            const isApplying = applying === team.team_id;
+            const applied = isApplied(team.team_id) || team.already_applied;
+            const applying = isApplying(team.team_id);
 
             return (
               <NestedCard key={team.team_id}>
@@ -206,7 +183,7 @@ export default function RegisteredTeamsPage() {
 
                   {canApply && (
                     <>
-                      {isApplied ? (
+                      {applied ? (
                         <button
                           type="button"
                           className="px-btn-secondary"
@@ -228,9 +205,9 @@ export default function RegisteredTeamsPage() {
                         <Button
                           variant="primary"
                           onClick={() => applyToTeam(team.team_id)}
-                          disabled={isApplying}
+                          disabled={applying}
                         >
-                          {isApplying ? '…' : 'APPLY'}
+                          {applying ? '…' : 'APPLY'}
                         </Button>
                       )}
                     </>

@@ -6,7 +6,7 @@ interface AuthState {
   user: User | null;
   role: Role | null;
   isLoading: boolean;
-  login: (role: Role, userId: number, user: User) => void;
+  login: (role: Role, user: User) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('auth:unauthorized', handler);
   }, []);
 
-  function login(newRole: Role, _userId: number, newUser: User) {
+  function login(newRole: Role, newUser: User) {
     setUser(newUser);
     setRole(newRole);
   }

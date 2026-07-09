@@ -15,17 +15,6 @@ import { PREMIUM_SPONSORS, SUPPORTING_SPONSORS } from './homeData';
 const PREMIUM = PREMIUM_SPONSORS;
 const SUPPORTING = SUPPORTING_SPONSORS;
 
-// Some logos have proportions that need visual balancing at the small tile size
-const SCALE_OVERRIDES: Record<string, number> = {
-  Milestone: 1.5,
-  Astea: 1.2,
-  Dreamix: 1.4,
-  'Engineer Access': 1.15,
-  Raven: 1.25,
-  Experian: 1.2,
-  Waracle: 1.2,
-};
-
 const CAROUSEL_SOURCE = [...PREMIUM, ...SUPPORTING];
 const TRACK = [...CAROUSEL_SOURCE, ...CAROUSEL_SOURCE];
 
@@ -58,13 +47,14 @@ function useMarquee(trackRef: React.RefObject<HTMLDivElement | null>) {
 function SponsorTile({
   file,
   alt,
+  scale,
   premium,
 }: {
   file: string;
   alt: string;
+  scale: number;
   premium: boolean;
 }) {
-  const scale = SCALE_OVERRIDES[alt];
   return (
     <Link
       to="/partners"
@@ -111,7 +101,7 @@ function SponsorTile({
           height: '80%',
           objectFit: 'contain',
           filter: 'brightness(0.95) contrast(1.05)',
-          ...(scale ? { transform: `scale(${scale})` } : {}),
+          ...(scale !== 1 ? { transform: `scale(${scale})` } : {}),
         }}
       />
     </Link>
@@ -231,6 +221,7 @@ export default function SponsorsSection() {
               key={i}
               file={s.file}
               alt={s.alt}
+              scale={s.scale ?? 1}
               premium={PREMIUM.some((p) => p.alt === s.alt)}
             />
           ))}

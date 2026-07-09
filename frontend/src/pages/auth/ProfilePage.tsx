@@ -7,8 +7,10 @@ import RequireAuth from '@/components/layout/RequireAuth';
 import Field from '@/components/common/Field';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
+import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { validateNewPassword } from '@/lib/validation';
 
 function InfoCell({ label, value }: { label: string; value?: string | number | null }) {
   if (value === null || value === undefined || value === '') return null;
@@ -67,12 +69,9 @@ function ProfileContent() {
     e.preventDefault();
     setPwError('');
     setPwSuccess('');
-    if (newPw.length < 12) {
-      setPwError('New password must be at least 12 characters.');
-      return;
-    }
-    if (newPw !== confPw) {
-      setPwError('New passwords do not match.');
+    const validationError = validateNewPassword(newPw, confPw);
+    if (validationError) {
+      setPwError(validationError);
       return;
     }
     setPwLoading(true);
@@ -190,38 +189,14 @@ function ProfileContent() {
 
         <Panel title="CHANGE PASSWORD">
           {pwError && (
-            <div
-              role="alert"
-              style={{
-                background: 'var(--px-bg-panel)',
-                border: '1px solid var(--px-danger)',
-                borderLeft: '2px solid var(--px-danger)',
-                color: 'var(--px-danger)',
-                fontFamily: 'var(--px-mono)',
-                fontSize: '0.85rem',
-                padding: '12px 14px',
-                marginBottom: '16px',
-              }}
-            >
+            <FormAlert kind="error" style={{ marginBottom: '16px' }}>
               {pwError}
-            </div>
+            </FormAlert>
           )}
           {pwSuccess && (
-            <div
-              role="status"
-              style={{
-                background: 'var(--px-bg-panel)',
-                border: '1px solid var(--px-green)',
-                borderLeft: '2px solid var(--px-green)',
-                color: 'var(--px-green)',
-                fontFamily: 'var(--px-mono)',
-                fontSize: '0.85rem',
-                padding: '12px 14px',
-                marginBottom: '16px',
-              }}
-            >
+            <FormAlert kind="success" style={{ marginBottom: '16px' }}>
               {pwSuccess}
-            </div>
+            </FormAlert>
           )}
           <form onSubmit={handlePasswordChange} noValidate>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

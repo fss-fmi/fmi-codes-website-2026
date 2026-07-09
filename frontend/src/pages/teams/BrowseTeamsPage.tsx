@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import RequireAuth from '@/components/layout/RequireAuth';
@@ -7,7 +6,7 @@ import Panel from '@/components/common/Panel';
 import NestedCard from '@/components/common/NestedCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Button from '@/components/common/Button';
-import { useToast } from '@/components/common/useToast';
+import { useApplyToTeam } from '@/hooks/useApplyToTeam';
 import api from '@/lib/api';
 
 interface BrowseTeam {
@@ -18,34 +17,12 @@ interface BrowseTeam {
 }
 
 function BrowseTeamsContent() {
-  const { showToast } = useToast();
-  const [applied, setApplied] = useState<Set<number>>(new Set());
-  const [applyingTo, setApplyingTo] = useState<number | null>(null);
+  const { applyToTeam, isApplied, isApplying } = useApplyToTeam(['available-teams']);
 
   const { data, isLoading } = useQuery<{ teams: BrowseTeam[] }>({
     queryKey: ['available-teams'],
     queryFn: () => api.get('/api/teams/available'),
   });
-
-  async function applyToTeam(teamId: number) {
-    setApplyingTo(teamId);
-    try {
-      const d = await api.post<{ success: boolean; error?: string }>(
-        `/api/teams/${teamId}/apply`,
-        {},
-      );
-      if (d.success) {
-        setApplied((prev) => new Set([...prev, teamId]));
-        showToast({ kind: 'success', message: 'Application submitted.' });
-      } else {
-        showToast({ kind: 'danger', message: d.error ?? 'Failed to apply.' });
-      }
-    } catch {
-      showToast({ kind: 'danger', message: 'Network error.' });
-    } finally {
-      setApplyingTo(null);
-    }
-  }
 
   const teams = data?.teams ?? [];
 
@@ -76,8 +53,8 @@ function BrowseTeamsContent() {
           }}
         >
           {teams.map((t) => {
-            const isApplied = applied.has(t.team_id) || !!t.already_applied;
-            const isApplying = applyingTo === t.team_id;
+            const applied = isApplied(t.team_id) || !!t.already_applied;
+            const applying = isApplying(t.team_id);
             const pct = Math.round((t.participant_count / 6) * 100);
 
             return (
@@ -121,7 +98,7 @@ function BrowseTeamsContent() {
                     <div className="px-progress-fill" style={{ transform: `scaleX(${pct / 100})` }} />
                   </div>
                 </div>
-                {isApplied ? (
+                {applied ? (
                   <button
                     type="button"
                     className="px-btn-secondary"
@@ -136,10 +113,10 @@ function BrowseTeamsContent() {
                   <Button
                     variant="primary"
                     onClick={() => applyToTeam(t.team_id)}
-                    disabled={isApplying}
+                    disabled={applying}
                     style={{ width: '100%' }}
                   >
-                    {isApplying ? 'APPLYING…' : 'APPLY TO JOIN'}
+                    {applying ? 'APPLYING…' : 'APPLY TO JOIN'}
                   </Button>
                 )}
               </NestedCard>

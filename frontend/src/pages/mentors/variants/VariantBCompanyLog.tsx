@@ -4,6 +4,7 @@ import type { Mentor } from '@/types/mentor';
 import MentorsHeader from './MentorsHeader';
 import {
   availabilityStatus,
+  AVAILABILITY_COLORS,
   capTechs,
   groupByCompany,
   mentorNumber,
@@ -360,12 +361,6 @@ function AvailabilityInline({
   status: AvailabilityStatus;
   text?: string;
 }) {
-  const map: Record<AvailabilityStatus, string> = {
-    full: 'var(--px-green)',
-    partial: 'var(--px-amber)',
-    limited: 'var(--px-salmon)',
-    unknown: 'var(--px-muted)',
-  };
   return (
     <div
       style={{
@@ -382,7 +377,7 @@ function AvailabilityInline({
         style={{
           width: 8,
           height: 8,
-          background: map[status],
+          background: AVAILABILITY_COLORS[status],
           flexShrink: 0,
         }}
       />

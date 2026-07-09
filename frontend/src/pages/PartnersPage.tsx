@@ -2,33 +2,22 @@ import { useScrollReveal } from '@/hooks/useVisuals';
 import Navbar from '@/components/layout/Navbar';
 import PageHeader from '@/components/layout/PageHeader';
 import Panel from '@/components/common/Panel';
+import { PREMIUM_SPONSORS, SUPPORTING_SPONSORS, type Sponsor } from '@/components/home/homeData';
 
-interface Partner {
-  file: string;
-  alt: string;
+interface Partner extends Sponsor {
   tier: 'premium' | 'standard';
-  scaleOverride?: number;
 }
 
 const PARTNERS: Partner[] = [
-  { file: 'avenga.svg', alt: 'Avenga', tier: 'premium' },
-  { file: 'gameloft.png', alt: 'Gameloft', tier: 'premium' },
-  { file: 'EnduroSat.png', alt: 'EnduroSat', tier: 'premium' },
-  { file: 'waracle.png', alt: 'Waracle', tier: 'premium', scaleOverride: 1.2 },
-  { file: 'SAP.png', alt: 'SAP', tier: 'premium' },
-  { file: 'Milestone.png', alt: 'Milestone', tier: 'premium', scaleOverride: 1.5 },
-  { file: 'astea.svg', alt: 'Astea', tier: 'standard', scaleOverride: 1.2 },
-  { file: 'chaos.jpg', alt: 'Chaos', tier: 'standard' },
-  { file: 'Dreamix.png', alt: 'Dreamix', tier: 'standard', scaleOverride: 1.4 },
-  { file: 'engineerAcces.png', alt: 'Engineer Access', tier: 'standard', scaleOverride: 1.15 },
-  { file: 'raven.svg', alt: 'Raven', tier: 'standard', scaleOverride: 1.25 },
-  { file: 'Experian.jpg', alt: 'Experian', tier: 'standard', scaleOverride: 1.2 },
+  ...PREMIUM_SPONSORS.map((s) => ({ ...s, tier: 'premium' as const })),
+  ...SUPPORTING_SPONSORS.map((s) => ({ ...s, tier: 'standard' as const })),
 ];
 
 const PREMIUM = PARTNERS.filter((p) => p.tier === 'premium');
 const STANDARD = PARTNERS.filter((p) => p.tier === 'standard');
 
 function PartnerTile({ partner, index }: { partner: Partner; index: number }) {
+  const scale = partner.scale ?? 1;
   return (
     <figure
       className="reveal partner-tile"
@@ -55,7 +44,7 @@ function PartnerTile({ partner, index }: { partner: Partner; index: number }) {
           width: '70%',
           height: '70%',
           objectFit: 'contain',
-          ...(partner.scaleOverride ? { transform: `scale(${partner.scaleOverride * 0.9})` } : {}),
+          ...(scale !== 1 ? { transform: `scale(${scale * 0.9})` } : {}),
         }}
       />
     </figure>

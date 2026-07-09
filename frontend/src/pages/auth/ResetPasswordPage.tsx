@@ -5,6 +5,8 @@ import Panel from '@/components/common/Panel';
 import Field from '@/components/common/Field';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
+import FormAlert from '@/components/common/FormAlert';
+import { validateNewPassword } from '@/lib/validation';
 import api from '@/lib/api';
 
 export default function ResetPasswordPage() {
@@ -24,12 +26,9 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError('');
 
-    if (newPassword.length < 12) {
-      setError('Password must be at least 12 characters.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
+    const validationError = validateNewPassword(newPassword, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -75,19 +74,7 @@ export default function ResetPasswordPage() {
             </p>
 
             {isInvalidLink && (
-              <div
-                role="alert"
-                style={{
-                  background: 'var(--px-bg-panel)',
-                  border: '1px solid var(--px-danger)',
-                  borderLeft: '2px solid var(--px-danger)',
-                  color: 'var(--px-danger)',
-                  fontFamily: 'var(--px-mono)',
-                  fontSize: '0.85rem',
-                  padding: '12px 14px',
-                  marginBottom: '20px',
-                }}
-              >
+              <FormAlert kind="error">
                 This reset link is invalid or has expired. Please request a new one from the{' '}
                 <Link
                   to="/login"
@@ -96,23 +83,11 @@ export default function ResetPasswordPage() {
                   login page
                 </Link>
                 .
-              </div>
+              </FormAlert>
             )}
 
             {success && (
-              <div
-                role="status"
-                style={{
-                  background: 'var(--px-bg-panel)',
-                  border: '1px solid var(--px-green)',
-                  borderLeft: '2px solid var(--px-green)',
-                  color: 'var(--px-green)',
-                  fontFamily: 'var(--px-mono)',
-                  fontSize: '0.85rem',
-                  padding: '12px 14px',
-                  marginBottom: '20px',
-                }}
-              >
+              <FormAlert kind="success">
                 {success}{' '}
                 <Link
                   to="/login"
@@ -120,28 +95,12 @@ export default function ResetPasswordPage() {
                 >
                   Sign in now
                 </Link>
-              </div>
+              </FormAlert>
             )}
 
             {!isInvalidLink && !success && (
               <form onSubmit={handleSubmit} noValidate>
-                {error && (
-                  <div
-                    role="alert"
-                    style={{
-                      background: 'var(--px-bg-panel)',
-                      border: '1px solid var(--px-danger)',
-                      borderLeft: '2px solid var(--px-danger)',
-                      color: 'var(--px-danger)',
-                      fontFamily: 'var(--px-mono)',
-                      fontSize: '0.85rem',
-                      padding: '12px 14px',
-                      marginBottom: '20px',
-                    }}
-                  >
-                    {error}
-                  </div>
-                )}
+                {error && <FormAlert kind="error">{error}</FormAlert>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   <Field id="new-password" label="NEW PASSWORD" required>
                     <Input

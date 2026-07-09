@@ -91,6 +91,17 @@ export function availabilityStatus(text?: string | null): AvailabilityStatus {
 }
 
 /**
+ * Semantic dot colors for each availability status, shared by every consumer
+ * that renders an availability indicator.
+ */
+export const AVAILABILITY_COLORS: Record<AvailabilityStatus, string> = {
+  full: 'var(--px-green)',
+  partial: 'var(--px-amber)',
+  limited: 'var(--px-salmon)',
+  unknown: 'var(--px-muted)',
+};
+
+/**
  * Cap technologies at N and return {shown, more} for a "+3 more" ellipsis.
  */
 export function capTechs(techs: string[] | undefined, cap = 8): {

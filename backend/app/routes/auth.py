@@ -24,11 +24,15 @@ _COOKIE_MAX_AGE = 3 * 24 * 60 * 60  # 3 days, matches JWT expiry
 _DUMMY_HASH: str = hash_password("__timing_dummy__")
 
 
-def _fetch_user_profile(app, user_id: int, role: str) -> dict:
+def _fetch_user_profile(app, user_id: int, role: str, strict: bool = False) -> dict | None:
     """Return a user dict suitable for embedding in API responses.
 
     Mirrors the query used by /api/auth/me so the frontend receives the same
     shape whether it calls login/register or refreshes the page.
+
+    When *strict* is True, a missing profile row yields None so the caller can
+    404 (used by /api/auth/me). When False (default, used by register/login),
+    a missing row falls back to {"role": role}.
     """
     if role == "admin":
         return {"role": "admin"}
@@ -56,7 +60,7 @@ def _fetch_user_profile(app, user_id: int, role: str) -> dict:
             fetch_one=True,
         )
     if not row:
-        return {"role": role}
+        return None if strict else {"role": role}
     result = dict(row)
     result["role"] = role
     return result
@@ -67,7 +71,7 @@ def _is_secure() -> bool:
     return os.environ.get("FLASK_ENV", "development") == "production"
 
 
-def _set_auth_cookies(response, token: str, role: str) -> None:  # noqa: ARG001
+def _set_auth_cookies(response, token: str) -> None:
     """Attach httpOnly token cookie to *response* in-place.
 
     M7: The role cookie has been removed.  Role is derived exclusively from
@@ -199,7 +203,7 @@ def register_participant():
         jsonify({"success": True, "user_id": pid, "role": "participant", "user": user_profile}),
         201,
     )
-    _set_auth_cookies(resp, token, "participant")
+    _set_auth_cookies(resp, token)
     return resp
 
 
@@ -236,7 +240,7 @@ def login():
                 ),
                 200,
             )
-            _set_auth_cookies(resp, token, "admin")
+            _set_auth_cookies(resp, token)
             return resp
         return jsonify({"success": False, "error": "Invalid admin credentials"}), 401
 
@@ -273,7 +277,7 @@ def login():
         jsonify({"success": True, "user_id": user["id"], "role": role, "user": user_profile}),
         200,
     )
-    _set_auth_cookies(resp, token, role)
+    _set_auth_cookies(resp, token)
     return resp
 
 
@@ -315,36 +319,11 @@ def get_me():
     if user["role"] == "admin":
         return jsonify({"success": True, "user": {"role": "admin"}}), 200
 
-    if user["role"] == "participant":
-        profile = execute_query(
-            current_app,
-            """SELECT p.id, p.first_name, p.last_name, p.email, p.phone_number,
-                      p.faculty_number, p.course, p.is_captain, p.team_id, p.status,
-                      s.name as specialty, u.name as university, t.team_name, t.join_code
-               FROM participants p
-               LEFT JOIN specialties s ON p.specialty_id = s.id
-               LEFT JOIN universities u ON p.university_id = u.id
-               LEFT JOIN teams t ON p.team_id = t.id
-               WHERE p.id = %s""",
-            (user["user_id"],),
-            fetch_one=True,
-        )
-    else:
-        profile = execute_query(
-            current_app,
-            """SELECT id, first_name, last_name, email, phone_number,
-                      company_name, bio, status
-               FROM mentors WHERE id = %s""",
-            (user["user_id"],),
-            fetch_one=True,
-        )
-
-    if not profile:
+    profile = _fetch_user_profile(current_app, user["user_id"], user["role"], strict=True)
+    if profile is None:
         return jsonify({"success": False, "error": "User not found"}), 404
 
-    profile_dict = dict(profile)
-    profile_dict["role"] = user["role"]
-    return jsonify({"success": True, "user": profile_dict}), 200
+    return jsonify({"success": True, "user": profile}), 200
 
 
 @auth_bp.route("/api/auth/change-password", methods=["PATCH"])
@@ -412,7 +391,7 @@ def change_password():
     resp = make_response(
         jsonify({"success": True, "message": "Password changed successfully"}), 200
     )
-    _set_auth_cookies(resp, new_token, user["role"])
+    _set_auth_cookies(resp, new_token)
     return resp
 
 
