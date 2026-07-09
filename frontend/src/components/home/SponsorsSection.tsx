@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { PREMIUM_SPONSORS, SUPPORTING_SPONSORS } from './homeData';
 
 /**
  * SponsorsSection — matches Briefing's editorial rhythm.
@@ -11,23 +12,8 @@ import { Link } from 'react-router-dom';
  * "cast list" pattern), then supporting sponsors as an inline monospace roll.
  */
 
-const PREMIUM = [
-  { file: 'avenga.svg', alt: 'Avenga' },
-  { file: 'gameloft.png', alt: 'Gameloft' },
-  { file: 'EnduroSat.png', alt: 'EnduroSat' },
-  { file: 'waracle.png', alt: 'Waracle' },
-  { file: 'SAP.png', alt: 'SAP' },
-  { file: 'Milestone.png', alt: 'Milestone' },
-] as const;
-
-const SUPPORTING = [
-  { file: 'astea.svg', alt: 'Astea' },
-  { file: 'chaos.jpg', alt: 'Chaos' },
-  { file: 'Dreamix.png', alt: 'Dreamix' },
-  { file: 'engineerAcces.png', alt: 'Engineer Access' },
-  { file: 'raven.svg', alt: 'Raven' },
-  { file: 'Experian.jpg', alt: 'Experian' },
-] as const;
+const PREMIUM = PREMIUM_SPONSORS;
+const SUPPORTING = SUPPORTING_SPONSORS;
 
 // Some logos have proportions that need visual balancing at the small tile size
 const SCALE_OVERRIDES: Record<string, number> = {
@@ -259,10 +245,6 @@ export default function SponsorsSection() {
           margin: '0 auto',
           padding: '0 24px',
           marginTop: 'clamp(48px, 6vw, 72px)',
-          display: 'grid',
-          gridTemplateColumns: 'minmax(120px, 200px) 1fr',
-          gap: 'clamp(24px, 4vw, 72px)',
-          alignItems: 'start',
         }}
         className="sponsors-credits"
       >

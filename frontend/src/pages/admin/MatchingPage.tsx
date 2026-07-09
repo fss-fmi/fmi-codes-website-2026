@@ -60,7 +60,7 @@ function RegistrationPanel() {
   const qc = useQueryClient();
   const { showToast } = useToast();
 
-  const { data, isLoading } = useQuery<RegStatus>({
+  const { data, isLoading, isError } = useQuery<RegStatus>({
     queryKey: ['admin-reg-status'],
     queryFn: () => api.get('/api/admin/teams/registration-status'),
   });
@@ -96,8 +96,15 @@ function RegistrationPanel() {
   }
 
   if (isLoading) return <LoadingSpinner />;
+  if (isError)
+    return (
+      <Panel title="REGISTRATION">
+        <p className="px-body-sm" style={{ color: 'var(--px-danger)', margin: 0 }}>
+          &gt; Failed to load registration data.
+        </p>
+      </Panel>
+    );
   if (!data) return null;
-
   const { registered_count, max_registered, queue_count, registered_teams, queued_teams } = data;
   const pct = Math.round((registered_count / (max_registered || 1)) * 100);
 
@@ -128,7 +135,7 @@ function RegistrationPanel() {
           className="px-progress-track"
           style={{ height: 8 }}
         >
-          <div className="px-progress-fill" style={{ width: `${pct}%` }} />
+          <div className="px-progress-fill" style={{ transform: `scaleX(${pct / 100})` }} />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 16 }}>
           {Array.from({ length: max_registered }, (_, i) => (
@@ -350,6 +357,7 @@ interface DialogState {
   open: boolean;
   title: string;
   description?: string;
+  dangerous?: boolean;
   onConfirm: () => void;
 }
 
@@ -411,6 +419,7 @@ function MatchingPanel() {
       );
       if (d.success) {
         qc.invalidateQueries({ queryKey: ['matching-status'] });
+        refetchResults();
         showToast({ kind: 'success', message: 'Matching confirmed.' });
       } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
     } catch {
@@ -434,6 +443,7 @@ function MatchingPanel() {
       open: true,
       title: 'CONFIRM MATCHING',
       description: 'Confirm and publish matching results? This cannot be undone.',
+      dangerous: true,
       onConfirm: doConfirmMatching,
     });
   }
@@ -444,6 +454,17 @@ function MatchingPanel() {
       if (d.success) setExportData(d.export);
     } catch {
       showToast({ kind: 'danger', message: 'Export failed' });
+    }
+  }
+
+  async function copyExport() {
+    if (!exportData) return;
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(exportData);
+      showToast({ kind: 'success', message: 'Copied to clipboard.' });
+    } catch {
+      showToast({ kind: 'danger', message: 'Could not copy to clipboard.' });
     }
   }
 
@@ -515,9 +536,9 @@ function MatchingPanel() {
               gap: 10,
             }}
           >
-            {assignments.map((a, i) => (
+            {assignments.map((a) => (
               <div
-                key={i}
+                key={`${a.team_name}-${a.mentor_name}`}
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -574,7 +595,7 @@ function MatchingPanel() {
           </pre>
           <button
             type="button"
-            onClick={() => navigator.clipboard.writeText(exportData)}
+            onClick={copyExport}
             className="px-btn-secondary"
             style={{ marginTop: 12 }}
           >
@@ -587,6 +608,7 @@ function MatchingPanel() {
         open={dialog.open}
         title={dialog.title}
         description={dialog.description}
+        dangerous={dialog.dangerous}
         onConfirm={dialog.onConfirm}
         onCancel={() => setDialog(CLOSED_DIALOG)}
       />
@@ -785,7 +807,6 @@ function MatchingContent() {
       </div>
 
       <div
-        role="tablist"
         style={{
           display: 'flex',
           gap: 8,
@@ -799,8 +820,6 @@ function MatchingContent() {
           <button
             key={t.key}
             type="button"
-            role="tab"
-            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             style={{
               padding: '12px 18px',

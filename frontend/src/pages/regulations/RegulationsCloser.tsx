@@ -16,8 +16,6 @@ export default function RegulationsCloser() {
         marginTop: 'clamp(64px, 8vw, 96px)',
         border: '2px solid var(--px-salmon)',
         background: 'var(--px-bg-panel)',
-        display: 'grid',
-        gridTemplateColumns: 'minmax(220px, 320px) 1fr',
         alignItems: 'stretch',
         overflow: 'hidden',
       }}

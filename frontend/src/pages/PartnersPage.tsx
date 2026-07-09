@@ -30,52 +30,35 @@ const STANDARD = PARTNERS.filter((p) => p.tier === 'standard');
 
 function PartnerTile({ partner, index }: { partner: Partner; index: number }) {
   return (
-    <a
-      href="#"
-      className="reveal"
-      onClick={(e) => e.preventDefault()}
+    <figure
+      className="reveal partner-tile"
       aria-label={partner.alt}
       style={{
+        margin: 0,
         display: 'grid',
         placeItems: 'center',
         aspectRatio: '4/3',
         background: 'var(--px-bg-card)',
         border: '1px solid var(--px-teal-dim)',
         padding: '20px',
-        textDecoration: 'none',
-        color: 'inherit',
         transitionDelay: `${(index % 6) * 0.06}s`,
-        outline: 'none',
-      }}
-      onFocus={(e) => {
-        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--px-focus-glow)';
-      }}
-      onBlur={(e) => {
-        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'none';
       }}
     >
       <img
         src={`/companyLogos/${partner.file}`}
         alt={partner.alt}
         loading="lazy"
+        className="partner-tile__logo"
         style={{
           maxWidth: '100%',
           maxHeight: '100%',
           width: '70%',
           height: '70%',
           objectFit: 'contain',
-          filter: 'brightness(0.9) contrast(1.05)',
-          transition: 'filter 0.3s',
           ...(partner.scaleOverride ? { transform: `scale(${partner.scaleOverride * 0.9})` } : {}),
         }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLImageElement).style.filter = 'brightness(1.1) contrast(1.1)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLImageElement).style.filter = 'brightness(0.9) contrast(1.05)';
-        }}
       />
-    </a>
+    </figure>
   );
 }
 

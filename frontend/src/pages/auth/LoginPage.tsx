@@ -62,7 +62,8 @@ export default function LoginPage() {
         setError(data.error ?? 'Invalid credentials. Please try again.');
       }
     } catch (err: unknown) {
-      setError((err as Error)?.message ?? 'Network error. Please check your connection.');
+      console.error('Login failed:', err);
+      setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }

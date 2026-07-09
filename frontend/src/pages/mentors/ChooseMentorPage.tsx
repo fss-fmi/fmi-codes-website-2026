@@ -195,8 +195,7 @@ function ChooseMentorContent() {
                   color: 'var(--px-white)',
                 }}
               >
-                {(p as Preference & { mentor_name?: string }).mentor_name ??
-                  `Mentor #${p.mentor_id}`}
+                {p.mentor_name ?? `Mentor #${p.mentor_id}`}
               </span>
             </div>
           ))}
@@ -207,7 +206,17 @@ function ChooseMentorContent() {
               onClick={() => {
                 setEditing(true);
                 setUiStep('select');
-                setSelected([]);
+                setSelected(
+                  [...submitted]
+                    .sort((a, b) => a.rank - b.rank)
+                    .map(
+                      (p) =>
+                        mentors.find((m) => m.mentor_id === p.mentor_id) ?? {
+                          mentor_id: p.mentor_id,
+                          name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
+                        },
+                    ),
+                );
               }}
             >
               CHANGE PREFERENCES

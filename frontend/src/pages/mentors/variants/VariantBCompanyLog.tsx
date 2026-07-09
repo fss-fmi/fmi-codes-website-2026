@@ -87,9 +87,6 @@ function CompanyChapter({
     <section
       className="companylog-chapter"
       style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(160px, 240px) 1fr',
-        gap: 'clamp(24px, 4vw, 64px)',
         padding: 'clamp(40px, 5vw, 64px) 0',
         borderBottom: '1px solid var(--px-teal-dim)',
       }}
@@ -97,14 +94,6 @@ function CompanyChapter({
       {/* Left rail — company name + mentor-count tally */}
       <div
         className="companylog-chapter__rail"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          position: 'sticky',
-          top: '100px',
-          alignSelf: 'start',
-        }}
       >
         <div
           style={{

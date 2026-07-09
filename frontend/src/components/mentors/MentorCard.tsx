@@ -1,19 +1,19 @@
 import type { Mentor } from '@/types/mentor';
+import { pictureFor, availabilityStatus, type AvailabilityStatus } from '@/pages/mentors/variants/shared';
 
 interface Props {
   mentor: Mentor;
 }
 
+const AVAIL_COLORS: Record<AvailabilityStatus, string> = {
+  full: 'var(--px-green)',
+  partial: 'var(--px-amber)',
+  limited: 'var(--px-salmon)',
+  unknown: 'var(--px-muted)',
+};
+
 function AvailDot({ text }: { text: string }) {
-  const t = text.toLowerCase();
-  let color = 'rgba(176,190,197,0.7)';
-  if (t.includes('free') || t.includes('available') || t.includes('свободен')) {
-    color = '#4ade80';
-  } else if (t.includes('partial') || t.includes('частично')) {
-    color = 'var(--px-salmon)';
-  } else if (t.includes('full') || t.includes('taken') || t.includes('зает')) {
-    color = '#f87171';
-  }
+  const color = AVAIL_COLORS[availabilityStatus(text)];
   return (
     <div
       style={{
@@ -42,6 +42,7 @@ function AvailDot({ text }: { text: string }) {
 
 export default function MentorCard({ mentor }: Props) {
   const techs = Array.isArray(mentor.technologies) ? mentor.technologies.filter(Boolean) : [];
+  const pictureSrc = pictureFor(mentor);
 
   return (
     <div
@@ -60,13 +61,9 @@ export default function MentorCard({ mentor }: Props) {
           position: 'relative',
         }}
       >
-        {mentor.picture_filename ? (
+        {pictureSrc ? (
           <img
-            src={
-              mentor.picture_url?.startsWith('/')
-                ? mentor.picture_url
-                : `/static/mentorPictures/${mentor.picture_filename}`
-            }
+            src={pictureSrc}
             alt={mentor.name}
             style={{
               width: '100%',

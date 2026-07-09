@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import RequireAuth from '@/components/layout/RequireAuth';
@@ -53,15 +52,12 @@ function NoTeamView() {
       dangerous: true,
       onConfirm: async () => {
         setDialog(CLOSED_DIALOG);
-        const d = await api.post<{ success: boolean; error?: string }>(
-          `/api/teams/requests/${requestId}/cancel`,
-          {},
-        );
-        if (d.success) {
+        try {
+          await api.post(`/api/teams/requests/${requestId}/cancel`, {});
           showToast({ kind: 'success', message: 'Application withdrawn.' });
           refetch();
-        } else {
-          showToast({ kind: 'danger', message: d.error ?? 'Failed.' });
+        } catch (e) {
+          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
         }
       },
     });
@@ -110,7 +106,6 @@ function NoTeamView() {
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
                     <StatusBadge variant={a.status as 'pending' | 'accepted' | 'declined'} />
                     <span
-                      role="status"
                       style={{ color: 'var(--px-muted-strong)', fontFamily: 'var(--px-mono)', fontSize: '0.8rem' }}
                     >
                       {a.participant_count}/6 members
@@ -157,19 +152,19 @@ function TeamDashboardView({
 }) {
   const { showToast } = useToast();
   const isCaptain = String(team.captain_id) === String(userId);
-  const teamId = team.id ?? team.team_id!;
+  const teamId = team.id ?? team.team_id;
   const [dialog, setDialog] = useState<DialogState>(CLOSED_DIALOG);
 
   const { data: reqData, refetch: refetchReqs } = useQuery<{ requests: JoinRequest[] }>({
     queryKey: ['join-requests', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/requests`),
-    enabled: isCaptain,
+    enabled: isCaptain && !!teamId,
   });
 
   const { data: prefData } = useQuery<{ preferences: MentorPref[] }>({
     queryKey: ['team-mentor-preferences', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/mentor-preferences`),
-    enabled: team.status === 'active',
+    enabled: team.status === 'active' && !!teamId,
   });
 
   const { data: statusData } = useQuery<{ confirmed: boolean }>({
@@ -186,14 +181,12 @@ function TeamDashboardView({
       dangerous: true,
       onConfirm: async () => {
         setDialog(CLOSED_DIALOG);
-        const d = await api.delete<{ success: boolean; error?: string }>(
-          `/api/teams/${teamId}/members/${mid}`,
-        );
-        if (d.success) {
+        try {
+          await api.delete(`/api/teams/${teamId}/members/${mid}`);
           showToast({ kind: 'success', message: 'Member removed.' });
           onRefresh();
-        } else {
-          showToast({ kind: 'danger', message: d.error ?? 'Failed.' });
+        } catch (e) {
+          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
         }
       },
     });
@@ -208,12 +201,12 @@ function TeamDashboardView({
       dangerous: true,
       onConfirm: async () => {
         setDialog(CLOSED_DIALOG);
-        const d = await api.post<{ success: boolean; error?: string }>(
-          `/api/teams/${teamId}/leave`,
-          {},
-        );
-        if (d.success) onRefresh();
-        else showToast({ kind: 'danger', message: d.error ?? 'Failed.' });
+        try {
+          await api.post(`/api/teams/${teamId}/leave`, {});
+          onRefresh();
+        } catch (e) {
+          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
+        }
       },
     });
   }
@@ -228,29 +221,27 @@ function TeamDashboardView({
       dangerous: true,
       onConfirm: async () => {
         setDialog(CLOSED_DIALOG);
-        const d = await api.delete<{ success: boolean; error?: string }>(
-          `/api/teams/${teamId}`,
-        );
-        if (d.success) onRefresh();
-        else showToast({ kind: 'danger', message: d.error ?? 'Failed.' });
+        try {
+          await api.delete(`/api/teams/${teamId}`);
+          onRefresh();
+        } catch (e) {
+          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
+        }
       },
     });
   }
 
   async function handleRequest(reqId: number, action: 'accept' | 'decline') {
-    const d = await api.post<{ success: boolean; error?: string }>(
-      `/api/teams/requests/${reqId}/${action}`,
-      {},
-    );
-    if (d.success) {
+    try {
+      await api.post(`/api/teams/requests/${reqId}/${action}`, {});
       showToast({
         kind: action === 'accept' ? 'success' : 'info',
         message: action === 'accept' ? 'Accepted.' : 'Declined.',
       });
       refetchReqs();
       onRefresh();
-    } else {
-      showToast({ kind: 'danger', message: d.error ?? 'Failed.' });
+    } catch (e) {
+      showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
     }
   }
 
@@ -285,7 +276,6 @@ function TeamDashboardView({
         </div>
         {team.status !== 'active' && (
           <div
-            role="status"
             style={{
               background: 'var(--px-bg-panel)',
               border: '1px solid var(--px-amber)',
@@ -302,7 +292,6 @@ function TeamDashboardView({
         )}
         {team.is_registered && (
           <div
-            role="status"
             style={{
               background: 'var(--px-bg-panel)',
               border: '1px solid var(--px-green)',
@@ -319,7 +308,6 @@ function TeamDashboardView({
         )}
         {!team.is_registered && team.queue_position && (
           <div
-            role="status"
             style={{
               background: 'var(--px-bg-panel)',
               border: '1px solid var(--px-amber)',
@@ -581,7 +569,7 @@ function TeamPageContent() {
 
   const teamId = meData?.user?.team_id;
 
-  const { data: teamData, refetch: refetchTeam } = useQuery<{ team: Team }>({
+  const { data: teamData, isError: teamIsError, refetch: refetchTeam } = useQuery<{ team: Team }>({
     queryKey: ['team', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}`),
     enabled: !!teamId,
@@ -595,6 +583,19 @@ function TeamPageContent() {
   if (isLoading) return <LoadingSpinner fullPage />;
 
   if (!teamId) return <NoTeamView />;
+  if (teamIsError)
+    return (
+      <div style={{ padding: '100px 24px', maxWidth: 640, margin: '0 auto' }}>
+        <Panel title="COULD NOT LOAD TEAM">
+          <p className="px-body" style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}>
+            &gt; Failed to load your team. Check your connection and try again.
+          </p>
+          <Button variant="secondary" onClick={() => refetchTeam()}>
+            RETRY
+          </Button>
+        </Panel>
+      </div>
+    );
   if (!teamData?.team) return <LoadingSpinner fullPage />;
 
   return (

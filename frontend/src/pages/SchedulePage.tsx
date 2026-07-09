@@ -299,7 +299,7 @@ export default function SchedulePage() {
                       gap: '8px',
                     }}
                   >
-                    <span>{day.icon}</span>
+                    <span aria-hidden="true">{day.icon}</span>
                     {day.title.toUpperCase()} — {day.subtitle}
                   </h3>
 

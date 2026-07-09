@@ -164,6 +164,7 @@ function MentorDashboardContent() {
   }
 
   async function handleSubmit() {
+    if (ranked.length !== 3) return;
     const prefs = ranked.map((t, i) => ({ team_id: t.team_id, rank: i + 1 }));
     setSubmitting(true);
     setError('');
@@ -313,7 +314,15 @@ function MentorDashboardContent() {
             onClick={() => {
               setEditing(true);
               setUiStep('select');
-              setSelected([]);
+              setSelected(
+                [...submitted]
+                  .sort((a, b) => a.rank - b.rank)
+                  .map((p) => ({
+                    team_id: p.team_id,
+                    team_name: p.team_name ?? `Team #${p.team_id}`,
+                    participant_count: 0,
+                  })),
+              );
             }}
           >
             CHANGE PREFERENCES
@@ -450,7 +459,7 @@ function MentorDashboardContent() {
             </button>
             <Button
               variant="primary"
-              disabled={submitting}
+              disabled={ranked.length !== 3 || submitting}
               onClick={handleSubmit}
             >
               {submitting ? 'SUBMITTING…' : 'SUBMIT PREFERENCES'}

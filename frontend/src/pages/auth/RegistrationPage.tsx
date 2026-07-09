@@ -227,12 +227,12 @@ export default function RegistrationPage() {
                   id="reg-password"
                   label="PASSWORD"
                   required
-                  hint="Minimum 6 characters."
+                  hint="Minimum 12 characters."
                 >
                   <Input
                     type="password"
                     required
-                    minLength={6}
+                    minLength={12}
                     placeholder="••••••••"
                     value={form.password}
                     onChange={(e) => set('password', e.target.value)}

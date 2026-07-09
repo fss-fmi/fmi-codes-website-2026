@@ -14,5 +14,6 @@ export interface Mentor {
 
 export interface Preference {
   mentor_id: number;
-  rank: 1 | 2 | 3;
+  rank: number;
+  mentor_name?: string;
 }

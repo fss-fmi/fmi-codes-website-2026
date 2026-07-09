@@ -97,10 +97,6 @@ export default function ContactSection() {
       {/* Row — same rail-plus-content layout as Briefing rows */}
       <article
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(120px, 200px) 1fr',
-          gap: 'clamp(24px, 4vw, 72px)',
-          alignItems: 'start',
           padding: 'clamp(24px, 4vw, 48px) 0',
         }}
         className="contact-row"
@@ -134,12 +130,6 @@ export default function ContactSection() {
 
         {/* Right: split into copy + card */}
         <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr minmax(280px, 380px)',
-            gap: 'clamp(28px, 4vw, 56px)',
-            alignItems: 'start',
-          }}
           className="contact-body"
         >
           {/* Copy column */}

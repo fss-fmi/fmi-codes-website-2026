@@ -118,7 +118,7 @@ function BrowseTeamsContent() {
                     aria-label={`${t.participant_count} of 6 members`}
                     className="px-progress-track"
                   >
-                    <div className="px-progress-fill" style={{ width: `${pct}%` }} />
+                    <div className="px-progress-fill" style={{ transform: `scaleX(${pct / 100})` }} />
                   </div>
                 </div>
                 {isApplied ? (

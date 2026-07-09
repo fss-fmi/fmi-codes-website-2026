@@ -22,7 +22,6 @@ import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
 import MentorsPage from '@/pages/mentors/MentorsPage';
 import ChooseMentorPage from '@/pages/mentors/ChooseMentorPage';
 import MentorDashboardPage from '@/pages/mentors/MentorDashboardPage';
-import SelectedMentorsPage from '@/pages/mentors/SelectedMentorsPage';
 
 import TeamPage from '@/pages/teams/TeamPage';
 import CreateTeamPage from '@/pages/teams/CreateTeamPage';
@@ -137,10 +136,6 @@ export default function App() {
                 <Route
                   path="/chooseMentor"
                   element={<ChooseMentorPage />}
-                />
-                <Route
-                  path="/selectedMentors"
-                  element={<SelectedMentorsPage />}
                 />
 
                 {/* Mentor */}

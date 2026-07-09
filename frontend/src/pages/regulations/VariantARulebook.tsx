@@ -171,9 +171,6 @@ function RulebookChapter({
       data-chapter-key={chapter.key}
       id={`chapter-${chapter.key}`}
       style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(140px, 220px) 1fr',
-        gap: 'clamp(24px, 4vw, 72px)',
         padding: 'clamp(48px, 6vw, 80px) 0',
         borderBottom: '1px solid var(--px-teal-dim)',
         scrollMarginTop: '100px',
@@ -182,14 +179,6 @@ function RulebookChapter({
     >
       {/* Left rail — big number + chapter eyebrow */}
       <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          position: 'sticky',
-          top: '160px',
-          alignSelf: 'start',
-        }}
         className="rulebook-chapter-rail"
       >
         <div
@@ -221,7 +210,7 @@ function RulebookChapter({
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {rules.map((rule, i) => (
           <article
-            key={i}
+            key={rule.question}
             className="rulebook-rule reveal"
             style={{
               padding: 'clamp(20px, 3vw, 32px) 0',

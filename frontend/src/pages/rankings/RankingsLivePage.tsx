@@ -116,7 +116,7 @@ function RankCard({ team, maxScore }: { team: RankedTeam; maxScore: number }) {
         className="px-progress-track"
         style={{ height: 4 }}
       >
-        <div className="px-progress-fill" style={{ width: `${barPct}%` }} />
+        <div className="px-progress-fill" style={{ transform: `scaleX(${barPct / 100})` }} />
       </div>
     </NestedCard>
   );

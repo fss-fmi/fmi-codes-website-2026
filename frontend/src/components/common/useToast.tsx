@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type ToastKind = 'success' | 'warning' | 'danger' | 'info';
@@ -74,8 +74,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const value = useMemo(() => ({ showToast }), [showToast]);
+
   return (
-    <Ctx.Provider value={{ showToast }}>
+    <Ctx.Provider value={value}>
       {children}
       <div
         style={{

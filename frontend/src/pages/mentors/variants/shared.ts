@@ -47,10 +47,20 @@ export function mentorNumber(index: number): string {
 }
 
 /**
- * Resolve a mentor's picture URL: some are absolute /static paths, others
- * are just filenames. Fall back to null so the caller can render initials.
+ * Resolve a mentor's picture source. Prefers inline base64 picture_data, then
+ * picture_url (absolute /static paths are used as-is, bare filenames are
+ * prefixed), then picture_filename. Falls back to null so the caller can
+ * render initials. Accepts any object carrying a subset of the picture fields
+ * so both the Mentor shape and the selected-mentors shape can use it.
  */
-export function pictureFor(mentor: Mentor): string | null {
+export function pictureFor(mentor: {
+  picture_data?: string | null;
+  picture_url?: string | null;
+  picture_filename?: string | null;
+}): string | null {
+  if (mentor.picture_data) {
+    return `data:image/png;base64,${mentor.picture_data}`;
+  }
   if (mentor.picture_url) {
     return mentor.picture_url.startsWith('/')
       ? mentor.picture_url

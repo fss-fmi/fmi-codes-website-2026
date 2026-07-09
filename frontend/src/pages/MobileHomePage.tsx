@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useConfig } from '@/context/ConfigContext';
+import { PREMIUM_SPONSORS, SUPPORTING_SPONSORS } from '@/components/home/homeData';
 
 /**
  * Mobile-first home page. Composed as a single-column stack tuned for
@@ -205,23 +206,9 @@ function MobileBriefing() {
    SPONSORS
    ─────────────────────────────────────────────────────────── */
 
-const PREMIUM = [
-  { file: 'avenga.svg', alt: 'Avenga' },
-  { file: 'gameloft.png', alt: 'Gameloft' },
-  { file: 'EnduroSat.png', alt: 'EnduroSat' },
-  { file: 'waracle.png', alt: 'Waracle' },
-  { file: 'SAP.png', alt: 'SAP' },
-  { file: 'Milestone.png', alt: 'Milestone' },
-] as const;
+const PREMIUM = PREMIUM_SPONSORS;
 
-const SUPPORTING = [
-  'Astea',
-  'Chaos',
-  'Dreamix',
-  'Engineer Access',
-  'Raven',
-  'Experian',
-];
+const SUPPORTING = SUPPORTING_SPONSORS.map((s) => s.alt);
 
 const SCALE_OVERRIDES: Record<string, number> = {
   Milestone: 1.5,

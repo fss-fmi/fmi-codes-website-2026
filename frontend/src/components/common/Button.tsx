@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, AnchorHTMLAttributes, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
@@ -38,8 +39,21 @@ export default function Button(props: Props) {
   const cls = `${variantClass(variant)} ${className}`.trim();
   if ('href' in props && props.href !== undefined) {
     const anchorRest = rest as AnchorHTMLAttributes<HTMLAnchorElement>;
+    // Internal routes go through the router so navigation stays client-side
+    // (a raw <a href="/..."> would trigger a full document reload).
+    if (props.href.startsWith('/')) {
+      const { href: _href, ...linkRest } = anchorRest;
+      return (
+        <Link className={cls} to={props.href} {...linkRest}>
+          {children}
+        </Link>
+      );
+    }
+    // External links: default to safe rel when opening a new tab.
+    const rel =
+      anchorRest.target === '_blank' ? (anchorRest.rel ?? 'noopener noreferrer') : anchorRest.rel;
     return (
-      <a className={cls} {...anchorRest}>
+      <a className={cls} {...anchorRest} rel={rel}>
         {children}
       </a>
     );

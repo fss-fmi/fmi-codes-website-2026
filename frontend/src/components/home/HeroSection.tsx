@@ -110,20 +110,20 @@ export default function HeroSection() {
           {REGISTRATION_OPEN && (
             <Link
               to="/registration"
-              style={{ display: 'block' }}
+              className="px-btn-filled"
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '16px',
+                fontFamily: 'var(--px-font)',
+                fontSize: '0.55rem',
+                letterSpacing: '0.1em',
+                textAlign: 'center',
+                textDecoration: 'none',
+                cursor: 'pointer',
+              }}
             >
-              <button
-                className="px-btn-filled"
-                style={{
-                  width: '100%',
-                  padding: '16px',
-                  fontSize: '0.55rem',
-                  letterSpacing: '0.1em',
-                  cursor: 'pointer',
-                }}
-              >
-                REGISTER NOW
-              </button>
+              REGISTER NOW
             </Link>
           )}
 
@@ -153,7 +153,7 @@ export default function HeroSection() {
               <div
                 style={{
                   fontFamily: 'var(--px-font)',
-                  fontSize: '0.42rem',
+                  fontSize: '0.6rem',
                   color: 'var(--px-salmon)',
                   marginBottom: '10px',
                 }}
@@ -183,7 +183,7 @@ export default function HeroSection() {
                 flex: 1,
                 textAlign: 'center',
                 fontFamily: 'var(--px-font)',
-                fontSize: '0.38rem',
+                fontSize: '0.6rem',
                 padding: '12px 6px',
                 textDecoration: 'none',
                 border: '2px solid var(--px-teal-border)',
@@ -203,7 +203,7 @@ export default function HeroSection() {
                 flex: 1,
                 textAlign: 'center',
                 fontFamily: 'var(--px-font)',
-                fontSize: '0.38rem',
+                fontSize: '0.6rem',
                 padding: '12px 6px',
                 textDecoration: 'none',
                 border: '2px solid var(--px-teal-border)',
@@ -223,7 +223,7 @@ export default function HeroSection() {
                 flex: 1,
                 textAlign: 'center',
                 fontFamily: 'var(--px-font)',
-                fontSize: '0.38rem',
+                fontSize: '0.6rem',
                 padding: '12px 6px',
                 textDecoration: 'none',
                 border: '2px solid var(--px-teal-border)',

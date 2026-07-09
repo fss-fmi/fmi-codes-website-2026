@@ -220,7 +220,7 @@ Any logged-in user can submit a bug report from the UI. Reports are forwarded to
 │   │   ├── base.html / navbar.html / home.html  (home includes contact section)
 │   │   ├── auth/           login, registration, profile
 │   │   ├── teams/          team, createTeam, joinTeam, browseTeams, registeredTeams
-│   │   ├── mentors/        mentors, mentorsStayTuned, chooseMentor, mentorDashboard, selectedMentors
+│   │   ├── mentors/        mentors, mentorsStayTuned, chooseMentor, mentorDashboard
 │   │   ├── rankings/       ranking, teamRanking
 │   │   └── admin/          matching dashboard
 │   ├── static/             Images, company logos, mentor pictures
