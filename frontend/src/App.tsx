@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import queryClient from '@/lib/queryClient';
 import { AuthProvider } from '@/context/AuthContext';
@@ -40,6 +41,20 @@ function RegistrationGate() {
   return REGISTRATION_OPEN ? <RegistrationPage /> : <RegistrationClosedPage />;
 }
 
+/**
+ * Resets window scroll to the top on route (pathname) changes. SPAs don't
+ * get the browser's free scroll-to-top-on-navigation, so without this the
+ * scroll offset persists across pages. Keyed on pathname only, so in-page
+ * hash anchors (e.g. the Regulations rulebook's #Q05 jumps) still work.
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -47,6 +62,7 @@ export default function App() {
         <ConfigProvider>
           <ToastProvider>
             <BrowserRouter>
+              <ScrollToTop />
               <RouteErrorBoundary>
               <Routes>
                 {/* Public */}
