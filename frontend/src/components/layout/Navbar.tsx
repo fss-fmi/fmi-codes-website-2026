@@ -214,6 +214,7 @@ export default function Navbar() {
               <div className="px-mobile-drawer__label">EVENT</div>
               <ul className="px-mobile-drawer__list">
                 {[
+                  { to: '/', label: 'HOME', end: true },
                   { to: '/regulations', label: 'REGULATIONS' },
                   { to: '/schedule', label: 'SCHEDULE' },
                   { to: '/mentors', label: 'MENTORS' },
@@ -223,6 +224,7 @@ export default function Navbar() {
                   <li key={item.to}>
                     <NavLink
                       to={item.to}
+                      end={item.end}
                       className={mobileNavLinkClass}
                       onClick={closeDrawer}
                     >

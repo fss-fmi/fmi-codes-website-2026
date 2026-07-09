@@ -3,10 +3,22 @@ import HeroSection from '@/components/home/HeroSection';
 import BriefingSection from '@/components/home/BriefingSection';
 import SponsorsSection from '@/components/home/SponsorsSection';
 import ContactSection from '@/components/home/ContactSection';
+import MobileHomePage from '@/pages/MobileHomePage';
 import { useScrollReveal } from '@/hooks/useVisuals';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 export default function HomePage() {
+  const isMobile = useIsMobile();
   useScrollReveal();
+
+  if (isMobile) {
+    return (
+      <>
+        <Navbar />
+        <MobileHomePage />
+      </>
+    );
+  }
 
   return (
     <>
