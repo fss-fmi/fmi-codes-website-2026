@@ -17,7 +17,6 @@ from collections import deque
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
-from app.services.mentor_selection_service import get_preference_submission_status
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +133,7 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
         warnings = []
 
     # ── Phase 1: Extended Gale-Shapley ───────────────────────────────────────
-    mentor_proposal_idx = {m: 0 for m in all_mentors}
+    mentor_proposal_idx = dict.fromkeys(all_mentors, 0)
     mentor_assignments = {m: [] for m in all_mentors}   # mentor -> [team_ids]
     team_assignments   = {t: [] for t in all_teams}     # team   -> [mentor_ids]
 

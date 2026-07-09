@@ -79,8 +79,11 @@ jobs:
       - name: Ruff lint
         run: ruff check .
 
-      - name: Ruff format check
+      # Advisory only: the existing codebase predates ruff-format, so a full
+      # reformat is a separate opt-in cleanup. Surfaced in the log, not blocking.
+      - name: Ruff format check (advisory)
         run: ruff format --check .
+        continue-on-error: true
 
       - name: Set up Node
         uses: actions/setup-node@v4

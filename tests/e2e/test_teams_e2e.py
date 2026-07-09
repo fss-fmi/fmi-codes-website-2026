@@ -432,8 +432,7 @@ class TestJoinRequestFlow:
 
     def test_captain_cannot_see_different_teams_requests(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
-        rv_a = _create_team(client, token1, "Team A")
-        team_a_id = _get_team_id(rv_a)
+        _create_team(client, token1, "Team A")
 
         with flask_app.test_client() as c2:
             token2 = register_and_token(c2, 2, seeds)

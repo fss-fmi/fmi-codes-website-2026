@@ -19,11 +19,11 @@ _pool_timeout = 5
 def init_database(app):
     """Initialize a ThreadedConnectionPool and verify the schema exists."""
     global _pool, _pool_timeout
-    
+
     min_conn = app.config.get("DB_POOL_MIN", 2)
     max_conn = app.config.get("DB_POOL_MAX", 20)
     _pool_timeout = app.config.get("DB_POOL_TIMEOUT", 5)
-    
+
     max_retries = 10
     retry_delay = 3
 
@@ -178,4 +178,5 @@ def execute_batch(app, query, params_list):
                 execute_values(cursor, query, params_list)
                 return cursor.rowcount
     except Exception as e:
-        logger
+        logger.error(f"Batch execution error: {e}")
+        raise

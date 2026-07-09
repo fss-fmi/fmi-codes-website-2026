@@ -18,7 +18,6 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 import app.services.auth_service as auth_service
 
-
 # ---------------------------------------------------------------------------
 # Password hashing
 # ---------------------------------------------------------------------------

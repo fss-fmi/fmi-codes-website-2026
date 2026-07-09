@@ -12,7 +12,6 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.matching_service import MENTOR_CAPACITY, TEAM_CAPACITY, _run_algorithm
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -216,8 +215,7 @@ class TestEdgeCases:
 
     def test_warnings_accumulated_into_passed_list(self):
         existing_warnings = ["pre-existing warning"]
-        teams   = [1]
-        mentors = [10]  # Only 1 mentor for a 3-mentor-capacity team → underfill
+        # 1 team, 1 mentor for a 3-mentor-capacity team → underfill warning
         _, warnings = _run_algorithm([1], [10], {10: [1]}, {1: {10: 1}}, existing_warnings)
         assert existing_warnings[0] in warnings
 
