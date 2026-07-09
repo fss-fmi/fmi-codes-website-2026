@@ -1668,3 +1668,41 @@ body.arcade-theme {
   text-align: right;
   overflow-wrap: anywhere;
 }
+
+.bug-bubble-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 52px;
+  height: 52px;
+  border-radius: 0;
+  background: var(--px-salmon);
+  border: 2px solid var(--px-salmon-hover);
+  color: var(--px-bg);
+  cursor: pointer;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  box-shadow: 0 4px 20px rgba(244, 132, 95, 0.35), 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition:
+    transform 0.15s var(--px-ease),
+    box-shadow 0.15s var(--px-ease);
+}
+.bug-bubble-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 28px rgba(244, 132, 95, 0.5), 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+.bug-bubble-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--px-focus-glow-salmon), 0 4px 20px rgba(244, 132, 95, 0.35);
+}
+@media (max-width: 768px) {
+  .bug-bubble-btn {
+    bottom: 20px;
+    right: 14px;
+    width: 46px;
+    height: 46px;
+  }
+}
