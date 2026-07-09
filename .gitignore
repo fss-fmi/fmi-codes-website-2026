@@ -85,3 +85,10 @@ npm-debug.log
 yarn-error.log
 package-lock.json
 yarn.lock
+# Local Claude Code guidelines (do not commit)
+CLAUDE.md
+
+# Local Impeccable design skill artifacts (do not commit)
+PRODUCT.md
+DESIGN.md
+.impeccable/

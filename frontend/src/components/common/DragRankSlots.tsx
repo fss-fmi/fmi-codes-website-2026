@@ -3,6 +3,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -10,6 +11,7 @@ import {
 import {
   arrayMove,
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
@@ -38,64 +40,88 @@ function SortableItem({ id, rank, mentor, onRemove }: SortableItemProps) {
         alignItems: 'center',
         gap: '12px',
         padding: '12px 16px',
-        borderRadius: '10px',
-        background: isDragging ? 'rgba(96,165,250,0.15)' : 'rgba(255,255,255,0.04)',
-        border: isDragging ? '1px solid rgba(96,165,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
+        background: isDragging ? 'var(--px-bg-elevated)' : 'var(--px-bg-card)',
+        border: isDragging
+          ? '2px solid var(--px-teal-strong)'
+          : '1px solid var(--px-teal-dim)',
         cursor: 'grab',
         userSelect: 'none',
-        boxShadow: isDragging ? '0 8px 24px rgba(0,0,0,0.4)' : 'none',
         zIndex: isDragging ? 9999 : 'auto',
       }}
       {...attributes}
       {...listeners}
     >
       <span
+        className="px-label"
         style={{
-          fontSize: '1.1rem',
-          fontWeight: 800,
-          color: 'var(--accent)',
-          minWidth: '24px',
+          color: 'var(--px-teal)',
+          minWidth: '28px',
           textAlign: 'center',
+          fontSize: '0.65rem',
         }}
       >
-        {rank}
+        #{rank}
       </span>
 
       {mentor.picture_filename && (
         <img
           src={`/mentorPictures/${mentor.picture_filename}`}
           alt={mentor.name}
-          style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }}
+          loading="lazy"
+          style={{
+            width: '36px',
+            height: '36px',
+            objectFit: 'cover',
+            border: '1px solid var(--px-teal-dim)',
+          }}
         />
       )}
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>
+        <div
+          style={{
+            fontFamily: 'var(--px-mono)',
+            fontSize: '0.9rem',
+            fontWeight: 700,
+            color: 'var(--px-white)',
+          }}
+        >
           {mentor.name}
         </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{mentor.company_name}</div>
+        <div
+          style={{
+            fontFamily: 'var(--px-mono)',
+            fontSize: '0.75rem',
+            color: 'var(--px-muted-strong)',
+          }}
+        >
+          {mentor.company_name}
+        </div>
       </div>
 
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
           onRemove(mentor.mentor_id);
         }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        aria-label={`Remove ${mentor.name}`}
         style={{
-          background: 'none',
+          background: 'transparent',
           border: 'none',
           cursor: 'pointer',
-          color: 'var(--muted)',
-          fontSize: '1rem',
-          lineHeight: 1,
-          padding: '4px',
+          color: 'var(--px-muted-strong)',
+          fontFamily: 'var(--px-font)',
+          fontSize: '0.6rem',
+          padding: '6px 10px',
           transition: 'color 0.2s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--muted)')}
-        aria-label="Remove"
+        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--px-danger)')}
+        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--px-muted-strong)')}
       >
-        ✕
+        ×
       </button>
     </div>
   );
@@ -119,7 +145,10 @@ export default function DragRankSlots({
     return sorted.map((p) => mentors.find((m) => m.mentor_id === p.mentor_id)!).filter(Boolean);
   });
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -155,23 +184,16 @@ export default function DragRankSlots({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Ranked slots */}
       <div>
-        <p
-          style={{
-            fontSize: '0.8rem',
-            fontWeight: 700,
-            color: 'var(--muted)',
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            marginBottom: '12px',
-          }}
-        >
-          Your ranking ({ranked.length}/{maxSlots})
+        <p className="px-label" style={{ marginBottom: '12px' }}>
+          YOUR RANKING ({ranked.length}/{maxSlots})
         </p>
         {ranked.length === 0 ? (
-          <p style={{ fontSize: '0.875rem', color: 'var(--muted)', fontStyle: 'italic' }}>
-            Add mentors from the list below
+          <p
+            className="px-body-sm"
+            style={{ color: 'var(--px-muted-strong)', fontStyle: 'italic' }}
+          >
+            &gt; Add mentors from the list below.
           </p>
         ) : (
           <DndContext
@@ -199,20 +221,10 @@ export default function DragRankSlots({
         )}
       </div>
 
-      {/* Available mentors */}
       {unranked.length > 0 && ranked.length < maxSlots && (
         <div>
-          <p
-            style={{
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              color: 'var(--muted)',
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              marginBottom: '12px',
-            }}
-          >
-            Available mentors
+          <p className="px-label" style={{ marginBottom: '12px' }}>
+            AVAILABLE MENTORS
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {unranked.map((mentor) => (
@@ -223,35 +235,52 @@ export default function DragRankSlots({
                   alignItems: 'center',
                   gap: '12px',
                   padding: '10px 16px',
-                  borderRadius: '10px',
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: 'var(--px-bg-card)',
+                  border: '1px solid var(--px-teal-dim)',
                 }}
               >
                 {mentor.picture_filename && (
                   <img
                     src={`/mentorPictures/${mentor.picture_filename}`}
                     alt={mentor.name}
+                    loading="lazy"
                     style={{
                       width: '32px',
                       height: '32px',
-                      borderRadius: '50%',
                       objectFit: 'cover',
+                      border: '1px solid var(--px-teal-dim)',
                     }}
                   />
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>{mentor.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--px-mono)',
+                      fontSize: '0.9rem',
+                      fontWeight: 700,
+                      color: 'var(--px-white)',
+                    }}
+                  >
+                    {mentor.name}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--px-mono)',
+                      fontSize: '0.75rem',
+                      color: 'var(--px-muted-strong)',
+                    }}
+                  >
                     {mentor.company_name}
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => addMentor(mentor)}
-                  className="btn btn-primary"
-                  style={{ padding: '4px 14px', fontSize: '0.78rem' }}
+                  className="px-btn-secondary"
+                  style={{ padding: '10px 16px', fontSize: '0.55rem' }}
+                  aria-label={`Add ${mentor.name} to ranking`}
                 >
-                  + Add
+                  + ADD
                 </button>
               </div>
             ))}

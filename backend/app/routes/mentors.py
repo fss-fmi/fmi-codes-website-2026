@@ -26,12 +26,6 @@ def choose_mentor_page():
     return render_template("mentors/chooseMentor.html")
 
 
-@mentors_bp.route("/selectedMentors", methods=["GET"])
-def selected_mentors_page():
-    """Serve the selected mentors page"""
-    return render_template("mentors/selectedMentors.html")
-
-
 @mentors_bp.route("/mentorDashboard", methods=["GET"])
 def mentor_dashboard_page():
     """Serve the mentor dashboard / team preference page"""

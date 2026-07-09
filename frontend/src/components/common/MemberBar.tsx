@@ -13,22 +13,21 @@ export default function MemberBar({ name, isCaptain = false, role }: Props) {
         alignItems: 'center',
         gap: '12px',
         padding: '10px 0',
-        borderBottom: '1px solid rgba(148,163,184,0.08)',
       }}
     >
-      {/* Avatar */}
       <div
+        aria-hidden="true"
         style={{
           width: '36px',
           height: '36px',
-          borderRadius: '50%',
-          background: 'linear-gradient(135deg, #6366f1, #60a5fa)',
+          background: 'var(--px-bg-elevated)',
+          border: '1px solid var(--px-teal-dim)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '0.85rem',
-          fontWeight: 700,
-          color: '#fff',
+          fontFamily: 'var(--px-font)',
+          fontSize: '0.65rem',
+          color: 'var(--px-teal)',
           flexShrink: 0,
         }}
       >
@@ -36,25 +35,30 @@ export default function MemberBar({ name, isCaptain = false, role }: Props) {
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>{name}</div>
-        {role && <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{role}</div>}
-      </div>
-
-      {isCaptain && (
-        <span
+        <div
           style={{
-            fontSize: '0.7rem',
+            fontFamily: 'var(--px-mono)',
+            fontSize: '0.9rem',
             fontWeight: 700,
-            background: 'rgba(251,191,36,0.12)',
-            color: '#fbbf24',
-            border: '1px solid rgba(251,191,36,0.25)',
-            padding: '2px 8px',
-            borderRadius: '100px',
+            color: 'var(--px-white)',
           }}
         >
-          ★ Captain
-        </span>
-      )}
+          {name}
+        </div>
+        {role && (
+          <div
+            style={{
+              fontFamily: 'var(--px-mono)',
+              fontSize: '0.75rem',
+              color: 'var(--px-muted-strong)',
+            }}
+          >
+            {role}
+          </div>
+        )}
+      </div>
+
+      {isCaptain && <span className="px-status-chip">CAPTAIN</span>}
     </div>
   );
 }

@@ -1,16 +1,3 @@
-interface Props {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-  className?: string;
-}
-
-export default function GradientText({ children, style, className = '' }: Props) {
-  return (
-    <span
-      className={`gradient-text ${className}`}
-      style={style}
-    >
-      {children}
-    </span>
-  );
-}
+// Deprecated — retired. Emphasis in the arcade design system is bought via weight/size/color.
+// This file is intentionally empty to break stray imports at build time.
+export {};

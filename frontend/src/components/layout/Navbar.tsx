@@ -7,217 +7,309 @@ export default function Navbar() {
   const { user, role, logout } = useAuth();
   const { REGISTRATION_OPEN } = useConfig();
   const navigate = useNavigate();
-  const [scrolled, setScrolled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const navRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
 
-  // Scroll-aware: add .scrolled class at scrollY > 20
+  // ESC closes the drawer, focus returns to the hamburger
   useEffect(() => {
-    let ticking = false;
-    const onScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          setScrolled(window.scrollY > 20);
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // ESC key closes drawer
-  useEffect(() => {
+    if (!drawerOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerOpen(false);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setDrawerOpen(false);
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [drawerOpen]);
 
-  // Lock body scroll when drawer is open
+  // Lock body scroll while the drawer is open
   useEffect(() => {
-    document.body.style.overflow = drawerOpen ? 'hidden' : '';
+    if (!drawerOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = prev;
     };
   }, [drawerOpen]);
 
-  function closeDrawer() {
-    setDrawerOpen(false);
-  }
+  // Focus trap — cycle Tab / Shift-Tab within the drawer while open
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const container = drawerRef.current;
+    if (!container) return;
 
-  function handleLogout() {
+    // Move focus into the drawer's first focusable element
+    const focusables = () =>
+      Array.from(
+        container.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null);
+
+    const first = focusables()[0];
+    first?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) return;
+      const firstEl = items[0];
+      const lastEl = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === firstEl) {
+        e.preventDefault();
+        lastEl.focus();
+      } else if (!e.shiftKey && document.activeElement === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    container.addEventListener('keydown', onKey);
+    return () => container.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
+  // Return focus to the hamburger when the drawer closes
+  useEffect(() => {
+    if (drawerOpen) return;
+    openerRef.current?.focus({ preventScroll: true });
+  }, [drawerOpen]);
+
+  const closeDrawer = () => setDrawerOpen(false);
+
+  const handleLogout = () => {
     logout();
+    closeDrawer();
     navigate('/login');
-  }
+  };
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `nav-link${isActive ? ' active drawer-nav-active' : ''}`;
+  const desktopLinks = (
+    <>
+      <NavLink to="/regulations" className={navLinkClass}>
+        REGULATIONS
+      </NavLink>
+      <NavLink to="/schedule" className={navLinkClass}>
+        SCHEDULE
+      </NavLink>
+      <NavLink to="/mentors" className={navLinkClass}>
+        MENTORS
+      </NavLink>
+      <NavLink to="/registeredTeams" className={navLinkClass}>
+        TEAMS
+      </NavLink>
+      <NavLink to="/rankings" className={navLinkClass}>
+        RANKINGS
+      </NavLink>
+      {role === 'participant' && (
+        <NavLink to="/team" className={navLinkClass}>
+          MY TEAM
+        </NavLink>
+      )}
+      {role === 'mentor' && (
+        <NavLink to="/mentorDashboard" className={navLinkClass}>
+          DASHBOARD
+        </NavLink>
+      )}
+      {role === 'admin' && (
+        <NavLink to="/admin/matching" className={navLinkClass}>
+          ADMIN
+        </NavLink>
+      )}
+    </>
+  );
+
+  const desktopActions = user ? (
+    <>
+      <Link to="/profile" className="px-nav-link" aria-label="Profile">
+        PROFILE
+      </Link>
+      <button
+        type="button"
+        className="px-nav-link"
+        onClick={handleLogout}
+        style={{ background: 'none', cursor: 'pointer' }}
+      >
+        LOGOUT
+      </button>
+    </>
+  ) : (
+    <>
+      <Link to="/login" className="px-nav-link">
+        LOGIN
+      </Link>
+      {REGISTRATION_OPEN && (
+        <Link to="/registration" className="px-nav-link register">
+          REGISTER
+        </Link>
+      )}
+    </>
+  );
 
   return (
     <>
-      <nav
-        className={`navbar${scrolled ? ' scrolled' : ''}`}
-        id="mainNavbar"
-        ref={navRef}
-      >
-        <div className="navbar-container">
-          {/* Logo */}
-          <div className="navbar-logo">
-            <Link
-              to="/"
-              aria-label="Go to home"
-            >
-              <img
-                src="/images/FSS_logo_vector_trans_white.svg"
-                alt="FSS"
-              />
-            </Link>
-          </div>
+      <nav className="px-navbar" id="mainNavbar">
+        <div className="px-navbar-inner">
+          <Link to="/" className="px-logo" aria-label="Go to home">
+            FMI <span>&#123;CODES&#125;</span> 2026
+          </Link>
 
-          {/* Mobile hamburger */}
+          {/* Hamburger — mobile only, hidden ≥769px */}
           <button
-            className="mobile-toggle"
-            aria-label="Open navigation"
+            ref={openerRef}
+            type="button"
+            className="px-mobile-toggle"
+            aria-label="Open navigation menu"
             aria-expanded={drawerOpen}
+            aria-controls="mobile-drawer"
             onClick={() => setDrawerOpen(true)}
           >
-            &#9776;
+            <span aria-hidden="true">&#9776;</span>
           </button>
 
-          {/* Nav drawer */}
-          <div
-            className={`navbar-menu${drawerOpen ? ' drawer-open' : ''}`}
-            id="navDrawer"
-          >
-            <button
-              className="drawer-close"
-              aria-label="Close navigation"
-              onClick={closeDrawer}
-            >
-              &#10005;
-            </button>
-
+          {/* Desktop inline nav — hidden <769px */}
+          <div className="px-desktop-nav">
+            <div className="px-nav-links">{desktopLinks}</div>
             <div
-              className="nav-links"
-              onClick={closeDrawer}
+              className="px-nav-actions"
+              style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' }}
             >
-              <NavLink
-                to="/"
-                end
-                className={navLinkClass}
-              >
-                Home
-              </NavLink>
-              <NavLink
-                to="/regulations"
-                className={navLinkClass}
-              >
-                Regulations
-              </NavLink>
-              <NavLink
-                to="/schedule"
-                className={navLinkClass}
-              >
-                Schedule
-              </NavLink>
-              <NavLink
-                to="/mentors"
-                className={navLinkClass}
-              >
-                Mentors
-              </NavLink>
-              <NavLink
-                to="/registeredTeams"
-                className={navLinkClass}
-              >
-                Teams
-              </NavLink>
-              <NavLink
-                to="/rankings"
-                className={navLinkClass}
-              >
-                Rankings
-              </NavLink>
+              {desktopActions}
+            </div>
+          </div>
+        </div>
+      </nav>
 
-              {/* Role-specific links */}
-              {role === 'participant' && (
-                <NavLink
-                  to="/team"
-                  className={navLinkClass}
-                >
-                  My Team
-                </NavLink>
-              )}
-              {role === 'mentor' && (
-                <NavLink
-                  to="/mentorDashboard"
-                  className={navLinkClass}
-                >
-                  Dashboard
-                </NavLink>
-              )}
-              {role === 'admin' && (
-                <NavLink
-                  to="/admin/matching"
-                  className={navLinkClass}
-                >
-                  Admin
-                </NavLink>
-              )}
+      {/* Mobile drawer — full-viewport overlay with opaque navy fill, 2px teal
+          border, arcade voice throughout. Rendered as a sibling of the navbar
+          so it stacks cleanly above everything, including the navbar pill. */}
+      {drawerOpen && (
+        <div
+          className="px-mobile-drawer"
+          id="mobile-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site navigation"
+          ref={drawerRef}
+          onClick={(e) => {
+            // Click on the backdrop (not the content) closes the drawer
+            if (e.target === e.currentTarget) closeDrawer();
+          }}
+        >
+          <div className="px-mobile-drawer__panel">
+            <header className="px-mobile-drawer__header">
+              <span className="px-mobile-drawer__title">
+                &gt; NAVIGATION
+              </span>
+              <button
+                type="button"
+                className="px-mobile-drawer__close"
+                aria-label="Close navigation menu"
+                onClick={closeDrawer}
+              >
+                <span aria-hidden="true">&#10005;</span>
+              </button>
+            </header>
+
+            <div className="px-mobile-drawer__group">
+              <div className="px-mobile-drawer__label">EVENT</div>
+              <ul className="px-mobile-drawer__list">
+                {[
+                  { to: '/', label: 'HOME', end: true },
+                  { to: '/regulations', label: 'REGULATIONS' },
+                  { to: '/schedule', label: 'SCHEDULE' },
+                  { to: '/mentors', label: 'MENTORS' },
+                  { to: '/registeredTeams', label: 'TEAMS' },
+                  { to: '/rankings', label: 'RANKINGS' },
+                ].map((item) => (
+                  <li key={item.to}>
+                    <NavLink
+                      to={item.to}
+                      end={item.end}
+                      className={mobileNavLinkClass}
+                      onClick={closeDrawer}
+                    >
+                      {item.label}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            <div className="nav-actions">
+            {(role === 'participant' || role === 'mentor' || role === 'admin') && (
+              <div className="px-mobile-drawer__group">
+                <div className="px-mobile-drawer__label">YOU</div>
+                <ul className="px-mobile-drawer__list">
+                  {role === 'participant' && (
+                    <li>
+                      <NavLink
+                        to="/team"
+                        className={mobileNavLinkClass}
+                        onClick={closeDrawer}
+                      >
+                        MY TEAM
+                      </NavLink>
+                    </li>
+                  )}
+                  {role === 'mentor' && (
+                    <li>
+                      <NavLink
+                        to="/mentorDashboard"
+                        className={mobileNavLinkClass}
+                        onClick={closeDrawer}
+                      >
+                        DASHBOARD
+                      </NavLink>
+                    </li>
+                  )}
+                  {role === 'admin' && (
+                    <li>
+                      <NavLink
+                        to="/admin/matching"
+                        className={mobileNavLinkClass}
+                        onClick={closeDrawer}
+                      >
+                        ADMIN
+                      </NavLink>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            <div className="px-mobile-drawer__footer">
               {user ? (
                 <>
                   <Link
                     to="/profile"
-                    className="profile-btn"
-                    aria-label="Profile"
+                    className="px-mobile-drawer__link"
+                    onClick={closeDrawer}
                   >
-                    <svg
-                      width="22"
-                      height="22"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle
-                        cx="12"
-                        cy="7"
-                        r="4"
-                      />
-                    </svg>
+                    PROFILE
                   </Link>
                   <button
-                    className="login-btn logout-btn"
+                    type="button"
+                    className="px-mobile-drawer__cta-secondary"
                     onClick={handleLogout}
                   >
-                    Logout
+                    LOGOUT
                   </button>
                 </>
               ) : (
                 <>
                   <Link
                     to="/login"
-                    className="login-btn ghost-btn"
+                    className="px-mobile-drawer__cta-secondary"
                     onClick={closeDrawer}
                   >
-                    Login
+                    LOGIN
                   </Link>
                   {REGISTRATION_OPEN && (
                     <Link
                       to="/registration"
-                      className="login-btn"
+                      className="px-mobile-drawer__cta-primary"
                       onClick={closeDrawer}
                     >
-                      Register
+                      REGISTER →
                     </Link>
                   )}
                 </>
@@ -225,32 +317,17 @@ export default function Navbar() {
             </div>
           </div>
         </div>
-      </nav>
+      )}
 
-      {/* Drawer overlay (mobile) */}
-      <div
-        className={`drawer-overlay${drawerOpen ? ' active' : ''}`}
-        onClick={closeDrawer}
-        aria-hidden="true"
-      />
-
-      {/* Spacer so content doesn't hide under navbar */}
-      <div className="navbar-spacer" />
-
-      {/* Floating geo shapes */}
-      <div
-        className="geo-shapes"
-        aria-hidden="true"
-      >
-        <div className="geo-shape geo-hex-1" />
-        <div className="geo-shape geo-circle-1" />
-        <div className="geo-shape geo-diamond-1" />
-        <div className="geo-shape geo-ring-1" />
-        <div className="geo-shape geo-triangle-1" />
-        <div className="geo-shape geo-dot-1" />
-        <div className="geo-shape geo-hex-2" />
-        <div className="geo-shape geo-circle-2" />
-      </div>
+      <div className="px-spacer" />
     </>
   );
+}
+
+function navLinkClass({ isActive }: { isActive: boolean }): string {
+  return `px-nav-link${isActive ? ' active' : ''}`;
+}
+
+function mobileNavLinkClass({ isActive }: { isActive: boolean }): string {
+  return `px-mobile-drawer__link${isActive ? ' active' : ''}`;
 }

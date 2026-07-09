@@ -1,11 +1,9 @@
 interface Props {
-  eyebrow?: string;
   title: string;
-  titleGradient?: boolean;
-  subtitle?: string;
+  description?: string;
 }
 
-export default function PageHeader({ eyebrow, title, titleGradient = true, subtitle }: Props) {
+export default function PageHeader({ title, description }: Props) {
   return (
     <div
       style={{
@@ -15,38 +13,18 @@ export default function PageHeader({ eyebrow, title, titleGradient = true, subti
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-start',
+        gap: '12px',
       }}
     >
-      {eyebrow && (
+      <h1 className="px-page-title">{title}</h1>
+      {description ? (
         <p
-          style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            color: 'var(--accent)',
-            marginBottom: '12px',
-          }}
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)', maxWidth: '65ch', margin: 0 }}
         >
-          {eyebrow}
+          {description}
         </p>
-      )}
-      <h1
-        style={{
-          fontSize: 'clamp(1.8rem, 3.5vw, 2.8rem)',
-          fontWeight: 900,
-          letterSpacing: '-0.02em',
-          lineHeight: 1.2,
-        }}
-        className={titleGradient ? 'gradient-text' : ''}
-      >
-        {title}
-      </h1>
-      {subtitle && (
-        <p style={{ fontSize: '1rem', color: 'var(--muted)', marginTop: '8px', lineHeight: 1.7 }}>
-          {subtitle}
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }

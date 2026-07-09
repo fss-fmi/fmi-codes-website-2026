@@ -14,27 +14,14 @@ interface Props {
 export default function DonutChart({ data, title }: Props) {
   return (
     <div
-      className="glass-card"
-      style={{ padding: '20px 24px' }}
+      style={{
+        background: 'var(--px-bg-panel)',
+        border: '2px solid var(--px-teal-border)',
+        padding: '24px',
+      }}
     >
-      {title && (
-        <p
-          style={{
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            color: 'var(--muted)',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            marginBottom: '12px',
-          }}
-        >
-          {title}
-        </p>
-      )}
-      <ResponsiveContainer
-        width="100%"
-        height={200}
-      >
+      {title && <p className="px-prompt-heading" style={{ marginBottom: '16px' }}>{title}</p>}
+      <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie
             data={data}
@@ -46,18 +33,17 @@ export default function DonutChart({ data, title }: Props) {
             paddingAngle={3}
           >
             {data.map((d, i) => (
-              <Cell
-                key={i}
-                fill={d.color}
-              />
+              <Cell key={i} fill={d.color} stroke="var(--px-bg-panel)" strokeWidth={2} />
             ))}
           </Pie>
           <Tooltip
             contentStyle={{
-              background: 'rgba(15,23,42,0.9)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '8px',
-              color: '#e2e8f0',
+              background: 'var(--px-bg)',
+              border: '1px solid var(--px-teal-border)',
+              borderRadius: 0,
+              color: 'var(--px-white)',
+              fontFamily: 'var(--px-mono)',
+              fontSize: '0.8rem',
             }}
             formatter={(val: number, name: string) => [val, name]}
           />
@@ -67,8 +53,8 @@ export default function DonutChart({ data, title }: Props) {
         style={{
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '8px',
-          marginTop: '8px',
+          gap: '10px',
+          marginTop: '12px',
           justifyContent: 'center',
         }}
       >
@@ -78,16 +64,17 @@ export default function DonutChart({ data, title }: Props) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '5px',
+              gap: '6px',
+              fontFamily: 'var(--px-mono)',
               fontSize: '0.75rem',
-              color: 'var(--muted)',
+              color: 'var(--px-muted-strong)',
             }}
           >
             <span
+              aria-hidden="true"
               style={{
                 width: '10px',
                 height: '10px',
-                borderRadius: '3px',
                 background: d.color,
                 flexShrink: 0,
               }}

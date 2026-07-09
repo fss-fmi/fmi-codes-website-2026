@@ -1,52 +1,60 @@
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import PageHeader from '@/components/layout/PageHeader';
-import GlassCard from '@/components/common/GlassCard';
+import Panel from '@/components/common/Panel';
+import NestedCard from '@/components/common/NestedCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import api from '@/lib/api';
 import type { RankedTeam } from '@/types/ranking';
 
-const MEDAL = ['🥇', '🥈', '🥉'];
-const PODIUM_ORDER = [1, 0, 2]; // 2nd, 1st, 3rd heights
+const PODIUM_ORDER = [1, 0, 2]; // 2nd, 1st, 3rd left-to-right
 
 function PodiumBlock({ team, rank }: { team: RankedTeam; rank: number }) {
   const heights = ['160px', '200px', '130px'];
-  const colors = [
-    'linear-gradient(135deg, #a78bfa, #7c3aed)',
-    'linear-gradient(135deg, #fbbf24, #f59e0b)',
-    'linear-gradient(135deg, #60a5fa, #22d3ee)',
-  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 140 }}>
       <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 32 }}>{MEDAL[rank]}</div>
-        <div style={{ fontWeight: 800, fontSize: 16, marginTop: 4 }}>{team.team_name}</div>
+        <div
+          className="px-label"
+          style={{ color: 'var(--px-teal)', marginBottom: 6 }}
+        >
+          RANK #{rank + 1}
+        </div>
         <div
           style={{
-            fontSize: 22,
-            fontWeight: 900,
-            color: rank === 0 ? '#fbbf24' : rank === 1 ? '#a78bfa' : '#60a5fa',
-            marginTop: 2,
+            fontFamily: 'var(--px-mono)',
+            fontWeight: 700,
+            fontSize: '0.95rem',
+            color: 'var(--px-white)',
+            marginBottom: 4,
           }}
         >
-          {team.score != null ? `${team.score.toFixed(2)} pts` : '—'}
+          {team.team_name}
+        </div>
+        <div
+          style={{
+            fontFamily: 'var(--px-font)',
+            fontSize: '0.75rem',
+            color: 'var(--px-teal)',
+          }}
+        >
+          {team.score != null ? `${team.score.toFixed(2)} PTS` : '—'}
         </div>
       </div>
       <div
         style={{
           width: 120,
           height: heights[rank],
-          borderRadius: '12px 12px 0 0',
-          background: colors[rank],
+          background: 'var(--px-bg-card)',
+          border: '2px solid var(--px-teal-border)',
+          borderBottom: 'none',
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           justifyContent: 'center',
-          paddingTop: 12,
-          fontWeight: 900,
-          fontSize: 28,
-          color: 'rgba(0,0,0,0.4)',
-          boxShadow: `0 8px 32px ${rank === 0 ? 'rgba(251,191,36,0.3)' : rank === 1 ? 'rgba(167,139,250,0.3)' : 'rgba(96,165,250,0.3)'}`,
+          fontFamily: 'var(--px-font)',
+          fontSize: '1.5rem',
+          color: 'var(--px-salmon)',
         }}
       >
         {rank + 1}
@@ -59,44 +67,58 @@ function RankCard({ team, maxScore }: { team: RankedTeam; maxScore: number }) {
   const rank = team.rank ?? 0;
   const score = team.score ?? 0;
   const barPct = maxScore > 0 ? (score / maxScore) * 100 : 0;
-  const barColor = rank <= 6 ? '#a78bfa' : rank <= 10 ? '#22d3ee' : 'rgba(255,255,255,0.2)';
 
   return (
-    <GlassCard style={{ padding: '16px 20px' }}>
+    <NestedCard>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 10,
+          gap: 12,
+          flexWrap: 'wrap',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span
-            style={{ fontWeight: 800, fontSize: 18, color: rank <= 9 ? '#60a5fa' : 'var(--muted)' }}
+            className="px-label"
+            style={{ color: 'var(--px-teal)', fontSize: '0.7rem' }}
           >
             #{rank}
           </span>
-          <span style={{ fontWeight: 700, fontSize: 15 }}>{team.team_name}</span>
+          <span
+            style={{
+              fontFamily: 'var(--px-mono)',
+              fontWeight: 700,
+              color: 'var(--px-white)',
+            }}
+          >
+            {team.team_name}
+          </span>
         </div>
         <span
-          style={{ fontWeight: 700, color: team.score == null ? 'var(--muted)' : 'var(--text)' }}
+          style={{
+            fontFamily: 'var(--px-mono)',
+            fontWeight: 700,
+            color: team.score == null ? 'var(--px-muted-strong)' : 'var(--px-white)',
+          }}
         >
           {team.score != null ? `${score.toFixed(2)} pts` : '—'}
         </span>
       </div>
-      <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
-        <div
-          style={{
-            height: '100%',
-            width: `${barPct}%`,
-            background: barColor,
-            borderRadius: 2,
-            transition: 'width 0.8s ease',
-          }}
-        />
+      <div
+        role="progressbar"
+        aria-valuenow={score}
+        aria-valuemin={0}
+        aria-valuemax={maxScore || 1}
+        aria-label={`${team.team_name} score`}
+        className="px-progress-track"
+        style={{ height: 4 }}
+      >
+        <div className="px-progress-fill" style={{ transform: `scaleX(${barPct / 100})` }} />
       </div>
-    </GlassCard>
+    </NestedCard>
   );
 }
 
@@ -105,6 +127,7 @@ export default function RankingsLivePage() {
     queryKey: ['rankings'],
     queryFn: () => api.get('/api/teams/rankings'),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 
   const rankings = data?.success ? (data.rankings ?? []) : [];
@@ -116,26 +139,24 @@ export default function RankingsLivePage() {
   return (
     <>
       <Navbar />
-      <main style={{ padding: '80px 24px 80px', maxWidth: '860px', margin: '0 auto' }}>
+      <main style={{ padding: '80px 24px 80px', maxWidth: '900px', margin: '0 auto' }}>
         <PageHeader
-          eyebrow="Live"
-          title="Rankings"
-          subtitle="Scores update every 30 seconds."
+          title="RANKINGS"
+          description="Live scores. Updates every 30 seconds."
         />
 
         {isLoading && <LoadingSpinner />}
 
         {!isLoading && (!hasScores || rankings.length === 0) && (
-          <GlassCard style={{ padding: 48, textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🏆</div>
-            <h2 style={{ fontWeight: 700, marginBottom: 8 }}>No Scores Yet</h2>
-            <p style={{ color: 'var(--muted)' }}>Scores will appear here once judging begins.</p>
-          </GlassCard>
+          <Panel title="> NO SCORES YET">
+            <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+              &gt; Scores will appear here once judging begins.
+            </p>
+          </Panel>
         )}
 
         {!isLoading && hasScores && (
-          <>
-            {/* Podium */}
+          <div aria-live="polite">
             {top3.length >= 1 && (
               <div
                 style={{
@@ -144,21 +165,15 @@ export default function RankingsLivePage() {
                   alignItems: 'flex-end',
                   gap: 12,
                   marginBottom: 60,
+                  flexWrap: 'wrap',
                 }}
               >
                 {PODIUM_ORDER.map((idx) =>
-                  top3[idx] ? (
-                    <PodiumBlock
-                      key={idx}
-                      team={top3[idx]}
-                      rank={idx}
-                    />
-                  ) : null,
+                  top3[idx] ? <PodiumBlock key={idx} team={top3[idx]} rank={idx} /> : null,
                 )}
               </div>
             )}
 
-            {/* Rest */}
             {rest.length > 0 && (
               <div
                 style={{
@@ -168,15 +183,11 @@ export default function RankingsLivePage() {
                 }}
               >
                 {rest.map((team) => (
-                  <RankCard
-                    key={team.team_id}
-                    team={team}
-                    maxScore={maxScore}
-                  />
+                  <RankCard key={team.team_id} team={team} maxScore={maxScore} />
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
       </main>
     </>

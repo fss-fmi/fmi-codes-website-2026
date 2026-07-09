@@ -1,49 +1,38 @@
 import { useState } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import PageHeader from '@/components/layout/PageHeader';
-import GlassCard from '@/components/common/GlassCard';
+import Panel from '@/components/common/Panel';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import RequireAuth from '@/components/layout/RequireAuth';
+import Field from '@/components/common/Field';
+import Input from '@/components/common/Input';
+import Button from '@/components/common/Button';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '14px 16px',
-  background: 'rgba(255,255,255,0.03)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '12px',
-  color: 'var(--text)',
-  fontFamily: 'inherit',
-  fontSize: '15px',
-  outline: 'none',
-  transition: 'border-color 0.2s, box-shadow 0.2s',
-};
-
-function Field({ label, value }: { label: string; value?: string | number | null }) {
-  if (!value) return null;
+function InfoCell({ label, value }: { label: string; value?: string | number | null }) {
+  if (value === null || value === undefined || value === '') return null;
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.03)',
-        borderRadius: '12px',
-        padding: '16px 20px',
-        border: '1px solid rgba(255,255,255,0.06)',
+        background: 'var(--px-bg-card)',
+        border: '1px solid var(--px-teal-dim)',
+        padding: '14px 16px',
       }}
     >
-      <div
-        style={{
-          fontSize: '12px',
-          fontWeight: 600,
-          color: 'var(--muted)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          marginBottom: '6px',
-        }}
-      >
+      <div className="px-label" style={{ marginBottom: '8px' }}>
         {label}
       </div>
-      <div style={{ fontSize: '15px', fontWeight: 500 }}>{value}</div>
+      <div
+        style={{
+          fontFamily: 'var(--px-mono)',
+          fontSize: '0.9rem',
+          fontWeight: 500,
+          color: 'var(--px-white)',
+        }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -93,7 +82,7 @@ function ProfileContent() {
         { current_password: curPw, new_password: newPw },
       );
       if (data.success) {
-        setPwSuccess('Password updated successfully!');
+        setPwSuccess('Password updated successfully.');
         setCurPw('');
         setNewPw('');
         setConfPw('');
@@ -107,285 +96,177 @@ function ProfileContent() {
     }
   }
 
-  const focusHandlers = {
-    onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
-      e.target.style.borderColor = '#60a5fa';
-      e.target.style.boxShadow = '0 0 0 3px rgba(96,165,250,0.15)';
-    },
-    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
-      e.target.style.borderColor = 'rgba(255,255,255,0.08)';
-      e.target.style.boxShadow = 'none';
-    },
-  };
-
   return (
-    <main style={{ padding: '80px 24px 80px', maxWidth: '680px', margin: '0 auto' }}>
-      <PageHeader
-        eyebrow="Account"
-        title="Your Profile"
-      />
+    <main style={{ padding: '80px 24px 80px', maxWidth: '760px', margin: '0 auto' }}>
+      <PageHeader title="PROFILE" />
 
-      {/* Avatar + name */}
-      <GlassCard
-        style={{
-          padding: '32px',
-          marginBottom: '24px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '20px',
-        }}
-      >
-        <div
-          style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            flexShrink: 0,
-            background: 'linear-gradient(135deg, #60a5fa, #a78bfa)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '22px',
-            fontWeight: 700,
-            color: '#0b1021',
-          }}
-        >
-          {initials}
-        </div>
-        <div>
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>{name}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <Panel title="ACCOUNT">
           <div
             style={{
-              marginTop: '4px',
-              display: 'inline-block',
-              padding: '3px 10px',
-              borderRadius: '20px',
-              background: 'rgba(96,165,250,0.15)',
-              border: '1px solid rgba(96,165,250,0.3)',
-              color: '#60a5fa',
-              fontSize: '12px',
-              fontWeight: 600,
-              textTransform: 'capitalize',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '20px',
+              marginBottom: '20px',
+              flexWrap: 'wrap',
             }}
           >
-            {role}
-          </div>
-        </div>
-      </GlassCard>
-
-      {/* Info grid */}
-      <GlassCard style={{ padding: '24px', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>
-          Profile Information
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          {user.email && (
             <div
+              aria-hidden="true"
               style={{
-                gridColumn: '1 / -1',
-                background: 'rgba(255,255,255,0.03)',
-                borderRadius: '12px',
-                padding: '16px 20px',
-                border: '1px solid rgba(255,255,255,0.06)',
+                width: '64px',
+                height: '64px',
+                background: 'var(--px-bg-elevated)',
+                border: '2px solid var(--px-teal-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: 'var(--px-font)',
+                fontSize: '1rem',
+                color: 'var(--px-teal)',
               }}
             >
+              {initials}
+            </div>
+            <div style={{ flex: 1, minWidth: '200px' }}>
               <div
                 style={{
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: 'var(--muted)',
+                  fontFamily: 'var(--px-font)',
+                  fontSize: '0.75rem',
+                  color: 'var(--px-white)',
                   textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  marginBottom: '6px',
+                  letterSpacing: '0.05em',
+                  marginBottom: '8px',
                 }}
               >
-                Email
+                {name}
               </div>
-              <div style={{ fontSize: '15px', fontWeight: 500 }}>{user.email}</div>
+              <span className="px-status-chip">{role?.toUpperCase()}</span>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="PROFILE INFO">
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '12px',
+            }}
+          >
+            {user.email && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <InfoCell label="EMAIL" value={user.email} />
+              </div>
+            )}
+            {role === 'participant' && (
+              <>
+                <InfoCell label="UNIVERSITY" value={user.university} />
+                <InfoCell label="SPECIALTY" value={user.specialty} />
+                <InfoCell label="COURSE" value={user.course} />
+                <InfoCell label="FACULTY NUMBER" value={user.faculty_number} />
+                <InfoCell label="PHONE" value={user.phone_number} />
+                {user.team_name && (
+                  <>
+                    <InfoCell label="TEAM" value={user.team_name} />
+                    <InfoCell label="JOIN CODE" value={user.join_code ?? undefined} />
+                  </>
+                )}
+              </>
+            )}
+            {role === 'mentor' && (
+              <>
+                <InfoCell label="COMPANY" value={user.company_name} />
+                <InfoCell label="PHONE" value={user.phone_number} />
+                {user.bio && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <InfoCell label="BIO" value={user.bio} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </Panel>
+
+        <Panel title="CHANGE PASSWORD">
+          {pwError && (
+            <div
+              role="alert"
+              style={{
+                background: 'var(--px-bg-panel)',
+                border: '1px solid var(--px-danger)',
+                borderLeft: '2px solid var(--px-danger)',
+                color: 'var(--px-danger)',
+                fontFamily: 'var(--px-mono)',
+                fontSize: '0.85rem',
+                padding: '12px 14px',
+                marginBottom: '16px',
+              }}
+            >
+              {pwError}
             </div>
           )}
-          {role === 'participant' && (
-            <>
-              <Field
-                label="University"
-                value={user.university}
-              />
-              <Field
-                label="Specialty"
-                value={user.specialty}
-              />
-              <Field
-                label="Course"
-                value={user.course}
-              />
-              <Field
-                label="Faculty Number"
-                value={user.faculty_number}
-              />
-              <Field
-                label="Phone"
-                value={user.phone_number}
-              />
-              {user.team_name && (
-                <>
-                  <Field
-                    label="Team"
-                    value={user.team_name}
-                  />
-                  <Field
-                    label="Join Code"
-                    value={user.join_code ?? undefined}
-                  />
-                </>
-              )}
-            </>
+          {pwSuccess && (
+            <div
+              role="status"
+              style={{
+                background: 'var(--px-bg-panel)',
+                border: '1px solid var(--px-green)',
+                borderLeft: '2px solid var(--px-green)',
+                color: 'var(--px-green)',
+                fontFamily: 'var(--px-mono)',
+                fontSize: '0.85rem',
+                padding: '12px 14px',
+                marginBottom: '16px',
+              }}
+            >
+              {pwSuccess}
+            </div>
           )}
-          {role === 'mentor' && (
-            <>
+          <form onSubmit={handlePasswordChange} noValidate>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <Field id="curPw" label="CURRENT PASSWORD" required>
+                <Input
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  placeholder="Enter current password"
+                  value={curPw}
+                  onChange={(e) => setCurPw(e.target.value)}
+                />
+              </Field>
               <Field
-                label="Company"
-                value={user.company_name}
-              />
-              <Field
-                label="Phone"
-                value={user.phone_number}
-              />
-              {user.bio && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <Field
-                    label="Bio"
-                    value={user.bio}
-                  />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </GlassCard>
-
-      {/* Change password */}
-      <GlassCard style={{ padding: '24px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>Change Password</h2>
-        {pwError && (
-          <div
-            style={{
-              background: 'rgba(239,68,68,0.15)',
-              border: '1px solid rgba(239,68,68,0.3)',
-              color: '#fca5a5',
-              padding: '12px 14px',
-              borderRadius: '10px',
-              marginBottom: '16px',
-              fontSize: '14px',
-            }}
-          >
-            {pwError}
-          </div>
-        )}
-        {pwSuccess && (
-          <div
-            style={{
-              background: 'rgba(52,211,153,0.15)',
-              border: '1px solid rgba(52,211,153,0.3)',
-              color: '#34d399',
-              padding: '12px 14px',
-              borderRadius: '10px',
-              marginBottom: '16px',
-              fontSize: '14px',
-            }}
-          >
-            {pwSuccess}
-          </div>
-        )}
-        <form onSubmit={handlePasswordChange}>
-          <div style={{ marginBottom: '16px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'var(--muted)',
-                marginBottom: '8px',
-              }}
-            >
-              Current Password
-            </label>
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              placeholder="Enter current password"
-              value={curPw}
-              onChange={(e) => setCurPw(e.target.value)}
-              style={inputStyle}
-              {...focusHandlers}
-            />
-          </div>
-          <div style={{ marginBottom: '16px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'var(--muted)',
-                marginBottom: '8px',
-              }}
-            >
-              New Password
-            </label>
-            <input
-              type="password"
-              required
-              autoComplete="new-password"
-              placeholder="Min 12 characters"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              style={inputStyle}
-              {...focusHandlers}
-            />
-          </div>
-          <div style={{ marginBottom: '20px' }}>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'var(--muted)',
-                marginBottom: '8px',
-              }}
-            >
-              Confirm New Password
-            </label>
-            <input
-              type="password"
-              required
-              autoComplete="new-password"
-              placeholder="Repeat new password"
-              value={confPw}
-              onChange={(e) => setConfPw(e.target.value)}
-              style={inputStyle}
-              {...focusHandlers}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={pwLoading}
-            style={{
-              padding: '12px 24px',
-              border: 'none',
-              cursor: pwLoading ? 'not-allowed' : 'pointer',
-              background: 'linear-gradient(135deg, #60a5fa, #22d3ee)',
-              borderRadius: '12px',
-              color: '#0b1021',
-              fontFamily: 'inherit',
-              fontSize: '14px',
-              fontWeight: 700,
-              opacity: pwLoading ? 0.7 : 1,
-            }}
-          >
-            {pwLoading ? 'Updating...' : 'Update Password'}
-          </button>
-        </form>
-      </GlassCard>
+                id="newPw"
+                label="NEW PASSWORD"
+                required
+                hint="Minimum 12 characters."
+              >
+                <Input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  placeholder="Min 12 characters"
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                />
+              </Field>
+              <Field id="confPw" label="CONFIRM NEW PASSWORD" required>
+                <Input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  placeholder="Repeat new password"
+                  value={confPw}
+                  onChange={(e) => setConfPw(e.target.value)}
+                />
+              </Field>
+              <Button type="submit" variant="primary" disabled={pwLoading}>
+                {pwLoading ? 'UPDATING…' : 'UPDATE PASSWORD'}
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      </div>
     </main>
   );
 }

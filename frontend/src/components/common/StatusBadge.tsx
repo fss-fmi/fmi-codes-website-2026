@@ -9,16 +9,16 @@ type Variant =
   | 'accepted'
   | 'declined';
 
-const configs: Record<Variant, { bg: string; color: string; label?: string }> = {
-  active: { bg: 'rgba(52,211,153,0.12)', color: '#34d399' },
-  registered: { bg: 'rgba(96,165,250,0.12)', color: '#60a5fa' },
-  queued: { bg: 'rgba(245,158,11,0.12)', color: '#f59e0b' },
-  inactive: { bg: 'rgba(100,116,139,0.12)', color: '#64748b' },
-  captain: { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24', label: '★ Captain' },
-  member: { bg: 'rgba(148,163,184,0.1)', color: '#94a3b8' },
-  pending: { bg: 'rgba(245,158,11,0.12)', color: '#f59e0b' },
-  accepted: { bg: 'rgba(52,211,153,0.12)', color: '#34d399' },
-  declined: { bg: 'rgba(239,68,68,0.12)', color: '#ef4444' },
+const configs: Record<Variant, { color: string; label?: string }> = {
+  active: { color: 'var(--px-green)', label: 'ACTIVE' },
+  registered: { color: 'var(--px-teal)', label: 'REGISTERED' },
+  queued: { color: 'var(--px-amber)', label: 'QUEUED' },
+  inactive: { color: 'var(--px-muted-strong)', label: 'INACTIVE' },
+  captain: { color: 'var(--px-amber)', label: 'CAPTAIN' },
+  member: { color: 'var(--px-muted-strong)', label: 'MEMBER' },
+  pending: { color: 'var(--px-amber)', label: 'PENDING' },
+  accepted: { color: 'var(--px-green)', label: 'ACCEPTED' },
+  declined: { color: 'var(--px-danger)', label: 'DECLINED' },
 };
 
 interface Props {
@@ -33,17 +33,18 @@ export default function StatusBadge({ variant, label }: Props) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '5px',
-        padding: '3px 10px',
-        borderRadius: '100px',
-        fontSize: '0.72rem',
-        fontWeight: 700,
-        background: cfg.bg,
+        gap: 6,
+        padding: '4px 10px',
+        borderRadius: '999px',
+        background: 'var(--px-bg-elevated)',
         color: cfg.color,
-        letterSpacing: '0.04em',
+        fontFamily: 'var(--px-font)',
+        fontSize: '0.55rem',
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
       }}
     >
-      {label ?? cfg.label ?? variant}
+      {label ?? cfg.label ?? String(variant).toUpperCase()}
     </span>
   );
 }
