@@ -30,6 +30,7 @@ from tests.e2e.conftest import (
     bearer,
     login_token,
     make_payload,
+    new_client,
     register,
     register_and_token,
 )
@@ -610,18 +611,24 @@ class TestConfirmPasswordReset:
 
 
 class TestSessionRevocation:
-    def test_change_password_revokes_a_previously_issued_session(self, client, seeds):
+    def test_change_password_revokes_a_previously_issued_session(self, client, seeds, flask_app):
         """A token issued before a password change must stop working afterwards.
 
         This is the multi-session case: the caller's own token is blocklisted by
         jti, but a *second* live session (e.g. another device, or a stolen cookie)
         is only killed by the tokens_valid_from epoch bump. In the test env Redis
         is absent so the jti blocklist is a no-op — the epoch is what does the work.
+
+        The old session lives on its OWN client so its httpOnly cookie jar isn't
+        overwritten by the fresh token change-password sets on `client`. Since
+        token_required reads the cookie first, sharing one client would let the
+        post-change cookie shadow the old session and mask the revocation.
         """
         register(client, 1, seeds)
-        # An earlier, independent session for the same user.
-        old_token = login_token(client, "user1@e2e.test", DEFAULT_PW)
-        assert client.get("/api/auth/me", headers=bearer(old_token)).status_code == 200
+        # An earlier, independent session for the same user, on a separate client.
+        old = new_client(flask_app)
+        old_token = login_token(old, "user1@e2e.test", DEFAULT_PW)
+        assert old.get("/api/auth/me", headers=bearer(old_token)).status_code == 200
 
         # JWT `iat` is whole-second; ensure the epoch bump lands in a strictly
         # later second than the old token so the assertion is deterministic.
@@ -637,10 +644,10 @@ class TestSessionRevocation:
         assert rv.status_code == 200
 
         # The pre-change session must now be rejected by the revocation epoch.
-        rv_old = client.get("/api/auth/me", headers=bearer(old_token))
+        rv_old = old.get("/api/auth/me", headers=bearer(old_token))
         assert rv_old.status_code == 401
 
-    def test_password_reset_revokes_existing_sessions(self, client, seeds, db_conn):
+    def test_password_reset_revokes_existing_sessions(self, client, seeds, db_conn, flask_app):
         """The account-recovery case: after a reset, a session that predates the
         reset (an attacker holding a stolen cookie) must be evicted."""
         register(client, 1, seeds)
@@ -648,9 +655,11 @@ class TestSessionRevocation:
             cur.execute("SELECT id FROM participants WHERE email = 'user1@e2e.test'")
             user_id = cur.fetchone()["id"]
 
-        # A live session obtained before the reset.
-        stolen_token = login_token(client, "user1@e2e.test", DEFAULT_PW)
-        assert client.get("/api/auth/me", headers=bearer(stolen_token)).status_code == 200
+        # A live session obtained before the reset, on its own client so the
+        # reset flow can't refresh its cookie jar.
+        stolen = new_client(flask_app)
+        stolen_token = login_token(stolen, "user1@e2e.test", DEFAULT_PW)
+        assert stolen.get("/api/auth/me", headers=bearer(stolen_token)).status_code == 200
 
         # Whole-second `iat` — ensure the reset epoch lands in a later second.
         time.sleep(1.1)
@@ -663,7 +672,7 @@ class TestSessionRevocation:
         assert rv.status_code == 200
 
         # The pre-reset session must no longer reach protected endpoints.
-        rv_stolen = client.get("/api/auth/me", headers=bearer(stolen_token))
+        rv_stolen = stolen.get("/api/auth/me", headers=bearer(stolen_token))
         assert rv_stolen.status_code == 401
 
 

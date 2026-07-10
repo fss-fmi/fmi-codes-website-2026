@@ -350,10 +350,14 @@ def change_password():
 
     if user["role"] == "participant":
         _hash_select_query = "SELECT password_hash FROM participants WHERE id = %s"
-        _hash_update_query = "UPDATE participants SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s"
+        _hash_update_query = (
+            "UPDATE participants SET password_hash = %s, tokens_valid_from = %s WHERE id = %s"
+        )
     else:
         _hash_select_query = "SELECT password_hash FROM mentors WHERE id = %s"
-        _hash_update_query = "UPDATE mentors SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s"
+        _hash_update_query = (
+            "UPDATE mentors SET password_hash = %s, tokens_valid_from = %s WHERE id = %s"
+        )
     row = execute_query(
         current_app,
         _hash_select_query,
@@ -366,13 +370,15 @@ def change_password():
 
     new_hash = hash_password(new_password)
     # R-25: Bump the revocation epoch so every OTHER active session for this user
-    # is invalidated (the fresh token issued below is minted after this commits,
-    # so its `iat` is >= the epoch and it survives). The per-jti blocklist below
-    # still covers the caller's current token for immediate, Redis-fast rejection.
+    # is invalidated (the fresh token issued below is minted after this, so its
+    # `iat` is >= the epoch and it survives). The epoch is stamped with the app
+    # clock — the SAME source as the JWT `iat` — so token_required's comparison is
+    # immune to app/DB clock skew (a NOW() DB clock could disagree by seconds).
+    # The per-jti blocklist below still covers the caller's current token.
     execute_query(
         current_app,
         _hash_update_query,
-        (new_hash, user["user_id"]),
+        (new_hash, datetime.now(UTC), user["user_id"]),
     )
 
     # H1: Revoke the current token so it can't be replayed after a password change
@@ -530,15 +536,18 @@ def confirm_password_reset():
 
         user_id = token_row["user_id"]
 
+        # R-25: stamp the revocation epoch with the app clock (same source as the
+        # JWT `iat`) so token_required's comparison is immune to app/DB clock skew.
+        epoch = datetime.now(UTC)
         if role == "participant":
             cursor.execute(
-                "UPDATE participants SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s",
-                (new_hash, user_id),
+                "UPDATE participants SET password_hash = %s, tokens_valid_from = %s WHERE id = %s",
+                (new_hash, epoch, user_id),
             )
         else:
             cursor.execute(
-                "UPDATE mentors SET password_hash = %s, tokens_valid_from = NOW() WHERE id = %s",
-                (new_hash, user_id),
+                "UPDATE mentors SET password_hash = %s, tokens_valid_from = %s WHERE id = %s",
+                (new_hash, epoch, user_id),
             )
 
         cursor.execute(
