@@ -51,6 +51,8 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Run unit tests
+        env:
+          REDIS_URL: redis://localhost:6379
         run: pytest tests/ --ignore=tests/e2e -v
 
       - name: Run E2E tests

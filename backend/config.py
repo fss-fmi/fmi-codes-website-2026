@@ -46,6 +46,16 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")  # Must be set in .env
     MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "true").lower() == "true"
 
+    # Redis — redis_client.py reads these from os.environ directly (so it works at
+    # import time before app context); these fields expose them for discoverability
+    # and current_app.config access. Set REDIS_SENTINELS + REDIS_MASTER_NAME for HA
+    # Sentinel mode, or REDIS_URL for a single instance; leave all unset to disable.
+    REDIS_URL = os.environ.get("REDIS_URL", "")
+    REDIS_SENTINELS = os.environ.get("REDIS_SENTINELS", "")
+    REDIS_MASTER_NAME = os.environ.get("REDIS_MASTER_NAME", "")
+    REDIS_SOCKET_TIMEOUT = int(os.environ.get("REDIS_SOCKET_TIMEOUT", 2))
+    REDIS_CONNECT_TIMEOUT = int(os.environ.get("REDIS_CONNECT_TIMEOUT", 2))
+
     # Discord webhook for bug reports — set DISCORD_BUG_WEBHOOK_URL in .env
     DISCORD_BUG_WEBHOOK_URL = os.environ.get("DISCORD_BUG_WEBHOOK_URL", "")
 

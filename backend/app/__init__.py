@@ -10,18 +10,21 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+from app.services.redis_client import build_limiter_storage_uri
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Module-level limiter — attached to app in create_app()
-# H7: Use Redis when REDIS_URL is configured so the limit is shared across all
-# Gunicorn workers.  Falls back to in-memory for local dev without Redis.
-_redis_url = os.environ.get("REDIS_URL", "")
+# H7: Share the limit across all Gunicorn workers via Redis. Storage is derived
+# from the centralized redis_client config, so this transparently supports
+# Sentinel mode (REDIS_SENTINELS + REDIS_MASTER_NAME) or single-instance
+# (REDIS_URL), and falls back to in-memory for local dev without Redis.
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per minute"],
-    storage_uri=_redis_url if _redis_url else "memory://",
+    storage_uri=build_limiter_storage_uri(),
 )
 
 

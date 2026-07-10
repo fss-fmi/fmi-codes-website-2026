@@ -14,6 +14,7 @@ from app import limiter
 from app.database import execute_query, get_db_cursor
 from app.routes import auth_bp
 from app.services.auth_service import generate_token, hash_password, verify_password
+from app.services.redis_client import redis_del
 from app.utils.auth_decorators import token_required
 
 logger = logging.getLogger(__name__)
@@ -381,6 +382,10 @@ def change_password():
         (new_hash, datetime.now(UTC), user["user_id"]),
     )
 
+    # R-25: Drop the cached epoch so the bumped tokens_valid_from takes effect on
+    # the very next request rather than after the cache TTL lapses.
+    redis_del(f"cache:epoch:{user['role']}:{user['user_id']}")
+
     # H1: Revoke the current token so it can't be replayed after a password change
     jti = g.current_user.get("jti")
     exp = g.current_user.get("exp")
@@ -554,6 +559,10 @@ def confirm_password_reset():
             "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = %s",
             (token_row["id"],),
         )
+
+    # R-25: Drop the cached epoch so the bumped tokens_valid_from takes effect on
+    # the very next request rather than after the cache TTL lapses.
+    redis_del(f"cache:epoch:{role}:{user_id}")
 
     logger.info("Password reset confirmed for user_id=%s role=%s", user_id, role)
     return jsonify(

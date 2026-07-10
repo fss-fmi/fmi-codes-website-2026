@@ -260,8 +260,8 @@ Routes are thin: validate the request, call a service, return JSON or render a t
 | `mentor_service.py`           | Mentor profile management, picture serving, availability and technology data                                |
 | `mentor_selection_service.py` | Enforces the "exactly 3 ranked mentors per team" preference rules                                           |
 | `matching_service.py`         | Hospital-Resident Gale-Shapley — assigns mentors to teams from mutual ranked preferences                    |
-| `ranking_service.py`          | Loads and serves team rankings from `seeds/rankings.json` with 60 s in-memory TTL cache                     |
-| `regulations_service.py`      | Loads FAQ / regulations content from `seeds/regulations.json` with 60 s in-memory TTL cache                 |
+| `ranking_service.py`          | Loads and serves team rankings from `seeds/rankings.json` with a short-TTL Redis cache (falls back to file load when Redis is off) |
+| `regulations_service.py`      | Loads FAQ / regulations content from `seeds/regulations.json` with a short-TTL Redis cache (falls back to file load when Redis is off) |
 | `participants_service.py`     | Participant lookups with joined specialty, university, and team data                                        |
 | `bug_report_service.py`       | Fire-and-forget Discord webhook delivery (bounded `ThreadPoolExecutor`, stdlib only, never blocks requests) |
 
@@ -293,6 +293,66 @@ PostgreSQL `ThreadedConnectionPool` (min 2, max 20 per worker, 5 s timeout). Pro
 | `009_backfill_mentor_availability.sql`       | Idempotent back-fill for seeded mentor availability data          |
 | `010_fix_availability_text_encoding.sql`     | Fixes encoding issues in availability text                        |
 | `011_team_join_requests.sql`                 | `team_join_requests` table with status workflow + partial indexes |
+
+---
+
+## Redis (rate limiting, JWT revocation, caches)
+
+Redis backs three things: the shared rate-limiter storage, the JWT revocation blocklist, and a handful of short-TTL read caches (mentors, rankings, regulations, per-user token revocation epoch). The app talks to Redis in one of **two modes, chosen purely by environment variables — the application code is identical between them**.
+
+### Single-instance mode — `REDIS_URL`
+
+Point `REDIS_URL` at one Redis instance:
+
+```dotenv
+REDIS_URL=redis://redis:6379
+```
+
+Simple, no replication. This is what `docker-compose.dev.yml` uses (a single `redis` container) and the right choice for local and everyday development.
+
+### Sentinel (HA) mode — `REDIS_SENTINELS` + `REDIS_MASTER_NAME`
+
+For a production-shaped, highly-available setup, give the app a set of sentinels and the monitored master's name instead:
+
+```dotenv
+REDIS_SENTINELS=sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
+REDIS_MASTER_NAME=mymaster
+```
+
+The app discovers the current master through the sentinels and **transparently follows failovers** — when the master goes down and the sentinels promote a replica, the app re-resolves and keeps serving against the new master with no restart. `docker-compose.yml` (the prod-like compose) runs this topology: **1 master + 2 replicas + 3 sentinels, quorum 2**.
+
+### Disabled — neither set
+
+If neither mode is configured, Redis is simply off and the app **degrades gracefully**: the rate limiter falls back to in-memory per-process counters, and the JWT blocklist and caches fall back to the DB / file loads. Note that this means **token revocation is effectively off without Redis** (there is no shared blocklist across processes), so configure one of the two modes in production.
+
+### Which to use, and precedence
+
+| Situation                     | Use                                             |
+| ----------------------------- | ----------------------------------------------- |
+| Local / simple dev            | `REDIS_URL`                                      |
+| HA / production-shaped        | `REDIS_SENTINELS` + `REDIS_MASTER_NAME`          |
+| No Redis available            | leave all unset (graceful in-memory / DB fallback) |
+
+If **both** `REDIS_SENTINELS` + `REDIS_MASTER_NAME` and `REDIS_URL` are set, **Sentinel mode wins**.
+
+### Optional timeouts
+
+`REDIS_SOCKET_TIMEOUT` and `REDIS_CONNECT_TIMEOUT` (both in seconds, default `2`) control how fast a Redis blip fails into the fallback path rather than stalling a request.
+
+### Production on Kubernetes
+
+The k8s deployment will later swap these env vars to point at a Helm-managed Sentinel service (e.g. the Bitnami Redis chart) — **with no application code changes**. The app already speaks the same `REDIS_SENTINELS` / `REDIS_MASTER_NAME` contract, so moving to a managed HA Redis is purely a matter of injecting the right env values.
+
+### Try a failover locally
+
+Bring up the prod-like topology, then kill the master and watch the app keep serving:
+
+```bash
+docker compose -f docker-compose.yml up -d
+docker kill fmi-codes-redis-master
+```
+
+The three sentinels reach quorum, promote a replica to master, and the app follows the new master automatically — no restart required.
 
 ---
 
