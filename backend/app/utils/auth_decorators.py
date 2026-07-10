@@ -113,10 +113,15 @@ def _token_predates_revocation_epoch(payload):
 
     from app.database import execute_query
 
-    table = "participants" if role == "participant" else "mentors"
+    if role == "participant":
+        query = "SELECT tokens_valid_from FROM participants WHERE id = %s"
+    elif role == "mentor":
+        query = "SELECT tokens_valid_from FROM mentors WHERE id = %s"
+    else:
+        return False
     row = execute_query(
         current_app,
-        f"SELECT tokens_valid_from FROM {table} WHERE id = %s",  # noqa: S608 — table from fixed allowlist
+        query,
         (user_id,),
         fetch_one=True,
     )

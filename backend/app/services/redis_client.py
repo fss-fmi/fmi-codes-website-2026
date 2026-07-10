@@ -26,6 +26,7 @@ outage degrades to a logged warning and a DB/file fallback — never a 500.
 import logging
 import os
 import secrets
+from urllib.parse import urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,22 @@ _DEFAULT_CONNECT_TIMEOUT = 2
 
 _client = None
 _client_initialized = False
+
+
+def _redact_url(url: str) -> str:
+    """Return the URL with the password replaced by *** for safe logging."""
+    try:
+        parsed = urlparse(url)
+        if parsed.password:
+            userinfo = f"{parsed.username}:***" if parsed.username else ":***"
+            host = parsed.hostname or ""
+            if parsed.port:
+                host += f":{parsed.port}"
+            netloc = f"{userinfo}@{host}"
+            return urlunparse(parsed._replace(netloc=netloc))
+    except Exception:
+        pass
+    return url
 
 
 def _int_env(name: str, default: int) -> int:
@@ -138,7 +155,7 @@ def _build_client():
         try:
             client = redis.from_url(redis_url, **common_kwargs)
             client.ping()  # Fail fast if the URL is wrong
-            logger.info("✓ Redis connected (%s)", redis_url.split("@")[-1])
+            logger.info("✓ Redis connected (%s)", _redact_url(redis_url))
             return client
         except Exception as exc:
             logger.error("Redis connection failed — Redis disabled: %s", exc)

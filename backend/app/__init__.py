@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per minute"],
-    storage_uri=build_limiter_storage_uri(),
+    storage_uri=build_limiter_storage_uri,
 )
 
 

@@ -65,5 +65,7 @@ def is_revoked(jti: str) -> bool:
     try:
         return bool(client.exists(f"{_KEY_PREFIX}{jti}"))
     except Exception as exc:
-        logger.error("Failed to check blocklist for jti=%s: %s", jti, exc)
+        logger.warning(
+            "SECURITY: blocklist unavailable — token revocation bypassed (jti=%s): %s", jti, exc
+        )
         return False  # Fail open
