@@ -1,37 +1,30 @@
-"""Regulations data management — cached in memory to avoid file I/O on every request"""
+"""Regulations data management — cached in Redis to avoid file I/O on every request"""
 
 import json
-import threading
-import time
 from pathlib import Path
 
 from flask import current_app
 
-_cache_lock = threading.Lock()
-_cached_regulations = None
-_cache_ts = 0
-_CACHE_TTL = 60  # seconds
+from app.services.redis_client import jittered_ttl, redis_get, redis_set
+
+_REGULATIONS_CACHE_KEY = "cache:regulations"
 
 
 def get_regulations() -> list:
     """Get regulations from regulations.json.
 
-    Cached in memory for up to 60 seconds.
+    Cached in Redis for ~300s.
     """
-    global _cached_regulations, _cache_ts
+    cached = redis_get(_REGULATIONS_CACHE_KEY)
+    if cached is not None:
+        try:
+            return json.loads(cached)
+        except (ValueError, TypeError):
+            pass  # corrupt cache entry — fall through to reload
 
-    now = time.monotonic()
-    if _cached_regulations is not None and (now - _cache_ts) < _CACHE_TTL:
-        return _cached_regulations
-
-    with _cache_lock:
-        if _cached_regulations is not None and (time.monotonic() - _cache_ts) < _CACHE_TTL:
-            return _cached_regulations
-
-        result = _load_regulations()
-        _cached_regulations = result
-        _cache_ts = time.monotonic()
-        return result
+    result = _load_regulations()
+    redis_set(_REGULATIONS_CACHE_KEY, json.dumps(result, default=str), jittered_ttl(300, 30))
+    return result
 
 
 def _load_regulations() -> list:

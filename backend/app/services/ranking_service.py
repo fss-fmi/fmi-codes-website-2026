@@ -3,45 +3,35 @@
 import json
 import logging
 import math
-import threading
-import time
 from pathlib import Path
 
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
+from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
 
 logger = logging.getLogger(__name__)
 
-# ── File-based rankings cache (legacy, used by /api/ranking) ───────
-
-_cache_lock = threading.Lock()
-_cached_rankings = None
-_cache_ts = 0
-_CACHE_TTL = 60  # seconds
+_RANKINGS_CACHE_KEY = "cache:rankings:legacy"
+_TEAM_RANKINGS_CACHE_KEY = "cache:rankings:teams"
 
 
 def get_rankings() -> list:
     """Get rankings from rankings.json sorted by points descending.
 
-    Results are cached in memory for up to 60 seconds so 500 concurrent
-    requests don't each open + parse the file independently.
+    Results are cached in Redis for ~60s so concurrent requests don't each
+    open + parse the file independently.
     """
-    global _cached_rankings, _cache_ts
+    cached = redis_get(_RANKINGS_CACHE_KEY)
+    if cached is not None:
+        try:
+            return json.loads(cached)
+        except (ValueError, TypeError):
+            pass  # corrupt cache entry — fall through to reload
 
-    now = time.monotonic()
-    if _cached_rankings is not None and (now - _cache_ts) < _CACHE_TTL:
-        return _cached_rankings
-
-    with _cache_lock:
-        # Double-check inside the lock
-        if _cached_rankings is not None and (time.monotonic() - _cache_ts) < _CACHE_TTL:
-            return _cached_rankings
-
-        result = _load_rankings()
-        _cached_rankings = result
-        _cache_ts = time.monotonic()
-        return result
+    result = _load_rankings()
+    redis_set(_RANKINGS_CACHE_KEY, json.dumps(result, default=str), jittered_ttl(60, 10))
+    return result
 
 
 def _load_rankings() -> list:
@@ -85,36 +75,22 @@ def _load_rankings() -> list:
         raise Exception(f"Failed to load rankings: {str(e)}") from e
 
 
-# ── DB-backed team score rankings ──────────────────────────────────
-
-_team_rankings_lock = threading.Lock()
-_team_rankings_cache = None
-_team_rankings_cache_ts = 0
-
-
 def get_team_rankings() -> list:
     """Get team rankings from DB sorted by score descending.
 
     Uses RANK() window function so ties get the same rank.
-    Cached for 60s with double-checked locking.
+    Cached in Redis for ~60s.
     """
-    global _team_rankings_cache, _team_rankings_cache_ts
+    cached = redis_get(_TEAM_RANKINGS_CACHE_KEY)
+    if cached is not None:
+        try:
+            return json.loads(cached)
+        except (ValueError, TypeError):
+            pass  # corrupt cache entry — fall through to reload
 
-    now = time.monotonic()
-    if _team_rankings_cache is not None and (now - _team_rankings_cache_ts) < _CACHE_TTL:
-        return _team_rankings_cache
-
-    with _team_rankings_lock:
-        if (
-            _team_rankings_cache is not None
-            and (time.monotonic() - _team_rankings_cache_ts) < _CACHE_TTL
-        ):
-            return _team_rankings_cache
-
-        result = _load_team_rankings()
-        _team_rankings_cache = result
-        _team_rankings_cache_ts = time.monotonic()
-        return result
+    result = _load_team_rankings()
+    redis_set(_TEAM_RANKINGS_CACHE_KEY, json.dumps(result, default=str), jittered_ttl(60, 10))
+    return result
 
 
 def _load_team_rankings() -> list:
@@ -135,10 +111,7 @@ def _load_team_rankings() -> list:
 
 def invalidate_team_rankings_cache():
     """Force cache refresh on next read. Called after admin score updates."""
-    global _team_rankings_cache, _team_rankings_cache_ts
-    with _team_rankings_lock:
-        _team_rankings_cache = None
-        _team_rankings_cache_ts = 0
+    redis_del(_TEAM_RANKINGS_CACHE_KEY)
 
 
 def update_team_score(team_id: int, score: float) -> bool:

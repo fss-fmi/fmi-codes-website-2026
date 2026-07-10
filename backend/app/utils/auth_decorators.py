@@ -2,12 +2,13 @@
 
 import functools
 import logging
-from datetime import UTC
+from datetime import UTC, datetime
 
 import jwt
 from flask import g, jsonify, request
 
 from app.services.auth_service import decode_token
+from app.services.redis_client import jittered_ttl, redis_get, redis_set
 
 logger = logging.getLogger(__name__)
 
@@ -94,23 +95,47 @@ def _token_predates_revocation_epoch(payload):
     if iat is None:
         return False
 
+    user_id = payload["user_id"]
+    cache_key = f"cache:epoch:{role}:{user_id}"
+
+    # Three-state cache so a user with NO epoch (NULL) doesn't re-hit the DB on
+    # every request: "none" sentinel = no epoch set, an ISO string = the epoch,
+    # a miss (None) = fall through to the DB. redis_get is fail-open, so a Redis
+    # outage yields None → same DB-read behavior as before caching existed.
+    cached = redis_get(cache_key)
+    if cached == "none":
+        return False
+    if cached is not None:
+        valid_from = datetime.fromisoformat(cached)
+        return int(iat) < int(valid_from.timestamp())
+
     from flask import current_app
 
     from app.database import execute_query
 
-    table = "participants" if role == "participant" else "mentors"
+    if role == "participant":
+        query = "SELECT tokens_valid_from FROM participants WHERE id = %s"
+    elif role == "mentor":
+        query = "SELECT tokens_valid_from FROM mentors WHERE id = %s"
+    else:
+        return False
     row = execute_query(
         current_app,
-        f"SELECT tokens_valid_from FROM {table} WHERE id = %s",  # noqa: S608 — table from fixed allowlist
-        (payload["user_id"],),
+        query,
+        (user_id,),
         fetch_one=True,
     )
     if not row or row["tokens_valid_from"] is None:
+        redis_set(cache_key, "none", ttl=jittered_ttl(45, 15))
         return False
 
     valid_from = row["tokens_valid_from"]
     if valid_from.tzinfo is None:
         valid_from = valid_from.replace(tzinfo=UTC)
+
+    # Cache the tz-aware epoch as an ISO string (carries +00:00) so a subsequent
+    # hit reconstructs the same instant before calling .timestamp().
+    redis_set(cache_key, valid_from.isoformat(), ttl=jittered_ttl(45, 15))
 
     # JWT `iat` is whole-second (RFC 7518), while tokens_valid_from carries
     # sub-second precision. Compare at second granularity so the fresh token the

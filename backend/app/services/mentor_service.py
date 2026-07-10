@@ -3,22 +3,17 @@
 import base64
 import json
 import logging
-import threading
-import time
 from pathlib import Path
 
 import psycopg2
 from flask import current_app
 
 from app.database import execute_insert, execute_query, execute_update, get_db_cursor
+from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
 
 logger = logging.getLogger(__name__)
 
-# ── In-memory cache for get_all_mentors (mirrors regulations_service pattern) ──
-_mentor_cache_lock = threading.Lock()
-_mentor_cache = None
-_mentor_cache_ts = 0
-_MENTOR_CACHE_TTL = 60  # seconds
+_MENTORS_CACHE_KEY = "cache:mentors:all"
 
 
 def mentor_exists(first_name: str, last_name: str, company_name: str, email: str = None) -> bool:
@@ -81,50 +76,36 @@ def register_mentor(
 
 
 def get_all_mentors() -> list:
-    """Get all registered mentors (cached for 60s to handle high concurrency)"""
-    global _mentor_cache, _mentor_cache_ts
-
-    # Capture the reference into a local variable first so that a concurrent
-    # _invalidate_mentor_cache() call cannot set the global to None between the
-    # "is not None" check and the actual return, which would hand callers None.
-    cached = _mentor_cache
-    now = time.monotonic()
-    if cached is not None and (now - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
-        return cached
-
-    with _mentor_cache_lock:
-        # Double-check after acquiring lock (same safe capture pattern)
-        cached = _mentor_cache
-        if cached is not None and (time.monotonic() - _mentor_cache_ts) < _MENTOR_CACHE_TTL:
-            return cached
-
-        query = """
-            SELECT id AS mentor_id,
-                   first_name || ' ' || last_name AS name,
-                   first_name, last_name, email, phone_number, company_name,
-                   bio, status, technologies, picture_url, picture_filename,
-                   availability_text, created_at
-            FROM mentors
-            WHERE status = 'active'
-            ORDER BY created_at DESC
-        """
+    """Get all registered mentors (cached in Redis for ~60s to handle high concurrency)"""
+    cached = redis_get(_MENTORS_CACHE_KEY)
+    if cached is not None:
         try:
-            result = execute_query(current_app, query, fetch_all=True) or []
-            _mentor_cache = result
-            _mentor_cache_ts = time.monotonic()
-            return result
-        except Exception as e:
-            raise Exception(f"Failed to get mentors: {str(e)}") from e
+            return json.loads(cached)
+        except (ValueError, TypeError):
+            pass  # corrupt cache entry — fall through to reload
+
+    query = """
+        SELECT id AS mentor_id,
+               first_name || ' ' || last_name AS name,
+               first_name, last_name, email, phone_number, company_name,
+               bio, status, technologies, picture_url, picture_filename,
+               availability_text, created_at
+        FROM mentors
+        WHERE status = 'active'
+        ORDER BY created_at DESC
+    """
+    try:
+        result = execute_query(current_app, query, fetch_all=True) or []
+    except Exception as e:
+        raise Exception(f"Failed to get mentors: {str(e)}") from e
+
+    redis_set(_MENTORS_CACHE_KEY, json.dumps(result, default=str), jittered_ttl(60, 10))
+    return result
 
 
 def _invalidate_mentor_cache():
     """Clear cached mentor list so the next read fetches fresh data."""
-    global _mentor_cache, _mentor_cache_ts
-    # Hold the lock so the two-field clear is atomic with respect to readers
-    # that use the lock path, and so local-ref capture in get_all_mentors is safe.
-    with _mentor_cache_lock:
-        _mentor_cache = None
-        _mentor_cache_ts = 0
+    redis_del(_MENTORS_CACHE_KEY)
 
 
 def get_mentor_picture(mentor_id: int) -> tuple:

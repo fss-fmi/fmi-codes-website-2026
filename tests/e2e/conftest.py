@@ -229,21 +229,21 @@ def _wipe_entities(conn):
 
 
 def _reset_caches():
-    """Invalidate all module-level TTL caches so tests see fresh DB data."""
-    try:
-        import app.services.mentor_service as ms
+    """Flush the Redis cache keys so tests see fresh DB/file data.
 
-        ms._cached_mentors = None  # type: ignore[attr-defined]
-        ms._cache_ts = 0  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    Fail-open: if Redis is unavailable the delete is a no-op and the caches
+    simply expire via their short TTLs, so tests must not depend on this
+    succeeding.
+    """
     try:
-        import app.services.ranking_service as rs
+        from app.services.redis_client import redis_del
 
-        rs._cached_rankings = None
-        rs._cache_ts = 0
-        rs._team_rankings_cache = None
-        rs._team_rankings_cache_ts = 0
+        redis_del(
+            "cache:mentors:all",
+            "cache:rankings:legacy",
+            "cache:rankings:teams",
+            "cache:regulations",
+        )
     except Exception:
         pass
 
