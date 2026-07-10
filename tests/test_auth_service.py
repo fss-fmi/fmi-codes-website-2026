@@ -101,8 +101,14 @@ class TestJWTDecoding:
 
     def test_tampered_token_raises(self, app_ctx):
         token = auth_service.generate_token(1, "participant")
-        # Flip the last character to corrupt the signature
-        tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+        # Corrupt the payload segment (header.payload.signature). Changing the
+        # signed content guarantees the HMAC no longer matches. (Flipping only the
+        # final signature char is unreliable — trailing base64url bits are padding
+        # and can decode to the same signature bytes, so verification still passes.)
+        header, payload, signature = token.split(".")
+        first = payload[0]
+        tampered_payload = ("B" if first != "B" else "C") + payload[1:]
+        tampered = f"{header}.{tampered_payload}.{signature}"
         with pytest.raises(jwt.InvalidTokenError):
             auth_service.decode_token(tampered)
 
