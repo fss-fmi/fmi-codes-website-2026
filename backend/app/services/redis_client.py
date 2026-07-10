@@ -25,7 +25,8 @@ outage degrades to a logged warning and a DB/file fallback — never a 500.
 
 import logging
 import os
-import secrets
+import random as _random
+import threading
 from urllib.parse import urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ _DEFAULT_CONNECT_TIMEOUT = 2
 
 _client = None
 _client_initialized = False
+_client_lock = threading.Lock()
 
 
 def _redact_url(url: str) -> str:
@@ -109,6 +111,7 @@ def _build_client():
 
     socket_timeout = _int_env("REDIS_SOCKET_TIMEOUT", _DEFAULT_SOCKET_TIMEOUT)
     connect_timeout = _int_env("REDIS_CONNECT_TIMEOUT", _DEFAULT_CONNECT_TIMEOUT)
+    redis_password = os.environ.get("REDIS_PASSWORD", "").strip() or None
 
     common_kwargs = {
         "socket_timeout": socket_timeout,
@@ -116,6 +119,8 @@ def _build_client():
         "retry_on_timeout": True,
         "decode_responses": True,
     }
+    if redis_password:
+        common_kwargs["password"] = redis_password
 
     sentinels_raw = os.environ.get("REDIS_SENTINELS", "").strip()
     master_name = os.environ.get("REDIS_MASTER_NAME", "").strip()
@@ -134,11 +139,12 @@ def _build_client():
                 sentinel_hosts,
                 socket_timeout=socket_timeout,
                 socket_connect_timeout=connect_timeout,
+                password=redis_password,
             )
             # master_for returns a client that re-resolves the current master
             # via the sentinels on each use, so a failover promotion is picked
             # up automatically without a cached IP / app restart.
-            client = sentinel.master_for(master_name, **common_kwargs)
+            client = sentinel.master_for(master_name, password=redis_password, **common_kwargs)
             client.ping()  # Fail fast if discovery is misconfigured
             logger.info(
                 "✓ Redis connected via Sentinel (master=%s, sentinels=%s)",
@@ -167,16 +173,18 @@ def _build_client():
 def get_redis_client():
     """Return the shared Redis client, or None if Redis is disabled/unreachable.
 
-    Lazy singleton: the client is built once on first use and reused for the
-    life of the process (mirrors the pattern token_blocklist.py used to have).
+    Lazy singleton with double-checked locking so concurrent threads under a
+    threaded Gunicorn worker don't race on initialization.
     The Sentinel-backed client re-resolves the master on each command, so reuse
     does NOT pin us to a stale master after a failover.
     """
     global _client, _client_initialized
     if _client_initialized:
         return _client
-    _client = _build_client()
-    _client_initialized = True
+    with _client_lock:
+        if not _client_initialized:
+            _client = _build_client()
+            _client_initialized = True
     return _client
 
 
@@ -195,13 +203,11 @@ def jittered_ttl(base_seconds: int, jitter_seconds: int) -> int:
     """Return base_seconds ± up to jitter_seconds (never below 1).
 
     Spreads key expiry across workers/pods so they don't all miss the cache and
-    hit the DB in the same instant (cache stampede). Uses secrets for a uniform
-    spread without importing the disallowed argless random helpers.
+    hit the DB in the same instant (cache stampede).
     """
     if jitter_seconds <= 0:
         return max(1, base_seconds)
-    # secrets.randbelow(2*j + 1) gives an int in [0, 2j] → offset in [-j, +j].
-    offset = secrets.randbelow(2 * jitter_seconds + 1) - jitter_seconds
+    offset = _random.randint(-jitter_seconds, jitter_seconds)
     return max(1, base_seconds + offset)
 
 

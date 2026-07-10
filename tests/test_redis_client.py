@@ -189,6 +189,30 @@ def test_redis_set_swallows_client_errors(clear_redis_env):
         assert redis_client.redis_set("k", "v", ttl=10) is False
 
 
+def test_get_redis_client_sentinel_ping_failure_returns_none(clear_redis_env):
+    clear_redis_env.setenv("REDIS_SENTINELS", "s1:26379")
+    clear_redis_env.setenv("REDIS_MASTER_NAME", "mymaster")
+    fake_master = MagicMock()
+    fake_master.ping.side_effect = OSError("connection refused")
+    fake_sentinel = MagicMock()
+    fake_sentinel.master_for.return_value = fake_master
+    with patch("redis.sentinel.Sentinel", return_value=fake_sentinel):
+        assert redis_client.get_redis_client() is None
+
+
+def test_redact_url_strips_password():
+    assert redis_client._redact_url("redis://:secret@localhost:6379") == "redis://:***@localhost:6379"
+
+
+def test_redact_url_strips_user_and_password():
+    assert redis_client._redact_url("redis://user:secret@host:6379") == "redis://user:***@host:6379"
+
+
+def test_redact_url_no_password_unchanged():
+    url = "redis://localhost:6379"
+    assert redis_client._redact_url(url) == url
+
+
 def test_redis_del_swallows_client_errors(clear_redis_env):
     clear_redis_env.setenv("REDIS_URL", "redis://localhost:6379/0")
     fake_client = MagicMock()
