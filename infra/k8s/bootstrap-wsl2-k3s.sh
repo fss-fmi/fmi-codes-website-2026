@@ -10,7 +10,7 @@
 #   1. Installs k3s (Traefik disabled — Phase 4 installs ingress-nginx instead)
 #   2. Points kubectl at the new cluster via ~/.kube/config
 #   3. Installs Helm (needed for Phase 2's Postgres/Redis charts)
-#   4. Creates the app namespace
+#   4. Creates the app namespace (from namespace.yaml when run from a checkout)
 #
 # Safe to re-run — every step is idempotent.
 
@@ -53,7 +53,17 @@ if ! command -v helm >/dev/null 2>&1; then
 fi
 
 log "Creating namespace '$NAMESPACE'"
-kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+# Prefer the declarative manifest that ships next to this script (reviewable,
+# version-controlled). When run via `curl | bash` there's no local checkout, so
+# fall back to generating an equivalent namespace on the fly.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+NAMESPACE_MANIFEST="${SCRIPT_DIR:-}/namespace.yaml"
+if [ "$NAMESPACE" = "fmi-codes" ] && [ -f "$NAMESPACE_MANIFEST" ]; then
+  kubectl apply -f "$NAMESPACE_MANIFEST"
+else
+  # Custom NAMESPACE override, or no checkout (piped from curl) — generate it.
+  kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+fi
 
 log "Done. Verifying cluster:"
 kubectl get nodes -o wide
