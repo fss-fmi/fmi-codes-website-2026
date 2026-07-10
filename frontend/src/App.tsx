@@ -6,6 +6,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { ConfigProvider } from '@/context/ConfigContext';
 import RouteErrorBoundary from '@/components/common/ErrorBoundary';
 import { ToastProvider } from '@/components/common/useToast';
+import BugReportBubble from '@/components/common/BugReportBubble';
 
 import HomePage from '@/pages/HomePage';
 import RegulationsPage from '@/pages/RegulationsPage';
@@ -59,6 +60,7 @@ export default function App() {
       <AuthProvider>
         <ConfigProvider>
           <ToastProvider>
+            <BugReportBubble />
             <BrowserRouter>
               <ScrollToTop />
               <RouteErrorBoundary>
