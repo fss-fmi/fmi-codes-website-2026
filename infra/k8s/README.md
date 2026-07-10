@@ -10,8 +10,8 @@ Two scripts, run inside a **WSL2 Ubuntu** shell:
 
 | Script | What it does |
 | --- | --- |
-| `install-tools-wsl2.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s`. The "npm install" of this workflow. |
-| `bootstrap-wsl2-k3s.sh` | Stands up k3s (Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `namespace.yaml`. |
+| `install-tools-wsl2.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s` — each pinned to a specific version and checksum-verified. The "npm install" of this workflow. |
+| `bootstrap-wsl2-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `namespace.yaml`. |
 
 ```bash
 # 1. Get the tooling (one-shot, idempotent)
@@ -23,7 +23,17 @@ bash infra/k8s/bootstrap-wsl2-k3s.sh
 
 Re-running either is safe — every step is idempotent. Override the namespace
 with `NAMESPACE=my-ns bash infra/k8s/bootstrap-wsl2-k3s.sh` if needed (that path
-uses an on-the-fly namespace instead of `namespace.yaml`).
+labels an on-the-fly namespace instead of applying `namespace.yaml`). Tool and
+cluster versions are pinned via `*_VERSION` env vars at the top of each script —
+override them to upgrade (e.g. `K3S_VERSION=v1.37.0+k3s1 bash …`).
+
+> **Supply-chain note:** `install-tools-wsl2.sh` downloads each binary pinned to a
+> version and verifies it against the vendor-published SHA256 before installing —
+> nothing is piped into a shell. `bootstrap-wsl2-k3s.sh` runs the official k3s
+> installer from `get.k3s.io` (pinned via `INSTALL_K3S_VERSION`); that installer
+> runs under `sudo` and GPG-verifies the k3s binary it fetches. If you'd rather
+> not run a remote installer as root, install k3s from a downloaded release binary
+> out of band.
 
 ### Why k3s (not kind)
 
@@ -57,17 +67,21 @@ Ready node + the `fmi-codes` namespace is the whole deliverable.
 
 - **A node is Ready** — `kubectl get nodes` shows `STATUS Ready`.
 - **The namespace exists** — `kubectl get namespace fmi-codes` shows `Active`.
-- **Survives a host reboot** — k3s installs as a service, so it restarts on boot:
+- **Survives a host reboot — _only if_ WSL2 systemd is enabled.** k3s installs as
+  a systemd service, so on a host with systemd it restarts on boot:
 
   ```bash
   sudo systemctl is-enabled k3s   # -> enabled
   sudo systemctl status k3s       # -> active (running)
   ```
 
-  In WSL2 there's no full systemd unless it's enabled (`/etc/wsl.conf` →
-  `[boot] systemd=true`, then `wsl --shutdown` from Windows). Without it, k3s
-  won't auto-start on WSL relaunch — just re-run `bootstrap-wsl2-k3s.sh`, which
-  is idempotent.
+  **But default WSL2 has systemd off**, so out of the box this criterion does
+  _not_ hold — k3s won't auto-start when you relaunch WSL. Two options:
+  - Enable systemd once (`/etc/wsl.conf` → `[boot]\nsystemd=true`, then
+    `wsl --shutdown` from Windows), after which the checks above pass and k3s
+    survives relaunch; or
+  - Leave systemd off and just re-run `bootstrap-wsl2-k3s.sh` after each WSL
+    relaunch — it's idempotent and brings the cluster back in seconds.
 
 ## Connect k9s
 
