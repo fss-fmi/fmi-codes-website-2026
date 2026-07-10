@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "FMI Codes Website",
   "scripts": {
+    "prepare": "husky",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -10,14 +11,5 @@
     "prettier": "^3.2.5",
     "husky": "^9.0.11",
     "lint-staged": "^15.2.2"
-  },
-  "lint-staged": {
-    "*.{html,js,json,css,md}": [
-      "prettier --write"
-    ],
-    "*.py": [
-      "ruff check --fix",
-      "ruff format"
-    ]
   }
 }

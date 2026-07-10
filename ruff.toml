@@ -22,7 +22,9 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"tests/**" = ["F401"]  # test helpers may import for side-effects
+# Tests bootstrap sys.path before importing app modules, so imports intentionally
+# follow executable statements (E402). Helpers may be imported for side effects (F401).
+"tests/**" = ["E402", "F401"]
 
 [format]
 quote-style = "double"

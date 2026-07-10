@@ -10,20 +10,32 @@ services:
       # Persistent storage — data survives container restarts
       - postgres_data:/var/lib/postgresql/data
       # Init scripts: Postgres runs these once on first startup, in order
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-    ports:
-      - '5433:5432'
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    # M6: No host port mapping in production — DB is internal only.
+    #     Access via: docker exec fmi-codes-db psql ...
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME}']
       interval: 5s
       timeout: 5s
       retries: 10
 
+  redis:
+    container_name: fmi-codes-redis
+    image: redis:7-alpine
+    # H7/H1: Shared Redis for rate-limiter storage (H7) and JWT revocation blocklist (H1).
+    #         No host port mapping — internal network only.
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     container_name: fmi-codes-app
-    build: .
-    ports:
-      - '5001:5001'
+    # Prod runs the immutable image published by the CD pipeline
+    # (.github/workflows/docker-cd.yaml). Local builds live in docker-compose.dev.yml.
+    image: fssfmi/fmi-codes-backend:latest
+    # M6: No host port mapping in production — traffic flows through Nginx only.
     environment:
       FLASK_ENV: ${FLASK_ENV}
       FLASK_DEBUG: ${FLASK_DEBUG}
@@ -35,17 +47,31 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
       MENTORS_STAY_TUNED: ${MENTORS_STAY_TUNED}
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN}
+      RANKINGS_LIVE: ${RANKINGS_LIVE}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_USE_TLS: ${MAIL_USE_TLS}
       DISCORD_BUG_WEBHOOK_URL: ${DISCORD_BUG_WEBHOOK_URL}
+      REDIS_URL: redis://redis:6379
     depends_on:
       db:
         condition: service_healthy # App won't start until Postgres is ready
+      redis:
+        condition: service_healthy
+
+  frontend:
+    container_name: fmi-codes-frontend
+    image: fssfmi/fmi-codes-frontend:latest
+    ports:
+      - '80:80'
+    depends_on:
+      - app
 
 volumes:
   postgres_data:

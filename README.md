@@ -220,7 +220,7 @@ Any logged-in user can submit a bug report from the UI. Reports are forwarded to
 │   │   ├── base.html / navbar.html / home.html  (home includes contact section)
 │   │   ├── auth/           login, registration, profile
 │   │   ├── teams/          team, createTeam, joinTeam, browseTeams, registeredTeams
-│   │   ├── mentors/        mentors, mentorsStayTuned, chooseMentor, mentorDashboard, selectedMentors
+│   │   ├── mentors/        mentors, mentorsStayTuned, chooseMentor, mentorDashboard
 │   │   ├── rankings/       ranking, teamRanking
 │   │   └── admin/          matching dashboard
 │   ├── static/             Images, company logos, mentor pictures
@@ -293,6 +293,54 @@ PostgreSQL `ThreadedConnectionPool` (min 2, max 20 per worker, 5 s timeout). Pro
 | `009_backfill_mentor_availability.sql`       | Idempotent back-fill for seeded mentor availability data          |
 | `010_fix_availability_text_encoding.sql`     | Fixes encoding issues in availability text                        |
 | `011_team_join_requests.sql`                 | `team_join_requests` table with status workflow + partial indexes |
+
+---
+
+## Running Tests
+
+### Unit tests
+
+No database or `.env` needed.
+
+```bash
+pytest tests/ --ignore=tests/e2e -v
+```
+
+### E2E tests
+
+E2E tests require a local PostgreSQL 16 instance. They run against a dedicated test database and are automatically skipped if Postgres is unreachable.
+
+**1. Create the test database (one-time setup)**
+
+```bash
+psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026_test;"
+```
+
+That's it — the test suite applies the full schema automatically on the first run.
+
+**2. Run the tests**
+
+```bash
+# From the project root (with .venv activated)
+pytest tests/e2e/ -v
+
+# Or run everything at once
+pytest -v
+```
+
+**Custom DB URL**
+
+If your Postgres user, password, or host differs from the defaults (`postgres:postgres@localhost:5432`), set `TEST_DATABASE_URL`:
+
+```bash
+TEST_DATABASE_URL=postgresql://user:pw@host/fmi_hackathon_2026_test pytest tests/e2e/ -v
+```
+
+**Notes**
+
+- The test admin credentials (`admin@fmicodes.bg` / `test-admin-pw!`) are injected directly into the Flask test app — no `.env` file needed to run tests.
+- Each test starts with a clean slate: all participant, team, and preference data is wiped between tests via `TRUNCATE ... CASCADE`.
+- Seed data (universities, specialties, mentors) is loaded once per test session and preserved across tests.
 
 ---
 
