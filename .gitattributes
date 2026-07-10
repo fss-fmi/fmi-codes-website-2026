@@ -1,0 +1,7 @@
+# Keep shell scripts and k8s manifests LF-only regardless of the checkout host's
+# core.autocrlf setting. A .sh file with CRLF endings fails on Linux with a
+# "bad interpreter: /usr/bin/env bash^M" error, so this is load-bearing for the
+# k8s bootstrap script.
+*.sh   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
