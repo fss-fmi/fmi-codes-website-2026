@@ -15,9 +15,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path aliases */
-    "ignoreDeprecations": "5.0",
-    "baseUrl": ".",
+    /* Path aliases — no baseUrl needed under moduleResolution "bundler";
+       paths resolve relative to this tsconfig. (baseUrl is deprecated in TS 6
+       and removed in TS 7.) */
     "paths": {
       "@/*": ["./src/*"]
     },

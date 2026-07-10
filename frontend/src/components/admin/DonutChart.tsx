@@ -45,7 +45,6 @@ export default function DonutChart({ data, title }: Props) {
               fontFamily: 'var(--px-mono)',
               fontSize: '0.8rem',
             }}
-            formatter={(val: number, name: string) => [val, name]}
           />
         </PieChart>
       </ResponsiveContainer>
