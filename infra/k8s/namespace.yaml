@@ -1,14 +1,8 @@
-# Dedicated namespace for the FMI Codes 2026 app.
-# Everything the migration adds in later phases (Postgres, Redis Sentinel,
-# backend, frontend, Ingress, config, secrets) lands in here so the whole
-# deployment can be reasoned about — and torn down — as a single unit.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: fmi-codes
   labels:
-    # Recommended Kubernetes "app" label so tooling (kubectl, dashboards)
-    # can group everything that belongs to this deployment.
     app.kubernetes.io/name: fmi-codes
     app.kubernetes.io/part-of: fmi-codes-website-2026
     app.kubernetes.io/managed-by: kubectl
