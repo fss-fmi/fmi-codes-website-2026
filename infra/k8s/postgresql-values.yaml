@@ -1,0 +1,28 @@
+image:
+  repository: bitnami/postgresql
+  tag: 16.4.0-debian-12-r14
+
+fullnameOverride: postgres
+
+auth:
+  username: fmi_app
+  database: fmi_hackathon_2026
+  existingSecret: fmi-codes-db
+  secretKeys:
+    adminPasswordKey: postgres-password
+    userPasswordKey: password
+
+primary:
+  initdb:
+    scriptsConfigMap: postgres-initdb
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+architecture: standalone

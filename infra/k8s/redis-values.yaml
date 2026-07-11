@@ -1,0 +1,53 @@
+architecture: replication
+
+fullnameOverride: redis
+
+auth:
+  enabled: true
+  existingSecret: fmi-codes-redis
+  existingSecretPasswordKey: redis-password
+
+master:
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+replica:
+  replicaCount: 2
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+sentinel:
+  enabled: true
+  masterSet: mymaster
+  quorum: 2
+  downAfterMilliseconds: 5000
+  failoverTimeout: 10000
+  parallelSyncs: 1
+  service:
+    type: ClusterIP
+    ports:
+      sentinel: 26379
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+commonConfiguration: |-
+  appendonly yes
+  save ""
