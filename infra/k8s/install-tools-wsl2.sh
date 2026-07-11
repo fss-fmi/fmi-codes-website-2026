@@ -54,9 +54,37 @@ verify_sha256() {
     || { echo "Checksum mismatch for $file: expected $expected, got $actual" >&2; exit 1; }
 }
 
-log "Installing prerequisites"
-sudo apt-get update -y
-sudo apt-get install -y curl ca-certificates apt-transport-https gnupg tar coreutils
+# The only OS packages this script needs are the basics used by the download +
+# verify steps below: curl (fetch), coreutils (sha256sum), tar (unpack), and
+# ca-certificates (TLS trust for the https downloads). kubectl/helm/k9s themselves
+# are fetched further down as direct, checksum-verified binaries — this script
+# NEVER adds an apt repository, so it can't be the source of a stale/expired repo.
+#
+# We probe for each tool and only touch apt when something is genuinely missing.
+# On a typical Ubuntu/WSL2 image they're already present, so the common path skips
+# apt entirely. This matters because a broken *unrelated* repo already on the
+# machine — e.g. the retired Kubernetes apt repo (now 404) or a Cloud Foundry repo
+# whose signing key has expired — makes `apt-get update` exit non-zero even when
+# the official Ubuntu repos refreshed fine. Under `set -e` that would otherwise
+# abort this whole install for a problem it did not cause.
+log "Checking prerequisites"
+missing_pkgs=()
+command -v curl      >/dev/null 2>&1 || missing_pkgs+=(curl)
+command -v tar       >/dev/null 2>&1 || missing_pkgs+=(tar)
+command -v sha256sum >/dev/null 2>&1 || missing_pkgs+=(coreutils)
+[ -d /etc/ssl/certs ]                || missing_pkgs+=(ca-certificates)
+
+if [ "${#missing_pkgs[@]}" -eq 0 ]; then
+  log "All prerequisites already present — skipping apt"
+else
+  log "Installing missing prerequisites: ${missing_pkgs[*]}"
+  # A partial `apt-get update` failure from an unrelated broken/expired repo must
+  # not be fatal here; we only care that the specific packages below install. The
+  # install itself still surfaces a real error if a needed package is unavailable.
+  sudo apt-get update -y \
+    || echo "Warning: 'apt-get update' reported errors (likely an unrelated broken/expired third-party apt repo already on this machine, not this repo). Continuing." >&2
+  sudo apt-get install -y "${missing_pkgs[@]}"
+fi
 
 if ! command -v kubectl >/dev/null 2>&1; then
   log "Installing kubectl $KUBECTL_VERSION"

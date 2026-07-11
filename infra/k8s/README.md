@@ -27,6 +27,13 @@ labels an on-the-fly namespace instead of applying `namespace.yaml`). Tool and
 cluster versions are pinned via `*_VERSION` env vars at the top of each script —
 override them to upgrade (e.g. `K3S_VERSION=v1.37.0+k3s1 bash …`).
 
+How long `bootstrap-wsl2-k3s.sh` waits for the cluster is tunable, too:
+`API_TIMEOUT` (default 300s) for the API server to serve `/readyz`, `NODE_TIMEOUT`
+(default 180s) for the node to go Ready, and `CRASH_LOOP_MAX_RESTARTS` (default 3)
+— if the k3s systemd unit restarts that many times while waiting, the script
+stops early and prints `systemctl status` + the journal tail, since a
+crash-looping k3s won't fix itself by waiting longer.
+
 > **Supply-chain note:** `install-tools-wsl2.sh` downloads each binary pinned to a
 > version and verifies it against the vendor-published SHA256 before installing —
 > nothing is piped into a shell. `bootstrap-wsl2-k3s.sh` runs the official k3s
@@ -82,6 +89,29 @@ Ready node + the `fmi-codes` namespace is the whole deliverable.
     survives relaunch; or
   - Leave systemd off and just re-run `bootstrap-wsl2-k3s.sh` after each WSL
     relaunch — it's idempotent and brings the cluster back in seconds.
+
+## Troubleshooting: bootstrap says the API "did not come up"
+
+`systemctl status k3s` showing **`active (running)`** only means the `k3s server`
+process is alive — not that the API server is serving `:6443`. If bootstrap
+reports the API didn't come up, check the journal (the script now prints it
+automatically on failure):
+
+```bash
+sudo systemctl status k3s        # watch "active since … ; Ns ago"
+sudo journalctl -u k3s -e --no-pager
+```
+
+If the `since … ; Ns ago` uptime keeps resetting to a few seconds — or you see
+`activating (auto-restart)` with `Main PID … (code=exited)` — k3s is
+**crash-looping**, not just slow. Common WSL2 fixes:
+
+- **Missing iptables tools** (`Host iptables-save/iptables-restore tools not found`
+  in the k3s log): `sudo apt-get install -y iptables`.
+- **Stale cluster state from a prior boot:** `sudo /usr/local/bin/k3s-killall.sh`
+  then `sudo rm -rf /var/lib/rancher/k3s`, and re-run bootstrap.
+- **Too little memory for WSL2:** raise the limit in `%USERPROFILE%\.wslconfig`
+  (e.g. `[wsl2]` → `memory=4GB`), then `wsl --shutdown` from Windows.
 
 ## Connect k9s
 
