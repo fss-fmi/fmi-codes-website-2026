@@ -28,7 +28,7 @@ master:
       memory: 256Mi
 
 replica:
-  replicaCount: 2
+  replicaCount: 3
   persistence:
     enabled: true
     size: 2Gi

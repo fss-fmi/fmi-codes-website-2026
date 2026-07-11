@@ -163,6 +163,14 @@ Chart and image versions are pinned via env vars at the top of the script
 > refuse non-`bitnami/*` images unless `global.security.allowInsecureImages: true`
 > is set — the values files set it for this reason (see bitnami/charts#30850).
 
+> **WSL + Docker Desktop gotcha.** If Docker Desktop wrote `"credsStore": "desktop.exe"`
+> into your WSL `~/.docker/config.json`, Helm's chart fetch (and any OCI pull) fails
+> with `fork/exec /usr/bin/docker-credential-desktop.exe: exec format error` — a
+> Linux process can't run the Windows `.exe` credential helper. `deploy-stateful.sh`
+> sidesteps this by running under a throwaway empty `DOCKER_CONFIG` for the duration,
+> so no credential helper is ever invoked (the public charts/images need no auth).
+> Nothing to configure — it just works.
+
 ### Connection coordinates (for Phase 3's app tier)
 
 | Service | In-cluster address |

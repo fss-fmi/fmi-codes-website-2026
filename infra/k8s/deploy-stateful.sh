@@ -31,6 +31,11 @@ command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools-
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-wsl2-k3s.sh first."
 
+HELM_DOCKER_CONFIG="$(mktemp -d)"
+printf '{}' > "$HELM_DOCKER_CONFIG/config.json"
+trap 'rm -rf "$HELM_DOCKER_CONFIG"' EXIT
+export DOCKER_CONFIG="$HELM_DOCKER_CONFIG"
+
 gen_password() {
   head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32
 }
