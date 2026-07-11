@@ -2,6 +2,15 @@ architecture: replication
 
 fullnameOverride: redis
 
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/redis
+  tag: 7.4.3-debian-12-r0
+
 auth:
   enabled: true
   existingSecret: fmi-codes-redis
@@ -37,6 +46,10 @@ sentinel:
   downAfterMilliseconds: 5000
   failoverTimeout: 10000
   parallelSyncs: 1
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/redis-sentinel
+    tag: 7.4.3-debian-12-r0
   service:
     type: ClusterIP
     ports:
@@ -47,6 +60,24 @@ sentinel:
       memory: 64Mi
     limits:
       memory: 128Mi
+
+kubectl:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/kubectl
+    tag: 1.33.0-debian-12-r0
+
+volumePermissions:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r43
+
+sysctl:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r43
 
 commonConfiguration: |-
   appendonly yes

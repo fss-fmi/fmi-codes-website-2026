@@ -151,6 +151,18 @@ Chart and image versions are pinned via env vars at the top of the script
 (`POSTGRES_CHART_VERSION`, `REDIS_CHART_VERSION`) and in the values files
 (`image.tag`) — override to upgrade.
 
+> **Why `bitnamilegacy/*` images.** In August 2025 Bitnami moved its free Docker
+> catalog: the images the charts point at by default (`docker.io/bitnami/postgresql`,
+> `…/redis`, `…/redis-sentinel`, plus the `os-shell`/`kubectl` helper images) were
+> removed from the free tier and archived under `docker.io/bitnamilegacy/*`. The
+> values files therefore override every image `repository` to the `bitnamilegacy`
+> namespace so the charts actually pull. `bitnamilegacy` is frozen (no future
+> security patches) — a later phase should migrate to the maintained Bitnami Secure
+> images or self-built images. Do **not** "correct" these back to `bitnami/*`; that
+> tag no longer resolves and the pods will `ErrImagePull`. Newer chart versions also
+> refuse non-`bitnami/*` images unless `global.security.allowInsecureImages: true`
+> is set — the values files set it for this reason (see bitnami/charts#30850).
+
 ### Connection coordinates (for Phase 3's app tier)
 
 | Service | In-cluster address |
@@ -205,7 +217,7 @@ kubectl -n fmi-codes exec -it redis-node-1 -c sentinel -- \
 ```bash
 REDIS_PW=$(kubectl -n fmi-codes get secret fmi-codes-redis -o jsonpath='{.data.redis-password}' | base64 -d)
 kubectl -n fmi-codes run redis-probe --rm -it --restart=Never \
-  --image=bitnami/redis:7 -- \
+  --image=bitnamilegacy/redis:7.4.3-debian-12-r0 -- \
   redis-cli -h redis.fmi-codes.svc.cluster.local -p 26379 \
   -a "$REDIS_PW" sentinel master mymaster
 ```
