@@ -113,6 +113,147 @@ If the `since … ; Ns ago` uptime keeps resetting to a few seconds — or you s
 - **Too little memory for WSL2:** raise the limit in `%USERPROFILE%\.wslconfig`
   (e.g. `[wsl2]` → `memory=4GB`), then `wsl --shutdown` from Windows.
 
+## Phase 2 — stateful services (#27)
+
+Moves the Postgres + Redis Sentinel tier off `docker-compose.yml` and into the
+cluster as managed stateful workloads, using the upstream Bitnami Helm charts.
+
+| File | What it is |
+| --- | --- |
+| `postgresql-values.yaml` | Bitnami `postgresql` chart values — single primary, PVC-backed, DB `fmi_hackathon_2026`, user `fmi_app`, schema loaded from a ConfigMap. |
+| `redis-values.yaml` | Bitnami `redis` chart values — `sentinel.enabled`, 1 master + 2 replicas + 3 sentinels, master set `mymaster`, quorum 2. Mirrors the docker-compose topology from #23. |
+| `deploy-stateful.sh` | Idempotent deploy: creates the DB/Redis Secrets (once), syncs `schema.sql` into a ConfigMap, adds the Bitnami repo, and `helm upgrade --install`s both charts into `fmi-codes`. |
+
+```bash
+# Cluster must already be up (Phase 1). Then:
+bash infra/k8s/deploy-stateful.sh
+```
+
+**Secrets are generated in-cluster, never committed.** On first run the script
+creates two `Secret`s with random 32-char passwords — `fmi-codes-db`
+(`password`, `postgres-password`) and `fmi-codes-redis` (`redis-password`) — and
+the charts consume them via `existingSecret`. Re-runs detect the existing Secrets
+and leave them untouched, so passwords never rotate out from under a running
+datastore. Read a password back with:
+
+```bash
+kubectl -n fmi-codes get secret fmi-codes-db \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+**Schema init.** Rather than duplicating the 600-line `backend/database/schema.sql`
+into the values file, the script loads it into the `postgres-initdb` ConfigMap and
+points the chart at it (`primary.initdb.scriptsConfigMap`). Postgres runs it once
+on first boot of an empty data directory — exactly like the `docker-entrypoint-initdb.d`
+mount it replaces. `schema.sql` stays the single source of truth.
+
+Chart and image versions are pinned via env vars at the top of the script
+(`POSTGRES_CHART_VERSION`, `REDIS_CHART_VERSION`) and in the values files
+(`image.tag`) — override to upgrade.
+
+> **Why `bitnamilegacy/*` images.** In August 2025 Bitnami moved its free Docker
+> catalog: the images the charts point at by default (`docker.io/bitnami/postgresql`,
+> `…/redis`, `…/redis-sentinel`, plus the `os-shell`/`kubectl` helper images) were
+> removed from the free tier and archived under `docker.io/bitnamilegacy/*`. The
+> values files therefore override every image `repository` to the `bitnamilegacy`
+> namespace so the charts actually pull. `bitnamilegacy` is frozen (no future
+> security patches) — a later phase should migrate to the maintained Bitnami Secure
+> images or self-built images. Do **not** "correct" these back to `bitnami/*`; that
+> tag no longer resolves and the pods will `ErrImagePull`. Newer chart versions also
+> refuse non-`bitnami/*` images unless `global.security.allowInsecureImages: true`
+> is set — the values files set it for this reason (see bitnami/charts#30850).
+> **This is a stopgap, not the destination:** `bitnamilegacy` is frozen and receives
+> no security patches, so migrating to maintained images is tracked in #35 — do not
+> let later phases adopt this as the permanent approach.
+
+> **WSL + Docker Desktop gotcha.** If Docker Desktop wrote `"credsStore": "desktop.exe"`
+> into your WSL `~/.docker/config.json`, Helm's chart fetch (and any OCI pull) fails
+> with `fork/exec /usr/bin/docker-credential-desktop.exe: exec format error` — a
+> Linux process can't run the Windows `.exe` credential helper. `deploy-stateful.sh`
+> sidesteps this by running under a throwaway empty `DOCKER_CONFIG` for the duration,
+> so no credential helper is ever invoked (the public charts/images need no auth).
+> Nothing to configure — it just works.
+
+### The PVC is the real source of truth (read before re-running)
+
+Re-running `deploy-stateful.sh` is idempotent for the Helm releases, the generated
+Secrets, and the schema ConfigMap — but **the PersistentVolumeClaims outlive all of
+them, and two things get baked into the PVC at first boot: the schema and the DB
+password.** That has two consequences worth knowing before you re-run or tear down:
+
+- **Schema changes apply to a fresh DB only.** `schema.sql` runs via Postgres
+  `initdb`, which fires exactly once — on an empty data directory. Editing
+  `schema.sql` and re-running the script re-applies the ConfigMap and shows a happy
+  `helm upgrade`, but the running DB **keeps the old schema**. To pick up schema
+  changes you must drop the Postgres PVC (see Tear down) for a clean re-init, or
+  introduce a real migration tool in a later phase. There is no in-place schema
+  update here.
+- **A Secret and its PVC are a matched pair.** The DB/Redis password is written into
+  the PVC when the datastore first initializes. If you delete the generated Secret
+  but leave the PVC (or vice versa), the next run generates a *new* random password
+  in the Secret while the PVC still holds the *old* one → `password authentication
+  failed`. **Always delete the Secret and its PVC together**, never one without the
+  other.
+
+### Connection coordinates (for Phase 3's app tier)
+
+| Service | In-cluster address |
+| --- | --- |
+| Postgres | `postgres.fmi-codes.svc.cluster.local:5432` (DB `fmi_hackathon_2026`, user `fmi_app`) |
+| Redis Sentinel | `redis.fmi-codes.svc.cluster.local:26379` (master set `mymaster`) |
+
+These map straight onto the env vars the backend already reads
+(`backend/app/services/redis_client.py`): set `REDIS_SENTINELS=redis.fmi-codes.svc.cluster.local:26379`
+and `REDIS_MASTER_NAME=mymaster` and the app picks up HA discovery with no code
+change — the same Sentinel path exercised by docker-compose in #23.
+
+### Verify the acceptance criteria (#27)
+
+**Everything Running and Ready** — one Postgres pod, one Redis master, two
+replicas, and the Sentinel containers:
+
+```bash
+kubectl -n fmi-codes get pods
+```
+
+**Data survives a pod restart** — write a row, delete the pod, confirm it's still
+there after the StatefulSet recreates it against the same PVC:
+
+```bash
+DB_PW=$(kubectl -n fmi-codes get secret fmi-codes-db -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n fmi-codes exec -it postgres-0 -- \
+  env PGPASSWORD="$DB_PW" psql -U fmi_app -d fmi_hackathon_2026 \
+  -c "INSERT INTO universities (name, is_seed) VALUES ('persistence-probe', false) ON CONFLICT DO NOTHING;"
+kubectl -n fmi-codes delete pod postgres-0
+kubectl -n fmi-codes wait --for=condition=Ready pod/postgres-0 --timeout=120s
+kubectl -n fmi-codes exec -it postgres-0 -- \
+  env PGPASSWORD="$DB_PW" psql -U fmi_app -d fmi_hackathon_2026 \
+  -c "SELECT name FROM universities WHERE name = 'persistence-probe';"
+```
+
+**Sentinel failover** — kill the master and watch a replica get promoted. Ask any
+Sentinel who the current master is, delete that master pod, then ask again — the
+reported master address should change:
+
+```bash
+kubectl -n fmi-codes exec -it redis-node-0 -c sentinel -- \
+  redis-cli -p 26379 sentinel master mymaster
+# note the ip/port, delete the master pod backing it, wait ~10s, then re-run the
+# same command from a *different* node — Sentinel should report the promoted replica:
+kubectl -n fmi-codes exec -it redis-node-1 -c sentinel -- \
+  redis-cli -p 26379 sentinel master mymaster
+```
+
+**Reachability from a throwaway debug pod** in the same namespace, before Phase 3:
+
+```bash
+REDIS_PW=$(kubectl -n fmi-codes get secret fmi-codes-redis -o jsonpath='{.data.redis-password}' | base64 -d)
+kubectl -n fmi-codes run redis-probe --rm -it --restart=Never \
+  --image=bitnamilegacy/redis:7.4.3-debian-12-r0 -- \
+  redis-cli -h redis.fmi-codes.svc.cluster.local -p 26379 \
+  -a "$REDIS_PW" sentinel master mymaster
+```
+
 ## Connect k9s
 
 [k9s](https://k9scli.io/) is a terminal UI for the cluster — browse pods, tail
@@ -132,9 +273,20 @@ first — k9s follows kubectl.
 ## Tear down
 
 ```bash
-# k3s ships an uninstaller that removes the service and all cluster state.
+# Remove just the Phase 2 stateful releases (keeps the cluster):
+helm -n fmi-codes uninstall redis postgres
+# Helm leaves PVCs behind on purpose so data isn't lost by accident — drop them
+# explicitly to reclaim the storage and force a fresh schema init next deploy:
+kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=postgres
+kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=redis
+# Delete the Secrets together with their PVCs — a Secret and the PVC whose DB was
+# initialized with it are a matched pair (see "The PVC is the real source of truth"):
+kubectl -n fmi-codes delete secret fmi-codes-db fmi-codes-redis
+
+# Or nuke the whole cluster — k3s ships an uninstaller that removes the service
+# and all cluster state:
 /usr/local/bin/k3s-uninstall.sh
 ```
 
-Manifests/Helm values for later phases will land in this directory as each phase
+Manifests and Helm values for later phases land in this directory as each phase
 is implemented.

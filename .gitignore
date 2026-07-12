@@ -85,8 +85,9 @@ npm-debug.log
 yarn-error.log
 package-lock.json
 yarn.lock
-# Local Claude Code guidelines (do not commit)
+# Local Claude Code guidelines (do not commit) — root and any nested directory
 CLAUDE.md
+**/CLAUDE.md
 
 # Local Impeccable design skill artifacts (do not commit)
 PRODUCT.md
