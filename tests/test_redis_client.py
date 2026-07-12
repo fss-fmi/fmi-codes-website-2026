@@ -137,13 +137,18 @@ def test_get_redis_client_sentinel_mode_uses_sentinel(clear_redis_env):
 
 
 def test_get_redis_client_sentinel_passes_password_once(clear_redis_env):
-    """With REDIS_PASSWORD set, master_for must receive `password` exactly once.
+    """master_for gets `password` exactly once; sentinels get it via sentinel_kwargs.
 
-    Regression: the client previously passed password both positionally-by-name
-    and inside **common_kwargs, so a real redis-py master_for() raised
-    'got multiple values for keyword argument password' and Sentinel Redis
-    silently fell back to disabled. A MagicMock hides that, so this fake mirrors
-    the real signature and rejects a duplicate.
+    Two regressions guarded here:
+    1. password was passed both by-name and inside **common_kwargs, so a real
+       redis-py master_for() raised 'got multiple values for keyword argument
+       password' and Sentinel Redis silently fell back to disabled.
+    2. the sentinel-query connections got no password, so on a password-protected
+       Sentinel (Bitnami auth.enabled=true) master discovery failed with
+       AuthenticationError → 'No master found'. The sentinel password must ride
+       on sentinel_kwargs, distinct from the data-node password.
+
+    A MagicMock hides both, so this fake mirrors the real signatures.
     """
     clear_redis_env.setenv("REDIS_SENTINELS", "s1:26379")
     clear_redis_env.setenv("REDIS_MASTER_NAME", "mymaster")
@@ -152,8 +157,8 @@ def test_get_redis_client_sentinel_passes_password_once(clear_redis_env):
     seen = {}
 
     class FakeSentinel:
-        def __init__(self, *args, **kwargs):
-            pass
+        def __init__(self, hosts, sentinel_kwargs=None, **kwargs):
+            seen["sentinel_kwargs"] = sentinel_kwargs or {}
 
         def master_for(self, name, password=None, **kwargs):
             seen["password"] = password
@@ -166,6 +171,7 @@ def test_get_redis_client_sentinel_passes_password_once(clear_redis_env):
     assert client is not None
     assert seen["name"] == "mymaster"
     assert seen["password"] == "s3cr3t"
+    assert seen["sentinel_kwargs"].get("password") == "s3cr3t"
 
 
 def test_get_redis_client_is_singleton(clear_redis_env):

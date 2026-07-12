@@ -134,13 +134,18 @@ def _build_client():
             return None
         try:
             # The Sentinel object needs its own connect timeout so a dead
-            # sentinel node doesn't hang master discovery.
-            sentinel = Sentinel(
-                sentinel_hosts,
-                socket_timeout=socket_timeout,
-                socket_connect_timeout=connect_timeout,
-                password=redis_password,
-            )
+            # sentinel node doesn't hang master discovery. When the deployment
+            # password-protects the sentinels themselves (Bitnami does when
+            # auth.enabled=true), the sentinel-query connections need the
+            # password too — that goes via sentinel_kwargs, separate from the
+            # data-node password threaded through common_kwargs below.
+            sentinel_kwargs = {
+                "socket_timeout": socket_timeout,
+                "socket_connect_timeout": connect_timeout,
+            }
+            if redis_password:
+                sentinel_kwargs["password"] = redis_password
+            sentinel = Sentinel(sentinel_hosts, sentinel_kwargs=sentinel_kwargs)
             # master_for returns a client that re-resolves the current master
             # via the sentinels on each use, so a failover promotion is picked
             # up automatically without a cached IP / app restart.
