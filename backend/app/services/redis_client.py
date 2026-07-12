@@ -144,7 +144,7 @@ def _build_client():
             # master_for returns a client that re-resolves the current master
             # via the sentinels on each use, so a failover promotion is picked
             # up automatically without a cached IP / app restart.
-            client = sentinel.master_for(master_name, password=redis_password, **common_kwargs)
+            client = sentinel.master_for(master_name, **common_kwargs)
             client.ping()  # Fail fast if discovery is misconfigured
             logger.info(
                 "✓ Redis connected via Sentinel (master=%s, sentinels=%s)",

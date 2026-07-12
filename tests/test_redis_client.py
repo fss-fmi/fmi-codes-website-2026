@@ -136,6 +136,38 @@ def test_get_redis_client_sentinel_mode_uses_sentinel(clear_redis_env):
     fake_master.ping.assert_called_once()
 
 
+def test_get_redis_client_sentinel_passes_password_once(clear_redis_env):
+    """With REDIS_PASSWORD set, master_for must receive `password` exactly once.
+
+    Regression: the client previously passed password both positionally-by-name
+    and inside **common_kwargs, so a real redis-py master_for() raised
+    'got multiple values for keyword argument password' and Sentinel Redis
+    silently fell back to disabled. A MagicMock hides that, so this fake mirrors
+    the real signature and rejects a duplicate.
+    """
+    clear_redis_env.setenv("REDIS_SENTINELS", "s1:26379")
+    clear_redis_env.setenv("REDIS_MASTER_NAME", "mymaster")
+    clear_redis_env.setenv("REDIS_PASSWORD", "s3cr3t")
+
+    seen = {}
+
+    class FakeSentinel:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def master_for(self, name, password=None, **kwargs):
+            seen["password"] = password
+            seen["name"] = name
+            return MagicMock()
+
+    with patch("redis.sentinel.Sentinel", FakeSentinel):
+        client = redis_client.get_redis_client()
+
+    assert client is not None
+    assert seen["name"] == "mymaster"
+    assert seen["password"] == "s3cr3t"
+
+
 def test_get_redis_client_is_singleton(clear_redis_env):
     clear_redis_env.setenv("REDIS_URL", "redis://localhost:6379/0")
     fake_client = MagicMock()
