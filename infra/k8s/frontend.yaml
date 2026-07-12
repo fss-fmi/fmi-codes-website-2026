@@ -26,6 +26,7 @@ spec:
       containers:
         - name: frontend
           image: fssfmi/fmi-codes-frontend:latest
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
           ports:

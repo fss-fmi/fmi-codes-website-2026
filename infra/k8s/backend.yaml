@@ -49,6 +49,7 @@ spec:
       containers:
         - name: backend
           image: fssfmi/fmi-codes-backend:latest
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
