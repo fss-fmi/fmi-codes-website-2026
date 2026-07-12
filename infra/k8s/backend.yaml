@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fmi-codes-backend-config
+  namespace: fmi-codes
+  labels:
+    app.kubernetes.io/name: fmi-codes-backend
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+    app.kubernetes.io/managed-by: kubectl
+data:
+  FLASK_ENV: "production"
+  DB_HOST: "postgres.fmi-codes.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_NAME: "fmi_hackathon_2026"
+  DB_USER: "fmi_app"
+  REDIS_SENTINELS: "redis.fmi-codes.svc.cluster.local:26379"
+  REDIS_MASTER_NAME: "mymaster"
+  REDIS_URL: ""
+  FRONTEND_ORIGIN: "http://localhost"
+  MENTORS_STAY_TUNED: "false"
+  REGISTRATION_OPEN: "false"
+  RANKINGS_LIVE: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: fmi-codes
+  labels:
+    app.kubernetes.io/name: fmi-codes-backend
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fmi-codes-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fmi-codes-backend
+        app.kubernetes.io/part-of: fmi-codes-website-2026
+        app.kubernetes.io/managed-by: kubectl
+    spec:
+      containers:
+        - name: backend
+          image: fssfmi/fmi-codes-backend:latest
+          ports:
+            - name: http
+              containerPort: 5001
+          envFrom:
+            - configMapRef:
+                name: fmi-codes-backend-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-db
+                  key: password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-redis
+                  key: redis-password
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: SECRET_KEY
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: JWT_SECRET_KEY
+            - name: ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: ADMIN_PASSWORD_HASH
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: MAIL_PASSWORD
+            - name: DISCORD_BUG_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: DISCORD_BUG_WEBHOOK_URL
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: fmi-codes
+  labels:
+    app.kubernetes.io/name: fmi-codes-backend
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: fmi-codes-backend
+  ports:
+    - name: http
+      port: 5001
+      targetPort: http

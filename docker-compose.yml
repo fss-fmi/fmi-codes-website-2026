@@ -141,6 +141,10 @@ services:
       REDIS_SENTINELS: sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
       REDIS_MASTER_NAME: mymaster
       # REDIS_URL: redis://redis-master:6379  # optional single-instance override; unset REDIS_SENTINELS/REDIS_MASTER_NAME to use it
+    networks:
+      default:
+        aliases:
+          - backend
     depends_on:
       db:
         condition: service_healthy # App won't start until Postgres is ready

@@ -254,6 +254,114 @@ kubectl -n fmi-codes run redis-probe --rm -it --restart=Never \
   -a "$REDIS_PW" sentinel master mymaster
 ```
 
+## Phase 3 — stateless app tier (#28)
+
+The backend (Flask/gunicorn) and frontend (nginx) run as ordinary, disposable
+`Deployment`s fronted by `ClusterIP` `Service`s in the same `fmi-codes`
+namespace. Nothing here is stateful — pods are cattle, killed and rescheduled
+freely — so all persistence stays in the Phase 2 Postgres/Redis tier, reached
+purely over env vars.
+
+```bash
+# Cluster + stateful tier must already be up (Phases 1–2). Then:
+./deploy-app.sh
+```
+
+`deploy-app.sh` refuses to run until the Phase 2 namespace and the
+`fmi-codes-db` / `fmi-codes-redis` secrets exist, so the #28 "depends on Phase 2"
+ordering is enforced rather than assumed.
+
+### What gets created
+
+| Object | Name | Notes |
+| --- | --- | --- |
+| ConfigMap | `fmi-codes-backend-config` | Non-secret backend env — Postgres/Redis coordinates, feature flags |
+| Deployment + Service | `backend` | 2 replicas of `fssfmi/fmi-codes-backend:latest`, ClusterIP on 5001 |
+| Deployment + Service | `frontend` | 2 replicas of `fssfmi/fmi-codes-frontend:latest`, ClusterIP on 80 |
+| Secret | `fmi-codes-app` | App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, …) — created by the script if absent |
+
+### Why the backend Service is named `backend`
+
+The frontend image's `nginx.conf` proxies `/api/` and `/static/` to a fixed
+upstream. In docker-compose that host was the `app` service; in k8s it resolves
+to the backend `Service` name. To keep a single nginx image working in **both**
+environments with no per-target build, the upstream is `http://backend:5001` and:
+
+- the k8s backend `Service` is named `backend`, and
+- the compose `app` service carries a `backend` network alias.
+
+So the same image resolves `backend` correctly whether it runs under compose or
+k8s — no application code changes, matching the #28 constraint.
+
+### Config and secrets model
+
+Non-secret env lives in the `fmi-codes-backend-config` ConfigMap and is pulled in
+with `envFrom`. Passwords are injected with `secretKeyRef`:
+
+- `DB_PASSWORD` ← `fmi-codes-db` / `password` (reused from Phase 2)
+- `REDIS_PASSWORD` ← `fmi-codes-redis` / `redis-password` (reused from Phase 2)
+- `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`,
+  `DISCORD_BUG_WEBHOOK_URL` ← `fmi-codes-app`
+
+`DATABASE_URL` is deliberately left unset — `backend/config.py` composes it from
+the `DB_*` pieces when it's absent.
+
+The script generates strong random `SECRET_KEY` / `JWT_SECRET_KEY` on first
+create and leaves `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`,
+`DISCORD_BUG_WEBHOOK_URL` empty. The backend runs `production` config, which
+hard-fails at startup unless `ADMIN_PASSWORD_HASH` is set, so patch a real bcrypt
+hash in before expecting the pods to go Ready:
+
+```bash
+HASH=$(python -c "import bcrypt;print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())")
+kubectl -n fmi-codes patch secret fmi-codes-app \
+  -p "{\"data\":{\"ADMIN_PASSWORD_HASH\":\"$(printf '%s' "$HASH" | base64 -w0)\"}}"
+kubectl -n fmi-codes rollout restart deployment/backend
+```
+
+### Health probes
+
+The backend exposes two endpoints (added in this phase, on the `/api` blueprint):
+
+- `GET /api/health` — **liveness**. Returns 200 whenever the process can serve a
+  request; touches no dependencies, so a Postgres/Redis blip never kills a
+  healthy pod.
+- `GET /api/health/ready` — **readiness**. Runs a pooled `SELECT 1` and pings
+  Redis. Postgres is the hard dependency: if it fails the pod returns 503 and is
+  pulled from the Service until the DB recovers. Redis is fail-open by design, so
+  its status is reported but never gates readiness.
+
+The frontend probes `GET /` (nginx serving `index.html`).
+
+### Verify the acceptance criteria (#28)
+
+**Pods Running and Ready** — two backend, two frontend:
+
+```bash
+kubectl -n fmi-codes get pods -l app.kubernetes.io/part-of=fmi-codes-website-2026
+```
+
+**Self-heal with no downtime** — delete one backend pod and watch k8s reschedule
+it while the other replica keeps serving:
+
+```bash
+kubectl -n fmi-codes delete pod \
+  $(kubectl -n fmi-codes get pod -l app.kubernetes.io/name=fmi-codes-backend \
+    -o jsonpath='{.items[0].metadata.name}')
+kubectl -n fmi-codes get pods -l app.kubernetes.io/name=fmi-codes-backend -w
+```
+
+**Postgres + Redis reachable via env only** — the readiness endpoint exercises
+both real dependencies from inside a backend pod:
+
+```bash
+kubectl -n fmi-codes exec deploy/backend -- \
+  python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:5001/api/health/ready').read())"
+```
+
+A `200` with `{"db": "ok", "redis": "ok"}` proves the app connected to the Phase 2
+tier with nothing but env-var changes.
+
 ## Connect k9s
 
 [k9s](https://k9scli.io/) is a terminal UI for the cluster — browse pods, tail
@@ -273,6 +381,10 @@ first — k9s follows kubectl.
 ## Tear down
 
 ```bash
+# Remove the Phase 3 app tier (stateless — nothing to preserve):
+kubectl -n fmi-codes delete -f frontend.yaml -f backend.yaml
+kubectl -n fmi-codes delete secret fmi-codes-app
+
 # Remove just the Phase 2 stateful releases (keeps the cluster):
 helm -n fmi-codes uninstall redis postgres
 # Helm leaves PVCs behind on purpose so data isn't lost by accident — drop them
