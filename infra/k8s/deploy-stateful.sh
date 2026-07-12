@@ -73,7 +73,8 @@ kubectl -n "$NAMESPACE" create configmap "$INITDB_CONFIGMAP" \
   | kubectl apply -f -
 
 log "Adding/refreshing the Bitnami Helm repo"
-helm repo add bitnami "$BITNAMI_REPO" >/dev/null 2>&1 || true
+helm repo add bitnami "$BITNAMI_REPO" 2>/dev/null || helm repo list 2>/dev/null | grep -q "^bitnami" \
+  || die "failed to add the Bitnami Helm repo ($BITNAMI_REPO) — check network/DNS."
 helm repo update bitnami >/dev/null
 
 log "Deploying Postgres (chart $POSTGRES_CHART_VERSION)"

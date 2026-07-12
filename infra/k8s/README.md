@@ -162,6 +162,9 @@ Chart and image versions are pinned via env vars at the top of the script
 > tag no longer resolves and the pods will `ErrImagePull`. Newer chart versions also
 > refuse non-`bitnami/*` images unless `global.security.allowInsecureImages: true`
 > is set — the values files set it for this reason (see bitnami/charts#30850).
+> **This is a stopgap, not the destination:** `bitnamilegacy` is frozen and receives
+> no security patches, so migrating to maintained images is tracked in #35 — do not
+> let later phases adopt this as the permanent approach.
 
 > **WSL + Docker Desktop gotcha.** If Docker Desktop wrote `"credsStore": "desktop.exe"`
 > into your WSL `~/.docker/config.json`, Helm's chart fetch (and any OCI pull) fails
@@ -170,6 +173,27 @@ Chart and image versions are pinned via env vars at the top of the script
 > sidesteps this by running under a throwaway empty `DOCKER_CONFIG` for the duration,
 > so no credential helper is ever invoked (the public charts/images need no auth).
 > Nothing to configure — it just works.
+
+### The PVC is the real source of truth (read before re-running)
+
+Re-running `deploy-stateful.sh` is idempotent for the Helm releases, the generated
+Secrets, and the schema ConfigMap — but **the PersistentVolumeClaims outlive all of
+them, and two things get baked into the PVC at first boot: the schema and the DB
+password.** That has two consequences worth knowing before you re-run or tear down:
+
+- **Schema changes apply to a fresh DB only.** `schema.sql` runs via Postgres
+  `initdb`, which fires exactly once — on an empty data directory. Editing
+  `schema.sql` and re-running the script re-applies the ConfigMap and shows a happy
+  `helm upgrade`, but the running DB **keeps the old schema**. To pick up schema
+  changes you must drop the Postgres PVC (see Tear down) for a clean re-init, or
+  introduce a real migration tool in a later phase. There is no in-place schema
+  update here.
+- **A Secret and its PVC are a matched pair.** The DB/Redis password is written into
+  the PVC when the datastore first initializes. If you delete the generated Secret
+  but leave the PVC (or vice versa), the next run generates a *new* random password
+  in the Secret while the PVC still holds the *old* one → `password authentication
+  failed`. **Always delete the Secret and its PVC together**, never one without the
+  other.
 
 ### Connection coordinates (for Phase 3's app tier)
 
@@ -255,6 +279,9 @@ helm -n fmi-codes uninstall redis postgres
 # explicitly to reclaim the storage and force a fresh schema init next deploy:
 kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=postgres
 kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=redis
+# Delete the Secrets together with their PVCs — a Secret and the PVC whose DB was
+# initialized with it are a matched pair (see "The PVC is the real source of truth"):
+kubectl -n fmi-codes delete secret fmi-codes-db fmi-codes-redis
 
 # Or nuke the whole cluster — k3s ships an uninstaller that removes the service
 # and all cluster state:
