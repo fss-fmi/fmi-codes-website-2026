@@ -32,7 +32,7 @@ def test_ready_returns_200_when_db_ok_and_redis_ok(client):
     fake_redis = MagicMock()
     fake_redis.ping.return_value = True
     with (
-        patch("app.routes.api_routes.execute_query", return_value={"?column?": 1}),
+        patch("app.routes.api_routes.execute_query", return_value={"ok": 1}),
         patch("app.routes.api_routes.get_redis_client", return_value=fake_redis),
     ):
         resp = client.get("/api/health/ready")
@@ -44,7 +44,7 @@ def test_ready_returns_200_when_db_ok_and_redis_ok(client):
 def test_ready_reports_redis_disabled_when_client_none(client):
     """DB reachable + Redis disabled (client None) → 200, redis 'disabled'."""
     with (
-        patch("app.routes.api_routes.execute_query", return_value={"?column?": 1}),
+        patch("app.routes.api_routes.execute_query", return_value={"ok": 1}),
         patch("app.routes.api_routes.get_redis_client", return_value=None),
     ):
         resp = client.get("/api/health/ready")
@@ -58,7 +58,7 @@ def test_ready_reports_redis_down_but_stays_200(client):
     fake_redis = MagicMock()
     fake_redis.ping.side_effect = ConnectionError("redis unreachable")
     with (
-        patch("app.routes.api_routes.execute_query", return_value={"?column?": 1}),
+        patch("app.routes.api_routes.execute_query", return_value={"ok": 1}),
         patch("app.routes.api_routes.get_redis_client", return_value=fake_redis),
     ):
         resp = client.get("/api/health/ready")
@@ -71,6 +71,19 @@ def test_ready_returns_503_when_db_down(client):
     """DB check raising → 503 (pod pulled from Service)."""
     with (
         patch("app.routes.api_routes.execute_query", side_effect=Exception("db unreachable")),
+        patch("app.routes.api_routes.get_redis_client") as redis,
+    ):
+        resp = client.get("/api/health/ready")
+
+    assert resp.status_code == 503
+    assert resp.get_json() == {"db": "down", "redis": "unknown"}
+    redis.assert_not_called()
+
+
+def test_ready_returns_503_when_db_result_unexpected(client):
+    """DB reachable but the query returns nothing/garbage → 503, not a false ok."""
+    with (
+        patch("app.routes.api_routes.execute_query", return_value=None),
         patch("app.routes.api_routes.get_redis_client") as redis,
     ):
         resp = client.get("/api/health/ready")

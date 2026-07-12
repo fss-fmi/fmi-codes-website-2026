@@ -54,6 +54,22 @@ fi
 log "Applying backend and frontend manifests"
 kubectl apply -n "$NAMESPACE" -f "$BACKEND_MANIFEST" -f "$FRONTEND_MANIFEST"
 
+admin_hash="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \
+  -o jsonpath='{.data.ADMIN_PASSWORD_HASH}' 2>/dev/null || true)"
+
+if [ -z "$admin_hash" ]; then
+  log "ADMIN_PASSWORD_HASH is empty — the backend will CrashLoop until it is set"
+  echo "The backend runs production config, which refuses to start without a real"
+  echo "admin password hash. Set one, then re-run this script:"
+  echo "  HASH=\$(python -c \"import bcrypt;print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())\")"
+  echo "  kubectl -n $NAMESPACE patch secret $APP_SECRET -p \"{\\\"data\\\":{\\\"ADMIN_PASSWORD_HASH\\\":\\\"\$(printf '%s' \"\$HASH\" | base64 -w0)\\\"}}\""
+  log "Waiting for the frontend rollout only"
+  kubectl -n "$NAMESPACE" rollout status deployment/frontend --timeout "${READY_TIMEOUT}s"
+  kubectl -n "$NAMESPACE" get pods -o wide
+  kubectl -n "$NAMESPACE" get svc
+  exit 0
+fi
+
 log "Waiting for rollouts to become ready"
 kubectl -n "$NAMESPACE" rollout status deployment/backend  --timeout "${READY_TIMEOUT}s"
 kubectl -n "$NAMESPACE" rollout status deployment/frontend --timeout "${READY_TIMEOUT}s"

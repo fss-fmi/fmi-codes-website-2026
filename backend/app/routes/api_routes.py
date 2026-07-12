@@ -42,7 +42,10 @@ def health_ready():
     design, so its state is reported but never gates readiness.
     """
     try:
-        execute_query(current_app, "SELECT 1", fetch_one=True)
+        row = execute_query(current_app, "SELECT 1 AS ok", fetch_one=True)
+        if not row or row.get("ok") != 1:
+            logger.warning(f"Readiness DB check returned unexpected result: {row!r}")
+            return jsonify({"db": "down", "redis": "unknown"}), 503
         db_status = "ok"
     except Exception as e:
         logger.warning(f"Readiness DB check failed: {e}")

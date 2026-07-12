@@ -19,9 +19,15 @@ spec:
         app.kubernetes.io/part-of: fmi-codes-website-2026
         app.kubernetes.io/managed-by: kubectl
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: fssfmi/fmi-codes-frontend:latest
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - name: http
               containerPort: 80
