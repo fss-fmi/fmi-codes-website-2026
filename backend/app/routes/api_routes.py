@@ -14,10 +14,54 @@ from app.services import (
     ranking_service,
     regulations_service,
 )
+from app.services.redis_client import get_redis_client
 from app.services.team_service import TeamService
 from app.utils.auth_decorators import admin_required
 
 logger = logging.getLogger(__name__)
+
+
+@api_bp.route("/health", methods=["GET"])
+@limiter.exempt
+def health():
+    """Liveness probe — 200 as long as the process can serve a request.
+
+    Deliberately touches no dependencies so a transient Postgres/Redis outage
+    never kills an otherwise-healthy pod (that's readiness' job, below).
+    """
+    return jsonify({"status": "ok"}), 200
+
+
+@api_bp.route("/health/ready", methods=["GET"])
+@limiter.exempt
+def health_ready():
+    """Readiness probe — 200 only when the pod can actually serve traffic.
+
+    Postgres is the hard dependency: if a pooled `SELECT 1` fails, the pod is
+    pulled from the Service (503) until the DB comes back. Redis is fail-open by
+    design, so its state is reported but never gates readiness.
+    """
+    try:
+        row = execute_query(current_app, "SELECT 1 AS ok", fetch_one=True)
+        if not row or row.get("ok") != 1:
+            logger.warning(f"Readiness DB check returned unexpected result: {row!r}")
+            return jsonify({"db": "down", "redis": "unknown"}), 503
+        db_status = "ok"
+    except Exception as e:
+        logger.warning(f"Readiness DB check failed: {e}")
+        return jsonify({"db": "down", "redis": "unknown"}), 503
+
+    redis_status = "disabled"
+    client = get_redis_client()
+    if client is not None:
+        try:
+            client.ping()
+            redis_status = "ok"
+        except Exception as e:
+            logger.warning(f"Readiness Redis check failed: {e}")
+            redis_status = "down"
+
+    return jsonify({"db": db_status, "redis": redis_status}), 200
 
 
 # ── Feature-flag config (no auth required) ──────────────────────────

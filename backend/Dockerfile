@@ -8,13 +8,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Run as a non-root user so container compromise doesn't grant root access.
-RUN addgroup --system app && adduser --system --ingroup app app
+# Use an explicit numeric UID/GID so Kubernetes' runAsNonRoot can verify the
+# user is non-root at admission (it cannot verify a username alone).
+RUN addgroup --system --gid 10001 app \
+    && adduser --system --uid 10001 --ingroup app app
 
 # Copy the rest of the app and hand ownership over to the app user
 COPY . .
 RUN chown -R app:app /app
 
-USER app
+USER 10001
 
 ENV FLASK_ENV=production
 

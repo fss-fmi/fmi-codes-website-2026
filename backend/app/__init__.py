@@ -17,14 +17,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Module-level limiter — attached to app in create_app()
-# H7: Share the limit across all Gunicorn workers via Redis. Storage is derived
-# from the centralized redis_client config, so this transparently supports
-# Sentinel mode (REDIS_SENTINELS + REDIS_MASTER_NAME) or single-instance
-# (REDIS_URL), and falls back to in-memory for local dev without Redis.
+# H7: Share the limit across all Gunicorn workers via Redis. The storage URI is
+# resolved from the centralized redis_client config inside create_app() (see
+# RATELIMIT_STORAGE_URI below), so it transparently supports Sentinel mode
+# (REDIS_SENTINELS + REDIS_MASTER_NAME) or single-instance (REDIS_URL), and
+# falls back to in-memory for local dev without Redis.
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per minute"],
-    storage_uri=build_limiter_storage_uri,
 )
 
 
@@ -45,7 +45,10 @@ def create_app(config_name="development"):
     )
     app.config.from_object(config)
 
-    # Attach rate limiter
+    # Resolve the rate-limit storage URI now that env/config is loaded, then
+    # attach the limiter. build_limiter_storage_uri() returns a redis+sentinel://
+    # / redis:// / memory:// string depending on the Redis config present.
+    app.config["RATELIMIT_STORAGE_URI"] = build_limiter_storage_uri()
     limiter.init_app(app)
 
     # CORS — allow frontend origin with credentials (httpOnly cookies)
