@@ -16,7 +16,7 @@ data:
   REDIS_SENTINELS: "redis.fmi-codes.svc.cluster.local:26379"
   REDIS_MASTER_NAME: "mymaster"
   REDIS_URL: ""
-  FRONTEND_ORIGIN: "http://localhost"
+  FRONTEND_ORIGIN: "https://fmi-codes.local"
   MENTORS_STAY_TUNED: "false"
   REGISTRATION_OPEN: "false"
   RANKINGS_LIVE: "false"

@@ -306,11 +306,11 @@ with `envFrom`. Passwords are injected with `secretKeyRef`:
 `DATABASE_URL` is deliberately left unset — `backend/config.py` composes it from
 the `DB_*` pieces when it's absent.
 
-The script generates strong random `SECRET_KEY` / `JWT_SECRET_KEY` on first
-create and leaves `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`,
-`DISCORD_BUG_WEBHOOK_URL` empty. The backend runs `production` config, which
-hard-fails at startup unless `ADMIN_PASSWORD_HASH` is set, so patch a real bcrypt
-hash in before expecting the pods to go Ready:
+On first create the script generates strong random `SECRET_KEY` / `JWT_SECRET_KEY`
+and leaves `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL` empty.
+The backend runs `production` config, which hard-fails at startup unless
+`ADMIN_PASSWORD_HASH` is set, so patch a real bcrypt hash in before expecting the
+pods to go Ready:
 
 ```bash
 HASH=$(python -c "import bcrypt;print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())")
@@ -318,6 +318,10 @@ kubectl -n fmi-codes patch secret fmi-codes-app \
   -p "{\"data\":{\"ADMIN_PASSWORD_HASH\":\"$(printf '%s' "$HASH" | base64 -w0)\"}}"
 kubectl -n fmi-codes rollout restart deployment/backend
 ```
+
+Phase 5 (#31) supersedes this manual patch flow with a git-committed,
+SOPS-encrypted source of truth for `fmi-codes-app` and a one-command rotation
+helper — see the Phase 5 section below.
 
 ### Health probes
 
@@ -472,6 +476,188 @@ curl -k -I https://fmi-codes.local/api/health
 
 ```bash
 curl -I http://fmi-codes.local/              # HTTP/1.1 308, Location: https://fmi-codes.local/
+```
+
+## Phase 5 — externalize config & secrets (#31)
+
+Phases 3–4 already moved runtime config off the `.env` file and into k8s-native
+objects: non-secret env lives in the `fmi-codes-backend-config` ConfigMap (pulled
+with `envFrom`), and every sensitive value is injected via `secretKeyRef`. The
+backend reads it all through `os.environ.get(...)` in `backend/config.py` — no
+`.env` file ships in the container image. Phase 5 closes the loop by giving the
+**app secret a git-committed, encrypted single source of truth** with
+one-command rotation, so the team can edit secrets in one place without ever
+committing plaintext.
+
+| File | What it is |
+| --- | --- |
+| `.sops.yaml` | SOPS creation rule (repo root): which files to encrypt, which YAML keys, and the age recipients allowed to decrypt. |
+| `secrets.enc.yaml` | The `fmi-codes-app` `Secret` manifest with its **values encrypted** by SOPS. Safe to commit to a public repo. |
+| `rotate-secret.sh` | One-command rotation of a single secret key: re-encrypt, re-apply, restart backend. |
+
+### The model: SOPS + age
+
+[SOPS](https://github.com/getsops/sops) encrypts only the *values* of a YAML
+file, leaving the keys and structure readable, so a git diff shows *which* secret
+changed without revealing *what* it changed to. [age](https://github.com/FiloSottile/age)
+is the encryption backend: each developer holds an age **key pair**, and SOPS
+encrypts the file to every recipient's **public** key listed in `.sops.yaml`.
+Any recipient can decrypt, edit, and re-encrypt; nobody else can read a thing.
+
+Because encryption targets a *list* of recipients, this scales to a team with no
+shared password — you add and remove people by editing the recipient list, not by
+rotating a passphrase everyone has to re-learn.
+
+```yaml
+# secrets.enc.yaml — values are ciphertext, key names stay readable
+stringData:
+    SECRET_KEY: ENC[AES256_GCM,data:…]
+    JWT_SECRET_KEY: ENC[AES256_GCM,data:…]
+    ADMIN_PASSWORD_HASH: ENC[AES256_GCM,data:…]
+    MAIL_PASSWORD: ""
+    DISCORD_BUG_WEBHOOK_URL: ""
+```
+
+> **Never commit a raw k8s Secret.** A plain `Secret` manifest's `data:` values
+> are base64, **not** encryption — `base64 -d` reveals them instantly. On a public
+> repo that is an immediate credential leak. Only the SOPS-encrypted
+> `secrets.enc.yaml` belongs in git; a decrypted copy must never be written into
+> the repo tree.
+
+### Why DB and Redis passwords are NOT in SOPS
+
+`secrets.enc.yaml` owns **only** the `fmi-codes-app` secret (the five app-level
+values). The `fmi-codes-db` and `fmi-codes-redis` passwords stay generated
+in-cluster by `deploy-stateful.sh` (Phase 2) and are deliberately excluded,
+because they are **PVC-coupled**: a datastore's password is baked into its
+PersistentVolumeClaim at first boot (see "The PVC is the real source of truth"
+above). If SOPS owned those and applied a value that differed from what the PVC
+was initialized with, you'd get `password authentication failed`. Keeping them
+in-cluster keeps the Secret and its PVC a matched pair — the one thing that
+section warns you never to break.
+
+### The age private key
+
+The private key lives **outside the repo** at the SOPS default path,
+`~/.config/sops/age/keys.txt`, and is `chmod 600`. It is never committed —
+`.gitignore` also blocks stray `*.agekey` / `keys.txt` files as a backstop. Only
+your **public** key (the `age1…` recipient) is committed, in `.sops.yaml`.
+
+`install-tools-wsl2.sh` installs `sops`, `age`, and `age-keygen` alongside the
+other CLIs (pinned + checksum-verified). Generate your key once:
+
+```bash
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt
+chmod 600 ~/.config/sops/age/keys.txt
+age-keygen -y ~/.config/sops/age/keys.txt   # prints your public recipient (age1…)
+```
+
+Back this file up somewhere safe (a password manager). Lose every recipient's
+private key and the committed secrets become permanently undecryptable — you'd
+have to regenerate every value from scratch.
+
+### Editing a secret
+
+```bash
+sops infra/k8s/secrets.enc.yaml
+```
+
+This decrypts into your `$EDITOR`, you edit plaintext, and on save SOPS
+re-encrypts to every recipient. Then apply and roll the backend:
+
+```bash
+sops --decrypt infra/k8s/secrets.enc.yaml | kubectl -n fmi-codes apply -f -
+kubectl -n fmi-codes rollout restart deployment/backend
+git add infra/k8s/secrets.enc.yaml && git commit -m "rotate app secrets"
+```
+
+`deploy-app.sh` does the decrypt-and-apply automatically: when `secrets.enc.yaml`
+exists and your age key can decrypt it, the script makes SOPS the source of truth
+(`sops --decrypt … | kubectl apply`). On a fresh clone with **no** age key, it
+falls back to generating a throwaway `fmi-codes-app` in-cluster so a quick
+spin-up still works — but that fallback has an empty `ADMIN_PASSWORD_HASH`, so the
+production backend stays in CrashLoop until you set one (the same guard as
+Phase 3). With the SOPS file in play, the committed hash ships a working default.
+
+### Rotating a secret — one command
+
+```bash
+# rotate to an explicit value:
+bash infra/k8s/rotate-secret.sh MAIL_PASSWORD 'new-smtp-app-password'
+
+# rotate to a freshly generated strong random value (SECRET_KEY / JWT_SECRET_KEY):
+bash infra/k8s/rotate-secret.sh JWT_SECRET_KEY
+
+# rotate the admin password (generate the bcrypt hash first):
+HASH=$(python3 -c "import bcrypt;print(bcrypt.hashpw(b'newpassword', bcrypt.gensalt(12)).decode())")
+bash infra/k8s/rotate-secret.sh ADMIN_PASSWORD_HASH "$HASH"
+```
+
+The script re-encrypts just that one key in `secrets.enc.yaml`, re-applies the
+secret, and `rollout restart`s the backend. Commit the updated file afterwards so
+the change is the new source of truth. Pass `RESTART=false` to skip the rollout
+(e.g. when batching several rotations).
+
+> **The default `ADMIN_PASSWORD_HASH` is a bcrypt hash of `admin123`** — a
+> bootstrap convenience so a fresh deploy comes up loginable. It is *encrypted* in
+> git (not readable), but it's still a known-weak password. **Rotate it to a real
+> value before any non-local use** with the command above.
+
+### Adding or removing a team member
+
+**Add** — the new dev generates their key (above) and sends you their **public**
+recipient. Add it under the `age:` list in `.sops.yaml`, then re-encrypt the file
+to the expanded recipient set:
+
+```bash
+sops updatekeys infra/k8s/secrets.enc.yaml
+git add .sops.yaml infra/k8s/secrets.enc.yaml
+git commit -m "add <dev> as a secrets recipient"
+```
+
+`updatekeys` only re-wraps the data key for the new recipient list — it does not
+change the secret values, so no rollout is needed.
+
+**Remove** — delete their recipient line from `.sops.yaml`, run `sops updatekeys`
+again, **and then rotate every secret value.** Removing a recipient stops them
+decrypting *future* versions, but they still have their private key and the *old*
+ciphertext in git history — so anything they could already read must be considered
+compromised and rotated:
+
+```bash
+# after editing .sops.yaml to drop the departing recipient:
+sops updatekeys infra/k8s/secrets.enc.yaml
+for k in SECRET_KEY JWT_SECRET_KEY; do bash infra/k8s/rotate-secret.sh "$k"; done
+# rotate MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL / ADMIN_PASSWORD_HASH to fresh values too
+git add .sops.yaml infra/k8s/secrets.enc.yaml && git commit -m "offboard <dev>: drop recipient + rotate secrets"
+```
+
+### Verify the acceptance criteria (#31)
+
+**No plaintext secrets in the repo** — every value in `secrets.enc.yaml` is
+`ENC[AES256_GCM,…]`, and DB/Redis passwords aren't committed at all:
+
+```bash
+grep -E 'SECRET_KEY|JWT_SECRET_KEY|ADMIN_PASSWORD_HASH' infra/k8s/secrets.enc.yaml
+# every hit is ENC[…]; no readable value
+```
+
+**Backend starts reading config exclusively from ConfigMap/Secret** — the pod has
+no `.env`, and the readiness probe proves it reached Postgres/Redis on env alone:
+
+```bash
+kubectl -n fmi-codes exec deploy/backend -- sh -c 'test ! -f /app/.env && echo "no .env in container"'
+kubectl -n fmi-codes exec deploy/backend -- \
+  python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:5001/api/health/ready').read())"
+```
+
+**Rotating a secret is a documented one-command operation** — `rotate-secret.sh`
+above. Confirm a rotation lands end-to-end:
+
+```bash
+bash infra/k8s/rotate-secret.sh JWT_SECRET_KEY
+# → re-encrypts secrets.enc.yaml, re-applies the secret, restarts backend, waits for Ready
 ```
 
 ## Connect k9s

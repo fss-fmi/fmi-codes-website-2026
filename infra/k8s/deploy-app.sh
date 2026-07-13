@@ -11,6 +11,7 @@ READY_TIMEOUT="${READY_TIMEOUT:-300}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_MANIFEST="$SCRIPT_DIR/backend.yaml"
 FRONTEND_MANIFEST="$SCRIPT_DIR/frontend.yaml"
+SECRETS_ENC="${SECRETS_ENC:-$SCRIPT_DIR/secrets.enc.yaml}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -34,21 +35,38 @@ gen_password() {
   head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32
 }
 
-log "Ensuring app secret '$APP_SECRET'"
-if kubectl -n "$NAMESPACE" get secret "$APP_SECRET" >/dev/null 2>&1; then
-  echo "Secret $APP_SECRET already exists — leaving its values untouched."
+sops_can_decrypt() {
+  command -v sops >/dev/null 2>&1 || return 1
+  [ -f "$SECRETS_ENC" ] || return 1
+  sops --decrypt "$SECRETS_ENC" >/dev/null 2>&1
+}
+
+if sops_can_decrypt; then
+  log "Applying app secret '$APP_SECRET' from $SECRETS_ENC (SOPS-managed)"
+  sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
+elif [ -f "$SECRETS_ENC" ]; then
+  if command -v sops >/dev/null 2>&1; then
+    die "found $SECRETS_ENC but could not decrypt it — is your age key at ~/.config/sops/age/keys.txt? See infra/k8s/README.md 'Phase 5'."
+  else
+    die "found $SECRETS_ENC but sops is not installed — run install-tools-wsl2.sh, then ensure your age key is at ~/.config/sops/age/keys.txt. See infra/k8s/README.md 'Phase 5'."
+  fi
 else
-  secret_key="$(gen_password)"
-  jwt_secret_key="$(gen_password)"
-  kubectl -n "$NAMESPACE" create secret generic "$APP_SECRET" \
-    --from-literal=SECRET_KEY="$secret_key" \
-    --from-literal=JWT_SECRET_KEY="$jwt_secret_key" \
-    --from-literal=ADMIN_PASSWORD_HASH="" \
-    --from-literal=MAIL_PASSWORD="" \
-    --from-literal=DISCORD_BUG_WEBHOOK_URL=""
-  echo "Created $APP_SECRET with generated SECRET_KEY/JWT_SECRET_KEY and empty placeholders."
-  echo "Set a real ADMIN_PASSWORD_HASH before the backend will start in production mode:"
-  echo "  kubectl -n $NAMESPACE patch secret $APP_SECRET -p '{\"data\":{\"ADMIN_PASSWORD_HASH\":\"<base64-bcrypt-hash>\"}}'"
+  log "Ensuring app secret '$APP_SECRET' (generated in-cluster; no SOPS file present)"
+  if kubectl -n "$NAMESPACE" get secret "$APP_SECRET" >/dev/null 2>&1; then
+    echo "Secret $APP_SECRET already exists — leaving its values untouched."
+  else
+    secret_key="$(gen_password)"
+    jwt_secret_key="$(gen_password)"
+    kubectl -n "$NAMESPACE" create secret generic "$APP_SECRET" \
+      --from-literal=SECRET_KEY="$secret_key" \
+      --from-literal=JWT_SECRET_KEY="$jwt_secret_key" \
+      --from-literal=ADMIN_PASSWORD_HASH="" \
+      --from-literal=MAIL_PASSWORD="" \
+      --from-literal=DISCORD_BUG_WEBHOOK_URL=""
+    echo "Created $APP_SECRET with generated SECRET_KEY/JWT_SECRET_KEY and empty placeholders."
+    echo "Set a real ADMIN_PASSWORD_HASH before the backend will start in production mode:"
+    echo "  kubectl -n $NAMESPACE patch secret $APP_SECRET -p '{\"data\":{\"ADMIN_PASSWORD_HASH\":\"<base64-bcrypt-hash>\"}}'"
+  fi
 fi
 
 log "Applying backend and frontend manifests"
@@ -70,6 +88,9 @@ if [ -z "$admin_hash" ]; then
   exit 0
 fi
 
+log "Restarting backend so pods pick up any ConfigMap/Secret changes"
+kubectl -n "$NAMESPACE" rollout restart deployment/backend
+
 log "Waiting for rollouts to become ready"
 kubectl -n "$NAMESPACE" rollout status deployment/backend  --timeout "${READY_TIMEOUT}s"
 kubectl -n "$NAMESPACE" rollout status deployment/frontend --timeout "${READY_TIMEOUT}s"
@@ -80,7 +101,7 @@ kubectl -n "$NAMESPACE" get svc
 
 cat <<EOF
 
-App tier is up (Phase 3). Verify against the issue's acceptance criteria:
+App tier is up. Verify against the issue's acceptance criteria:
 
   Pods Running/Ready:
     kubectl -n $NAMESPACE get pods -l app.kubernetes.io/part-of=fmi-codes-website-2026
@@ -94,5 +115,9 @@ App tier is up (Phase 3). Verify against the issue's acceptance criteria:
     kubectl -n $NAMESPACE exec deploy/backend -- \\
       python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:5001/api/health/ready').read())"
 
-See infra/k8s/README.md 'Phase 3' for the full checklist.
+To rotate a secret (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH, MAIL_PASSWORD,
+DISCORD_BUG_WEBHOOK_URL) in one command:
+    bash infra/k8s/rotate-secret.sh <KEY> [VALUE]
+
+See infra/k8s/README.md 'Phase 3' and 'Phase 5' for the full checklists.
 EOF
