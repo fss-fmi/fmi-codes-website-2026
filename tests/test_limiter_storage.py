@@ -53,8 +53,42 @@ def test_storage_uri_uses_sentinel_scheme_in_cluster(monkeypatch):
     monkeypatch.setenv("REDIS_SENTINELS", "redis.fmi-codes.svc.cluster.local:26379")
     monkeypatch.setenv("REDIS_MASTER_NAME", "mymaster")
     monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("REDIS_PASSWORD", raising=False)
     from app.services.redis_client import build_limiter_storage_uri
 
     assert build_limiter_storage_uri() == (
         "redis+sentinel://redis.fmi-codes.svc.cluster.local:26379/mymaster"
+    )
+
+
+def test_storage_uri_embeds_password_for_authed_sentinels(monkeypatch):
+    """A password-protected Sentinel deployment must put the password in the URI.
+
+    Without it, the limits library builds an unauthenticated Sentinel client,
+    discovery hits NOAUTH, and every rate-limited request 500s. The password
+    lands in the userinfo so limits threads it into both the sentinel-query and
+    data-node connections.
+    """
+    monkeypatch.setenv("REDIS_SENTINELS", "redis.fmi-codes.svc.cluster.local:26379")
+    monkeypatch.setenv("REDIS_MASTER_NAME", "mymaster")
+    monkeypatch.setenv("REDIS_PASSWORD", "s3cr3t")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    from app.services.redis_client import build_limiter_storage_uri
+
+    assert build_limiter_storage_uri() == (
+        "redis+sentinel://:s3cr3t@redis.fmi-codes.svc.cluster.local:26379/mymaster"
+    )
+
+
+def test_storage_uri_url_encodes_password_special_chars(monkeypatch):
+    """A password with URI-reserved characters must be percent-encoded so the
+    scheme stays parseable (e.g. '@' or ':' would otherwise corrupt the authority)."""
+    monkeypatch.setenv("REDIS_SENTINELS", "redis.fmi-codes.svc.cluster.local:26379")
+    monkeypatch.setenv("REDIS_MASTER_NAME", "mymaster")
+    monkeypatch.setenv("REDIS_PASSWORD", "p@ss:w/rd")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    from app.services.redis_client import build_limiter_storage_uri
+
+    assert build_limiter_storage_uri() == (
+        "redis+sentinel://:p%40ss%3Aw%2Frd@redis.fmi-codes.svc.cluster.local:26379/mymaster"
     )

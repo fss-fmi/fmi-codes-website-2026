@@ -362,6 +362,118 @@ kubectl -n fmi-codes exec deploy/backend -- \
 A `200` with `{"db": "ok", "redis": "ok"}` proves the app connected to the Phase 2
 tier with nothing but env-var changes.
 
+## Phase 4 — networking: Ingress + TLS (#29)
+
+Phase 1 stood up k3s with **Traefik disabled** on purpose — this phase brings the
+cluster's own ingress. It replaces the in-container routing the frontend's
+`nginx.conf` was doing (proxying `/api/` and `/static/` to the backend) with a
+cluster-native `Ingress`, and terminates TLS at the edge.
+
+| File | What it is |
+| --- | --- |
+| `ingress.yaml` | The `Ingress` (host `fmi-codes.local`, path rules below), its `tls:` block, the `security-headers` ConfigMap, and the cert-manager self-signed `ClusterIssuer` + `Certificate`. |
+| `deploy-ingress.sh` | Idempotent deploy: `helm upgrade --install`s `ingress-nginx` and `cert-manager`, applies `ingress.yaml`, waits for the cert to be issued. |
+
+```bash
+# Cluster + stateful + app tiers must already be up (Phases 1–3). Then:
+bash infra/k8s/deploy-ingress.sh
+```
+
+`deploy-ingress.sh` refuses to run until the Phase 3 `backend` and `frontend`
+Services exist, so the "depends on Phase 3" ordering is enforced, not assumed.
+
+### Routing
+
+The path rules mirror the old `nginx.conf` `location` precedence exactly:
+
+| Path | Backend |
+| --- | --- |
+| `/api` | `backend:5001` |
+| `/static` | `backend:5001` |
+| `/` (catch-all) | `frontend:80` |
+
+The frontend container still exists and still serves the SPA (with its own
+`try_files` fallback for client-side routes); the Ingress just fronts it. The
+`/api/` and `/static/` `proxy_pass` blocks stay in `frontend/nginx.conf` so the
+same image keeps working under `docker-compose`, where there is no Ingress.
+
+### Security headers move to the edge
+
+The security headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
+`Permissions-Policy`, `Content-Security-Policy`, `Strict-Transport-Security`) used to
+live in `frontend/nginx.conf`, where they only attached to responses the frontend
+served — `/api/` and `/static/` responses proxied straight through shipped **without**
+them. They now live in the `security-headers` ConfigMap, wired into the controller via
+`controller.config.add-headers=fmi-codes/security-headers`, so **every** response
+through the Ingress carries them uniformly. The `add_header` lines were removed from
+`frontend/nginx.conf` to avoid duplicate headers.
+
+This uses ingress-nginx's supported `add-headers` mechanism, **not**
+`configuration-snippet` annotations. Snippet annotations are disabled by default
+(`allow-snippet-annotations: false`) since a controller-side injection hardening —
+`add-headers` needs none of that loosened, so the controller keeps its default
+posture.
+
+On a first deploy the controller starts before `deploy-ingress.sh` applies the
+ConfigMap (the manifest also carries the cert-manager resources, which can't apply
+until cert-manager's CRDs exist). The controller watches the named header ConfigMap
+and hot-reloads when it appears, so it self-heals within seconds — no restart
+needed.
+
+### TLS: self-signed via cert-manager
+
+This is a LAN-only local cluster with no public DNS name, so there is no Let's
+Encrypt/ACME. Instead `cert-manager` issues a **self-signed** cert: a
+`ClusterIssuer` (`selfSigned: {}`) mints the `fmi-codes-tls` `Certificate` into a
+`kubernetes.io/tls` Secret the Ingress references, and cert-manager auto-renews it
+(`renewBefore: 720h`). Swapping to a real cert later is a one-issuer change — point
+the `Certificate`'s `issuerRef` at an ACME `ClusterIssuer` and nothing else moves.
+
+Because the cert is self-signed, clients must either trust the CA or skip
+verification (`curl -k`). Browsers will show the usual self-signed warning.
+
+### HTTP → HTTPS redirect
+
+ingress-nginx's `ssl-redirect` defaults to `true` and fires automatically once an
+Ingress rule has a TLS cert, so HTTP requests get a `308` to HTTPS with no extra
+config. The Ingress sets `nginx.ingress.kubernetes.io/ssl-redirect: "true"`
+explicitly for clarity.
+
+### Resolve the host
+
+The Ingress matches on `Host: fmi-codes.local`. Point that name at the ingress
+controller's external address (the deploy script prints the exact line):
+
+```bash
+INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "$INGRESS_IP fmi-codes.local" | sudo tee -a /etc/hosts
+```
+
+### Verify the acceptance criteria (#29)
+
+**Routing** — `/api/...` hits the backend, everything else the frontend:
+
+```bash
+curl -k https://fmi-codes.local/api/health   # backend JSON, HTTP 200
+curl -k https://fmi-codes.local/             # the SPA's index.html
+```
+
+**Security headers present** on every response, including the backend routes that
+shipped naked before:
+
+```bash
+curl -k -I https://fmi-codes.local/api/health
+# expect: X-Frame-Options, X-Content-Type-Options, Content-Security-Policy,
+#         Strict-Transport-Security, Referrer-Policy, Permissions-Policy
+```
+
+**HTTPS works and HTTP redirects to it:**
+
+```bash
+curl -I http://fmi-codes.local/              # HTTP/1.1 308, Location: https://fmi-codes.local/
+```
+
 ## Connect k9s
 
 [k9s](https://k9scli.io/) is a terminal UI for the cluster — browse pods, tail
@@ -381,6 +493,13 @@ first — k9s follows kubectl.
 ## Tear down
 
 ```bash
+# Remove the Phase 4 networking tier (Ingress, cert, issuer, headers ConfigMap,
+# then the two controllers and their namespaces):
+kubectl -n fmi-codes delete -f ingress.yaml
+helm -n ingress-nginx uninstall ingress-nginx
+helm -n cert-manager uninstall cert-manager
+kubectl delete namespace ingress-nginx cert-manager
+
 # Remove the Phase 3 app tier (stateless — nothing to preserve):
 kubectl -n fmi-codes delete -f frontend.yaml -f backend.yaml
 kubectl -n fmi-codes delete secret fmi-codes-app

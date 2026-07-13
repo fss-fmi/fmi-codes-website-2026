@@ -27,7 +27,7 @@ import logging
 import os
 import random as _random
 import threading
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
 
@@ -276,19 +276,23 @@ def build_limiter_storage_uri() -> str:
     """Build the Flask-Limiter storage_uri from the same Redis config.
 
     The `limits` library (Flask-Limiter's backend) natively understands the
-    `redis+sentinel://host:port,host2:port2/master_name` scheme, so we hand it
-    a Sentinel URI when in Sentinel mode and a plain redis:// URI otherwise.
-    Returns "memory://" when Redis is disabled so local dev without Redis still
-    rate-limits per-process (unchanged from prior behaviour).
+    `redis+sentinel://:password@host:port,host2:port2/master_name` scheme. It
+    threads the userinfo password into BOTH the sentinel-query connections and
+    the data-node connections, so a password-protected Sentinel deployment
+    authenticates correctly. Returns "memory://" when Redis is disabled so local
+    dev without Redis still rate-limits per-process (unchanged from prior
+    behaviour).
     """
     sentinels_raw = os.environ.get("REDIS_SENTINELS", "").strip()
     master_name = os.environ.get("REDIS_MASTER_NAME", "").strip()
+    redis_password = os.environ.get("REDIS_PASSWORD", "").strip() or None
 
     if sentinels_raw and master_name:
         hosts = _parse_sentinels(sentinels_raw)
         if hosts:
             host_list = ",".join(f"{h}:{p}" for h, p in hosts)
-            return f"redis+sentinel://{host_list}/{master_name}"
+            userinfo = f":{quote(redis_password, safe='')}@" if redis_password else ""
+            return f"redis+sentinel://{userinfo}{host_list}/{master_name}"
         logger.warning(
             "REDIS_SENTINELS=%r parsed to zero valid hosts — limiter falling back", sentinels_raw
         )
