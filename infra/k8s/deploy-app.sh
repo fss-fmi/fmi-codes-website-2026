@@ -88,6 +88,9 @@ if [ -z "$admin_hash" ]; then
   exit 0
 fi
 
+log "Restarting backend so pods pick up any ConfigMap/Secret changes"
+kubectl -n "$NAMESPACE" rollout restart deployment/backend
+
 log "Waiting for rollouts to become ready"
 kubectl -n "$NAMESPACE" rollout status deployment/backend  --timeout "${READY_TIMEOUT}s"
 kubectl -n "$NAMESPACE" rollout status deployment/frontend --timeout "${READY_TIMEOUT}s"
@@ -98,7 +101,7 @@ kubectl -n "$NAMESPACE" get svc
 
 cat <<EOF
 
-App tier is up (Phase 3). Verify against the issue's acceptance criteria:
+App tier is up. Verify against the issue's acceptance criteria:
 
   Pods Running/Ready:
     kubectl -n $NAMESPACE get pods -l app.kubernetes.io/part-of=fmi-codes-website-2026
@@ -112,5 +115,9 @@ App tier is up (Phase 3). Verify against the issue's acceptance criteria:
     kubectl -n $NAMESPACE exec deploy/backend -- \\
       python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:5001/api/health/ready').read())"
 
-See infra/k8s/README.md 'Phase 3' for the full checklist.
+To rotate a secret (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH, MAIL_PASSWORD,
+DISCORD_BUG_WEBHOOK_URL) in one command:
+    bash infra/k8s/rotate-secret.sh <KEY> [VALUE]
+
+See infra/k8s/README.md 'Phase 3' and 'Phase 5' for the full checklists.
 EOF
