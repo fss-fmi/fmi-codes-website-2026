@@ -5,6 +5,11 @@ set -euo pipefail
 KUBECTL_VERSION="${KUBECTL_VERSION:-v1.36.2}"
 HELM_VERSION="${HELM_VERSION:-v3.21.3}"
 K9S_VERSION="${K9S_VERSION:-v0.51.0}"
+SOPS_VERSION="${SOPS_VERSION:-v3.13.2}"
+AGE_VERSION="${AGE_VERSION:-v1.3.1}"
+
+AGE_SHA256_amd64="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
+AGE_SHA256_arm64="c6878a324421b69e3e20b00ba17c04bc5c6dab0030cfe55bf8f68fa8d9e9093a"
 
 ARCH="$(uname -m)"
 case "$ARCH" in
@@ -88,10 +93,43 @@ else
   log "k9s already installed — skipping"
 fi
 
+if ! command -v sops >/dev/null 2>&1; then
+  log "Installing sops $SOPS_VERSION"
+  rel="https://github.com/getsops/sops/releases/download/${SOPS_VERSION}"
+  asset="sops-${SOPS_VERSION}.linux.${ARCH}"
+  curl -sfL -o "$TMPDIR_DL/sops" "$rel/$asset"
+  expected_sops="$(curl -sfL "$rel/sops-${SOPS_VERSION}.checksums.txt" | grep " ${asset}\$" | awk '{print $1}')"
+  [ -n "$expected_sops" ] \
+    || { echo "Could not find checksum for $asset in sops checksums.txt" >&2; exit 1; }
+  verify_sha256 "$TMPDIR_DL/sops" "$expected_sops"
+  chmod +x "$TMPDIR_DL/sops"
+  sudo mv "$TMPDIR_DL/sops" /usr/local/bin/sops
+else
+  log "sops already installed — skipping"
+fi
+
+if ! command -v age >/dev/null 2>&1 || ! command -v age-keygen >/dev/null 2>&1; then
+  log "Installing age $AGE_VERSION"
+  tarball="age-${AGE_VERSION}-linux-${ARCH}.tar.gz"
+  rel="https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}"
+  curl -sfL -o "$TMPDIR_DL/$tarball" "$rel/$tarball"
+  eval "expected_age=\"\${AGE_SHA256_${ARCH}}\""
+  [ -n "$expected_age" ] \
+    || { echo "No pinned age checksum for arch $ARCH" >&2; exit 1; }
+  verify_sha256 "$TMPDIR_DL/$tarball" "$expected_age"
+  tar -xzf "$TMPDIR_DL/$tarball" -C "$TMPDIR_DL"
+  sudo mv "$TMPDIR_DL/age/age" /usr/local/bin/age
+  sudo mv "$TMPDIR_DL/age/age-keygen" /usr/local/bin/age-keygen
+else
+  log "age already installed — skipping"
+fi
+
 log "Done. Installed tooling:"
 { command -v kubectl >/dev/null 2>&1 && kubectl version --client 2>/dev/null | head -1; } || true
 { command -v helm    >/dev/null 2>&1 && helm version --short 2>/dev/null; } || true
 { command -v k9s     >/dev/null 2>&1 && k9s version --short 2>/dev/null; } || true
+{ command -v sops    >/dev/null 2>&1 && sops --version 2>/dev/null | head -1; } || true
+{ command -v age     >/dev/null 2>&1 && age --version 2>/dev/null; } || true
 
 cat <<'EOF'
 

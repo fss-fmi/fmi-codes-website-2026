@@ -93,3 +93,9 @@ CLAUDE.md
 PRODUCT.md
 DESIGN.md
 .impeccable/
+
+# SOPS/age private keys — NEVER commit (recipients' public keys live in .sops.yaml)
+*.agekey
+keys.txt
+age-key*.txt
+sops-age-key*.txt
