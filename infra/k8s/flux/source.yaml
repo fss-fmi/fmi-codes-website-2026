@@ -1,0 +1,28 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: fmi-codes
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git
+  ref:
+    branch: main
+  secretRef:
+    name: flux-git-auth
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: fmi-codes
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fmi-codes
+  path: ./infra/k8s/manifests
+  prune: true
+  wait: true

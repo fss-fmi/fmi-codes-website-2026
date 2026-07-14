@@ -19,10 +19,11 @@ Windows" means *inside WSL2*, not native Windows.
 
 ```
 infra/k8s/
-  scripts/       all the executable bash — init-linux, init-windows, deploy, config, rotate, bootstrap, install
-  manifests/     raw kubectl-applied YAML — namespace, backend, frontend, ingress
+  scripts/       all the executable bash — init-linux, init-windows, deploy, config, rotate, bootstrap, install, flux-bootstrap
+  manifests/     kubectl-applied YAML — namespace, backend, frontend, ingress, kustomization (Flux image override)
   helm-values/   Bitnami chart values — postgresql, redis
   secrets/       secrets.enc.yaml (SOPS-encrypted; .sops.yaml lives at the repo root)
+  flux/          Flux GitOps resources — source, image automation (Phase 6)
   README.md      this file
 ```
 
@@ -725,6 +726,100 @@ bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
 # → re-encrypts secrets.enc.yaml, re-applies the secret, restarts backend, waits for Ready
 ```
 
+## Phase 6 — GitOps continuous deploy (#30)
+
+Merging a backend/frontend change should redeploy the running pods with no manual
+step. The cluster lives on a local server (WSL2 or a Linux box) that GitHub's
+cloud runners **cannot reach**, so a push-based CI deploy is impossible. Instead
+[Flux](https://fluxcd.io/) runs *inside* the cluster and **pulls** — it watches
+the registry for new images and git for manifest changes, and reconciles the
+cluster to match. Nothing inbound is ever needed.
+
+| File | What it is |
+| --- | --- |
+| `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + `Kustomization` reconciling `manifests/` into the cluster. |
+| `flux/image-automation.yaml` | `ImageRepository`/`ImagePolicy` ×2 (watch the two Docker Hub repos, pick the newest tag) + `ImageUpdateAutomation` (commits tag bumps to the `flux-image-updates` branch). |
+| `manifests/kustomization.yaml` | Kustomize `images:` override Flux edits — keeps the tag out of the Deployment manifests. |
+| `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources, reconcile. |
+
+### The deploy loop
+
+```
+merge backend change to main
+  → docker-cd.yaml builds & pushes fssfmi/fmi-codes-backend:<unix-ts>-<sha>
+  → Flux ImagePolicy sees the newer tag (sorted numerically on the timestamp)
+  → Flux commits the bump to manifests/kustomization.yaml on branch flux-image-updates
+  → you review & merge that branch into main
+  → Flux reconciles main and rolls ONLY the backend Deployment (frontend untouched)
+```
+
+Image tags are immutable `<unix-ts>-<sha>` (not `:latest`) precisely so Flux can
+order them and detect "backend changed" per service. The write-back goes to a
+**separate branch you merge via PR**, so every deploy has a human gate and a git
+audit trail — `git revert` is a rollback.
+
+### Ownership: Flux owns the app Deployments
+
+Once Flux is bootstrapped it is the **single owner of the backend/frontend
+Deployments**. `deploy-app.sh` still owns the SOPS app secret and first-time
+bootstrap, but it detects the Flux `Kustomization` and **skips re-applying the
+Deployments** when Flux is active — no tug-of-war over the image tag. The
+stateful tier (Postgres/Redis via Helm) and ingress stay owned by their
+respective `deploy-*.sh` scripts; Flux only reconciles `manifests/` (backend +
+frontend), so `prune: true` can never touch them.
+
+### One-time setup — SSH deploy key
+
+Flux's image automation commits back to the repo, so it needs a **write-capable**
+credential. Use a repo deploy key (repo-scoped, not tied to your account):
+
+```bash
+# 1. Generate a keypair (no passphrase — Flux reads it non-interactively)
+ssh-keygen -t ed25519 -f ~/.ssh/fmi-codes-flux -N ""
+
+# 2. Add the PUBLIC key as a repo deploy key WITH write access:
+#    GitHub → repo → Settings → Deploy keys → Add deploy key → paste
+#    ~/.ssh/fmi-codes-flux.pub, tick "Allow write access".
+cat ~/.ssh/fmi-codes-flux.pub
+
+# 3. Bootstrap Flux (creates the in-cluster Secret from the PRIVATE key):
+bash infra/k8s/scripts/flux-bootstrap.sh
+```
+
+The private key never leaves the machine and is never committed — `flux-bootstrap.sh`
+loads it into the `flux-git-auth` Secret and that's it. Override the path with
+`DEPLOY_KEY=/path/to/key bash …` if you keep it elsewhere.
+
+`init-linux.sh` runs this as an optional step 6 — off by default (it needs the key
+present), enabled with `--with-flux`:
+
+```bash
+bash infra/k8s/scripts/init-linux.sh --with-flux
+```
+
+### Verify the acceptance criteria (#30)
+
+**Flux is healthy and watching:**
+
+```bash
+flux get sources git --namespace flux-system        # fmi-codes: Ready, latest revision
+flux get kustomizations --namespace flux-system      # fmi-codes: Ready, Applied revision
+flux get images all --namespace flux-system          # both repos scanned, latest tag picked
+```
+
+**Per-service redeploy** — push a backend-only change, confirm only the backend
+rolls after you merge the `flux-image-updates` PR:
+
+```bash
+kubectl -n fmi-codes get pods -l app.kubernetes.io/name=fmi-codes-backend -w
+# backend pods roll to the new image; frontend pods keep their AGE (untouched)
+kubectl -n fmi-codes get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+kubectl -n fmi-codes get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+**Rollback** — revert the tag-bump commit on main; Flux reconciles back to the
+previous image automatically.
+
 ## Connect k9s
 
 [k9s](https://k9scli.io/) is a terminal UI for the cluster — browse pods, tail
@@ -744,15 +839,19 @@ first — k9s follows kubectl.
 ## Tear down
 
 ```bash
+# Remove the Phase 6 GitOps layer first (so Flux stops re-applying the app tier):
+kubectl -n flux-system delete -f flux/image-automation.yaml -f flux/source.yaml
+flux uninstall --namespace flux-system --silent
+
 # Remove the Phase 4 networking tier (Ingress, cert, issuer, headers ConfigMap,
 # then the two controllers and their namespaces):
-kubectl -n fmi-codes delete -f ingress.yaml
+kubectl -n fmi-codes delete -f manifests/ingress.yaml
 helm -n ingress-nginx uninstall ingress-nginx
 helm -n cert-manager uninstall cert-manager
 kubectl delete namespace ingress-nginx cert-manager
 
 # Remove the Phase 3 app tier (stateless — nothing to preserve):
-kubectl -n fmi-codes delete -f frontend.yaml -f backend.yaml
+kubectl -n fmi-codes delete -f manifests/frontend.yaml -f manifests/backend.yaml
 kubectl -n fmi-codes delete secret fmi-codes-app
 
 # Remove just the Phase 2 stateful releases (keeps the cluster):
