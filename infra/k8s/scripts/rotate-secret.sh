@@ -4,7 +4,8 @@ set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-fmi-codes}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SECRETS_ENC="${SECRETS_ENC:-$SCRIPT_DIR/secrets.enc.yaml}"
+K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/secrets/secrets.enc.yaml}"
 RESTART="${RESTART:-true}"
 
 die() { echo "Error: $1" >&2; exit 1; }

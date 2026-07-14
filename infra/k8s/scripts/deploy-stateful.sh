@@ -14,10 +14,11 @@ INITDB_CONFIGMAP="${INITDB_CONFIGMAP:-postgres-initdb}"
 READY_TIMEOUT="${READY_TIMEOUT:-300}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$K8S_DIR/../.." && pwd)"
 SCHEMA_SQL="${SCHEMA_SQL:-$REPO_ROOT/backend/database/schema.sql}"
-POSTGRES_VALUES="$SCRIPT_DIR/postgresql-values.yaml"
-REDIS_VALUES="$SCRIPT_DIR/redis-values.yaml"
+POSTGRES_VALUES="$K8S_DIR/helm-values/postgresql-values.yaml"
+REDIS_VALUES="$K8S_DIR/helm-values/redis-values.yaml"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }

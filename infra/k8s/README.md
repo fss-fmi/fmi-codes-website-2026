@@ -4,26 +4,74 @@ Tracks the phased move off `docker-compose.yml` onto a locally-hosted k3s cluste
 Sub-issues: #26 (cluster), #27 (Postgres + Redis Sentinel), #28 (app tier),
 #29 (ingress/TLS), #30 (CI/CD), #31 (config/secrets).
 
+## Directory layout
+
+```
+infra/k8s/
+  scripts/       all the executable bash — init, deploy, config, rotate, bootstrap, install
+  manifests/     raw kubectl-applied YAML — namespace, backend, frontend, ingress
+  helm-values/   Bitnami chart values — postgresql, redis
+  secrets/       secrets.enc.yaml (SOPS-encrypted; .sops.yaml lives at the repo root)
+  README.md      this file
+```
+
+Scripts resolve their siblings via a computed `K8S_DIR` (the `infra/k8s` root), so
+they work regardless of where you invoke them from — `bash infra/k8s/scripts/init.sh`
+from the repo root is the normal entrypoint.
+
+## Quick start — bring up everything
+
+On a fresh **WSL2 Ubuntu** host, one command runs the whole sequence in order
+(tooling → cluster → stateful tier → app tier → ingress):
+
+```bash
+bash infra/k8s/scripts/init.sh
+```
+
+It's idempotent and resumable — if a step fails, fix the cause and continue with
+`bash infra/k8s/scripts/init.sh --from N` (N = 1-5) instead of redoing earlier
+steps. Steps 1-2 (k3s install, `/usr/local/bin` writes) need interactive sudo, so
+run it in a terminal. The phase-by-phase breakdown below explains what each step
+does and how to run them individually.
+
+## Changing a config value
+
+To change a **non-secret** backend setting (feature flags, `FRONTEND_ORIGIN`,
+Redis/DB coordinates) and roll the backend so pods pick it up:
+
+```bash
+bash infra/k8s/scripts/apply-config.sh FRONTEND_ORIGIN https://fmi-codes.local
+bash infra/k8s/scripts/apply-config.sh REGISTRATION_OPEN true
+bash infra/k8s/scripts/apply-config.sh          # re-apply manifests from disk, then roll
+```
+
+It patches the `fmi-codes-backend-config` ConfigMap and restarts the backend.
+**Secrets are refused** here — the script points you at `rotate-secret.sh` (app
+secrets) or `deploy-stateful.sh` (PVC-coupled DB/Redis passwords) instead. A live
+patch drifts from git, so also edit `manifests/backend.yaml` and commit it to keep
+the source of truth in sync (the script reminds you). Pass `RESTART=false` to skip
+the rollout when batching changes.
+
 ## Phase 1 — local cluster (#26)
 
 Two scripts, run inside a **WSL2 Ubuntu** shell:
 
 | Script | What it does |
 | --- | --- |
-| `install-tools-wsl2.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s` — each pinned to a specific version and checksum-verified. The "npm install" of this workflow. |
-| `bootstrap-wsl2-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `namespace.yaml`. |
+| `scripts/install-tools-wsl2.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s`, `sops`, `age`, `flux` — each pinned to a specific version and checksum-verified. The "npm install" of this workflow. |
+| `scripts/bootstrap-wsl2-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `manifests/namespace.yaml`. |
 
 ```bash
 # 1. Get the tooling (one-shot, idempotent)
-bash infra/k8s/install-tools-wsl2.sh
+bash infra/k8s/scripts/install-tools-wsl2.sh
 
 # 2. Stand up the cluster + namespace (idempotent)
-bash infra/k8s/bootstrap-wsl2-k3s.sh
+bash infra/k8s/scripts/bootstrap-wsl2-k3s.sh
 ```
 
 Re-running either is safe — every step is idempotent. Override the namespace
-with `NAMESPACE=my-ns bash infra/k8s/bootstrap-wsl2-k3s.sh` if needed (that path
-labels an on-the-fly namespace instead of applying `namespace.yaml`). Tool and
+with `NAMESPACE=my-ns bash infra/k8s/scripts/bootstrap-wsl2-k3s.sh` if needed (that path
+labels an on-the-fly namespace instead of applying `manifests/namespace.yaml`). Tool and
 cluster versions are pinned via `*_VERSION` env vars at the top of each script —
 override them to upgrade (e.g. `K3S_VERSION=v1.37.0+k3s1 bash …`).
 
@@ -126,7 +174,7 @@ cluster as managed stateful workloads, using the upstream Bitnami Helm charts.
 
 ```bash
 # Cluster must already be up (Phase 1). Then:
-bash infra/k8s/deploy-stateful.sh
+bash infra/k8s/scripts/deploy-stateful.sh
 ```
 
 **Secrets are generated in-cluster, never committed.** On first run the script
@@ -380,7 +428,7 @@ cluster-native `Ingress`, and terminates TLS at the edge.
 
 ```bash
 # Cluster + stateful + app tiers must already be up (Phases 1–3). Then:
-bash infra/k8s/deploy-ingress.sh
+bash infra/k8s/scripts/deploy-ingress.sh
 ```
 
 `deploy-ingress.sh` refuses to run until the Phase 3 `backend` and `frontend`
@@ -560,16 +608,16 @@ have to regenerate every value from scratch.
 ### Editing a secret
 
 ```bash
-sops infra/k8s/secrets.enc.yaml
+sops infra/k8s/secrets/secrets.enc.yaml
 ```
 
 This decrypts into your `$EDITOR`, you edit plaintext, and on save SOPS
 re-encrypts to every recipient. Then apply and roll the backend:
 
 ```bash
-sops --decrypt infra/k8s/secrets.enc.yaml | kubectl -n fmi-codes apply -f -
+sops --decrypt infra/k8s/secrets/secrets.enc.yaml | kubectl -n fmi-codes apply -f -
 kubectl -n fmi-codes rollout restart deployment/backend
-git add infra/k8s/secrets.enc.yaml && git commit -m "rotate app secrets"
+git add infra/k8s/secrets/secrets.enc.yaml && git commit -m "rotate app secrets"
 ```
 
 `deploy-app.sh` does the decrypt-and-apply automatically: when `secrets.enc.yaml`
@@ -584,14 +632,14 @@ Phase 3). With the SOPS file in play, the committed hash ships a working default
 
 ```bash
 # rotate to an explicit value:
-bash infra/k8s/rotate-secret.sh MAIL_PASSWORD 'new-smtp-app-password'
+bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD 'new-smtp-app-password'
 
 # rotate to a freshly generated strong random value (SECRET_KEY / JWT_SECRET_KEY):
-bash infra/k8s/rotate-secret.sh JWT_SECRET_KEY
+bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
 
 # rotate the admin password (generate the bcrypt hash first):
 HASH=$(python3 -c "import bcrypt;print(bcrypt.hashpw(b'newpassword', bcrypt.gensalt(12)).decode())")
-bash infra/k8s/rotate-secret.sh ADMIN_PASSWORD_HASH "$HASH"
+bash infra/k8s/scripts/rotate-secret.sh ADMIN_PASSWORD_HASH "$HASH"
 ```
 
 The script re-encrypts just that one key in `secrets.enc.yaml`, re-applies the
@@ -611,8 +659,8 @@ recipient. Add it under the `age:` list in `.sops.yaml`, then re-encrypt the fil
 to the expanded recipient set:
 
 ```bash
-sops updatekeys infra/k8s/secrets.enc.yaml
-git add .sops.yaml infra/k8s/secrets.enc.yaml
+sops updatekeys infra/k8s/secrets/secrets.enc.yaml
+git add .sops.yaml infra/k8s/secrets/secrets.enc.yaml
 git commit -m "add <dev> as a secrets recipient"
 ```
 
@@ -627,10 +675,10 @@ compromised and rotated:
 
 ```bash
 # after editing .sops.yaml to drop the departing recipient:
-sops updatekeys infra/k8s/secrets.enc.yaml
-for k in SECRET_KEY JWT_SECRET_KEY; do bash infra/k8s/rotate-secret.sh "$k"; done
+sops updatekeys infra/k8s/secrets/secrets.enc.yaml
+for k in SECRET_KEY JWT_SECRET_KEY; do bash infra/k8s/scripts/rotate-secret.sh "$k"; done
 # rotate MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL / ADMIN_PASSWORD_HASH to fresh values too
-git add .sops.yaml infra/k8s/secrets.enc.yaml && git commit -m "offboard <dev>: drop recipient + rotate secrets"
+git add .sops.yaml infra/k8s/secrets/secrets.enc.yaml && git commit -m "offboard <dev>: drop recipient + rotate secrets"
 ```
 
 ### Verify the acceptance criteria (#31)
@@ -639,7 +687,7 @@ git add .sops.yaml infra/k8s/secrets.enc.yaml && git commit -m "offboard <dev>: 
 `ENC[AES256_GCM,…]`, and DB/Redis passwords aren't committed at all:
 
 ```bash
-grep -E 'SECRET_KEY|JWT_SECRET_KEY|ADMIN_PASSWORD_HASH' infra/k8s/secrets.enc.yaml
+grep -E 'SECRET_KEY|JWT_SECRET_KEY|ADMIN_PASSWORD_HASH' infra/k8s/secrets/secrets.enc.yaml
 # every hit is ENC[…]; no readable value
 ```
 
@@ -656,7 +704,7 @@ kubectl -n fmi-codes exec deploy/backend -- \
 above. Confirm a rotation lands end-to-end:
 
 ```bash
-bash infra/k8s/rotate-secret.sh JWT_SECRET_KEY
+bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
 # → re-encrypts secrets.enc.yaml, re-applies the secret, restarts backend, waits for Ready
 ```
 

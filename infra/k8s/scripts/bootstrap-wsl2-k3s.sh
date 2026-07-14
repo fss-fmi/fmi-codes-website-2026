@@ -119,7 +119,7 @@ fi
 
 log "Creating namespace '$NAMESPACE'"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
-NAMESPACE_MANIFEST="${SCRIPT_DIR:-}/namespace.yaml"
+NAMESPACE_MANIFEST="${SCRIPT_DIR:+$SCRIPT_DIR/../manifests}/namespace.yaml"
 if [ "$NAMESPACE" = "fmi-codes" ] && [ -f "$NAMESPACE_MANIFEST" ]; then
   kubectl apply -f "$NAMESPACE_MANIFEST"
 else

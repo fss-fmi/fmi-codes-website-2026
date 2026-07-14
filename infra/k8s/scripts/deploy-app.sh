@@ -9,9 +9,10 @@ REDIS_SECRET="${REDIS_SECRET:-fmi-codes-redis}"
 READY_TIMEOUT="${READY_TIMEOUT:-300}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_MANIFEST="$SCRIPT_DIR/backend.yaml"
-FRONTEND_MANIFEST="$SCRIPT_DIR/frontend.yaml"
-SECRETS_ENC="${SECRETS_ENC:-$SCRIPT_DIR/secrets.enc.yaml}"
+K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+BACKEND_MANIFEST="$K8S_DIR/manifests/backend.yaml"
+FRONTEND_MANIFEST="$K8S_DIR/manifests/frontend.yaml"
+SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/secrets/secrets.enc.yaml}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -117,7 +118,7 @@ App tier is up. Verify against the issue's acceptance criteria:
 
 To rotate a secret (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH, MAIL_PASSWORD,
 DISCORD_BUG_WEBHOOK_URL) in one command:
-    bash infra/k8s/rotate-secret.sh <KEY> [VALUE]
+    bash infra/k8s/scripts/rotate-secret.sh <KEY> [VALUE]
 
 See infra/k8s/README.md 'Phase 3' and 'Phase 5' for the full checklists.
 EOF

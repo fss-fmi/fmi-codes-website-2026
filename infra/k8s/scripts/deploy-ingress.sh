@@ -17,7 +17,8 @@ CERTIFICATE_NAME="${CERTIFICATE_NAME:-fmi-codes-tls}"
 READY_TIMEOUT="${READY_TIMEOUT:-300}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INGRESS_MANIFEST="$SCRIPT_DIR/ingress.yaml"
+K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+INGRESS_MANIFEST="$K8S_DIR/manifests/ingress.yaml"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
