@@ -22,7 +22,8 @@ kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
 
 log "Installing Flux controllers into '$FLUX_NAMESPACE'"
-flux install --namespace "$FLUX_NAMESPACE"
+flux install --namespace "$FLUX_NAMESPACE" \
+  --components-extra=image-reflector-controller,image-automation-controller
 
 if kubectl -n "$FLUX_NAMESPACE" get secret "$GIT_SECRET" >/dev/null 2>&1; then
   echo "Secret $GIT_SECRET already exists — leaving it untouched."
@@ -37,7 +38,8 @@ else
 fi
 
 log "Applying Flux source, kustomization, and image-automation resources"
-kubectl apply -f "$FLUX_DIR"
+kubectl apply -f "$FLUX_DIR/source.yaml"
+kubectl apply -f "$FLUX_DIR/image-automation.yaml"
 
 log "Waiting for the git source and kustomization to reconcile"
 flux reconcile source git fmi-codes --namespace "$FLUX_NAMESPACE" || true
