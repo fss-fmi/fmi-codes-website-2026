@@ -7,6 +7,7 @@ HELM_VERSION="${HELM_VERSION:-v3.21.3}"
 K9S_VERSION="${K9S_VERSION:-v0.51.0}"
 SOPS_VERSION="${SOPS_VERSION:-v3.13.2}"
 AGE_VERSION="${AGE_VERSION:-v1.3.1}"
+FLUX_VERSION="${FLUX_VERSION:-v2.9.2}"
 
 AGE_SHA256_amd64="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
 AGE_SHA256_arm64="c6878a324421b69e3e20b00ba17c04bc5c6dab0030cfe55bf8f68fa8d9e9093a"
@@ -20,8 +21,8 @@ esac
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 
-if ! grep -qi microsoft /proc/version 2>/dev/null; then
-  echo "Warning: this doesn't look like WSL2. Continuing anyway — Ctrl+C to abort." >&2
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  echo "Detected WSL2. (Native Debian/Ubuntu Linux works the same way.)" >&2
 fi
 
 command -v apt-get >/dev/null 2>&1 \
@@ -124,16 +125,34 @@ else
   log "age already installed — skipping"
 fi
 
+if ! command -v flux >/dev/null 2>&1; then
+  log "Installing flux $FLUX_VERSION"
+  ver="${FLUX_VERSION#v}"
+  tarball="flux_${ver}_linux_${ARCH}.tar.gz"
+  rel="https://github.com/fluxcd/flux2/releases/download/${FLUX_VERSION}"
+  curl -sfL -o "$TMPDIR_DL/$tarball" "$rel/$tarball"
+  expected_flux="$(curl -sfL "$rel/flux_${ver}_checksums.txt" | grep " ${tarball}\$" | awk '{print $1}')"
+  [ -n "$expected_flux" ] \
+    || { echo "Could not find checksum for $tarball in flux checksums.txt" >&2; exit 1; }
+  verify_sha256 "$TMPDIR_DL/$tarball" "$expected_flux"
+  tar -xzf "$TMPDIR_DL/$tarball" -C "$TMPDIR_DL"
+  chmod +x "$TMPDIR_DL/flux"
+  sudo mv "$TMPDIR_DL/flux" /usr/local/bin/flux
+else
+  log "flux already installed — skipping"
+fi
+
 log "Done. Installed tooling:"
 { command -v kubectl >/dev/null 2>&1 && kubectl version --client 2>/dev/null | head -1; } || true
 { command -v helm    >/dev/null 2>&1 && helm version --short 2>/dev/null; } || true
 { command -v k9s     >/dev/null 2>&1 && k9s version --short 2>/dev/null; } || true
 { command -v sops    >/dev/null 2>&1 && sops --version 2>/dev/null | head -1; } || true
 { command -v age     >/dev/null 2>&1 && age --version 2>/dev/null; } || true
+{ command -v flux    >/dev/null 2>&1 && flux --version 2>/dev/null; } || true
 
 cat <<'EOF'
 
 Next:
-  bash infra/k8s/bootstrap-wsl2-k3s.sh   # stand up the cluster + namespace
+  bash infra/k8s/scripts/init-linux.sh         # bring up the whole stack in order
   k9s -n fmi-codes                       # browse the cluster once it's up
 EOF

@@ -4,7 +4,8 @@ set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-fmi-codes}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SECRETS_ENC="${SECRETS_ENC:-$SCRIPT_DIR/secrets.enc.yaml}"
+K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/secrets/secrets.enc.yaml}"
 RESTART="${RESTART:-true}"
 
 die() { echo "Error: $1" >&2; exit 1; }
@@ -41,8 +42,8 @@ case "$1" in -h|--help) usage; exit 0 ;; esac
 KEY="$1"
 shift || true
 
-command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools-wsl2.sh first."
-command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools-wsl2.sh first."
+command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
+command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
 [ -f "$SECRETS_ENC" ] || die "missing $SECRETS_ENC"
 
 sops --decrypt "$SECRETS_ENC" >/dev/null 2>&1 \

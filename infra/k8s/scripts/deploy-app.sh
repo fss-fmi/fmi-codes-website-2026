@@ -9,19 +9,20 @@ REDIS_SECRET="${REDIS_SECRET:-fmi-codes-redis}"
 READY_TIMEOUT="${READY_TIMEOUT:-300}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_MANIFEST="$SCRIPT_DIR/backend.yaml"
-FRONTEND_MANIFEST="$SCRIPT_DIR/frontend.yaml"
-SECRETS_ENC="${SECRETS_ENC:-$SCRIPT_DIR/secrets.enc.yaml}"
+K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+BACKEND_MANIFEST="$K8S_DIR/manifests/backend.yaml"
+FRONTEND_MANIFEST="$K8S_DIR/manifests/frontend.yaml"
+SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/secrets/secrets.enc.yaml}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
 
-command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools-wsl2.sh first."
+command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
 [ -f "$BACKEND_MANIFEST" ]  || die "missing $BACKEND_MANIFEST"
 [ -f "$FRONTEND_MANIFEST" ] || die "missing $FRONTEND_MANIFEST"
 
 kubectl cluster-info >/dev/null 2>&1 \
-  || die "no reachable cluster — bootstrap it with bootstrap-wsl2-k3s.sh first."
+  || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
 
 kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 \
   || die "namespace '$NAMESPACE' not found — run deploy-stateful.sh first (Phase 2)."
@@ -48,7 +49,7 @@ elif [ -f "$SECRETS_ENC" ]; then
   if command -v sops >/dev/null 2>&1; then
     die "found $SECRETS_ENC but could not decrypt it — is your age key at ~/.config/sops/age/keys.txt? See infra/k8s/README.md 'Phase 5'."
   else
-    die "found $SECRETS_ENC but sops is not installed — run install-tools-wsl2.sh, then ensure your age key is at ~/.config/sops/age/keys.txt. See infra/k8s/README.md 'Phase 5'."
+    die "found $SECRETS_ENC but sops is not installed — run install-tools.sh, then ensure your age key is at ~/.config/sops/age/keys.txt. See infra/k8s/README.md 'Phase 5'."
   fi
 else
   log "Ensuring app secret '$APP_SECRET' (generated in-cluster; no SOPS file present)"
@@ -117,7 +118,7 @@ App tier is up. Verify against the issue's acceptance criteria:
 
 To rotate a secret (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH, MAIL_PASSWORD,
 DISCORD_BUG_WEBHOOK_URL) in one command:
-    bash infra/k8s/rotate-secret.sh <KEY> [VALUE]
+    bash infra/k8s/scripts/rotate-secret.sh <KEY> [VALUE]
 
 See infra/k8s/README.md 'Phase 3' and 'Phase 5' for the full checklists.
 EOF

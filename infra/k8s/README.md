@@ -4,39 +4,104 @@ Tracks the phased move off `docker-compose.yml` onto a locally-hosted k3s cluste
 Sub-issues: #26 (cluster), #27 (Postgres + Redis Sentinel), #28 (app tier),
 #29 (ingress/TLS), #30 (CI/CD), #31 (config/secrets).
 
+## Platform support
+
+These scripts run on **Debian/Ubuntu Linux** and on **WSL2 (Ubuntu)** — the k3s
+cluster and all tooling are Linux-native. They are **not** portable to macOS (no
+k3s, no `apt-get`) or to Windows `cmd`/PowerShell (they're bash). "Runnable on
+Windows" means *inside WSL2*, not native Windows.
+
+- **Real Linux server** → `init-linux.sh`.
+- **Windows dev box (WSL2)** → `init-windows.sh` — it runs `init-linux.sh`, then
+  prints the extra Windows-side host-resolution steps a Windows browser needs.
+
+## Directory layout
+
+```
+infra/k8s/
+  scripts/       all the executable bash — init-linux, init-windows, deploy, config, rotate, bootstrap, install
+  manifests/     raw kubectl-applied YAML — namespace, backend, frontend, ingress
+  helm-values/   Bitnami chart values — postgresql, redis
+  secrets/       secrets.enc.yaml (SOPS-encrypted; .sops.yaml lives at the repo root)
+  README.md      this file
+```
+
+Scripts resolve their siblings via a computed `K8S_DIR` (the `infra/k8s` root), so
+they work regardless of where you invoke them from — `bash infra/k8s/scripts/init-linux.sh`
+from the repo root is the normal entrypoint.
+
+## Quick start — bring up everything
+
+One command runs the whole sequence in order (tooling → cluster → stateful tier →
+app tier → ingress). Pick the entrypoint for your host:
+
+```bash
+# On a Debian/Ubuntu Linux server:
+bash infra/k8s/scripts/init-linux.sh
+
+# On a Windows dev box (from inside a WSL2 Ubuntu shell):
+bash infra/k8s/scripts/init-windows.sh
+```
+
+`init-windows.sh` is a thin wrapper: it runs `init-linux.sh` (passing through any
+args, including `--from`), then prints the WSL2→Windows hosts-file steps. Both are
+idempotent and resumable — if a step fails, fix the cause and continue with
+`--from N` (N = 1-5) instead of redoing earlier steps. Steps 1-2 (k3s install,
+`/usr/local/bin` writes) need interactive sudo, so run it in a terminal. The
+phase-by-phase breakdown below explains what each step does and how to run them
+individually.
+
+## Changing a config value
+
+To change a **non-secret** backend setting (feature flags, `FRONTEND_ORIGIN`,
+Redis/DB coordinates) and roll the backend so pods pick it up:
+
+```bash
+bash infra/k8s/scripts/apply-config.sh FRONTEND_ORIGIN https://fmi-codes.local
+bash infra/k8s/scripts/apply-config.sh REGISTRATION_OPEN true
+bash infra/k8s/scripts/apply-config.sh          # re-apply manifests from disk, then roll
+```
+
+It patches the `fmi-codes-backend-config` ConfigMap and restarts the backend.
+**Secrets are refused** here — the script points you at `rotate-secret.sh` (app
+secrets) or `deploy-stateful.sh` (PVC-coupled DB/Redis passwords) instead. A live
+patch drifts from git, so also edit `manifests/backend.yaml` and commit it to keep
+the source of truth in sync (the script reminds you). Pass `RESTART=false` to skip
+the rollout when batching changes.
+
 ## Phase 1 — local cluster (#26)
 
-Two scripts, run inside a **WSL2 Ubuntu** shell:
+Two scripts, run inside a Linux (or **WSL2 Ubuntu**) shell:
 
 | Script | What it does |
 | --- | --- |
-| `install-tools-wsl2.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s` — each pinned to a specific version and checksum-verified. The "npm install" of this workflow. |
-| `bootstrap-wsl2-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `namespace.yaml`. |
+| `scripts/install-tools.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s`, `sops`, `age`, `flux` — each pinned to a specific version and checksum-verified. The "npm install" of this workflow. |
+| `scripts/bootstrap-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `manifests/namespace.yaml`. |
 
 ```bash
 # 1. Get the tooling (one-shot, idempotent)
-bash infra/k8s/install-tools-wsl2.sh
+bash infra/k8s/scripts/install-tools.sh
 
 # 2. Stand up the cluster + namespace (idempotent)
-bash infra/k8s/bootstrap-wsl2-k3s.sh
+bash infra/k8s/scripts/bootstrap-k3s.sh
 ```
 
 Re-running either is safe — every step is idempotent. Override the namespace
-with `NAMESPACE=my-ns bash infra/k8s/bootstrap-wsl2-k3s.sh` if needed (that path
-labels an on-the-fly namespace instead of applying `namespace.yaml`). Tool and
+with `NAMESPACE=my-ns bash infra/k8s/scripts/bootstrap-k3s.sh` if needed (that path
+labels an on-the-fly namespace instead of applying `manifests/namespace.yaml`). Tool and
 cluster versions are pinned via `*_VERSION` env vars at the top of each script —
 override them to upgrade (e.g. `K3S_VERSION=v1.37.0+k3s1 bash …`).
 
-How long `bootstrap-wsl2-k3s.sh` waits for the cluster is tunable, too:
+How long `bootstrap-k3s.sh` waits for the cluster is tunable, too:
 `API_TIMEOUT` (default 300s) for the API server to serve `/readyz`, `NODE_TIMEOUT`
 (default 180s) for the node to go Ready, and `CRASH_LOOP_MAX_RESTARTS` (default 3)
 — if the k3s systemd unit restarts that many times while waiting, the script
 stops early and prints `systemctl status` + the journal tail, since a
 crash-looping k3s won't fix itself by waiting longer.
 
-> **Supply-chain note:** `install-tools-wsl2.sh` downloads each binary pinned to a
+> **Supply-chain note:** `install-tools.sh` downloads each binary pinned to a
 > version and verifies it against the vendor-published SHA256 before installing —
-> nothing is piped into a shell. `bootstrap-wsl2-k3s.sh` runs the official k3s
+> nothing is piped into a shell. `bootstrap-k3s.sh` runs the official k3s
 > installer from `get.k3s.io` (pinned via `INSTALL_K3S_VERSION`); that installer
 > runs under `sudo` and GPG-verifies the k3s binary it fetches. If you'd rather
 > not run a remote installer as root, install k3s from a downloaded release binary
@@ -87,7 +152,7 @@ Ready node + the `fmi-codes` namespace is the whole deliverable.
   - Enable systemd once (`/etc/wsl.conf` → `[boot]\nsystemd=true`, then
     `wsl --shutdown` from Windows), after which the checks above pass and k3s
     survives relaunch; or
-  - Leave systemd off and just re-run `bootstrap-wsl2-k3s.sh` after each WSL
+  - Leave systemd off and just re-run `bootstrap-k3s.sh` after each WSL
     relaunch — it's idempotent and brings the cluster back in seconds.
 
 ## Troubleshooting: bootstrap says the API "did not come up"
@@ -126,7 +191,7 @@ cluster as managed stateful workloads, using the upstream Bitnami Helm charts.
 
 ```bash
 # Cluster must already be up (Phase 1). Then:
-bash infra/k8s/deploy-stateful.sh
+bash infra/k8s/scripts/deploy-stateful.sh
 ```
 
 **Secrets are generated in-cluster, never committed.** On first run the script
@@ -380,7 +445,7 @@ cluster-native `Ingress`, and terminates TLS at the edge.
 
 ```bash
 # Cluster + stateful + app tiers must already be up (Phases 1–3). Then:
-bash infra/k8s/deploy-ingress.sh
+bash infra/k8s/scripts/deploy-ingress.sh
 ```
 
 `deploy-ingress.sh` refuses to run until the Phase 3 `backend` and `frontend`
@@ -543,7 +608,7 @@ The private key lives **outside the repo** at the SOPS default path,
 `.gitignore` also blocks stray `*.agekey` / `keys.txt` files as a backstop. Only
 your **public** key (the `age1…` recipient) is committed, in `.sops.yaml`.
 
-`install-tools-wsl2.sh` installs `sops`, `age`, and `age-keygen` alongside the
+`install-tools.sh` installs `sops`, `age`, and `age-keygen` alongside the
 other CLIs (pinned + checksum-verified). Generate your key once:
 
 ```bash
@@ -560,16 +625,16 @@ have to regenerate every value from scratch.
 ### Editing a secret
 
 ```bash
-sops infra/k8s/secrets.enc.yaml
+sops infra/k8s/secrets/secrets.enc.yaml
 ```
 
 This decrypts into your `$EDITOR`, you edit plaintext, and on save SOPS
 re-encrypts to every recipient. Then apply and roll the backend:
 
 ```bash
-sops --decrypt infra/k8s/secrets.enc.yaml | kubectl -n fmi-codes apply -f -
+sops --decrypt infra/k8s/secrets/secrets.enc.yaml | kubectl -n fmi-codes apply -f -
 kubectl -n fmi-codes rollout restart deployment/backend
-git add infra/k8s/secrets.enc.yaml && git commit -m "rotate app secrets"
+git add infra/k8s/secrets/secrets.enc.yaml && git commit -m "rotate app secrets"
 ```
 
 `deploy-app.sh` does the decrypt-and-apply automatically: when `secrets.enc.yaml`
@@ -584,14 +649,14 @@ Phase 3). With the SOPS file in play, the committed hash ships a working default
 
 ```bash
 # rotate to an explicit value:
-bash infra/k8s/rotate-secret.sh MAIL_PASSWORD 'new-smtp-app-password'
+bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD 'new-smtp-app-password'
 
 # rotate to a freshly generated strong random value (SECRET_KEY / JWT_SECRET_KEY):
-bash infra/k8s/rotate-secret.sh JWT_SECRET_KEY
+bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
 
 # rotate the admin password (generate the bcrypt hash first):
 HASH=$(python3 -c "import bcrypt;print(bcrypt.hashpw(b'newpassword', bcrypt.gensalt(12)).decode())")
-bash infra/k8s/rotate-secret.sh ADMIN_PASSWORD_HASH "$HASH"
+bash infra/k8s/scripts/rotate-secret.sh ADMIN_PASSWORD_HASH "$HASH"
 ```
 
 The script re-encrypts just that one key in `secrets.enc.yaml`, re-applies the
@@ -611,8 +676,8 @@ recipient. Add it under the `age:` list in `.sops.yaml`, then re-encrypt the fil
 to the expanded recipient set:
 
 ```bash
-sops updatekeys infra/k8s/secrets.enc.yaml
-git add .sops.yaml infra/k8s/secrets.enc.yaml
+sops updatekeys infra/k8s/secrets/secrets.enc.yaml
+git add .sops.yaml infra/k8s/secrets/secrets.enc.yaml
 git commit -m "add <dev> as a secrets recipient"
 ```
 
@@ -627,10 +692,10 @@ compromised and rotated:
 
 ```bash
 # after editing .sops.yaml to drop the departing recipient:
-sops updatekeys infra/k8s/secrets.enc.yaml
-for k in SECRET_KEY JWT_SECRET_KEY; do bash infra/k8s/rotate-secret.sh "$k"; done
+sops updatekeys infra/k8s/secrets/secrets.enc.yaml
+for k in SECRET_KEY JWT_SECRET_KEY; do bash infra/k8s/scripts/rotate-secret.sh "$k"; done
 # rotate MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL / ADMIN_PASSWORD_HASH to fresh values too
-git add .sops.yaml infra/k8s/secrets.enc.yaml && git commit -m "offboard <dev>: drop recipient + rotate secrets"
+git add .sops.yaml infra/k8s/secrets/secrets.enc.yaml && git commit -m "offboard <dev>: drop recipient + rotate secrets"
 ```
 
 ### Verify the acceptance criteria (#31)
@@ -639,7 +704,7 @@ git add .sops.yaml infra/k8s/secrets.enc.yaml && git commit -m "offboard <dev>: 
 `ENC[AES256_GCM,…]`, and DB/Redis passwords aren't committed at all:
 
 ```bash
-grep -E 'SECRET_KEY|JWT_SECRET_KEY|ADMIN_PASSWORD_HASH' infra/k8s/secrets.enc.yaml
+grep -E 'SECRET_KEY|JWT_SECRET_KEY|ADMIN_PASSWORD_HASH' infra/k8s/secrets/secrets.enc.yaml
 # every hit is ENC[…]; no readable value
 ```
 
@@ -656,7 +721,7 @@ kubectl -n fmi-codes exec deploy/backend -- \
 above. Confirm a rotation lands end-to-end:
 
 ```bash
-bash infra/k8s/rotate-secret.sh JWT_SECRET_KEY
+bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
 # → re-encrypts secrets.enc.yaml, re-applies the secret, restarts backend, waits for Ready
 ```
 

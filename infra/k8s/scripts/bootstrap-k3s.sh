@@ -33,8 +33,8 @@ k3s_restart_count() {
   sudo systemctl show k3s -p NRestarts --value 2>/dev/null | grep -E '^[0-9]+$' || echo 0
 }
 
-if ! grep -qi microsoft /proc/version 2>/dev/null; then
-  echo "Warning: this doesn't look like WSL2. Continuing anyway — Ctrl+C to abort." >&2
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  echo "Detected WSL2. (Native Debian/Ubuntu Linux works the same way.)" >&2
 fi
 
 command -v apt-get >/dev/null 2>&1 \
@@ -119,7 +119,7 @@ fi
 
 log "Creating namespace '$NAMESPACE'"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
-NAMESPACE_MANIFEST="${SCRIPT_DIR:-}/namespace.yaml"
+NAMESPACE_MANIFEST="${SCRIPT_DIR:+$SCRIPT_DIR/../manifests}/namespace.yaml"
 if [ "$NAMESPACE" = "fmi-codes" ] && [ -f "$NAMESPACE_MANIFEST" ]; then
   kubectl apply -f "$NAMESPACE_MANIFEST"
 else
