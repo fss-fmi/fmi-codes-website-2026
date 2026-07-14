@@ -7,6 +7,8 @@ NAMESPACE="${NAMESPACE:-fmi-codes}"
 
 log() { printf '\n\033[1;36m### %s\033[0m\n' "$1"; }
 
+case "${1:-}" in -h|--help) exec bash "$SCRIPT_DIR/init-linux.sh" --help ;; esac
+
 if ! grep -qi microsoft /proc/version 2>/dev/null; then
   echo "Note: this doesn't look like WSL2. On a native Linux host run init-linux.sh directly." >&2
 fi

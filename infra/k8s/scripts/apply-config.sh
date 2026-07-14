@@ -75,6 +75,10 @@ fi
 KEY="$1"
 VALUE="$2"
 
+case "$KEY" in
+  *[!A-Za-z0-9._-]*|"") die "invalid ConfigMap key '$KEY' — allowed characters are letters, digits, '.', '_', '-'." ;;
+esac
+
 for s in $SECRET_KEYS; do
   if [ "$KEY" = "$s" ]; then
     die "'$KEY' is a secret — it does not belong in the ConfigMap. Use rotate-secret.sh (app secrets) or deploy-stateful.sh (DB/Redis)."
