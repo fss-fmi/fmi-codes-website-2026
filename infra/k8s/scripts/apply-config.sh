@@ -44,9 +44,9 @@ EOF
 
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac
 
-command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools-wsl2.sh first."
+command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
 kubectl cluster-info >/dev/null 2>&1 \
-  || die "no reachable cluster — bootstrap it with bootstrap-wsl2-k3s.sh first."
+  || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
 kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 \
   || die "namespace '$NAMESPACE' not found — run deploy-stateful.sh first."
 

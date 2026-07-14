@@ -23,14 +23,14 @@ REDIS_VALUES="$K8S_DIR/helm-values/redis-values.yaml"
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
 
-command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools-wsl2.sh first."
-command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools-wsl2.sh first."
+command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
+command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.sh first."
 [ -f "$SCHEMA_SQL" ]     || die "schema not found at $SCHEMA_SQL"
 [ -f "$POSTGRES_VALUES" ] || die "missing $POSTGRES_VALUES"
 [ -f "$REDIS_VALUES" ]    || die "missing $REDIS_VALUES"
 
 kubectl cluster-info >/dev/null 2>&1 \
-  || die "no reachable cluster — bootstrap it with bootstrap-wsl2-k3s.sh first."
+  || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
 
 HELM_DOCKER_CONFIG="$(mktemp -d)"
 printf '{}' > "$HELM_DOCKER_CONFIG/config.json"

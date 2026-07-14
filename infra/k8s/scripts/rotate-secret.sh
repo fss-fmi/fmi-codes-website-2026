@@ -42,8 +42,8 @@ case "$1" in -h|--help) usage; exit 0 ;; esac
 KEY="$1"
 shift || true
 
-command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools-wsl2.sh first."
-command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools-wsl2.sh first."
+command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
+command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
 [ -f "$SECRETS_ENC" ] || die "missing $SECRETS_ENC"
 
 sops --decrypt "$SECRETS_ENC" >/dev/null 2>&1 \

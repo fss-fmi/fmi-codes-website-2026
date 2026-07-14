@@ -14,13 +14,13 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [--from N]
 
-All-in-one bring-up of the whole stack on a fresh WSL2 host, in order:
+All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
 
-  1. install-tools-wsl2.sh   CLIs (kubectl, helm, k9s, sops, age, flux)
-  2. bootstrap-wsl2-k3s.sh   k3s cluster + '$NAMESPACE' namespace
-  3. deploy-stateful.sh      Postgres + Redis Sentinel (Helm)
-  4. deploy-app.sh           backend + frontend + app secret (SOPS)
-  5. deploy-ingress.sh       ingress-nginx + cert-manager + TLS
+  1. install-tools.sh    CLIs (kubectl, helm, k9s, sops, age, flux)
+  2. bootstrap-k3s.sh    k3s cluster + '$NAMESPACE' namespace
+  3. deploy-stateful.sh  Postgres + Redis Sentinel (Helm)
+  4. deploy-app.sh       backend + frontend + app secret (SOPS)
+  5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
@@ -29,6 +29,10 @@ fix the cause and resume without redoing earlier steps:
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
 this in a terminal, not a headless context.
+
+Runs on native Debian/Ubuntu Linux and on WSL2 (Ubuntu). On WSL2, run
+init-windows.sh instead — it runs this script, then prints the Windows-side
+host-resolution steps the browser needs.
 EOF
 }
 
@@ -56,8 +60,8 @@ run_step() {
     || die "step $n ($name) failed. Fix the cause above, then resume with: $(basename "$0") --from $n"
 }
 
-run_step 1 "install tooling"        install-tools-wsl2.sh
-run_step 2 "bootstrap k3s cluster"  bootstrap-wsl2-k3s.sh
+run_step 1 "install tooling"        install-tools.sh
+run_step 2 "bootstrap k3s cluster"  bootstrap-k3s.sh
 run_step 3 "stateful tier"          deploy-stateful.sh
 run_step 4 "app tier"               deploy-app.sh
 run_step 5 "networking + TLS"       deploy-ingress.sh
@@ -70,17 +74,13 @@ cat <<EOF
 
 $(printf '\033[1;32m')All five steps complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
 
-Final step — make the host resolve on your WINDOWS machine (not WSL): add this
-line to C:\\Windows\\System32\\drivers\\etc\\hosts (open the editor as Administrator).
-Editing WSL's /etc/hosts does NOT help the Windows browser.
+Point the host name at the ingress so clients can reach it. On this host:
+  echo "$INGRESS_IP fmi-codes.local" | sudo tee -a /etc/hosts
 
-  $INGRESS_IP fmi-codes.local
+For a real server, add an A record fmi-codes.local -> $INGRESS_IP in your DNS
+instead. Then browse to https://fmi-codes.local (self-signed cert — accept the
+warning, or swap in a real cert per README 'Phase 4').
 
-The WSL node IP changes across 'wsl --shutdown'/reboot unless mirrored networking
-is on — re-check it after a restart with:
-  kubectl -n ingress-nginx get svc ingress-nginx-controller
-
-Then browse to https://fmi-codes.local (self-signed cert — accept the warning).
 Verify the stack:
   kubectl -n $NAMESPACE get pods
   curl -k https://fmi-codes.local/api/health

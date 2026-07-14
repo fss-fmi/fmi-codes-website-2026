@@ -23,12 +23,12 @@ INGRESS_MANIFEST="$K8S_DIR/manifests/ingress.yaml"
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
 
-command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools-wsl2.sh first."
-command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools-wsl2.sh first."
+command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
+command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.sh first."
 [ -f "$INGRESS_MANIFEST" ] || die "missing $INGRESS_MANIFEST"
 
 kubectl cluster-info >/dev/null 2>&1 \
-  || die "no reachable cluster — bootstrap it with bootstrap-wsl2-k3s.sh first."
+  || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
 
 kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 \
   || die "namespace '$NAMESPACE' not found — run deploy-stateful.sh first (Phase 2)."

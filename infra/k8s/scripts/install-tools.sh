@@ -21,8 +21,8 @@ esac
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 
-if ! grep -qi microsoft /proc/version 2>/dev/null; then
-  echo "Warning: this doesn't look like WSL2. Continuing anyway — Ctrl+C to abort." >&2
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  echo "Detected WSL2. (Native Debian/Ubuntu Linux works the same way.)" >&2
 fi
 
 command -v apt-get >/dev/null 2>&1 \
@@ -153,6 +153,6 @@ log "Done. Installed tooling:"
 cat <<'EOF'
 
 Next:
-  bash infra/k8s/scripts/init.sh         # bring up the whole stack in order
+  bash infra/k8s/scripts/init-linux.sh         # bring up the whole stack in order
   k9s -n fmi-codes                       # browse the cluster once it's up
 EOF
