@@ -740,7 +740,7 @@ cluster to match. Nothing inbound is ever needed.
 | `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + `Kustomization` reconciling `manifests/` into the cluster. |
 | `flux/image-automation.yaml` | `ImageRepository`/`ImagePolicy` ×2 (watch the two Docker Hub repos, pick the newest tag) + `ImageUpdateAutomation` (commits tag bumps to the `flux-image-updates` branch). |
 | `manifests/kustomization.yaml` | Kustomize `images:` override Flux edits — keeps the tag out of the Deployment manifests. |
-| `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from a token or SSH key, apply the `flux/` resources, reconcile. |
+| `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources, reconcile. |
 
 ### The deploy loop
 
@@ -768,28 +768,10 @@ stateful tier (Postgres/Redis via Helm) and ingress stay owned by their
 respective `deploy-*.sh` scripts; Flux only reconciles `manifests/` (backend +
 frontend), so `prune: true` can never touch them.
 
-### One-time setup — a write-capable git credential
+### One-time setup — SSH deploy key
 
-Flux's image automation commits back to the repo, so it needs a credential that
-can **push**. Two options, pick by your repo access:
-
-**Option A — fine-grained PAT (works without repo-admin rights).** If you can push
-to the repo but aren't an org/repo admin (no "Deploy keys" under Settings), use a
-token. Create one at **github.com/settings/tokens → Fine-grained tokens**, scoped
-to this repo, with **Contents: Read and write**. Then:
-
-```bash
-export GITHUB_TOKEN=github_pat_xxx        # the fine-grained PAT
-export GITHUB_USER=<your-github-username>  # defaults to the repo owner handle
-bash infra/k8s/scripts/flux-bootstrap.sh
-```
-
-Flux authenticates over HTTPS as you. The token is stored only in the in-cluster
-`flux-git-auth` Secret — never committed. Note it's account-scoped and expires, so
-you'll rotate it when it lapses.
-
-**Option B — SSH deploy key (repo-scoped, needs repo-admin to add).** Cleaner
-long-term (not tied to an account, no expiry) but requires admin access to add:
+Flux's image automation commits back to the repo, so it needs a **write-capable**
+credential. Use a repo deploy key (repo-scoped, not tied to your account):
 
 ```bash
 # 1. Generate a keypair (no passphrase — Flux reads it non-interactively)
@@ -800,16 +782,16 @@ ssh-keygen -t ed25519 -f ~/.ssh/fmi-codes-flux -N ""
 #    ~/.ssh/fmi-codes-flux.pub, tick "Allow write access".
 cat ~/.ssh/fmi-codes-flux.pub
 
-# 3. Bootstrap (no GITHUB_TOKEN set → it uses the SSH key at ~/.ssh/fmi-codes-flux):
+# 3. Bootstrap Flux (creates the in-cluster Secret from the PRIVATE key):
 bash infra/k8s/scripts/flux-bootstrap.sh
 ```
 
-The bootstrap picks the method automatically: `GITHUB_TOKEN` set → HTTPS+token;
-otherwise an SSH key at `$DEPLOY_KEY` (default `~/.ssh/fmi-codes-flux`) → SSH. It
-rewrites the `GitRepository` URL to match. Neither credential is ever committed.
+The private key never leaves the machine and is never committed — `flux-bootstrap.sh`
+loads it into the `flux-git-auth` Secret and that's it. Override the path with
+`DEPLOY_KEY=/path/to/key bash …` if you keep it elsewhere.
 
-`init-linux.sh` runs this as an optional step 6 — off by default, enabled with
-`--with-flux` (export `GITHUB_TOKEN` first if using Option A):
+`init-linux.sh` runs this as an optional step 6 — off by default (it needs the key
+present), enabled with `--with-flux`:
 
 ```bash
 bash infra/k8s/scripts/init-linux.sh --with-flux

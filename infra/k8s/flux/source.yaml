@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  url: https://github.com/fss-fmi/fmi-codes-website-2026.git
+  url: ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git
   ref:
     branch: main
   secretRef:
