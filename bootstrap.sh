@@ -77,20 +77,17 @@ fi
 
 log "Pre-flight: admin password"
 
-ADMIN_HASH="${ADMIN_PASSWORD_HASH:-}"
 if command -v sops >/dev/null 2>&1 && [ -f "$SECRETS_ENC" ]; then
   EXISTING_HASH="$(SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops -d \
     --extract '["stringData"]["ADMIN_PASSWORD_HASH"]' \
     "$SECRETS_ENC" 2>/dev/null | tr -d '"' || true)"
   if [ "${#EXISTING_HASH}" -gt 0 ]; then
-    ok "ADMIN_PASSWORD_HASH already set in secrets — using existing value"
+    ok "ADMIN_PASSWORD_HASH already set in secrets — deploy-app.sh will apply it"
   else
     warn "ADMIN_PASSWORD_HASH is empty in secrets.enc.yaml"
-    warn "The backend will CrashLoop until a valid bcrypt hash is set"
+    warn "The backend will CrashLoop until a valid bcrypt hash is written into the secrets file"
     echo
-    echo "Set it now (recommended) or skip and set later with rotate-secret.sh."
-    echo
-    ask "Enter the admin password (will be hashed), or press Enter to skip:"
+    ask "Enter the admin password to hash and write into secrets.enc.yaml, or press Enter to skip:"
     read -rs ADMIN_PASS
     echo
     if [ -n "$ADMIN_PASS" ]; then
@@ -98,19 +95,17 @@ if command -v sops >/dev/null 2>&1 && [ -f "$SECRETS_ENC" ]; then
         die "python3 not found — install it first: sudo apt-get install -y python3"
       fi
       if ! python3 -c "import bcrypt" 2>/dev/null; then
-        warn "python3-bcrypt not available — installing via apt (no sudo pip)..."
+        warn "python3-bcrypt not available — installing via apt..."
         sudo apt-get install -y python3-bcrypt \
           || die "could not install python3-bcrypt — run: sudo apt-get install -y python3-bcrypt, then re-run"
       fi
       ADMIN_HASH="$(ADMIN_PASS="$ADMIN_PASS" python3 -c \
         "import bcrypt, os; print(bcrypt.hashpw(os.environ['ADMIN_PASS'].encode(), bcrypt.gensalt(12)).decode())")"
-      ok "hash generated — rotating secret..."
-      bash "$SCRIPT_DIR/infra/k8s/scripts/rotate-secret.sh" ADMIN_PASSWORD_HASH "$ADMIN_HASH" 2>/dev/null || {
-        warn "cluster not up yet — ADMIN_PASSWORD_HASH will be picked up by deploy-app.sh"
-        ADMIN_PASSWORD_HASH="$ADMIN_HASH"
-      }
+      SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops set "$SECRETS_ENC" \
+        '["stringData"]["ADMIN_PASSWORD_HASH"]' "\"$ADMIN_HASH\""
+      ok "hash written into secrets.enc.yaml — commit and push this file before deploying to other servers"
     else
-      warn "Skipping — backend will CrashLoop. Fix later:"
+      warn "Skipping — backend will CrashLoop. Fix later with:"
       echo "  bash infra/k8s/scripts/rotate-secret.sh ADMIN_PASSWORD_HASH"
     fi
   fi
