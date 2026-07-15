@@ -36,7 +36,7 @@ Env overrides: NAMESPACE ($NAMESPACE), CONFIGMAP ($CONFIGMAP),
 RESTART (true|false — skip the rollout restart when false).
 
 Examples:
-  $(basename "$0") FRONTEND_ORIGIN https://fmi-codes.local
+  $(basename "$0") FRONTEND_ORIGIN https://fmicodes.com
   $(basename "$0") REGISTRATION_OPEN true
   $(basename "$0")                       # re-apply manifests from disk
 EOF
