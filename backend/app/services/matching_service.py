@@ -73,7 +73,6 @@ def run_gale_shapley():
     for row in mentor_prefs_rows:
         mentor_pref_lists.setdefault(row["mentor_id"], []).append(row["team_id"])
 
-    # Load team preferences: team_id -> {mentor_id: rank}
     team_prefs_rows = (
         execute_query(
             current_app,
