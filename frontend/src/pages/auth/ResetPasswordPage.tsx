@@ -20,6 +20,7 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const isAdminRole = role === 'admin';
   const isInvalidLink = !token || !['participant', 'mentor'].includes(role);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -68,12 +69,18 @@ export default function ResetPasswordPage() {
               className="px-body-sm"
               style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
             >
-              {isInvalidLink
+              {isAdminRole || isInvalidLink
                 ? 'This link is invalid or has expired.'
                 : 'Choose a new password for your account.'}
             </p>
 
-            {isInvalidLink && (
+            {isAdminRole && (
+              <FormAlert kind="error">
+                Admin passwords cannot be reset through this page.
+              </FormAlert>
+            )}
+
+            {!isAdminRole && isInvalidLink && (
               <FormAlert kind="error">
                 This reset link is invalid or has expired. Please request a new one from the{' '}
                 <Link
@@ -98,7 +105,7 @@ export default function ResetPasswordPage() {
               </FormAlert>
             )}
 
-            {!isInvalidLink && !success && (
+            {!isAdminRole && !isInvalidLink && !success && (
               <form onSubmit={handleSubmit} noValidate>
                 {error && <FormAlert kind="error">{error}</FormAlert>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
