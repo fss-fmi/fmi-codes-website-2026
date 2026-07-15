@@ -122,16 +122,15 @@ def get_specialties():
 def create_university():
     """Create a user-submitted university (is_seed = FALSE). Returns existing ID if name already taken."""
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    city = (data.get("city") or "").strip()
-    country = (data.get("country") or "").strip()
+    name = (data.get("name") or "").strip()[:200]
+    city = (data.get("city") or "").strip()[:100]
+    country = (data.get("country") or "").strip()[:100]
 
     if not name or not city or not country:
         return jsonify({"success": False, "error": "Name, city, and country are required"}), 400
 
     from flask import current_app
 
-    # Check for existing university with the same name
     existing = execute_query(
         current_app,
         "SELECT id FROM universities WHERE name = %s",
@@ -157,7 +156,7 @@ def create_university():
 def create_specialty():
     """Create a user-submitted specialty (is_seed = FALSE). Returns existing ID if name already taken."""
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
+    name = (data.get("name") or "").strip()[:200]
 
     if not name:
         return jsonify({"success": False, "error": "Name is required"}), 400
@@ -195,7 +194,8 @@ def get_ranking():
         rankings = ranking_service.get_rankings()
         return jsonify({"success": True, "rankings": rankings}), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"Error fetching ranking: {e}")
+        return jsonify({"success": False, "error": "Failed to fetch rankings"}), 500
 
 
 @api_bp.route("/regulations", methods=["GET"])
@@ -205,7 +205,8 @@ def get_regulations():
         regulations = regulations_service.get_regulations()
         return jsonify({"success": True, "regulations": regulations}), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"Error fetching regulations: {e}")
+        return jsonify({"success": False, "error": "Failed to fetch regulations"}), 500
 
 
 # ── Admin matching endpoints ───────────────────────────────────────
@@ -230,7 +231,8 @@ def run_matching():
     try:
         matching_service.save_matching_results(assignments)
     except Exception as e:
-        return jsonify({"success": False, "error": f"Failed to save results: {e}"}), 500
+        logger.error(f"Failed to save matching results: {e}")
+        return jsonify({"success": False, "error": "Failed to save matching results"}), 500
 
     results = {}
     for team_id, mentor_id in assignments:
@@ -270,7 +272,7 @@ def confirm_matching():
         return jsonify({"success": True, "message": "Matching results confirmed as final"}), 200
     except Exception as e:
         logger.error(f"Error confirming matching: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "Failed to confirm matching"}), 500
 
 
 @api_bp.route("/admin/matching-results", methods=["GET"])
@@ -420,7 +422,6 @@ def submit_bug_report():
     if not what_did and not what_happened:
         return jsonify({"success": False, "error": "Please describe the issue."}), 400
 
-    # Attempt to resolve reporter identity from an optional JWT
     reporter_name = "Anonymous"
     reporter_email = "(not provided)"
     reporter_role = "unknown"
@@ -474,11 +475,7 @@ def submit_bug_report():
         what_happened=what_happened or "(not specified)",
     )
 
-    logger.info(
-        "Bug report queued for delivery (reporter=%s, page=%s)",
-        reporter_email,
-        page_url,
-    )
+    logger.info("Bug report queued for delivery (page=%s)", page_url)
     return jsonify({"success": True, "message": "Bug report submitted — thank you!"}), 202
 
 

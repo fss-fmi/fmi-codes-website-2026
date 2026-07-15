@@ -173,7 +173,6 @@ def get_teams():
     """Get all teams"""
     teams = TeamService.get_all_teams()
     teams_list = [dict(t) for t in teams]
-    # Remove sensitive fields
     for t in teams_list:
         t.pop("password_hash", None)
         t.pop("join_code", None)
