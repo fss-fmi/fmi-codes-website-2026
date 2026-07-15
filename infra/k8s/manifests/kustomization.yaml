@@ -7,7 +7,7 @@ resources:
 images:
   - name: fssfmi/fmi-codes-backend
     newName: fssfmi/fmi-codes-backend
-    newTag: latest # {"$imagepolicy": "fmi-codes:fmi-codes-backend:tag"}
+    newTag: latest # {"$imagepolicy": "flux-system:fmi-codes-backend:tag"}
   - name: fssfmi/fmi-codes-frontend
     newName: fssfmi/fmi-codes-frontend
-    newTag: latest # {"$imagepolicy": "fmi-codes:fmi-codes-frontend:tag"}
+    newTag: latest # {"$imagepolicy": "flux-system:fmi-codes-frontend:tag"}
