@@ -13,18 +13,26 @@ data:
   Referrer-Policy: "strict-origin-when-cross-origin"
   Permissions-Policy: "camera=(), microphone=(), geolocation=()"
   Content-Security-Policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self';"
-  Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+  Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: fmi-codes-selfsigned
+  name: fmi-codes-letsencrypt
   labels:
     app.kubernetes.io/name: fmi-codes-ingress
     app.kubernetes.io/part-of: fmi-codes-website-2026
     app.kubernetes.io/managed-by: kubectl
 spec:
-  selfSigned: {}
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: fss.fmi.uni.sofia@gmail.com
+    privateKeySecretRef:
+      name: fmi-codes-letsencrypt-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -37,15 +45,15 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
 spec:
   secretName: fmi-codes-tls
-  duration: 8760h
-  renewBefore: 720h
+  duration: 2160h
+  renewBefore: 360h
   privateKey:
     algorithm: ECDSA
     size: 256
   dnsNames:
-    - fmi-codes.local
+    - fmicodes.com
   issuerRef:
-    name: fmi-codes-selfsigned
+    name: fmi-codes-letsencrypt
     kind: ClusterIssuer
     group: cert-manager.io
 ---
@@ -64,10 +72,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - fmi-codes.local
+        - fmicodes.com
       secretName: fmi-codes-tls
   rules:
-    - host: fmi-codes.local
+    - host: fmicodes.com
       http:
         paths:
           - path: /api

@@ -24,17 +24,20 @@ cat <<EOF
 
 $(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
 
-The cluster runs inside WSL2. A Windows browser cannot resolve fmi-codes.local
+The cluster runs inside WSL2. A Windows browser cannot resolve fmicodes.com
 unless the name is in the WINDOWS hosts file — editing WSL's /etc/hosts does not
 help the Windows side. Open an elevated (Administrator) editor on Windows and add
 this line to C:\\Windows\\System32\\drivers\\etc\\hosts:
 
-  $INGRESS_IP fmi-codes.local
+  $INGRESS_IP fmicodes.com
 
 From PowerShell as Administrator you can append it in one line:
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "$INGRESS_IP fmi-codes.local"
+  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "$INGRESS_IP fmicodes.com"
 
-Then browse to https://fmi-codes.local (self-signed cert — accept the warning).
+Then browse to https://fmicodes.com
+
+Note: adding fmicodes.com to your hosts file overrides public DNS on this machine.
+Remove this line when you want your browser to reach the production server instead.
 
 Caveat: the WSL node IP above changes across 'wsl --shutdown' / reboot unless
 mirrored networking is enabled. After a restart, re-check it and update the hosts

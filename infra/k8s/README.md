@@ -58,7 +58,7 @@ To change a **non-secret** backend setting (feature flags, `FRONTEND_ORIGIN`,
 Redis/DB coordinates) and roll the backend so pods pick it up:
 
 ```bash
-bash infra/k8s/scripts/apply-config.sh FRONTEND_ORIGIN https://fmi-codes.local
+bash infra/k8s/scripts/apply-config.sh FRONTEND_ORIGIN https://fmicodes.com
 bash infra/k8s/scripts/apply-config.sh REGISTRATION_OPEN true
 bash infra/k8s/scripts/apply-config.sh          # re-apply manifests from disk, then roll
 ```
@@ -441,7 +441,7 @@ cluster-native `Ingress`, and terminates TLS at the edge.
 
 | File | What it is |
 | --- | --- |
-| `ingress.yaml` | The `Ingress` (host `fmi-codes.local`, path rules below), its `tls:` block, the `security-headers` ConfigMap, and the cert-manager self-signed `ClusterIssuer` + `Certificate`. |
+| `ingress.yaml` | The `Ingress` (host `fmicodes.com`, path rules below), its `tls:` block, the `security-headers` ConfigMap, and the cert-manager Let's Encrypt `ClusterIssuer` + `Certificate`. |
 | `deploy-ingress.sh` | Idempotent deploy: `helm upgrade --install`s `ingress-nginx` and `cert-manager`, applies `ingress.yaml`, waits for the cert to be issued. |
 
 ```bash
@@ -490,17 +490,16 @@ until cert-manager's CRDs exist). The controller watches the named header Config
 and hot-reloads when it appears, so it self-heals within seconds — no restart
 needed.
 
-### TLS: self-signed via cert-manager
+### TLS: Let's Encrypt via cert-manager
 
-This is a LAN-only local cluster with no public DNS name, so there is no Let's
-Encrypt/ACME. Instead `cert-manager` issues a **self-signed** cert: a
-`ClusterIssuer` (`selfSigned: {}`) mints the `fmi-codes-tls` `Certificate` into a
-`kubernetes.io/tls` Secret the Ingress references, and cert-manager auto-renews it
-(`renewBefore: 720h`). Swapping to a real cert later is a one-issuer change — point
-the `Certificate`'s `issuerRef` at an ACME `ClusterIssuer` and nothing else moves.
+cert-manager provisions a real TLS certificate from Let's Encrypt using an HTTP-01
+ACME challenge. The `fmi-codes-letsencrypt` `ClusterIssuer` handles the ACME account
+and challenge lifecycle; cert-manager auto-renews the cert before expiry
+(`renewBefore: 720h`). No `curl -k` needed — the cert is browser-trusted.
 
-Because the cert is self-signed, clients must either trust the CA or skip
-verification (`curl -k`). Browsers will show the usual self-signed warning.
+For the challenge to succeed, port 80 on the server must be reachable from the
+internet and `fmicodes.com` must resolve to the server's IP in public DNS before
+`deploy-ingress.sh` runs.
 
 ### HTTP → HTTPS redirect
 
@@ -511,29 +510,32 @@ explicitly for clarity.
 
 ### Resolve the host
 
-The Ingress matches on `Host: fmi-codes.local`. Point that name at the ingress
-controller's external address (the deploy script prints the exact line):
+The Ingress matches on `Host: fmicodes.com`. For local testing, point that name
+at the ingress controller's external address (the deploy script prints the exact
+line):
 
 ```bash
 INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-echo "$INGRESS_IP fmi-codes.local" | sudo tee -a /etc/hosts
+echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
 ```
+
+On the production server, set the `fmicodes.com` A record in DNS instead.
 
 ### Verify the acceptance criteria (#29)
 
 **Routing** — `/api/...` hits the backend, everything else the frontend:
 
 ```bash
-curl -k https://fmi-codes.local/api/health   # backend JSON, HTTP 200
-curl -k https://fmi-codes.local/             # the SPA's index.html
+curl https://fmicodes.com/api/health   # backend JSON, HTTP 200
+curl https://fmicodes.com/             # the SPA's index.html
 ```
 
 **Security headers present** on every response, including the backend routes that
 shipped naked before:
 
 ```bash
-curl -k -I https://fmi-codes.local/api/health
+curl -I https://fmicodes.com/api/health
 # expect: X-Frame-Options, X-Content-Type-Options, Content-Security-Policy,
 #         Strict-Transport-Security, Referrer-Policy, Permissions-Policy
 ```
@@ -541,7 +543,7 @@ curl -k -I https://fmi-codes.local/api/health
 **HTTPS works and HTTP redirects to it:**
 
 ```bash
-curl -I http://fmi-codes.local/              # HTTP/1.1 308, Location: https://fmi-codes.local/
+curl -I http://fmicodes.com/              # HTTP/1.1 308, Location: https://fmicodes.com/
 ```
 
 ## Phase 5 — externalize config & secrets (#31)

@@ -91,13 +91,12 @@ cat <<EOF
 $(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
 
 Point the host name at the ingress so clients can reach it. On this host:
-  echo "$INGRESS_IP fmi-codes.local" | sudo tee -a /etc/hosts
+  echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
 
-For a real server, add an A record fmi-codes.local -> $INGRESS_IP in your DNS
-instead. Then browse to https://fmi-codes.local (self-signed cert — accept the
-warning, or swap in a real cert per README 'Phase 4').
+For production, point the fmicodes.com A record at $INGRESS_IP in DNS.
+Let's Encrypt issues the cert automatically once DNS resolves.
 
 Verify the stack:
   kubectl -n $NAMESPACE get pods
-  curl -k https://fmi-codes.local/api/health
+  curl https://fmicodes.com/api/health
 EOF
