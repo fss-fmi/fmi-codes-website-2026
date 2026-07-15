@@ -27,7 +27,7 @@ class Config:
     DB_PORT = os.environ.get("DB_PORT", 5432)
     DB_NAME = os.environ.get("DB_NAME", "fmi_hackathon_2026_dev")
     DB_USER = os.environ.get("DB_USER", "postgres")
-    DB_PASSWORD = os.environ.get("DB_PASSWORD")  # Must be set in .env
+    DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
 
     # Connection pool sizing (per worker process)
     DB_POOL_MIN = int(os.environ.get("DB_POOL_MIN", 2))

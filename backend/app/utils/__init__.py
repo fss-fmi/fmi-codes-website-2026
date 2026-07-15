@@ -6,6 +6,7 @@ import re
 # Allows apostrophes (O'Brien) and hyphens (hyphenated surnames) but blocks
 # the minimal set needed to start any HTML tag, entity, or inline script.
 _HTML_INJECTION_RE = re.compile(r"[<>&;\"\\]")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def contains_html(value: str) -> bool:
@@ -24,3 +25,8 @@ def validate_name_field(value: str, field_label: str) -> tuple[bool, str]:
     if contains_html(stripped):
         return False, f"{field_label} contains invalid characters"
     return True, stripped
+
+
+def validate_email(value: str) -> bool:
+    """Return True if *value* is a structurally valid email address."""
+    return bool(_EMAIL_RE.match(value.strip()))

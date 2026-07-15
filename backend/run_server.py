@@ -35,7 +35,8 @@ def main():
             print(f"[OK] Seeded {seeded} mentor(s) from mentors.json")
 
     # Print startup info
-    print(f"\n[OK] Database: {app.config.get('DATABASE_URL', 'configured')}")
+    db_location = f"{app.config.get('DB_HOST', '?')}/{app.config.get('DB_NAME', '?')}"
+    print(f"\n[OK] Database: {db_location}")
     print("[OK] Starting server at http://localhost:5001")
     print("[OK] Press Ctrl+C to stop the server\n")
 

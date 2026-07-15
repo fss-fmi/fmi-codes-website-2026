@@ -181,7 +181,6 @@ def get_preference_submission_status():
         dict with 'teams' and 'mentors' lists, each entry having
         'id', 'name', 'submitted' boolean.
     """
-    # Active teams
     teams = (
         execute_query(
             current_app,
@@ -196,7 +195,6 @@ def get_preference_submission_status():
         or []
     )
 
-    # Active mentors
     mentors = (
         execute_query(
             current_app,

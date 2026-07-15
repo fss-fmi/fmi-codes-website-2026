@@ -119,7 +119,7 @@ def register_participant():
         return jsonify({"success": False, "error": f"Missing fields: {', '.join(missing)}"}), 400
 
     # C7: Reject HTML injection characters in name fields at the backend boundary
-    from app.utils import validate_name_field
+    from app.utils import validate_email, validate_name_field
 
     for field_key, label in (("first_name", "First name"), ("last_name", "Last name")):
         ok, result = validate_name_field(data[field_key], label)
@@ -127,6 +127,8 @@ def register_participant():
             return jsonify({"success": False, "error": result}), 400
 
     email = data["email"].strip().lower()
+    if not validate_email(email):
+        return jsonify({"success": False, "error": "Invalid email address"}), 400
     fac = data["faculty_number"].strip()
 
     course = data["course"].strip()
@@ -328,6 +330,7 @@ def get_me():
 
 
 @auth_bp.route("/api/auth/change-password", methods=["PATCH"])
+@limiter.limit("10 per minute")
 @token_required
 def change_password():
     """Change the current user's password. Requires current password verification."""

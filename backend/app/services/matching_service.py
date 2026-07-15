@@ -36,7 +36,6 @@ def run_gale_shapley():
     """
     warnings = []
 
-    # Load all active+registered teams and all active mentors
     all_team_rows = (
         execute_query(
             current_app,
@@ -62,7 +61,6 @@ def run_gale_shapley():
     if not all_mentors:
         return False, "No active mentors found", [], []
 
-    # Load mentor preferences: mentor_id -> [team_id ordered by rank]
     mentor_prefs_rows = (
         execute_query(
             current_app,
@@ -75,7 +73,6 @@ def run_gale_shapley():
     for row in mentor_prefs_rows:
         mentor_pref_lists.setdefault(row["mentor_id"], []).append(row["team_id"])
 
-    # Load team preferences: team_id -> {mentor_id: rank}
     team_prefs_rows = (
         execute_query(
             current_app,
