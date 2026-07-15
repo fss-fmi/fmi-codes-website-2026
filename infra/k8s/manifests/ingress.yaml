@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: fmi-codes-ingress
     app.kubernetes.io/part-of: fmi-codes-website-2026
-    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/managed-by: flux
 data:
   X-Frame-Options: "DENY"
   X-Content-Type-Options: "nosniff"
@@ -22,7 +22,7 @@ metadata:
   labels:
     app.kubernetes.io/name: fmi-codes-ingress
     app.kubernetes.io/part-of: fmi-codes-website-2026
-    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/managed-by: flux
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
@@ -42,7 +42,7 @@ metadata:
   labels:
     app.kubernetes.io/name: fmi-codes-ingress
     app.kubernetes.io/part-of: fmi-codes-website-2026
-    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/managed-by: flux
 spec:
   secretName: fmi-codes-tls
   duration: 2160h
@@ -65,7 +65,7 @@ metadata:
   labels:
     app.kubernetes.io/name: fmi-codes-ingress
     app.kubernetes.io/part-of: fmi-codes-website-2026
-    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/managed-by: flux
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:

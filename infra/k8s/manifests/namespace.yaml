@@ -5,4 +5,4 @@ metadata:
   labels:
     app.kubernetes.io/name: fmi-codes
     app.kubernetes.io/part-of: fmi-codes-website-2026
-    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/managed-by: flux
