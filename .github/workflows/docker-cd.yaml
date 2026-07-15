@@ -25,9 +25,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Immutable, monotonically-sortable tag for GitOps: <unix-ts>-<short-sha>.
-      # Flux ImagePolicy sorts on the leading timestamp (numerical, descending) to
-      # pick the newest build; the SHA keeps each tag unique and traceable.
       - name: Compute image tag
         id: tag
         run: echo "value=$(date -u +%s)-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
