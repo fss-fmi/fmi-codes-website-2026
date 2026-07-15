@@ -81,8 +81,6 @@ jobs:
       - name: Ruff lint
         run: ruff check .
 
-      # Advisory only: the existing codebase predates ruff-format, so a full
-      # reformat is a separate opt-in cleanup. Surfaced in the log, not blocking.
       - name: Ruff format check (advisory)
         run: ruff format --check .
         continue-on-error: true
@@ -92,8 +90,6 @@ jobs:
         with:
           node-version: '22'
 
-      # package-lock.json is intentionally gitignored, so there's no committed
-      # lockfile to cache against or to feed `npm ci`; install from package.json.
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install

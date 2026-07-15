@@ -4,6 +4,7 @@ set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-fmi-codes}"
 FROM="${FROM:-1}"
+WITH_FLUX="${WITH_FLUX:-false}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -12,7 +13,7 @@ die() { echo "Error: $1" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--from N]
+Usage: $(basename "$0") [--from N] [--with-flux]
 
 All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
 
@@ -21,11 +22,14 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   3. deploy-stateful.sh  Postgres + Redis Sentinel (Helm)
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
   5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
+  6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
 
-  --from N   start at step N (1-5). Default 1.
+  --from N      start at step N (1-6). Default 1.
+  --with-flux   also run step 6 (Flux GitOps). Off by default because it needs an
+                SSH deploy key present — see README 'Phase 6' before enabling.
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
 this in a terminal, not a headless context.
@@ -36,17 +40,23 @@ host-resolution steps the browser needs.
 EOF
 }
 
-case "${1:-}" in
-  -h|--help) usage; exit 0 ;;
-  --from) FROM="${2:-}"; [ -n "$FROM" ] || die "--from needs a step number (1-5)" ;;
-  "") : ;;
-  *) die "unknown argument '$1' (see --help)" ;;
-esac
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    --from) FROM="${2:-}"; [ -n "$FROM" ] || die "--from needs a step number (1-6)"; shift 2 ;;
+    --with-flux) WITH_FLUX=true; shift ;;
+    *) die "unknown argument '$1' (see --help)" ;;
+  esac
+done
 
 case "$FROM" in
-  1|2|3|4|5) : ;;
-  *) die "--from must be 1-5, got '$FROM'" ;;
+  1|2|3|4|5|6) : ;;
+  *) die "--from must be 1-6, got '$FROM'" ;;
 esac
+
+if [ "$FROM" = "6" ]; then
+  WITH_FLUX=true
+fi
 
 run_step() {
   local n="$1" name="$2" script="$3"
@@ -55,7 +65,7 @@ run_step() {
     return 0
   fi
   [ -f "$SCRIPT_DIR/$script" ] || die "step $n: missing $SCRIPT_DIR/$script"
-  log "Step $n/5 — $name"
+  log "Step $n/6 — $name"
   bash "$SCRIPT_DIR/$script" \
     || die "step $n ($name) failed. Fix the cause above, then resume with: $(basename "$0") --from $n"
 }
@@ -66,13 +76,19 @@ run_step 3 "stateful tier"          deploy-stateful.sh
 run_step 4 "app tier"               deploy-app.sh
 run_step 5 "networking + TLS"       deploy-ingress.sh
 
+if [ "$WITH_FLUX" = "true" ]; then
+  run_step 6 "GitOps CD (Flux)"     flux-bootstrap.sh
+else
+  log "Step 6 (GitOps CD) — skipped (pass --with-flux to enable; see README 'Phase 6')"
+fi
+
 INGRESS_IP="$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-external-ip>"
 
 cat <<EOF
 
-$(printf '\033[1;32m')All five steps complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
+$(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
 
 Point the host name at the ingress so clients can reach it. On this host:
   echo "$INGRESS_IP fmi-codes.local" | sudo tee -a /etc/hosts

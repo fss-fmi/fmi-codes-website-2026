@@ -70,18 +70,33 @@ else
   fi
 fi
 
-log "Applying backend and frontend manifests"
-kubectl apply -n "$NAMESPACE" -f "$BACKEND_MANIFEST" -f "$FRONTEND_MANIFEST"
+flux_owns_app() {
+  kubectl get kustomizations.kustomize.toolkit.fluxcd.io fmi-codes -n flux-system >/dev/null 2>&1
+}
 
 admin_hash="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \
   -o jsonpath='{.data.ADMIN_PASSWORD_HASH}' 2>/dev/null || true)"
-
 if [ -z "$admin_hash" ]; then
   log "ADMIN_PASSWORD_HASH is empty — the backend will CrashLoop until it is set"
   echo "The backend runs production config, which refuses to start without a real"
-  echo "admin password hash. Set one, then re-run this script:"
+  echo "admin password hash. Set one before expecting the backend to go Ready:"
   echo "  HASH=\$(python -c \"import bcrypt;print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())\")"
-  echo "  kubectl -n $NAMESPACE patch secret $APP_SECRET -p \"{\\\"data\\\":{\\\"ADMIN_PASSWORD_HASH\\\":\\\"\$(printf '%s' \"\$HASH\" | base64 -w0)\\\"}}\""
+  echo "  bash $SCRIPT_DIR/rotate-secret.sh ADMIN_PASSWORD_HASH \"\$HASH\""
+fi
+
+if flux_owns_app; then
+  log "Flux is active — it owns the backend/frontend Deployments"
+  echo "Applied the app secret only. Flux reconciles the Deployments from git; it"
+  echo "will pick up the secret change on its next reconcile, or force it now with:"
+  echo "  flux reconcile kustomization fmi-codes -n flux-system"
+  echo "  kubectl -n $NAMESPACE rollout restart deployment/backend"
+  exit 0
+fi
+
+log "Applying backend and frontend manifests"
+kubectl apply -n "$NAMESPACE" -f "$BACKEND_MANIFEST" -f "$FRONTEND_MANIFEST"
+
+if [ -z "$admin_hash" ]; then
   log "Waiting for the frontend rollout only"
   kubectl -n "$NAMESPACE" rollout status deployment/frontend --timeout "${READY_TIMEOUT}s"
   kubectl -n "$NAMESPACE" get pods -o wide

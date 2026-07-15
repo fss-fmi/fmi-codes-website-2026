@@ -1,0 +1,73 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: fmi-codes-backend
+  namespace: flux-system
+spec:
+  image: fssfmi/fmi-codes-backend
+  interval: 5m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: fmi-codes-frontend
+  namespace: flux-system
+spec:
+  image: fssfmi/fmi-codes-frontend
+  interval: 5m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: fmi-codes-backend
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: fmi-codes-backend
+  filterTags:
+    pattern: '^(?P<ts>[0-9]+)-[0-9a-f]+$'
+    extract: '$ts'
+  policy:
+    numerical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: fmi-codes-frontend
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: fmi-codes-frontend
+  filterTags:
+    pattern: '^(?P<ts>[0-9]+)-[0-9a-f]+$'
+    extract: '$ts'
+  policy:
+    numerical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: fmi-codes
+  namespace: flux-system
+spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fmi-codes
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: fluxcdbot
+        email: fluxcdbot@users.noreply.github.com
+      messageTemplate: |
+        deploy: bump {{range .Changed.Changes}}{{.OldValue}} -> {{.NewValue}} {{end}}
+    push:
+      branch: flux-image-updates
+  update:
+    path: ./infra/k8s/manifests
+    strategy: Setters

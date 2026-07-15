@@ -25,12 +25,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Compute image tag
+        id: tag
+        run: echo "value=$(date -u +%s)-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push backend
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
-          tags: fssfmi/fmi-codes-backend:latest
+          tags: |
+            fssfmi/fmi-codes-backend:latest
+            fssfmi/fmi-codes-backend:${{ steps.tag.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -39,6 +45,8 @@ jobs:
         with:
           context: ./frontend
           push: true
-          tags: fssfmi/fmi-codes-frontend:latest
+          tags: |
+            fssfmi/fmi-codes-frontend:latest
+            fssfmi/fmi-codes-frontend:${{ steps.tag.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
