@@ -1,0 +1,29 @@
+name: Open PR for Flux image bump
+
+on:
+  push:
+    branches:
+      - flux-image-updates
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          existing=$(gh pr list --base main --head flux-image-updates --repo "$GITHUB_REPOSITORY" --json number --jq length)
+          if [ "$existing" -eq 0 ]; then
+            commit_msg=$(gh api "repos/$GITHUB_REPOSITORY/commits/flux-image-updates" --jq '.commit.message | split("\n")[0]')
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head flux-image-updates \
+              --title "$commit_msg" \
+              --body "Automated tag bump by Flux image-automation. Review and merge to roll the updated image(s) to the cluster."
+          fi
