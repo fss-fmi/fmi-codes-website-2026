@@ -9,7 +9,7 @@ jobs:
   open-pr:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
@@ -20,10 +20,13 @@ jobs:
           existing=$(gh pr list --base main --head flux-image-updates --repo "$GITHUB_REPOSITORY" --json number --jq length)
           if [ "$existing" -eq 0 ]; then
             commit_msg=$(gh api "repos/$GITHUB_REPOSITORY/commits/flux-image-updates" --jq '.commit.message | split("\n")[0]')
-            gh pr create \
+            pr_url=$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --base main \
               --head flux-image-updates \
               --title "$commit_msg" \
-              --body "Automated tag bump by Flux image-automation. Review and merge to roll the updated image(s) to the cluster."
+              --body "Automated tag bump by Flux image-automation. Review and merge to roll the updated image(s) to the cluster.")
+          else
+            pr_url=$(gh pr list --base main --head flux-image-updates --repo "$GITHUB_REPOSITORY" --json url --jq '.[0].url')
           fi
+          gh pr merge "$pr_url" --auto --squash
