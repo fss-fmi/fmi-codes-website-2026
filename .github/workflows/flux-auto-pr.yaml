@@ -17,13 +17,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          existing=$(gh pr list --base main --head flux-image-updates --repo "$GITHUB_REPOSITORY" --json number --jq length)
-          if [ "$existing" -eq 0 ]; then
+          existing_state=$(gh pr list --base main --head flux-image-updates \
+            --repo "$GITHUB_REPOSITORY" --json number,state --jq '.[0].state // "NONE"')
+          if [ "$existing_state" = "NONE" ]; then
             commit_msg=$(gh api "repos/$GITHUB_REPOSITORY/commits/flux-image-updates" --jq '.commit.message | split("\n")[0]')
-            gh pr create \
+            pr_url=$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --base main \
               --head flux-image-updates \
               --title "$commit_msg" \
-              --body "Automated tag bump by Flux image-automation. Review and merge to roll the updated image(s) to the cluster."
+              --body "Automated tag bump by Flux image-automation. Review and merge to roll the updated image(s) to the cluster.")
+            gh pr merge "$pr_url" --auto --squash \
+              || echo "Auto-merge failed — ensure 'Allow auto-merge' is enabled in repo settings"
+          elif [ "$existing_state" = "OPEN" ]; then
+            pr_url=$(gh pr list --base main --head flux-image-updates \
+              --repo "$GITHUB_REPOSITORY" --json url --jq '.[0].url')
+            gh pr merge "$pr_url" --auto --squash \
+              || echo "Auto-merge failed — ensure 'Allow auto-merge' is enabled in repo settings"
           fi
