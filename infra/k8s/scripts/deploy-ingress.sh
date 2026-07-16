@@ -38,21 +38,6 @@ kubectl -n "$NAMESPACE" get service backend >/dev/null 2>&1 \
 kubectl -n "$NAMESPACE" get service frontend >/dev/null 2>&1 \
   || die "service 'frontend' not found — run deploy-app.sh first (Phase 3)."
 
-INGRESS_IP_PRE="$(kubectl -n "$INGRESS_NAMESPACE" get svc ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-if [ -n "$INGRESS_IP_PRE" ]; then
-  RESOLVED_IP=""
-  if command -v dig >/dev/null 2>&1; then
-    RESOLVED_IP="$(dig +short fmicodes.com A 2>/dev/null | tail -1 || true)"
-  elif command -v nslookup >/dev/null 2>&1; then
-    RESOLVED_IP="$(nslookup fmicodes.com 2>/dev/null | awk '/^Address: /{print $2}' | tail -1 || true)"
-  fi
-  if [ -n "$RESOLVED_IP" ] && [ "$RESOLVED_IP" != "$INGRESS_IP_PRE" ]; then
-    echo "Warning: fmicodes.com resolves to '$RESOLVED_IP', expected '$INGRESS_IP_PRE'." >&2
-    echo "Let's Encrypt HTTP-01 will fail until DNS points at $INGRESS_IP_PRE." >&2
-    echo "The cert will be issued automatically once DNS propagates — no re-deploy needed." >&2
-  fi
-fi
 
 HELM_DOCKER_CONFIG="$(mktemp -d)"
 printf '{}' > "$HELM_DOCKER_CONFIG/config.json"
@@ -81,16 +66,14 @@ helm upgrade --install cert-manager jetstack/cert-manager \
 log "Applying the security-headers ConfigMap, issuer, certificate, and Ingress"
 kubectl apply -f "$INGRESS_MANIFEST"
 
-log "Waiting for the TLS certificate '$CERTIFICATE_NAME' to be issued (ACME — may take several minutes)"
+log "Waiting for the TLS certificate '$CERTIFICATE_NAME' to be issued"
 if ! kubectl -n "$NAMESPACE" wait --for=condition=Ready \
     "certificate/$CERTIFICATE_NAME" --timeout "${READY_TIMEOUT}s"; then
   echo "" >&2
   echo "Certificate not ready within ${READY_TIMEOUT}s — continuing anyway." >&2
-  echo "This is normal if DNS has not yet propagated to the server." >&2
-  echo "The cert will be issued automatically once Let's Encrypt can reach the challenge endpoint." >&2
   echo "Check progress with:" >&2
   echo "  kubectl -n $NAMESPACE describe certificate $CERTIFICATE_NAME" >&2
-  echo "  kubectl -n $NAMESPACE get certificaterequest,order,challenge" >&2
+  echo "  kubectl -n $NAMESPACE get certificaterequest" >&2
 fi
 
 log "Deployed. Current state:"
@@ -109,11 +92,11 @@ Networking is up (Phase 4). The ingress terminates TLS and routes:
   /static/ -> backend:5001
   /        -> frontend:80
 
-For local testing, add the host to /etc/hosts:
-  echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
+For local testing, add the host to the Windows hosts file
+(C:\Windows\System32\drivers\etc\hosts):
+  $INGRESS_IP fmicodes.com
 
 For production, ensure the fmicodes.com A record points at $INGRESS_IP in DNS.
-Let's Encrypt will issue the cert automatically once DNS resolves.
 
 Verify against the issue's acceptance criteria (see infra/k8s/README.md 'Phase 4'):
 
