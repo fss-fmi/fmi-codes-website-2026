@@ -25,10 +25,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: fssfmi/fmi-codes-frontend:latest
-          imagePullPolicy: Always
+          image: fssfmi/fmi-codes-frontend:latest # {"$imagepolicy": "flux-system:fmi-codes-frontend"}
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 80
