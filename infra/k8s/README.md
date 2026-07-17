@@ -27,7 +27,7 @@ infra/k8s/
                    overlays/prod/     namespace fmi-codes, host fmicodes.com, Let's Encrypt issuer
                    overlays/staging/  namespace fmi-codes-staging, host staging.fmicodes.com, self-signed issuer
   helm-values/   Bitnami chart values — postgresql, redis
-  secrets/       secrets.enc.yaml (SOPS-encrypted; .sops.yaml lives at the repo root)
+  secrets/       prod secrets.enc.yaml (SOPS-encrypted; staging's lives under overlays/staging/secrets/; .sops.yaml is at the repo root)
   flux/          Flux GitOps resources — source, image automation (Phase 6)
   README.md      this file
 ```
@@ -68,9 +68,10 @@ Two caveats for when staging goes live on the shared node. The `add-headers` set
 on the single cluster-wide `ingress-nginx` controller can point at only one
 `namespace/security-headers` ConfigMap, so staging needs its own controller (own
 `ingressClassName`) rather than sharing prod's — otherwise the last deploy wins the
-header config for both. And the SOPS app secret is prod-scoped (`namespace:
-fmi-codes`); `deploy-app.sh` refuses `ENV=staging` on the SOPS path until staging
-secret isolation is in place.
+header config for both. And staging has its **own** SOPS app secret
+(`overlays/staging/secrets/secrets.enc.yaml`, namespace `fmi-codes-staging`),
+encrypted with a **separate age key** from prod — see "Staging/prod secret isolation
+(two age keys)" below.
 
 Scripts resolve their siblings via a computed `K8S_DIR` (the `infra/k8s` root), so
 they work regardless of where you invoke them from — `bash infra/k8s/scripts/init-linux.sh`
@@ -672,10 +673,78 @@ Back this file up somewhere safe (a password manager). Lose every recipient's
 private key and the committed secrets become permanently undecryptable — you'd
 have to regenerate every value from scratch.
 
+### Staging/prod secret isolation (two age keys)
+
+Staging and prod each own a **separate** app secret encrypted with a **separate**
+age key, so a leak of one environment's key never exposes the other's secrets.
+
+| | prod | staging |
+| --- | --- | --- |
+| encrypted file | `infra/k8s/secrets/secrets.enc.yaml` | `infra/k8s/overlays/staging/secrets/secrets.enc.yaml` |
+| Secret namespace | `fmi-codes` | `fmi-codes-staging` |
+| age recipient (public) | `age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh` | `age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5` |
+| operator private key | `SOPS_AGE_KEY_STAGING` (CI) / a line in `~/.config/sops/age/keys.txt` | same file, second line |
+
+`.sops.yaml` routes each file to its own recipient with two `creation_rules` (the
+staging path rule is listed first so its more-specific path matches before the prod
+rule). SOPS picks the rule by the file path being encrypted, so `sops` on either file
+automatically encrypts to the right key — no per-file flags:
+
+```yaml
+creation_rules:
+  - path_regex: infra/k8s/overlays/staging/secrets/secrets\.enc\.yaml$
+    age: age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5
+  - path_regex: infra/k8s/secrets/secrets\.enc\.yaml$
+    age: age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh
+```
+
+The isolation is enforced by age itself: the staging key is **not** a recipient of the
+prod file and vice versa, so each key decrypts exactly one environment. Verify both
+directions:
+
+```bash
+sops -d infra/k8s/overlays/staging/secrets/secrets.enc.yaml   # staging key: succeeds
+sops -d infra/k8s/secrets/secrets.enc.yaml                    # staging key alone: fails
+```
+
+**An operator who manages both environments keeps both private keys in one keyring.**
+`sops` reads every key line in `~/.config/sops/age/keys.txt`, so append the staging
+key as a second line and one file decrypts both:
+
+```bash
+cat >> ~/.config/sops/age/keys.txt <<'KEY'
+# staging
+AGE-SECRET-KEY-1... (staging private key)
+KEY
+```
+
+Or point `SOPS_AGE_KEY_FILE` at a file that holds the key(s) you need for a given run.
+
+The deploy/rotate scripts are environment-aware via `ENV`: `ENV=staging` targets the
+staging file and the `fmi-codes-staging` namespace, `ENV=prod` (default) targets prod.
+Both scripts assert the decrypted manifest's `namespace:` matches the environment they
+were asked to act on and refuse to apply across environments, so pointing the wrong
+`ENV` at a file can't silently write one environment's secret into the other's
+namespace.
+
+```bash
+ENV=staging bash infra/k8s/scripts/deploy-app.sh
+ENV=staging bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
+```
+
+The **staging private key is stored as the `SOPS_AGE_KEY_STAGING` GitHub Actions
+secret** (repo → Settings → Secrets and variables → Actions), mirroring how the prod
+key will be provided to CI. No workflow consumes it yet — staging CI image builds
+(#56) and staging Flux reconciliation (#57) wire it in later; storing it now keeps the
+key material out of the repo and ready for those phases. `bootstrap.sh` remains
+prod-only (it hardcodes the prod recipient); staging bootstrap support is tracked in
+#59.
+
 ### Editing a secret
 
 ```bash
-sops infra/k8s/secrets/secrets.enc.yaml
+sops infra/k8s/secrets/secrets.enc.yaml                       # prod
+sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml      # staging
 ```
 
 This decrypts into your `$EDITOR`, you edit plaintext, and on save SOPS
@@ -757,6 +826,17 @@ git add .sops.yaml infra/k8s/secrets/secrets.enc.yaml && git commit -m "offboard
 grep -E 'SECRET_KEY|JWT_SECRET_KEY|ADMIN_PASSWORD_HASH' infra/k8s/secrets/secrets.enc.yaml
 # every hit is ENC[…]; no readable value
 ```
+
+**Staging and prod keys are isolated (#54)** — each key decrypts only its own
+environment's file:
+
+```bash
+sops -d infra/k8s/overlays/staging/secrets/secrets.enc.yaml   # only the staging key succeeds
+sops -d infra/k8s/secrets/secrets.enc.yaml                    # only the prod key succeeds
+```
+
+With only the prod key in your keyring the first command fails; with only the staging
+key the second fails. That mutual failure is the isolation guarantee.
 
 **Backend starts reading config exclusively from ConfigMap/Secret** — the pod has
 no `.env`, and the readiness probe proves it reached Postgres/Redis on env alone:
