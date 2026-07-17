@@ -69,5 +69,5 @@ spec:
     push:
       branch: flux-image-updates
   update:
-    path: ./infra/k8s/manifests
+    path: ./infra/k8s/overlays/prod
     strategy: Setters

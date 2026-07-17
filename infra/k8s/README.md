@@ -20,12 +20,57 @@ Windows" means *inside WSL2*, not native Windows.
 ```
 infra/k8s/
   scripts/       all the executable bash — init-linux, init-windows, deploy, config, rotate, bootstrap, install, flux-bootstrap
-  manifests/     kubectl-applied YAML — namespace, backend, frontend, ingress, kustomization (Flux image override)
+  base/          environment-agnostic manifests, split into two Kustomize builds:
+                   base/app/     namespace, backend, frontend
+                   base/ingress/ security-headers, certificate, ingress
+  overlays/      per-environment Kustomize overlays layered on base:
+                   overlays/prod/     namespace fmi-codes, host fmicodes.com, Let's Encrypt issuer
+                   overlays/staging/  namespace fmi-codes-staging, host staging.fmicodes.com, self-signed issuer
   helm-values/   Bitnami chart values — postgresql, redis
   secrets/       secrets.enc.yaml (SOPS-encrypted; .sops.yaml lives at the repo root)
   flux/          Flux GitOps resources — source, image automation (Phase 6)
   README.md      this file
 ```
+
+### Environments (staging / prod)
+
+Both environments run on the same k3s node, isolated at the namespace level, and are
+built from one shared `base/` via Kustomize overlays. An overlay is selected with
+`ENV=prod` (default) or `ENV=staging` on the deploy scripts, or by the Kustomize path
+Flux reconciles.
+
+| | prod | staging |
+| --- | --- | --- |
+| namespace | `fmi-codes` | `fmi-codes-staging` |
+| host / origin | `fmicodes.com` | `staging.fmicodes.com` |
+| DB/Redis service FQDNs | `*.fmi-codes.svc` | `*.fmi-codes-staging.svc` |
+| TLS issuer | Let's Encrypt `ClusterIssuer` | self-signed namespaced `Issuer` |
+| image tags | `<ts>-<sha>` (Flux-bumped) | `staging-<...>` |
+
+Everything else — replicas, resource limits, probes, security context, feature-flag
+defaults, `FLASK_ENV`, security headers — is identical across the two, by design:
+staging exists to catch problems before they reach prod, so it must mirror prod. The
+prod overlay renders byte-identical to the pre-overlay flat manifests; verify with:
+
+```bash
+kubectl kustomize infra/k8s/overlays/prod
+kubectl kustomize infra/k8s/overlays/prod/ingress
+kubectl kustomize infra/k8s/overlays/staging
+kubectl kustomize infra/k8s/overlays/staging/ingress
+```
+
+Staging uses a self-signed certificate deliberately — it avoids spending the Let's
+Encrypt issuance budget on a throwaway environment, at the cost of a browser trust
+warning. Flux reconciliation of the staging overlay is wired up in a later phase; the
+overlay renders valid manifests now but is not yet reconciled automatically.
+
+Two caveats for when staging goes live on the shared node. The `add-headers` setting
+on the single cluster-wide `ingress-nginx` controller can point at only one
+`namespace/security-headers` ConfigMap, so staging needs its own controller (own
+`ingressClassName`) rather than sharing prod's — otherwise the last deploy wins the
+header config for both. And the SOPS app secret is prod-scoped (`namespace:
+fmi-codes`); `deploy-app.sh` refuses `ENV=staging` on the SOPS path until staging
+secret isolation is in place.
 
 Scripts resolve their siblings via a computed `K8S_DIR` (the `infra/k8s` root), so
 they work regardless of where you invoke them from — `bash infra/k8s/scripts/init-linux.sh`
@@ -60,15 +105,17 @@ Redis/DB coordinates) and roll the backend so pods pick it up:
 ```bash
 bash infra/k8s/scripts/apply-config.sh FRONTEND_ORIGIN https://fmicodes.com
 bash infra/k8s/scripts/apply-config.sh REGISTRATION_OPEN true
-bash infra/k8s/scripts/apply-config.sh          # re-apply manifests from disk, then roll
+bash infra/k8s/scripts/apply-config.sh          # re-apply the overlay from disk, then roll
 ```
 
 It patches the `fmi-codes-backend-config` ConfigMap and restarts the backend.
 **Secrets are refused** here — the script points you at `rotate-secret.sh` (app
 secrets) or `deploy-stateful.sh` (PVC-coupled DB/Redis passwords) instead. A live
-patch drifts from git, so also edit `manifests/backend.yaml` and commit it to keep
-the source of truth in sync (the script reminds you). Pass `RESTART=false` to skip
-the rollout when batching changes.
+patch drifts from git, so also edit the source of truth and commit it (the script
+reminds you): env-specific keys (`FRONTEND_ORIGIN`, `DB_HOST`, `REDIS_SENTINELS`)
+live in `overlays/<env>/backend-config-patch.yaml`; all other keys live in
+`base/app/backend.yaml`. Pass `RESTART=false` to skip the rollout when batching
+changes, or `ENV=staging` to target the staging namespace.
 
 ## Phase 1 — local cluster (#26)
 
@@ -77,7 +124,7 @@ Two scripts, run inside a Linux (or **WSL2 Ubuntu**) shell:
 | Script | What it does |
 | --- | --- |
 | `scripts/install-tools.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s`, `sops`, `age`, `flux` — each pinned to a specific version and checksum-verified. The "npm install" of this workflow. |
-| `scripts/bootstrap-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `manifests/namespace.yaml`. |
+| `scripts/bootstrap-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `base/app/namespace.yaml`. |
 
 ```bash
 # 1. Get the tooling (one-shot, idempotent)
@@ -89,7 +136,7 @@ bash infra/k8s/scripts/bootstrap-k3s.sh
 
 Re-running either is safe — every step is idempotent. Override the namespace
 with `NAMESPACE=my-ns bash infra/k8s/scripts/bootstrap-k3s.sh` if needed (that path
-labels an on-the-fly namespace instead of applying `manifests/namespace.yaml`). Tool and
+labels an on-the-fly namespace instead of applying `base/app/namespace.yaml`). Tool and
 cluster versions are pinned via `*_VERSION` env vars at the top of each script —
 override them to upgrade (e.g. `K3S_VERSION=v1.37.0+k3s1 bash …`).
 
@@ -739,9 +786,9 @@ cluster to match. Nothing inbound is ever needed.
 
 | File | What it is |
 | --- | --- |
-| `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + `Kustomization` reconciling `manifests/` into the cluster. |
+| `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + `Kustomization` reconciling `overlays/prod/` (app) and `overlays/prod/ingress/` into the cluster. |
 | `flux/image-automation.yaml` | `ImageRepository`/`ImagePolicy` ×2 (watch the two Docker Hub repos, pick the newest tag) + `ImageUpdateAutomation` (commits tag bumps to the `flux-image-updates` branch). |
-| `manifests/kustomization.yaml` | Kustomize `images:` override Flux edits — keeps the tag out of the Deployment manifests. |
+| `overlays/prod/kustomization.yaml` | Kustomize `images:` override Flux edits — keeps the tag out of the Deployment manifests. |
 | `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources, reconcile. |
 
 ### The deploy loop
@@ -750,7 +797,7 @@ cluster to match. Nothing inbound is ever needed.
 merge backend change to main
   → docker-cd.yaml builds & pushes fssfmi/fmi-codes-backend:<unix-ts>-<sha>
   → Flux ImagePolicy sees the newer tag (sorted numerically on the timestamp)
-  → Flux commits the bump to manifests/kustomization.yaml on branch flux-image-updates
+  → Flux commits the bump to overlays/prod/kustomization.yaml on branch flux-image-updates
   → you review & merge that branch into main
   → Flux reconciles main and rolls ONLY the backend Deployment (frontend untouched)
 ```
@@ -767,8 +814,8 @@ Deployments**. `deploy-app.sh` still owns the SOPS app secret and first-time
 bootstrap, but it detects the Flux `Kustomization` and **skips re-applying the
 Deployments** when Flux is active — no tug-of-war over the image tag. The
 stateful tier (Postgres/Redis via Helm) and ingress stay owned by their
-respective `deploy-*.sh` scripts; Flux only reconciles `manifests/` (backend +
-frontend), so `prune: true` can never touch them.
+respective `deploy-*.sh` scripts; Flux only reconciles `overlays/prod/` (backend +
+frontend, plus the ingress build it depends on), so `prune: true` can never touch them.
 
 ### One-time setup — SSH deploy key
 
@@ -847,13 +894,17 @@ flux uninstall --namespace flux-system --silent
 
 # Remove the Phase 4 networking tier (Ingress, cert, issuer, headers ConfigMap,
 # then the two controllers and their namespaces):
-kubectl -n fmi-codes delete -f manifests/ingress.yaml
+kubectl delete -k overlays/prod/ingress
 helm -n ingress-nginx uninstall ingress-nginx
 helm -n cert-manager uninstall cert-manager
 kubectl delete namespace ingress-nginx cert-manager
 
-# Remove the Phase 3 app tier (stateless — nothing to preserve):
-kubectl -n fmi-codes delete -f manifests/frontend.yaml -f manifests/backend.yaml
+# Remove the Phase 3 app tier (stateless — nothing to preserve). Delete the
+# workloads by label rather than `-k overlays/prod`, since that overlay includes
+# the namespace and would cascade-delete the Phase 2 stateful tier with it:
+kubectl -n fmi-codes delete deployment,service -l app.kubernetes.io/name=fmi-codes-backend
+kubectl -n fmi-codes delete deployment,service -l app.kubernetes.io/name=fmi-codes-frontend
+kubectl -n fmi-codes delete configmap fmi-codes-backend-config
 kubectl -n fmi-codes delete secret fmi-codes-app
 
 # Remove just the Phase 2 stateful releases (keeps the cluster):

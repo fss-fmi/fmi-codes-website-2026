@@ -16,25 +16,6 @@ data:
   Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"
 ---
 apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: fmi-codes-letsencrypt
-  labels:
-    app.kubernetes.io/name: fmi-codes-ingress
-    app.kubernetes.io/part-of: fmi-codes-website-2026
-    app.kubernetes.io/managed-by: flux
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: fss.fmi.uni.sofia@gmail.com
-    privateKeySecretRef:
-      name: fmi-codes-letsencrypt-account-key
-    solvers:
-      - http01:
-          ingress:
-            ingressClassName: nginx
----
-apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: fmi-codes-tls
