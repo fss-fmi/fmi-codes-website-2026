@@ -2,7 +2,12 @@
 
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-fmi-codes}"
+ENV="${ENV:-prod}"
+case "$ENV" in
+  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; POSTGRES_VALUES_REL="helm-values/postgresql-values.yaml"; REDIS_VALUES_REL="helm-values/redis-values.yaml" ;;
+  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; POSTGRES_VALUES_REL="overlays/staging/postgresql-values.yaml"; REDIS_VALUES_REL="overlays/staging/redis-values.yaml" ;;
+  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+esac
 BITNAMI_REPO="${BITNAMI_REPO:-https://charts.bitnami.com/bitnami}"
 POSTGRES_CHART_VERSION="${POSTGRES_CHART_VERSION:-15.5.38}"
 REDIS_CHART_VERSION="${REDIS_CHART_VERSION:-20.13.4}"
@@ -17,8 +22,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$K8S_DIR/../.." && pwd)"
 SCHEMA_SQL="${SCHEMA_SQL:-$REPO_ROOT/backend/database/schema.sql}"
-POSTGRES_VALUES="$K8S_DIR/helm-values/postgresql-values.yaml"
-REDIS_VALUES="$K8S_DIR/helm-values/redis-values.yaml"
+POSTGRES_VALUES="${POSTGRES_VALUES:-$K8S_DIR/$POSTGRES_VALUES_REL}"
+REDIS_VALUES="${REDIS_VALUES:-$K8S_DIR/$REDIS_VALUES_REL}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -28,6 +33,13 @@ command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.
 [ -f "$SCHEMA_SQL" ]     || die "schema not found at $SCHEMA_SQL"
 [ -f "$POSTGRES_VALUES" ] || die "missing $POSTGRES_VALUES"
 [ -f "$REDIS_VALUES" ]    || die "missing $REDIS_VALUES"
+
+DB_NAME="$(grep -E '^[[:space:]]+database:' "$POSTGRES_VALUES" | head -1 | awk '{print $2}')"
+DB_USER="$(grep -E '^[[:space:]]+username:' "$POSTGRES_VALUES" | head -1 | awk '{print $2}')"
+REDIS_MASTER_SET="$(grep -E '^[[:space:]]+masterSet:' "$REDIS_VALUES" | head -1 | awk '{print $2}')"
+[ -n "$DB_NAME" ]          || die "could not read auth.database from $POSTGRES_VALUES"
+[ -n "$DB_USER" ]          || die "could not read auth.username from $POSTGRES_VALUES"
+[ -n "$REDIS_MASTER_SET" ] || die "could not read sentinel.masterSet from $REDIS_VALUES"
 
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
@@ -98,17 +110,17 @@ kubectl -n "$NAMESPACE" get svc
 
 cat <<EOF
 
-Stateful tier is up. Connection coordinates for the app tier (Phase 3):
+Stateful tier ($ENV) is up. Connection coordinates for the app tier (Phase 3):
   Postgres : postgres.$NAMESPACE.svc.cluster.local:5432
-             DB=fmi_hackathon_2026 USER=fmi_app
+             DB=$DB_NAME USER=$DB_USER
              password  -> secret/$DB_SECRET key 'password'
-  Redis    : sentinel  redis.$NAMESPACE.svc.cluster.local:26379  (master set 'mymaster')
+  Redis    : sentinel  redis.$NAMESPACE.svc.cluster.local:26379  (master set '$REDIS_MASTER_SET')
              password  -> secret/$REDIS_SECRET key 'redis-password'
              app env: REDIS_SENTINELS=redis.$NAMESPACE.svc.cluster.local:26379
-                      REDIS_MASTER_NAME=mymaster
+                      REDIS_MASTER_NAME=$REDIS_MASTER_SET
 
 Verify (see infra/k8s/README.md 'Phase 2' for the full checklist):
   kubectl -n $NAMESPACE get pods
   kubectl -n $NAMESPACE exec -it redis-node-0 -c sentinel -- \\
-    redis-cli -p 26379 sentinel master mymaster
+    redis-cli -p 26379 sentinel master $REDIS_MASTER_SET
 EOF

@@ -234,14 +234,25 @@ cluster as managed stateful workloads, using the upstream Bitnami Helm charts.
 
 | File | What it is |
 | --- | --- |
-| `postgresql-values.yaml` | Bitnami `postgresql` chart values — single primary, PVC-backed, DB `fmi_hackathon_2026`, user `fmi_app`, schema loaded from a ConfigMap. |
-| `redis-values.yaml` | Bitnami `redis` chart values — `sentinel.enabled`, 1 master + 2 replicas + 3 sentinels, master set `mymaster`, quorum 2. Mirrors the docker-compose topology from #23. |
-| `deploy-stateful.sh` | Idempotent deploy: creates the DB/Redis Secrets (once), syncs `schema.sql` into a ConfigMap, adds the Bitnami repo, and `helm upgrade --install`s both charts into `fmi-codes`. |
+| `helm-values/postgresql-values.yaml` | Prod Bitnami `postgresql` chart values — single primary, PVC-backed, DB `fmi_hackathon_2026`, user `fmi_app`, schema loaded from a ConfigMap. |
+| `helm-values/redis-values.yaml` | Prod Bitnami `redis` chart values — `sentinel.enabled`, 1 master + 3 replicas + sentinels, master set `mymaster`, quorum 2. Mirrors the docker-compose topology from #23. |
+| `overlays/staging/postgresql-values.yaml` | Staging Postgres values — identical to prod except DB `fmi_hackathon_2026_staging`. Same `fullnameOverride: postgres`, so the service FQDN differs only by namespace (`postgres.fmi-codes-staging.svc`). |
+| `overlays/staging/redis-values.yaml` | Staging Redis values — identical to prod (same topology, `fullnameOverride: redis`, master set `mymaster`). Namespace isolation separates it from prod. |
+| `deploy-stateful.sh` | Idempotent deploy: creates the DB/Redis Secrets (once), syncs `schema.sql` into a ConfigMap, adds the Bitnami repo, and `helm upgrade --install`s both charts. `ENV=prod` (default) targets `fmi-codes` with the `helm-values/*.yaml`; `ENV=staging` targets `fmi-codes-staging` with the `overlays/staging/*.yaml`. |
 
 ```bash
 # Cluster must already be up (Phase 1). Then:
-bash infra/k8s/scripts/deploy-stateful.sh
+bash infra/k8s/scripts/deploy-stateful.sh              # prod (fmi-codes)
+ENV=staging bash infra/k8s/scripts/deploy-stateful.sh  # staging (fmi-codes-staging)
 ```
+
+Staging gets its own Postgres and Redis so schema migrations, data wipes, and config
+experiments never touch the prod database. Both environments run the same topology and
+share `schema.sql`; the only functional difference is the staging DB name
+(`fmi_hackathon_2026_staging`). Because staging deploys into a separate namespace, its
+PVCs, services, and in-cluster secrets are already isolated from prod — the release
+names (`postgres`, `redis`) and master set (`mymaster`) stay the same, matching the
+service FQDNs the staging app tier already expects (`overlays/staging/backend-config-patch.yaml`).
 
 **Secrets are generated in-cluster, never committed.** On first run the script
 creates two `Secret`s with random 32-char passwords — `fmi-codes-db`
