@@ -97,5 +97,6 @@ DESIGN.md
 # SOPS/age private keys — NEVER commit (recipients' public keys live in .sops.yaml)
 *.agekey
 keys.txt
+keys-*.txt
 age-key*.txt
 sops-age-key*.txt

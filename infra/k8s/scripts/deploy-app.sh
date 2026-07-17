@@ -4,8 +4,8 @@ set -euo pipefail
 
 ENV="${ENV:-prod}"
 case "$ENV" in
-  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes}" ;;
-  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes-staging}" ;;
+  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes}"; SECRETS_REL="secrets/secrets.enc.yaml" ;;
+  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes-staging}"; SECRETS_REL="overlays/staging/secrets/secrets.enc.yaml" ;;
   *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
 esac
 APP_SECRET="${APP_SECRET:-fmi-codes-app}"
@@ -16,7 +16,7 @@ READY_TIMEOUT="${READY_TIMEOUT:-300}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_OVERLAY="$K8S_DIR/overlays/$ENV"
-SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/secrets/secrets.enc.yaml}"
+SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -46,7 +46,9 @@ sops_can_decrypt() {
 }
 
 if sops_can_decrypt; then
-  [ "$ENV" = "prod" ] || die "the SOPS secret $SECRETS_ENC is prod-scoped (namespace fmi-codes); staging secret isolation is not wired yet. Re-run with ENV=prod, or provide staging secrets out-of-band."
+  secret_ns="$(sops --decrypt "$SECRETS_ENC" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
+  [ "$secret_ns" = "$NAMESPACE" ] \
+    || die "$SECRETS_ENC targets namespace '${secret_ns:-<none>}' but ENV=$ENV expects '$NAMESPACE' — refusing to apply a secret across environments."
   log "Applying app secret '$APP_SECRET' from $SECRETS_ENC (SOPS-managed)"
   sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
 elif [ -f "$SECRETS_ENC" ]; then
