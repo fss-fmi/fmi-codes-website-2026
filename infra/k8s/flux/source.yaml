@@ -23,7 +23,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fmi-codes
-  path: ./infra/k8s/manifests
+  path: ./infra/k8s/overlays/prod
   prune: true
   wait: true
   dependsOn:
@@ -41,6 +41,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fmi-codes
-  path: ./infra/k8s/manifests/ingress
+  path: ./infra/k8s/overlays/prod/ingress
   prune: true
   wait: true

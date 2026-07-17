@@ -2,14 +2,18 @@
 
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-fmi-codes}"
+ENV="${ENV:-prod}"
+case "$ENV" in
+  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}" ;;
+  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}" ;;
+  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+esac
 CONFIGMAP="${CONFIGMAP:-fmi-codes-backend-config}"
 RESTART="${RESTART:-true}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BACKEND_MANIFEST="${BACKEND_MANIFEST:-$K8S_DIR/manifests/backend.yaml}"
-FRONTEND_MANIFEST="${FRONTEND_MANIFEST:-$K8S_DIR/manifests/frontend.yaml}"
+APP_OVERLAY="${APP_OVERLAY:-$K8S_DIR/overlays/$ENV}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -24,7 +28,7 @@ Apply a non-secret backend config change and roll the backend so pods pick it up
 
   With KEY VALUE : patch that one key in the '$CONFIGMAP' ConfigMap, then
                    restart the backend. Only non-secret keys are allowed.
-  No arguments   : re-apply backend.yaml and frontend.yaml from disk (the git
+  No arguments   : re-apply the overlay for ENV ($ENV) from disk (the git
                    source of truth) and restart the backend.
 
 Secrets do NOT belong here. To rotate SECRET_KEY / JWT_SECRET_KEY /
@@ -32,7 +36,8 @@ ADMIN_PASSWORD_HASH / MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL use:
     bash $SCRIPT_DIR/rotate-secret.sh <KEY> [VALUE]
 DB / Redis passwords are PVC-coupled and managed by deploy-stateful.sh.
 
-Env overrides: NAMESPACE ($NAMESPACE), CONFIGMAP ($CONFIGMAP),
+Env overrides: ENV (prod|staging — selects the overlay and namespace),
+NAMESPACE ($NAMESPACE), CONFIGMAP ($CONFIGMAP),
 RESTART (true|false — skip the rollout restart when false).
 
 Examples:
@@ -62,10 +67,9 @@ restart_backend() {
 }
 
 if [ $# -eq 0 ]; then
-  [ -f "$BACKEND_MANIFEST" ]  || die "missing $BACKEND_MANIFEST"
-  [ -f "$FRONTEND_MANIFEST" ] || die "missing $FRONTEND_MANIFEST"
-  log "Re-applying manifests from disk"
-  kubectl apply -f "$BACKEND_MANIFEST" -f "$FRONTEND_MANIFEST"
+  [ -f "$APP_OVERLAY/kustomization.yaml" ] || die "missing $APP_OVERLAY/kustomization.yaml"
+  log "Re-applying manifests from disk (overlay: $ENV)"
+  kubectl apply -k "$APP_OVERLAY"
   restart_backend
   log "Done. The manifests on disk are now applied to the cluster."
   exit 0
@@ -94,5 +98,7 @@ kubectl -n "$NAMESPACE" patch configmap "$CONFIGMAP" \
 
 restart_backend
 
-log "Done. Live ConfigMap updated. Also edit '$BACKEND_MANIFEST' and commit it so"
-echo "the git source of truth matches the cluster (a re-apply from disk would otherwise revert this)."
+log "Done. Live ConfigMap updated. Also edit the git source of truth so a re-apply"
+echo "from disk won't revert this: env-specific keys (FRONTEND_ORIGIN, DB_HOST,"
+echo "REDIS_SENTINELS) live in overlays/$ENV/backend-config-patch.yaml; all other keys"
+echo "live in base/app/backend.yaml. Commit the edit."

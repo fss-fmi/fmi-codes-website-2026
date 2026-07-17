@@ -2,7 +2,12 @@
 
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-fmi-codes}"
+ENV="${ENV:-prod}"
+case "$ENV" in
+  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes}" ;;
+  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes-staging}" ;;
+  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+esac
 APP_SECRET="${APP_SECRET:-fmi-codes-app}"
 DB_SECRET="${DB_SECRET:-fmi-codes-db}"
 REDIS_SECRET="${REDIS_SECRET:-fmi-codes-redis}"
@@ -10,16 +15,14 @@ READY_TIMEOUT="${READY_TIMEOUT:-300}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BACKEND_MANIFEST="$K8S_DIR/manifests/backend.yaml"
-FRONTEND_MANIFEST="$K8S_DIR/manifests/frontend.yaml"
+APP_OVERLAY="$K8S_DIR/overlays/$ENV"
 SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/secrets/secrets.enc.yaml}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
 
 command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
-[ -f "$BACKEND_MANIFEST" ]  || die "missing $BACKEND_MANIFEST"
-[ -f "$FRONTEND_MANIFEST" ] || die "missing $FRONTEND_MANIFEST"
+[ -f "$APP_OVERLAY/kustomization.yaml" ] || die "missing $APP_OVERLAY/kustomization.yaml"
 
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
@@ -43,6 +46,7 @@ sops_can_decrypt() {
 }
 
 if sops_can_decrypt; then
+  [ "$ENV" = "prod" ] || die "the SOPS secret $SECRETS_ENC is prod-scoped (namespace fmi-codes); staging secret isolation is not wired yet. Re-run with ENV=prod, or provide staging secrets out-of-band."
   log "Applying app secret '$APP_SECRET' from $SECRETS_ENC (SOPS-managed)"
   sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
 elif [ -f "$SECRETS_ENC" ]; then
@@ -71,7 +75,7 @@ else
 fi
 
 flux_owns_app() {
-  kubectl get kustomizations.kustomize.toolkit.fluxcd.io fmi-codes -n flux-system >/dev/null 2>&1
+  kubectl get kustomizations.kustomize.toolkit.fluxcd.io "$FLUX_KUSTOMIZATION" -n flux-system >/dev/null 2>&1
 }
 
 admin_hash="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \
@@ -88,13 +92,13 @@ if flux_owns_app; then
   log "Flux is active — it owns the backend/frontend Deployments"
   echo "Applied the app secret only. Flux reconciles the Deployments from git; it"
   echo "will pick up the secret change on its next reconcile, or force it now with:"
-  echo "  flux reconcile kustomization fmi-codes -n flux-system"
+  echo "  flux reconcile kustomization $FLUX_KUSTOMIZATION -n flux-system"
   echo "  kubectl -n $NAMESPACE rollout restart deployment/backend"
   exit 0
 fi
 
 log "Applying backend and frontend manifests"
-kubectl apply -n "$NAMESPACE" -f "$BACKEND_MANIFEST" -f "$FRONTEND_MANIFEST"
+kubectl apply -k "$APP_OVERLAY"
 
 if [ -z "$admin_hash" ]; then
   log "Waiting for the frontend rollout only"
