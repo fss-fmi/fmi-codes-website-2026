@@ -897,7 +897,7 @@ The model is **continuous-deploy-to-staging, manual-promote-to-prod**, off a sin
 | `flux/image-automation.yaml` | `ImageRepository` ×2 (watch the two Docker Hub repos) + `ImagePolicy` ×2 (`*-staging`, pick the newest `<ts>-<sha>` tag) + `ImageUpdateAutomation` (commits tag bumps to `overlays/staging/` on the `flux-image-updates` branch). Prod has **no** ImagePolicy — its tag only ever changes via the promote workflow. |
 | `overlays/staging/kustomization.yaml` | Kustomize `images:` override Flux edits (carries the `$imagepolicy` setter markers). |
 | `overlays/prod/kustomization.yaml` | Kustomize `images:` override — **no** setter markers, so Flux never auto-edits it. The promote workflow writes the tag here. |
-| `.github/workflows/promote-to-prod.yaml` | `workflow_dispatch` — reads the live staging tag (or an explicit input), writes it into the prod overlay, opens a PR to `main`. Does **not** auto-merge. |
+| `.github/workflows/promote-to-prod.yaml` | `workflow_dispatch` — reads the live staging tags per service (or explicit per-service inputs), writes them into the prod overlay, opens a PR to `main`. Does **not** auto-merge. |
 | `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources, reconcile. |
 
 ### The deploy loop
