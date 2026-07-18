@@ -3,7 +3,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NAMESPACE="${NAMESPACE:-fmi-codes}"
+ENV="${ENV:-staging}"
+case "$ENV" in
+  prod)    HOST="${HOST:-fmicodes.com}" ;;
+  staging) HOST="${HOST:-staging.fmicodes.com}" ;;
+  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+esac
 
 log() { printf '\n\033[1;36m### %s\033[0m\n' "$1"; }
 
@@ -20,24 +25,31 @@ INGRESS_IP="$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-node-ip>"
 
+if [ "$ENV" = "prod" ]; then
+  DNS_NOTE="Note: adding $HOST to your hosts file overrides public DNS on this machine.
+Remove this line when you want your browser to reach the production server instead."
+else
+  DNS_NOTE="Note: this maps $HOST only on this machine, for reaching the staging
+cluster in WSL2. Remove the line when you no longer need it."
+fi
+
 cat <<EOF
 
 $(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
 
-The cluster runs inside WSL2. A Windows browser cannot resolve fmicodes.com
+The cluster runs inside WSL2. A Windows browser cannot resolve $HOST
 unless the name is in the WINDOWS hosts file — editing WSL's /etc/hosts does not
 help the Windows side. Open an elevated (Administrator) editor on Windows and add
 this line to C:\\Windows\\System32\\drivers\\etc\\hosts:
 
-  $INGRESS_IP fmicodes.com
+  $INGRESS_IP $HOST
 
 From PowerShell as Administrator you can append it in one line:
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "$INGRESS_IP fmicodes.com"
+  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "$INGRESS_IP $HOST"
 
-Then browse to https://fmicodes.com
+Then browse to https://$HOST
 
-Note: adding fmicodes.com to your hosts file overrides public DNS on this machine.
-Remove this line when you want your browser to reach the production server instead.
+$DNS_NOTE
 
 Caveat: the WSL node IP above changes across 'wsl --shutdown' / reboot unless
 mirrored networking is enabled. After a restart, re-check it and update the hosts

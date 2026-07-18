@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ENV="${ENV:-prod}"
+ENV="${ENV:-staging}"
 case "$ENV" in
   prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes}"; SECRETS_REL="secrets/secrets.enc.yaml" ;;
   staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-fmi-codes-staging}"; SECRETS_REL="overlays/staging/secrets/secrets.enc.yaml" ;;

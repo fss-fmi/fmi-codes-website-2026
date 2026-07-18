@@ -2,6 +2,12 @@
 
 set -euo pipefail
 
+ENV="${ENV:-staging}"
+case "$ENV" in
+  prod)    APP_NAMESPACE="fmi-codes"; FLUX_RESOURCE="fmi-codes" ;;
+  staging) APP_NAMESPACE="fmi-codes-staging"; FLUX_RESOURCE="fmi-codes-staging" ;;
+  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+esac
 FLUX_NAMESPACE="${FLUX_NAMESPACE:-flux-system}"
 GIT_URL="${GIT_URL:-ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git}"
 GIT_REF="${GIT_REF:-main}"
@@ -44,15 +50,15 @@ kubectl apply -f "$FLUX_DIR/image-automation.yaml"
 
 if [ "$GIT_REF" != "main" ]; then
   log "Overriding tracked branch to '$GIT_REF' (committed default is 'main')"
-  kubectl -n "$FLUX_NAMESPACE" patch gitrepository fmi-codes \
+  kubectl -n "$FLUX_NAMESPACE" patch gitrepository "$FLUX_RESOURCE" \
     --type merge -p "{\"spec\":{\"ref\":{\"branch\":\"$GIT_REF\"}}}"
-  kubectl -n "$FLUX_NAMESPACE" patch imageupdateautomation fmi-codes \
+  kubectl -n "$FLUX_NAMESPACE" patch imageupdateautomation "$FLUX_RESOURCE" \
     --type merge -p "{\"spec\":{\"git\":{\"checkout\":{\"ref\":{\"branch\":\"$GIT_REF\"}},\"push\":{\"branch\":\"$GIT_REF\"}}}}"
 fi
 
 log "Waiting for the git source and kustomization to reconcile"
-flux reconcile source git fmi-codes --namespace "$FLUX_NAMESPACE" || true
-flux reconcile kustomization fmi-codes --namespace "$FLUX_NAMESPACE" --timeout 5m || true
+flux reconcile source git "$FLUX_RESOURCE" --namespace "$FLUX_NAMESPACE" || true
+flux reconcile kustomization "$FLUX_RESOURCE" --namespace "$FLUX_NAMESPACE" --timeout 5m || true
 
 log "Current Flux state:"
 flux get sources git --namespace "$FLUX_NAMESPACE"
@@ -64,12 +70,12 @@ cat <<EOF
 GitOps is live. From now on, a merge to main that changes backend or frontend:
   1. docker-cd.yaml builds & pushes an immutable <unix-ts>-<sha> image tag.
   2. Flux detects the newer tag and opens a commit on the 'flux-image-updates'
-     branch bumping the tag in infra/k8s/manifests/kustomization.yaml.
+     branch bumping the tag in infra/k8s/overlays/$ENV/kustomization.yaml.
   3. You review/merge that branch into main.
   4. Flux reconciles main and rolls ONLY the changed Deployment.
 
 Watch it:
   flux get images all --namespace $FLUX_NAMESPACE
   flux get kustomizations --namespace $FLUX_NAMESPACE
-  kubectl -n fmi-codes get pods -w
+  kubectl -n $APP_NAMESPACE get pods -w
 EOF
