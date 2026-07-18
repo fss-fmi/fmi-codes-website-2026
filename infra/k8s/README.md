@@ -45,7 +45,13 @@ Flux reconciles.
 | host / origin | `fmicodes.com` | `staging.fmicodes.com` |
 | DB/Redis service FQDNs | `*.fmi-codes.svc` | `*.fmi-codes-staging.svc` |
 | TLS issuer | Let's Encrypt `ClusterIssuer` | self-signed namespaced `Issuer` |
-| image tags | `<ts>-<sha>` (Flux-bumped) | `staging-<...>` |
+| image tags | `<ts>-<sha>` (promoted from staging) | `<ts>-<sha>` (Flux-bumped) |
+
+Both environments use one image-tag scheme: `<ts>-<sha>`, where `<ts>` is a Unix epoch
+and `<sha>` the short commit hash, produced by `docker-cd.yaml` on every push to `main`
+(plus a moving `latest`). There is no `staging` branch and no separate staging tag —
+staging simply tracks the newest tag automatically, and prod runs whatever tag was last
+promoted from staging. See "Phase 6 — GitOps continuous deploy" below for the full flow.
 
 Everything else — replicas, resource limits, probes, security context, feature-flag
 defaults, `FLASK_ENV`, security headers — is identical across the two, by design:
@@ -869,17 +875,29 @@ bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
 ## Phase 6 — GitOps continuous deploy (#30)
 
 Merging a backend/frontend change should redeploy the running pods with no manual
-step. The cluster lives on a local server (WSL2 or a Linux box) that GitHub's
-cloud runners **cannot reach**, so a push-based CI deploy is impossible. Instead
+step **in staging**, while production stays behind a deliberate human gate. The
+cluster lives on a local server (WSL2 or a Linux box) that GitHub's cloud runners
+**cannot reach**, so a push-based CI deploy is impossible. Instead
 [Flux](https://fluxcd.io/) runs *inside* the cluster and **pulls** — it watches
 the registry for new images and git for manifest changes, and reconciles the
 cluster to match. Nothing inbound is ever needed.
 
+The model is **continuous-deploy-to-staging, manual-promote-to-prod**, off a single
+`main` branch (no `staging` branch exists):
+
+- Push to `main` → images build → Flux auto-bumps the **staging** overlay → staging
+  redeploys. Every merge lands in staging automatically.
+- A dev promotes to **prod** by running the `promote-to-prod` workflow once staging is
+  vetted. It copies the tag currently live in staging into the prod overlay and opens a
+  PR — merging that PR is the production gate.
+
 | File | What it is |
 | --- | --- |
-| `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + `Kustomization` reconciling `overlays/prod/` (app) and `overlays/prod/ingress/` into the cluster. |
-| `flux/image-automation.yaml` | `ImageRepository`/`ImagePolicy` ×2 (watch the two Docker Hub repos, pick the newest tag) + `ImageUpdateAutomation` (commits tag bumps to the `flux-image-updates` branch). |
-| `overlays/prod/kustomization.yaml` | Kustomize `images:` override Flux edits — keeps the tag out of the Deployment manifests. |
+| `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + four `Kustomization`s: `fmi-codes` / `fmi-codes-ingress` reconcile `overlays/prod/`, and `fmi-codes-staging` / `fmi-codes-staging-ingress` reconcile `overlays/staging/`. |
+| `flux/image-automation.yaml` | `ImageRepository` ×2 (watch the two Docker Hub repos) + `ImagePolicy` ×2 (`*-staging`, pick the newest `<ts>-<sha>` tag) + `ImageUpdateAutomation` (commits tag bumps to `overlays/staging/` on the `flux-image-updates` branch). Prod has **no** ImagePolicy — its tag only ever changes via the promote workflow. |
+| `overlays/staging/kustomization.yaml` | Kustomize `images:` override Flux edits (carries the `$imagepolicy` setter markers). |
+| `overlays/prod/kustomization.yaml` | Kustomize `images:` override — **no** setter markers, so Flux never auto-edits it. The promote workflow writes the tag here. |
+| `.github/workflows/promote-to-prod.yaml` | `workflow_dispatch` — reads the live staging tag (or an explicit input), writes it into the prod overlay, opens a PR to `main`. Does **not** auto-merge. |
 | `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources, reconcile. |
 
 ### The deploy loop
@@ -888,25 +906,33 @@ cluster to match. Nothing inbound is ever needed.
 merge backend change to main
   → docker-cd.yaml builds & pushes fssfmi/fmi-codes-backend:<unix-ts>-<sha>
   → Flux ImagePolicy sees the newer tag (sorted numerically on the timestamp)
-  → Flux commits the bump to overlays/prod/kustomization.yaml on branch flux-image-updates
-  → you review & merge that branch into main
-  → Flux reconciles main and rolls ONLY the backend Deployment (frontend untouched)
+  → Flux commits the bump to overlays/staging/kustomization.yaml on branch flux-image-updates
+  → that branch auto-merges into main (flux-auto-pr.yaml)
+  → Flux reconciles main and rolls ONLY the backend Deployment in STAGING (frontend untouched)
+
+when staging is vetted, promote to prod
+  → run the "Promote to production" workflow (Actions tab → Run workflow)
+  → it copies staging's current tag into overlays/prod/kustomization.yaml and opens a PR
+  → you review & merge that PR into main
+  → Flux reconciles main and rolls the prod Deployment(s) to the promoted tag
 ```
 
 Image tags are immutable `<unix-ts>-<sha>` (not `:latest`) precisely so Flux can
-order them and detect "backend changed" per service. The write-back goes to a
-**separate branch you merge via PR**, so every deploy has a human gate and a git
-audit trail — `git revert` is a rollback.
+order them and detect "backend changed" per service. Staging bumps auto-merge (fast
+feedback); the prod promote PR is merged by a human (the gate) — `git revert` of a
+promote commit is a prod rollback.
 
 ### Ownership: Flux owns the app Deployments
 
 Once Flux is bootstrapped it is the **single owner of the backend/frontend
-Deployments**. `deploy-app.sh` still owns the SOPS app secret and first-time
-bootstrap, but it detects the Flux `Kustomization` and **skips re-applying the
-Deployments** when Flux is active — no tug-of-war over the image tag. The
-stateful tier (Postgres/Redis via Helm) and ingress stay owned by their
-respective `deploy-*.sh` scripts; Flux only reconciles `overlays/prod/` (backend +
-frontend, plus the ingress build it depends on), so `prune: true` can never touch them.
+Deployments** in both namespaces. `deploy-app.sh` still owns the SOPS app secret and
+first-time bootstrap, but it detects the Flux `Kustomization` (`FLUX_KUSTOMIZATION`:
+`fmi-codes` for prod, `fmi-codes-staging` for staging) and **skips re-applying the
+Deployments** when Flux is active — no tug-of-war over the image tag. The stateful
+tier (Postgres/Redis via Helm) and ingress stay owned by their respective
+`deploy-*.sh` scripts; Flux reconciles `overlays/prod/` and `overlays/staging/`
+(backend + frontend, plus the ingress build each depends on), so `prune: true` can
+never touch them.
 
 ### One-time setup — SSH deploy key
 
@@ -943,21 +969,29 @@ bash infra/k8s/scripts/init-linux.sh --with-flux
 
 ```bash
 flux get sources git --namespace flux-system        # fmi-codes: Ready, latest revision
-flux get kustomizations --namespace flux-system      # fmi-codes: Ready, Applied revision
+flux get kustomizations --namespace flux-system      # prod + staging: Ready, Applied revision
 flux get images all --namespace flux-system          # both repos scanned, latest tag picked
 ```
 
-**Per-service redeploy** — push a backend-only change, confirm only the backend
-rolls after you merge the `flux-image-updates` PR:
+**Auto-deploy to staging** — push a backend-only change, confirm only the backend
+rolls in the staging namespace after the `flux-image-updates` bump auto-merges:
 
 ```bash
-kubectl -n fmi-codes get pods -l app.kubernetes.io/name=fmi-codes-backend -w
+kubectl -n fmi-codes-staging get pods -l app.kubernetes.io/name=fmi-codes-backend -w
 # backend pods roll to the new image; frontend pods keep their AGE (untouched)
+kubectl -n fmi-codes-staging get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+kubectl -n fmi-codes-staging get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+**Manual promote to prod** — run the promote workflow, merge the PR it opens, confirm
+prod moves to the same tag staging is running:
+
+```bash
 kubectl -n fmi-codes get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
 kubectl -n fmi-codes get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
 ```
 
-**Rollback** — revert the tag-bump commit on main; Flux reconciles back to the
+**Rollback** — revert the promote commit on main; Flux reconciles prod back to the
 previous image automatically.
 
 ## Connect k9s
