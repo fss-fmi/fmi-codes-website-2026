@@ -48,7 +48,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: fssfmi/fmi-codes-backend:latest # {"$imagepolicy": "flux-system:fmi-codes-backend"}
+          image: fssfmi/fmi-codes-backend:1784211284-de617ba # {"$imagepolicy": "flux-system:fmi-codes-backend"}
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
