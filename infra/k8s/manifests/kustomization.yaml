@@ -8,7 +8,7 @@ resources:
 images:
   - name: fssfmi/fmi-codes-backend
     newName: fssfmi/fmi-codes-backend
-    newTag: 1784211284-de617ba # {"$imagepolicy": "flux-system:fmi-codes-backend:tag"}
+    newTag: 1784376161-140beab # {"$imagepolicy": "flux-system:fmi-codes-backend:tag"}
   - name: fssfmi/fmi-codes-frontend
     newName: fssfmi/fmi-codes-frontend
     newTag: 1784376161-140beab # {"$imagepolicy": "flux-system:fmi-codes-frontend:tag"}
