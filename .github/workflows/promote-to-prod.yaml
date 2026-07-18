@@ -3,10 +3,18 @@ name: Promote to production
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Image tag to promote (blank = whatever is live in staging)'
+      backend_tag:
+        description: 'Backend image tag to promote (blank = whatever is live in staging)'
         required: false
         default: ''
+      frontend_tag:
+        description: 'Frontend image tag to promote (blank = whatever is live in staging)'
+        required: false
+        default: ''
+
+concurrency:
+  group: promote-to-prod
+  cancel-in-progress: false
 
 jobs:
   promote:
@@ -24,24 +32,28 @@ jobs:
       - name: Resolve tags to promote
         id: tags
         env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_BACKEND_TAG: ${{ github.event.inputs.backend_tag }}
+          INPUT_FRONTEND_TAG: ${{ github.event.inputs.frontend_tag }}
         run: |
           staging=infra/k8s/overlays/staging/kustomization.yaml
-          if [ -n "$INPUT_TAG" ]; then
-            backend_tag="$INPUT_TAG"
-            frontend_tag="$INPUT_TAG"
-          else
-            backend_tag=$(awk '/fmi-codes-backend$/{f=1} f&&/newTag:/{print $2; exit}' "$staging")
-            frontend_tag=$(awk '/fmi-codes-frontend$/{f=1} f&&/newTag:/{print $2; exit}' "$staging")
+          backend_tag="$INPUT_BACKEND_TAG"
+          frontend_tag="$INPUT_FRONTEND_TAG"
+          if [ -z "$backend_tag" ]; then
+            backend_tag=$(yq '.images[] | select(.name == "fssfmi/fmi-codes-backend") | .newTag' "$staging")
           fi
-          if [ -z "$backend_tag" ] || [ -z "$frontend_tag" ]; then
+          if [ -z "$frontend_tag" ]; then
+            frontend_tag=$(yq '.images[] | select(.name == "fssfmi/fmi-codes-frontend") | .newTag' "$staging")
+          fi
+          if [ -z "$backend_tag" ] || [ "$backend_tag" = "null" ] \
+             || [ -z "$frontend_tag" ] || [ "$frontend_tag" = "null" ]; then
             echo "Failed to resolve staging tags (backend='$backend_tag' frontend='$frontend_tag')" >&2
             exit 1
           fi
           for t in "$backend_tag" "$frontend_tag"; do
             case "$t" in
-              *[!0-9a-zA-Z._-]*)
-                echo "Invalid image tag '$t' — allowed characters: alphanumerics . _ -" >&2
+              [0-9]*-*[0-9a-f]) : ;;
+              *)
+                echo "Invalid image tag '$t' — must match the <unix-ts>-<short-sha> scheme" >&2
                 exit 1
                 ;;
             esac
@@ -54,17 +66,10 @@ jobs:
           BACKEND_TAG: ${{ steps.tags.outputs.backend }}
           FRONTEND_TAG: ${{ steps.tags.outputs.frontend }}
         run: |
-          prod=infra/k8s/overlays/prod/kustomization.yaml
-          awk -v bt="$BACKEND_TAG" -v ft="$FRONTEND_TAG" '
-            /fmi-codes-backend$/{svc="backend"}
-            /fmi-codes-frontend$/{svc="frontend"}
-            /newTag:/{
-              if (svc=="backend") sub(/newTag:.*/, "newTag: " bt)
-              else if (svc=="frontend") sub(/newTag:.*/, "newTag: " ft)
-            }
-            {print}
-          ' "$prod" > "$prod.tmp"
-          mv "$prod.tmp" "$prod"
+          cd infra/k8s/overlays/prod
+          kustomize edit set image \
+            "fssfmi/fmi-codes-backend=fssfmi/fmi-codes-backend:$BACKEND_TAG" \
+            "fssfmi/fmi-codes-frontend=fssfmi/fmi-codes-frontend:$FRONTEND_TAG"
 
       - name: Open promotion PR
         env:

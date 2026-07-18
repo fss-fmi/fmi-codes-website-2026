@@ -28,10 +28,10 @@ jobs:
               --title "$commit_msg" \
               --body "Automated tag bump by Flux image-automation. Review and merge to roll the updated image(s) to the cluster.")
             gh pr merge "$pr_url" --auto --squash \
-              || echo "Auto-merge failed — ensure 'Allow auto-merge' is enabled in repo settings"
+              || echo "::warning::Auto-merge failed for $pr_url — ensure 'Allow auto-merge' is enabled in repo settings; the staging bump is unmerged"
           elif [ "$existing_state" = "OPEN" ]; then
             pr_url=$(gh pr list --base main --head flux-image-updates \
               --repo "$GITHUB_REPOSITORY" --json url --jq '.[0].url')
             gh pr merge "$pr_url" --auto --squash \
-              || echo "Auto-merge failed — ensure 'Allow auto-merge' is enabled in repo settings"
+              || echo "::warning::Auto-merge failed for $pr_url — ensure 'Allow auto-merge' is enabled in repo settings; the staging bump is unmerged"
           fi
