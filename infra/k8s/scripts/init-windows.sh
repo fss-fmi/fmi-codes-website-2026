@@ -5,9 +5,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV="${ENV:-staging}"
 case "$ENV" in
-  prod)    HOST="${HOST:-fmicodes.com}" ;;
-  staging) HOST="${HOST:-staging.fmicodes.com}" ;;
-  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+  prod)
+    HOST="${HOST:-fmicodes.com}"
+    INGRESS_NAMESPACE="ingress-nginx"
+    INGRESS_RELEASE="ingress-nginx"
+    HOST_URL="https://$HOST"
+    ;;
+  staging)
+    HOST="${HOST:-staging.fmicodes.com}"
+    INGRESS_NAMESPACE="ingress-nginx-staging"
+    INGRESS_RELEASE="ingress-nginx-staging"
+    HOST_URL="https://$HOST:8443"
+    ;;
+  *)
+    echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
 esac
 
 log() { printf '\n\033[1;36m### %s\033[0m\n' "$1"; }
@@ -21,7 +32,7 @@ fi
 log "Running the Linux bring-up (init-linux.sh)"
 bash "$SCRIPT_DIR/init-linux.sh" "$@"
 
-INGRESS_IP="$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-node-ip>"
 
@@ -47,12 +58,12 @@ this line to C:\\Windows\\System32\\drivers\\etc\\hosts:
 From PowerShell as Administrator you can append it in one line:
   Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "$INGRESS_IP $HOST"
 
-Then browse to https://$HOST
+Then browse to ${HOST_URL}
 
 $DNS_NOTE
 
 Caveat: the WSL node IP above changes across 'wsl --shutdown' / reboot unless
 mirrored networking is enabled. After a restart, re-check it and update the hosts
 line:
-  kubectl -n ingress-nginx get svc ingress-nginx-controller
+  kubectl -n $INGRESS_NAMESPACE get svc ${INGRESS_RELEASE}-controller
 EOF

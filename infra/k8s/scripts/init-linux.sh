@@ -53,8 +53,20 @@ while [ $# -gt 0 ]; do
 done
 
 case "$ENV" in
-  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; HOST="${HOST:-fmicodes.com}" ;;
-  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; HOST="${HOST:-staging.fmicodes.com}" ;;
+  prod)
+    NAMESPACE="${NAMESPACE:-fmi-codes}"
+    HOST="${HOST:-fmicodes.com}"
+    INGRESS_NAMESPACE="ingress-nginx"
+    INGRESS_RELEASE="ingress-nginx"
+    HOST_URL="https://$HOST"
+    ;;
+  staging)
+    NAMESPACE="${NAMESPACE:-fmi-codes-staging}"
+    HOST="${HOST:-staging.fmicodes.com}"
+    INGRESS_NAMESPACE="ingress-nginx-staging"
+    INGRESS_RELEASE="ingress-nginx-staging"
+    HOST_URL="https://$HOST:8443"
+    ;;
   *)       die "--env must be 'staging' or 'prod', got '$ENV'" ;;
 esac
 
@@ -91,7 +103,7 @@ else
   log "Step 6 (GitOps CD) — skipped (pass --with-flux to enable; see README 'Phase 6')"
 fi
 
-INGRESS_IP="$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-external-ip>"
 
@@ -114,5 +126,5 @@ $TLS_NOTE
 
 Verify the stack:
   kubectl -n $NAMESPACE get pods
-  curl https://$HOST/api/health
+  curl ${HOST_URL}/api/health
 EOF

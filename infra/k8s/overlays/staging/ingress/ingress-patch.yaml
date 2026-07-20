@@ -3,6 +3,7 @@ kind: Ingress
 metadata:
   name: fmi-codes
 spec:
+  ingressClassName: nginx-staging
   tls:
     - hosts:
         - staging.fmicodes.com
