@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ENV="${ENV:-prod}"
+ENV="${ENV:-staging}"
 case "$ENV" in
   prod)    NAMESPACE="${NAMESPACE:-fmi-codes}" ;;
   staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}" ;;

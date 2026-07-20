@@ -5,8 +5,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INIT_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/init-linux.sh"
 AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
-AGE_PUBKEY="age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh"
-SECRETS_ENC="$SCRIPT_DIR/infra/k8s/secrets/secrets.enc.yaml"
+
+ENV="${ENV:-staging}"
+PASSTHROUGH=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) exec bash "$INIT_SCRIPT" --help ;;
+    --staging) ENV=staging; shift ;;
+    --prod) ENV=prod; shift ;;
+    --env) ENV="${2:-}"; [ -n "$ENV" ] || { echo "Error: --env needs a value (staging|prod)" >&2; exit 1; }; shift 2 ;;
+    *) PASSTHROUGH+=("$1"); shift ;;
+  esac
+done
+
+case "$ENV" in
+  prod)    AGE_PUBKEY="age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh"; SECRETS_ENC="$SCRIPT_DIR/infra/k8s/secrets/secrets.enc.yaml" ;;
+  staging) AGE_PUBKEY="age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5"; SECRETS_ENC="$SCRIPT_DIR/infra/k8s/overlays/staging/secrets/secrets.enc.yaml" ;;
+  *)       echo "Error: --env must be 'staging' or 'prod', got '$ENV'" >&2; exit 1 ;;
+esac
 
 log()  { printf '\n\033[1;36m### %s\033[0m\n' "$1"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$1"; }
@@ -115,4 +131,5 @@ fi
 
 log "Handing off to init-linux.sh"
 
-exec bash "$INIT_SCRIPT" "$@"
+export ENV
+exec bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}

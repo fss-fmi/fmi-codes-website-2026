@@ -36,7 +36,7 @@ infra/k8s/
 
 Both environments run on the same k3s node, isolated at the namespace level, and are
 built from one shared `base/` via Kustomize overlays. An overlay is selected with
-`ENV=prod` (default) or `ENV=staging` on the deploy scripts, or by the Kustomize path
+`ENV=staging` (default) or `ENV=prod` on the deploy scripts, or by the Kustomize path
 Flux reconciles.
 
 | | prod | staging |
@@ -86,23 +86,42 @@ from the repo root is the normal entrypoint.
 ## Quick start — bring up everything
 
 One command runs the whole sequence in order (tooling → cluster → stateful tier →
-app tier → ingress). Pick the entrypoint for your host:
+app tier → ingress). The repo-root `bootstrap.sh` is the front door — it runs the
+age-key + admin-password pre-flight, then hands off to the platform entrypoint:
+
+```bash
+# Staging (the default) — from the repo root:
+./bootstrap.sh
+
+# Production — the deliberate opt-in:
+./bootstrap.sh --env prod        # or the --prod shorthand
+```
+
+`bootstrap.sh` **defaults to staging**. Production is only ever stood up on purpose,
+so it requires an explicit `--env prod` (or `--prod`); a bare run can never touch it.
+The `--env` value drives everything downstream: the namespace (`fmi-codes-staging` vs
+`fmi-codes`), the ingress host (`staging.fmicodes.com` vs `fmicodes.com`), the SOPS
+secrets file, and the age recipient the pre-flight validates against. Staging needs the
+staging age private key present (see "Phase 4" for the key layout).
+
+Under the hood `bootstrap.sh` forwards to the platform entrypoint, which you can also
+run directly if the pre-flight was already done:
 
 ```bash
 # On a Debian/Ubuntu Linux server:
-bash infra/k8s/scripts/init-linux.sh
+bash infra/k8s/scripts/init-linux.sh --env staging
 
 # On a Windows dev box (from inside a WSL2 Ubuntu shell):
-bash infra/k8s/scripts/init-windows.sh
+bash infra/k8s/scripts/init-windows.sh --env staging
 ```
 
 `init-windows.sh` is a thin wrapper: it runs `init-linux.sh` (passing through any
-args, including `--from`), then prints the WSL2→Windows hosts-file steps. Both are
-idempotent and resumable — if a step fails, fix the cause and continue with
-`--from N` (N = 1-5) instead of redoing earlier steps. Steps 1-2 (k3s install,
-`/usr/local/bin` writes) need interactive sudo, so run it in a terminal. The
-phase-by-phase breakdown below explains what each step does and how to run them
-individually.
+args, including `--env` and `--from`), then prints the WSL2→Windows hosts-file steps.
+Both entrypoints — and the whole flow — are idempotent and resumable: if a step fails,
+fix the cause and continue with `--from N` (N = 1-6) instead of redoing earlier steps.
+Steps 1-2 (k3s install, `/usr/local/bin` writes) need interactive sudo, so run it in a
+terminal. The phase-by-phase breakdown below explains what each step does and how to
+run them individually.
 
 ## Changing a config value
 
@@ -244,7 +263,7 @@ cluster as managed stateful workloads, using the upstream Bitnami Helm charts.
 | `helm-values/redis-values.yaml` | Prod Bitnami `redis` chart values — `sentinel.enabled`, 1 master + 3 replicas + sentinels, master set `mymaster`, quorum 2. Mirrors the docker-compose topology from #23. |
 | `overlays/staging/postgresql-values.yaml` | Staging Postgres values — identical to prod except DB `fmi_hackathon_2026_staging`. Same `fullnameOverride: postgres`, so the service FQDN differs only by namespace (`postgres.fmi-codes-staging.svc`). |
 | `overlays/staging/redis-values.yaml` | Staging Redis values — identical to prod (same topology, `fullnameOverride: redis`, master set `mymaster`). Namespace isolation separates it from prod. |
-| `deploy-stateful.sh` | Idempotent deploy: creates the DB/Redis Secrets (once), syncs `schema.sql` into a ConfigMap, adds the Bitnami repo, and `helm upgrade --install`s both charts. `ENV=prod` (default) targets `fmi-codes` with the `helm-values/*.yaml`; `ENV=staging` targets `fmi-codes-staging` with the `overlays/staging/*.yaml`. |
+| `deploy-stateful.sh` | Idempotent deploy: creates the DB/Redis Secrets (once), syncs `schema.sql` into a ConfigMap, adds the Bitnami repo, and `helm upgrade --install`s both charts. `ENV=staging` (default) targets `fmi-codes-staging` with the `overlays/staging/*.yaml`; `ENV=prod` targets `fmi-codes` with the `helm-values/*.yaml`. |
 
 ```bash
 # Cluster must already be up (Phase 1). Then:
@@ -737,8 +756,8 @@ KEY
 
 Or point `SOPS_AGE_KEY_FILE` at a file that holds the key(s) you need for a given run.
 
-The deploy/rotate scripts are environment-aware via `ENV`: `ENV=staging` targets the
-staging file and the `fmi-codes-staging` namespace, `ENV=prod` (default) targets prod.
+The deploy/rotate scripts are environment-aware via `ENV`: `ENV=staging` (default)
+targets the staging file and the `fmi-codes-staging` namespace, `ENV=prod` targets prod.
 Both scripts assert the decrypted manifest's `namespace:` matches the environment they
 were asked to act on and refuse to apply across environments, so pointing the wrong
 `ENV` at a file can't silently write one environment's secret into the other's
@@ -753,9 +772,10 @@ The **staging private key is stored as the `SOPS_AGE_KEY_STAGING` GitHub Actions
 secret** (repo → Settings → Secrets and variables → Actions), mirroring how the prod
 key will be provided to CI. No workflow consumes it yet — staging CI image builds
 (#56) and staging Flux reconciliation (#57) wire it in later; storing it now keeps the
-key material out of the repo and ready for those phases. `bootstrap.sh` remains
-prod-only (it hardcodes the prod recipient); staging bootstrap support is tracked in
-#59.
+key material out of the repo and ready for those phases. `bootstrap.sh` is
+environment-aware: it defaults to staging and selects the matching age recipient +
+secrets file, so `./bootstrap.sh` runs the pre-flight against the staging key and
+`./bootstrap.sh --env prod` against the prod key.
 
 ### Editing a secret
 

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ENV="${ENV:-prod}"
+ENV="${ENV:-staging}"
 case "$ENV" in
   prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; POSTGRES_VALUES_REL="helm-values/postgresql-values.yaml"; REDIS_VALUES_REL="helm-values/redis-values.yaml" ;;
   staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; POSTGRES_VALUES_REL="overlays/staging/postgresql-values.yaml"; REDIS_VALUES_REL="overlays/staging/redis-values.yaml" ;;
