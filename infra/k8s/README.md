@@ -70,12 +70,14 @@ Encrypt issuance budget on a throwaway environment, at the cost of a browser tru
 warning. Flux reconciliation of the staging overlay is wired up in a later phase; the
 overlay renders valid manifests now but is not yet reconciled automatically.
 
-Two caveats for when staging goes live on the shared node. The `add-headers` setting
-on the single cluster-wide `ingress-nginx` controller can point at only one
-`namespace/security-headers` ConfigMap, so staging needs its own controller (own
-`ingressClassName`) rather than sharing prod's — otherwise the last deploy wins the
-header config for both. And staging has its **own** SOPS app secret
-(`overlays/staging/secrets/secrets.enc.yaml`, namespace `fmi-codes-staging`),
+Staging runs its **own** ingress-nginx controller (Helm release `ingress-nginx-staging`,
+namespace `ingress-nginx-staging`, ingress class `nginx-staging`, ServiceLB ports
+8080/8443) with its own `add-headers` pointing at `fmi-codes-staging/security-headers`.
+Prod keeps its controller (Helm release `ingress-nginx`, namespace `ingress-nginx`,
+ingress class `nginx`, ports 80/443, `add-headers` pointing at
+`fmi-codes/security-headers`). The two controllers are fully independent, so a staging
+deploy never mutates prod's served security headers. And staging has its **own** SOPS app
+secret (`overlays/staging/secrets/secrets.enc.yaml`, namespace `fmi-codes-staging`),
 encrypted with a **separate age key** from prod — see "Staging/prod secret isolation
 (two age keys)" below.
 
@@ -526,7 +528,7 @@ cluster-native `Ingress`, and terminates TLS at the edge.
 | File | What it is |
 | --- | --- |
 | `ingress.yaml` | The `Ingress` (host `fmicodes.com`, path rules below), its `tls:` block, the `security-headers` ConfigMap, and the cert-manager Let's Encrypt `ClusterIssuer` + `Certificate`. |
-| `deploy-ingress.sh` | Idempotent deploy: `helm upgrade --install`s `ingress-nginx` and `cert-manager`, applies `ingress.yaml`, waits for the cert to be issued. |
+| `deploy-ingress.sh` | Idempotent deploy: `helm upgrade --install`s the env-appropriate controller release (`ingress-nginx` for prod, `ingress-nginx-staging` for staging) and `cert-manager`, applies `ingress.yaml`, waits for the cert to be issued. |
 
 ```bash
 # Cluster + stateful + app tiers must already be up (Phases 1–3). Then:
@@ -559,8 +561,11 @@ live in `frontend/nginx.conf`, where they only attached to responses the fronten
 served — `/api/` and `/static/` responses proxied straight through shipped **without**
 them. They now live in the `security-headers` ConfigMap, wired into the controller via
 `controller.config.add-headers=fmi-codes/security-headers`, so **every** response
-through the Ingress carries them uniformly. The `add_header` lines were removed from
-`frontend/nginx.conf` to avoid duplicate headers.
+through the Ingress carries them uniformly. Staging's controller uses
+`controller.config.add-headers=fmi-codes-staging/security-headers` and its own ingress
+class `nginx-staging`, so the two environments' header ConfigMaps are fully independent
+— a staging deploy never touches prod's headers. The `add_header` lines were removed
+from `frontend/nginx.conf` to avoid duplicate headers.
 
 This uses ingress-nginx's supported `add-headers` mechanism, **not**
 `configuration-snippet` annotations. Snippet annotations are disabled by default
@@ -602,6 +607,15 @@ line):
 INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
+```
+
+For staging, the controller is in its own namespace and exposes HTTPS on port 8443:
+
+```bash
+INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts
+# Then reach staging at https://staging.fmicodes.com:8443
 ```
 
 On the production server, set the `fmicodes.com` A record in DNS instead.
@@ -1040,9 +1054,11 @@ flux uninstall --namespace flux-system --silent
 # Remove the Phase 4 networking tier (Ingress, cert, issuer, headers ConfigMap,
 # then the two controllers and their namespaces):
 kubectl delete -k overlays/prod/ingress
+kubectl delete -k overlays/staging/ingress
 helm -n ingress-nginx uninstall ingress-nginx
+helm -n ingress-nginx-staging uninstall ingress-nginx-staging
 helm -n cert-manager uninstall cert-manager
-kubectl delete namespace ingress-nginx cert-manager
+kubectl delete namespace ingress-nginx ingress-nginx-staging cert-manager
 
 # Remove the Phase 3 app tier (stateless — nothing to preserve). Delete the
 # workloads by label rather than `-k overlays/prod`, since that overlay includes

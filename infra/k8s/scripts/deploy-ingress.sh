@@ -2,13 +2,37 @@
 
 set -euo pipefail
 
+HEADERS_CONFIGMAP="${HEADERS_CONFIGMAP:-security-headers}"
+
 ENV="${ENV:-staging}"
 case "$ENV" in
-  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}"; HOST="${HOST:-fmicodes.com}" ;;
-  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}"; HOST="${HOST:-staging.fmicodes.com}" ;;
-  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+  prod)
+    NAMESPACE="${NAMESPACE:-fmi-codes}"
+    HOST="${HOST:-fmicodes.com}"
+    INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
+    INGRESS_RELEASE="${INGRESS_RELEASE:-ingress-nginx}"
+    HOST_URL="https://$HOST"
+    HELM_SET_ARGS=(--set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP")
+    ;;
+  staging)
+    NAMESPACE="${NAMESPACE:-fmi-codes-staging}"
+    HOST="${HOST:-staging.fmicodes.com}"
+    INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx-staging}"
+    INGRESS_RELEASE="${INGRESS_RELEASE:-ingress-nginx-staging}"
+    HOST_URL="https://$HOST:8443"
+    HELM_SET_ARGS=(
+      --set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP"
+      --set "controller.ingressClassResource.name=nginx-staging"
+      --set "controller.ingressClassResource.controllerValue=k8s.io/ingress-nginx-staging"
+      --set "controller.ingressClass=nginx-staging"
+      --set "controller.electionID=ingress-nginx-staging-leader"
+      --set "controller.service.ports.http=8080"
+      --set "controller.service.ports.https=8443"
+    )
+    ;;
+  *)
+    echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
 esac
-INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
 CERT_MANAGER_NAMESPACE="${CERT_MANAGER_NAMESPACE:-cert-manager}"
 
 INGRESS_NGINX_REPO="${INGRESS_NGINX_REPO:-https://kubernetes.github.io/ingress-nginx}"
@@ -16,7 +40,6 @@ CERT_MANAGER_REPO="${CERT_MANAGER_REPO:-https://charts.jetstack.io}"
 INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.15.1}"
 CERT_MANAGER_CHART_VERSION="${CERT_MANAGER_CHART_VERSION:-v1.21.0}"
 
-HEADERS_CONFIGMAP="${HEADERS_CONFIGMAP:-security-headers}"
 CERTIFICATE_NAME="${CERTIFICATE_NAME:-fmi-codes-tls}"
 
 READY_TIMEOUT="${READY_TIMEOUT:-600}"
@@ -43,7 +66,7 @@ kubectl -n "$NAMESPACE" get service backend >/dev/null 2>&1 \
 kubectl -n "$NAMESPACE" get service frontend >/dev/null 2>&1 \
   || die "service 'frontend' not found — run deploy-app.sh first (Phase 3)."
 
-INGRESS_IP_PRE="$(kubectl -n "$INGRESS_NAMESPACE" get svc ingress-nginx-controller \
+INGRESS_IP_PRE="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 if [ -n "$INGRESS_IP_PRE" ]; then
   RESOLVED_IP=""
@@ -70,10 +93,10 @@ helm repo add jetstack "$CERT_MANAGER_REPO" >/dev/null 2>&1 || true
 helm repo update ingress-nginx jetstack >/dev/null
 
 log "Deploying ingress-nginx (chart $INGRESS_NGINX_CHART_VERSION)"
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+helm upgrade --install "$INGRESS_RELEASE" ingress-nginx/ingress-nginx \
   --namespace "$INGRESS_NAMESPACE" --create-namespace \
   --version "$INGRESS_NGINX_CHART_VERSION" \
-  --set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP" \
+  "${HELM_SET_ARGS[@]}" \
   --wait --timeout "${READY_TIMEOUT}s"
 
 log "Deploying cert-manager (chart $CERT_MANAGER_CHART_VERSION)"
@@ -99,11 +122,11 @@ if ! kubectl -n "$NAMESPACE" wait --for=condition=Ready \
 fi
 
 log "Deployed. Current state:"
-kubectl -n "$INGRESS_NAMESPACE" get svc ingress-nginx-controller -o wide
+kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" -o wide
 kubectl -n "$NAMESPACE" get ingress
 kubectl -n "$NAMESPACE" get certificate
 
-INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc ingress-nginx-controller \
+INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-external-ip>"
 
@@ -128,11 +151,11 @@ $TLS_NOTE
 Verify against the issue's acceptance criteria (see infra/k8s/README.md 'Phase 4'):
 
   Routing (backend vs frontend):
-    curl https://$HOST/api/health
-    curl https://$HOST/
+    curl ${HOST_URL}/api/health
+    curl ${HOST_URL}/
 
   Security headers present on every response:
-    curl -I https://$HOST/api/health
+    curl -I ${HOST_URL}/api/health
 
   HTTP redirects to HTTPS:
     curl -I http://$HOST/
