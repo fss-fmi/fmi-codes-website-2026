@@ -101,3 +101,13 @@ jobs:
       - name: TypeScript type check
         working-directory: frontend
         run: npx tsc -p tsconfig.app.json --noEmit
+
+  flux-validate:
+    name: Flux kustomize build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build flux kustomization
+        run: kubectl kustomize infra/k8s/flux

@@ -929,10 +929,12 @@ The model is **continuous-deploy-to-staging, manual-promote-to-prod**, off a sin
 | --- | --- |
 | `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + four `Kustomization`s: `fmi-codes` / `fmi-codes-ingress` reconcile `overlays/prod/`, and `fmi-codes-staging` / `fmi-codes-staging-ingress` reconcile `overlays/staging/`. |
 | `flux/image-automation.yaml` | `ImageRepository` ×2 (watch the two Docker Hub repos) + `ImagePolicy` ×2 (`*-staging`, pick the newest `<ts>-<sha>` tag) + `ImageUpdateAutomation` (commits tag bumps to `overlays/staging/` on the `flux-image-updates` branch). Prod has **no** ImagePolicy — its tag only ever changes via the promote workflow. |
+| `flux/kustomization.yaml` | Kustomize kustomization listing the control-plane manifests (`source.yaml`, `image-automation.yaml`) that `flux-system-config` reconciles. Deliberately excludes `self.yaml` so the self-watcher never manages its own definition. |
+| `flux/self.yaml` | The `flux-system-config` Kustomization that reconciles `./infra/k8s/flux` off the `fmi-codes` GitRepository, making the control-plane directory GitOps-managed. `prune: false` so it can never tear down the automation objects it manages. Seeded once by `flux-bootstrap.sh`; edits to `self.yaml` itself require a bootstrap re-run, but edits to `source.yaml` / `image-automation.yaml` self-reconcile within ≤5m. |
 | `overlays/staging/kustomization.yaml` | Kustomize `images:` override Flux edits (carries the `$imagepolicy` setter markers). |
 | `overlays/prod/kustomization.yaml` | Kustomize `images:` override — **no** setter markers, so Flux never auto-edits it. The promote workflow writes the tag here. |
 | `.github/workflows/promote-to-prod.yaml` | `workflow_dispatch` — reads the live staging tags per service (or explicit per-service inputs), writes them into the prod overlay, opens a PR to `main`. Does **not** auto-merge. |
-| `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources, reconcile. |
+| `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources (including the `self.yaml` seed that makes `flux/` self-reconciling), reconcile. |
 
 ### The deploy loop
 
@@ -955,6 +957,30 @@ Image tags are immutable `<unix-ts>-<sha>` (not `:latest`) precisely so Flux can
 order them and detect "backend changed" per service. Staging bumps auto-merge (fast
 feedback); the prod promote PR is merged by a human (the gate) — `git revert` of a
 promote commit is a prod rollback.
+
+### flux/ is self-managed
+
+Before this change, `flux/` was applied once by `flux-bootstrap.sh` and never reconciled again. A merge that edited `flux/source.yaml` or `flux/image-automation.yaml` would silently no-op on the cluster until someone manually re-ran bootstrap — the exact class of silent staleness that caused the ~6-day outage documented in issue #76 (`ImageUpdateAutomation.update.path` was repointed on `main`, the cluster kept the old path, and every reconcile crashed invisibly).
+
+As of issue #76, the directory that *configures* GitOps is itself GitOps-managed. A Flux `Kustomization` named `flux-system-config` (defined in `flux/self.yaml`) reconciles `./infra/k8s/flux` against the existing `fmi-codes` GitRepository on a 5m interval. `flux/kustomization.yaml` lists `source.yaml` and `image-automation.yaml` as its resources; that is what `flux-system-config` applies.
+
+**The seed step.** `flux-system-config` is applied once by `flux-bootstrap.sh` via an explicit `kubectl apply -f flux/self.yaml`. After that single seed it is self-sustaining — bootstrap never needs to know about control-plane changes again.
+
+**The self-reconcile guarantee.** A merge to `main` that touches `flux/source.yaml` or `flux/image-automation.yaml` is applied to the live cluster within ≤5m with no manual `kubectl apply` and no bootstrap re-run. That is the normal GitOps loop, now extended to the control plane.
+
+**The failure signal.** If a bad `flux/` manifest is merged (malformed YAML, a broken `flux/kustomization.yaml`, a resource that fails to apply), `flux-system-config` flips to `Ready=False` and is visible immediately:
+
+```bash
+flux get kustomizations -n flux-system
+```
+
+This replaces silent staleness with an explicit, observable failure state.
+
+**Deliberate boundaries — two manual steps by design.**
+
+1. `prune: false` on `flux-system-config`. Flux's reconciler will never delete a control-plane object (an `ImageUpdateAutomation`, an `ImagePolicy`, a `GitRepository`, a sibling `Kustomization`) because it is missing from a build output. Renaming or removing such an object in git leaves it as an orphan on the cluster until a human runs `kubectl delete` — that is intentional. Automation tearing down the infrastructure it depends on should always be a deliberate human act.
+
+2. **Editing `self.yaml` itself requires a manual `flux-bootstrap.sh` re-run.** `self.yaml` is excluded from `flux/kustomization.yaml`, so `flux-system-config` never reconciles its own definition. Changes to the self-watcher (its interval, its path, its prune policy) do not self-apply — run `kubectl apply -f flux/self.yaml` or re-run `flux-bootstrap.sh`. This removes any circular self-management surface. In practice `self.yaml` is a near-static file; the objects that change — `source.yaml` and `image-automation.yaml` — self-reconcile normally.
 
 ### Ownership: Flux owns the app Deployments
 
@@ -1264,7 +1290,11 @@ first — k9s follows kubectl.
 ## Tear down
 
 ```bash
-# Remove the Phase 6 GitOps layer first (so Flux stops re-applying the app tier):
+# Remove the Phase 6 GitOps layer first (so Flux stops re-applying the app tier).
+# Delete self.yaml first to stop flux-system-config from reconciling flux/:
+kubectl -n flux-system delete -f flux/self.yaml
+# Because flux-system-config has prune: false, deleting self.yaml does NOT cascade-
+# delete the automation objects — delete them explicitly:
 kubectl -n flux-system delete -f flux/image-automation.yaml -f flux/source.yaml
 flux uninstall --namespace flux-system --silent
 

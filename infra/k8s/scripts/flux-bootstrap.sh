@@ -44,9 +44,10 @@ else
     --private-key-file "$DEPLOY_KEY"
 fi
 
-log "Applying Flux source, kustomization, and image-automation resources"
+log "Applying Flux source, image-automation, and self-managing resources"
 kubectl apply -f "$FLUX_DIR/source.yaml"
 kubectl apply -f "$FLUX_DIR/image-automation.yaml"
+kubectl apply -f "$FLUX_DIR/self.yaml"
 
 if [ "$GIT_REF" != "main" ]; then
   log "Overriding tracked branch to '$GIT_REF' (committed default is 'main')"
@@ -59,6 +60,7 @@ fi
 log "Waiting for the git source and kustomization to reconcile"
 flux reconcile source git "$FLUX_RESOURCE" --namespace "$FLUX_NAMESPACE" || true
 flux reconcile kustomization "$FLUX_RESOURCE" --namespace "$FLUX_NAMESPACE" --timeout 5m || true
+flux reconcile kustomization flux-system-config --namespace "$FLUX_NAMESPACE" --timeout 5m || true
 
 log "Current Flux state:"
 flux get sources git --namespace "$FLUX_NAMESPACE"
