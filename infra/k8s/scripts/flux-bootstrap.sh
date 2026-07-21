@@ -10,7 +10,6 @@ case "$ENV" in
 esac
 FLUX_NAMESPACE="${FLUX_NAMESPACE:-flux-system}"
 GIT_URL="${GIT_URL:-ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git}"
-GIT_REF="${GIT_REF:-main}"
 GIT_SECRET="${GIT_SECRET:-flux-git-auth}"
 DEPLOY_KEY="${DEPLOY_KEY:-$HOME/.ssh/fmi-codes-flux}"
 
@@ -48,14 +47,6 @@ log "Applying Flux source, image-automation, and self-managing resources"
 kubectl apply -f "$FLUX_DIR/source.yaml"
 kubectl apply -f "$FLUX_DIR/image-automation.yaml"
 kubectl apply -f "$FLUX_DIR/self.yaml"
-
-if [ "$GIT_REF" != "main" ]; then
-  log "Overriding tracked branch to '$GIT_REF' (committed default is 'main')"
-  kubectl -n "$FLUX_NAMESPACE" patch gitrepository fmi-codes \
-    --type merge -p "{\"spec\":{\"ref\":{\"branch\":\"$GIT_REF\"}}}"
-  kubectl -n "$FLUX_NAMESPACE" patch imageupdateautomation fmi-codes \
-    --type merge -p "{\"spec\":{\"git\":{\"checkout\":{\"ref\":{\"branch\":\"$GIT_REF\"}},\"push\":{\"branch\":\"$GIT_REF\"}}}}"
-fi
 
 log "Waiting for the git source and kustomization to reconcile"
 flux reconcile source git fmi-codes --namespace "$FLUX_NAMESPACE" || true
