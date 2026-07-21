@@ -39,7 +39,7 @@ function InfoCell({ label, value }: { label: string; value?: string | number | n
   );
 }
 
-function ProfileContent() {
+export function ProfileContent() {
   const { user, role } = useAuth();
   const [curPw, setCurPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -187,60 +187,62 @@ function ProfileContent() {
           </div>
         </Panel>
 
-        <Panel title="CHANGE PASSWORD">
-          {pwError && (
-            <FormAlert kind="error" style={{ marginBottom: '16px' }}>
-              {pwError}
-            </FormAlert>
-          )}
-          {pwSuccess && (
-            <FormAlert kind="success" style={{ marginBottom: '16px' }}>
-              {pwSuccess}
-            </FormAlert>
-          )}
-          <form onSubmit={handlePasswordChange} noValidate>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <Field id="curPw" label="CURRENT PASSWORD" required>
-                <Input
-                  type="password"
+        {role !== 'admin' && (
+          <Panel title="CHANGE PASSWORD">
+            {pwError && (
+              <FormAlert kind="error" style={{ marginBottom: '16px' }}>
+                {pwError}
+              </FormAlert>
+            )}
+            {pwSuccess && (
+              <FormAlert kind="success" style={{ marginBottom: '16px' }}>
+                {pwSuccess}
+              </FormAlert>
+            )}
+            <form onSubmit={handlePasswordChange} noValidate>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <Field id="curPw" label="CURRENT PASSWORD" required>
+                  <Input
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                    placeholder="Enter current password"
+                    value={curPw}
+                    onChange={(e) => setCurPw(e.target.value)}
+                  />
+                </Field>
+                <Field
+                  id="newPw"
+                  label="NEW PASSWORD"
                   required
-                  autoComplete="current-password"
-                  placeholder="Enter current password"
-                  value={curPw}
-                  onChange={(e) => setCurPw(e.target.value)}
-                />
-              </Field>
-              <Field
-                id="newPw"
-                label="NEW PASSWORD"
-                required
-                hint="Minimum 12 characters."
-              >
-                <Input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  placeholder="Min 12 characters"
-                  value={newPw}
-                  onChange={(e) => setNewPw(e.target.value)}
-                />
-              </Field>
-              <Field id="confPw" label="CONFIRM NEW PASSWORD" required>
-                <Input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  placeholder="Repeat new password"
-                  value={confPw}
-                  onChange={(e) => setConfPw(e.target.value)}
-                />
-              </Field>
-              <Button type="submit" variant="primary" disabled={pwLoading}>
-                {pwLoading ? 'UPDATING…' : 'UPDATE PASSWORD'}
-              </Button>
-            </div>
-          </form>
-        </Panel>
+                  hint="Minimum 12 characters."
+                >
+                  <Input
+                    type="password"
+                    required
+                    autoComplete="new-password"
+                    placeholder="Min 12 characters"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                  />
+                </Field>
+                <Field id="confPw" label="CONFIRM NEW PASSWORD" required>
+                  <Input
+                    type="password"
+                    required
+                    autoComplete="new-password"
+                    placeholder="Repeat new password"
+                    value={confPw}
+                    onChange={(e) => setConfPw(e.target.value)}
+                  />
+                </Field>
+                <Button type="submit" variant="primary" disabled={pwLoading}>
+                  {pwLoading ? 'UPDATING…' : 'UPDATE PASSWORD'}
+                </Button>
+              </div>
+            </form>
+          </Panel>
+        )}
       </div>
     </main>
   );
