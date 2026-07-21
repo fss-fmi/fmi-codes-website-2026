@@ -1028,6 +1028,223 @@ kubectl -n fmi-codes get deploy frontend -o jsonpath='{.spec.template.spec.conta
 **Rollback** — revert the promote commit on main; Flux reconciles prod back to the
 previous image automatically.
 
+## End-to-end validation & operation (#60)
+
+This section is the capstone runbook for the completed staging/prod split epic (#52).
+Phases 1–6 built every piece; this section is the ordered "stand it up on a fresh
+server and prove every epic acceptance criterion" guide. It is self-contained — every
+command you need to run the full validation top-to-bottom is inline here. You do not
+need to scroll back through the phase sections to execute it, though each phase's
+section has deeper background if you want it.
+
+### Prerequisite: DNS
+
+**Prod (`fmicodes.com`).** An A record pointing at the server's public IP must exist
+and resolve publicly *before* `deploy-ingress.sh` runs for prod. The prod certificate
+is issued by Let's Encrypt via an HTTP-01 ACME challenge: cert-manager reaches out to
+the public internet to verify that `fmicodes.com` resolves to this server. If the
+record is missing or not yet propagated the challenge fails and no certificate is
+issued.
+
+**Staging (`staging.fmicodes.com`).** An A record (or a hosts-file entry for local
+testing) is only needed so that a client can *reach* `staging.fmicodes.com:8443`.
+It is not a certificate prerequisite — staging uses a self-signed certificate issued
+by an in-cluster `Issuer`, so there is no ACME challenge and nothing to verify against
+public DNS. Set up the record however is convenient; for local testing a hosts-file
+entry is enough:
+
+```bash
+INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts
+```
+
+Because the cert is self-signed, every staging `curl` in this section passes `-k`.
+Prod curls do not — the Let's Encrypt cert is browser-trusted.
+
+### Cold start: bring both environments up
+
+Bootstrap staging first (the default), then prod as the deliberate opt-in:
+
+```bash
+./bootstrap.sh
+./bootstrap.sh --env prod
+```
+
+`--staging` is a valid flag but redundant — it is identical to a bare `./bootstrap.sh`
+run. Production is always explicit.
+
+After both bootstraps complete, verify all pods are Running and Ready:
+
+```bash
+kubectl -n fmi-codes-staging get pods
+kubectl -n fmi-codes get pods
+```
+
+**Flux precondition for auto-deploy (smoke test 3).** The auto-deploy flow requires
+Flux to be bootstrapped inside the cluster. If it has not been set up yet, run step 6
+only (skipping the already-completed tooling, cluster, stateful, app, and ingress steps):
+
+```bash
+bash infra/k8s/scripts/init-linux.sh --with-flux --from 6
+```
+
+This generates (or reuses) the SSH deploy key, adds it to the repo with write access,
+and wires up the `flux/` resources. Flux must be running before smoke test 3 is
+meaningful. See "Phase 6 — GitOps continuous deploy" for the full one-time setup steps.
+
+### Smoke tests
+
+**1. Frontend loads — both environments.**
+
+```bash
+curl https://fmicodes.com/
+curl -k https://staging.fmicodes.com:8443/
+```
+
+Both return HTTP 200 with `index.html`. A non-200 or a connection error means the
+ingress or app tier is not up; return to the cold-start section above.
+
+**2. `/api/health` and `/api/health/ready` respond — both environments.**
+
+`/api/health` is the liveness probe: it touches no dependencies and returns 200
+whenever the process is alive. `/api/health/ready` is the readiness probe: it runs
+a pooled `SELECT 1` against Postgres and pings Redis, returning `{"db": "ok", "redis": "ok"}`
+on success and 503 if Postgres is unreachable (Redis is fail-open and reported but
+never gates readiness).
+
+```bash
+curl https://fmicodes.com/api/health
+curl -k https://staging.fmicodes.com:8443/api/health
+curl https://fmicodes.com/api/health/ready
+curl -k https://staging.fmicodes.com:8443/api/health/ready
+```
+
+All four return HTTP 200. The readiness responses contain `{"db": "ok", "redis": "ok"}`,
+confirming each environment's stateful tier is reachable from its backend pod.
+
+**3. Auto-deploy to staging works (requires Flux).**
+
+Push a backend change to `main`. The pipeline runs automatically:
+
+```
+docker-cd.yaml builds & pushes fssfmi/fmi-codes-backend:<ts>-<sha>
+  → Flux ImagePolicy fmi-codes-backend-staging picks the newer tag
+  → ImageUpdateAutomation commits the bump to overlays/staging/kustomization.yaml
+    on the flux-image-updates branch
+  → flux-auto-pr.yaml auto-squash-merges flux-image-updates into main
+  → Flux reconciles main and rolls ONLY the backend Deployment in fmi-codes-staging
+```
+
+After the roll completes, verify the staging backend image updated and the staging
+frontend image is untouched:
+
+```bash
+kubectl -n fmi-codes-staging get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+kubectl -n fmi-codes-staging get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+The backend tag contains the new `<ts>-<sha>` pushed in your change. The frontend
+tag is unchanged from before the push. (See "Phase 6 — GitOps continuous deploy"
+for depth on the full Flux wiring.)
+
+**4. Manual promote to prod works.**
+
+With staging running a vetted tag, trigger the promote workflow: GitHub Actions →
+"Promote to production" → Run workflow. The workflow reads the tag currently live in
+`overlays/staging/kustomization.yaml` for each service, writes those tags into
+`overlays/prod/kustomization.yaml`, and opens a `promote-to-prod` PR against `main`.
+The workflow does **not** auto-merge — a human reviews and merges the PR. Once merged,
+Flux reconciles `overlays/prod/` and rolls the prod Deployments.
+
+Verify prod now runs the same tags staging was running:
+
+```bash
+kubectl -n fmi-codes get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+kubectl -n fmi-codes get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+Both tags should match what staging was running before the promote. (See "Phase 6"
+for rollback: revert the promote commit on main and Flux reconciles prod back.)
+
+**5. The gate holds — a push to main does NOT move prod.**
+
+This is the most important structural assertion in the epic. Record prod's current
+backend image tag before any push:
+
+```bash
+kubectl -n fmi-codes get deploy backend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+Now push a change to `main` (or simply wait for the staging roll from smoke test 3
+to complete). After staging has rolled to the new tag, read prod's tag again:
+
+```bash
+kubectl -n fmi-codes get deploy backend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+The prod tag must be identical to what it was before the push. The gate holds
+structurally, not by policy: `flux/image-automation.yaml` defines only
+`fmi-codes-backend-staging` and `fmi-codes-frontend-staging` ImagePolicies, and the
+`ImageUpdateAutomation` targets only `./infra/k8s/overlays/staging`. The prod overlay
+(`overlays/prod/kustomization.yaml`) contains plain `newTag:` values with no
+`$imagepolicy` setter markers, so the Flux automation has no anchor to write into —
+it literally cannot rewrite the prod tag. The only thing that ever changes prod's tag
+is the `promote-to-prod` workflow, and that requires a human to merge the PR it opens.
+
+**6. Prod is unaffected by a staging deploy.**
+
+Re-run smoke tests 1 and 2 against prod after staging has rolled:
+
+```bash
+curl https://fmicodes.com/
+curl https://fmicodes.com/api/health/ready
+```
+
+Both return 200 with the same response as before the staging roll. The two
+environments use independent ingress-nginx controller releases (`ingress-nginx` for
+prod in namespace `ingress-nginx`, `ingress-nginx-staging` for staging in namespace
+`ingress-nginx-staging`), so a staging deploy never mutates prod's served headers or
+routing rules.
+
+**7. Staging DB is isolated from prod.**
+
+Write a probe row into the staging database, then confirm it is absent from prod.
+
+Read the staging DB password and insert the probe:
+
+```bash
+STAGING_DB_PW=$(kubectl -n fmi-codes-staging get secret fmi-codes-db \
+  -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n fmi-codes-staging exec -it postgres-0 -- \
+  env PGPASSWORD="$STAGING_DB_PW" psql -U fmi_app -d fmi_hackathon_2026_staging \
+  -c "INSERT INTO universities (name, is_seed) VALUES ('staging-isolation-probe', false) ON CONFLICT DO NOTHING;"
+```
+
+Read the prod DB password and query for the probe row:
+
+```bash
+PROD_DB_PW=$(kubectl -n fmi-codes get secret fmi-codes-db \
+  -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n fmi-codes exec -it postgres-0 -- \
+  env PGPASSWORD="$PROD_DB_PW" psql -U fmi_app -d fmi_hackathon_2026 \
+  -c "SELECT name FROM universities WHERE name = 'staging-isolation-probe';"
+```
+
+The prod query must return zero rows. The two databases (`fmi_hackathon_2026_staging`
+in `fmi-codes-staging`, `fmi_hackathon_2026` in `fmi-codes`) run in separate
+StatefulSets with separate PVCs and separate SOPS-encrypted secrets encrypted with
+separate age keys, so there is no shared data path between them.
+
+### Sign-off
+
+Epic #60 is complete when all seven smoke tests above pass in order. The two tests
+that matter most are smoke test 5 (the gate holds) and smoke test 7 (DB isolation) —
+these are the entire reason the staging/prod split epic (#52) exists. A deployment
+pipeline that auto-deploys to staging on every push and holds prod behind a human
+promote gate is only as strong as these two invariants. If either fails, the split
+has not been achieved regardless of what the manifests look like.
+
 ## Connect k9s
 
 [k9s](https://k9scli.io/) is a terminal UI for the cluster — browse pods, tail
