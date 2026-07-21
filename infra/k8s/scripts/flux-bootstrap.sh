@@ -51,14 +51,14 @@ kubectl apply -f "$FLUX_DIR/self.yaml"
 
 if [ "$GIT_REF" != "main" ]; then
   log "Overriding tracked branch to '$GIT_REF' (committed default is 'main')"
-  kubectl -n "$FLUX_NAMESPACE" patch gitrepository "$FLUX_RESOURCE" \
+  kubectl -n "$FLUX_NAMESPACE" patch gitrepository fmi-codes \
     --type merge -p "{\"spec\":{\"ref\":{\"branch\":\"$GIT_REF\"}}}"
-  kubectl -n "$FLUX_NAMESPACE" patch imageupdateautomation "$FLUX_RESOURCE" \
+  kubectl -n "$FLUX_NAMESPACE" patch imageupdateautomation fmi-codes \
     --type merge -p "{\"spec\":{\"git\":{\"checkout\":{\"ref\":{\"branch\":\"$GIT_REF\"}},\"push\":{\"branch\":\"$GIT_REF\"}}}}"
 fi
 
 log "Waiting for the git source and kustomization to reconcile"
-flux reconcile source git "$FLUX_RESOURCE" --namespace "$FLUX_NAMESPACE" || true
+flux reconcile source git fmi-codes --namespace "$FLUX_NAMESPACE" || true
 flux reconcile kustomization "$FLUX_RESOURCE" --namespace "$FLUX_NAMESPACE" --timeout 5m || true
 flux reconcile kustomization flux-system-config --namespace "$FLUX_NAMESPACE" --timeout 5m || true
 
