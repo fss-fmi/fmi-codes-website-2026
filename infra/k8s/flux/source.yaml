@@ -23,7 +23,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fmi-codes
-  path: ./infra/k8s/manifests
+  path: ./infra/k8s/overlays/prod
   prune: true
   wait: true
   dependsOn:
@@ -41,6 +41,40 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fmi-codes
-  path: ./infra/k8s/manifests/ingress
+  path: ./infra/k8s/overlays/prod/ingress
+  prune: true
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: fmi-codes-staging
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fmi-codes
+  path: ./infra/k8s/overlays/staging
+  prune: true
+  wait: true
+  dependsOn:
+    - name: fmi-codes-staging-ingress
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: fmi-codes-staging-ingress
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fmi-codes
+  path: ./infra/k8s/overlays/staging/ingress
   prune: true
   wait: true

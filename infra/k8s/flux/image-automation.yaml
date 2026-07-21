@@ -19,7 +19,7 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: fmi-codes-backend
+  name: fmi-codes-backend-staging
   namespace: flux-system
 spec:
   imageRepositoryRef:
@@ -34,7 +34,7 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: fmi-codes-frontend
+  name: fmi-codes-frontend-staging
   namespace: flux-system
 spec:
   imageRepositoryRef:
@@ -69,5 +69,5 @@ spec:
     push:
       branch: flux-image-updates
   update:
-    path: ./infra/k8s/manifests
+    path: ./infra/k8s/overlays/staging
     strategy: Setters

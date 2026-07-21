@@ -1,0 +1,102 @@
+name: Promote to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_tag:
+        description: 'Backend image tag to promote (blank = whatever is live in staging)'
+        required: false
+        default: ''
+      frontend_tag:
+        description: 'Frontend image tag to promote (blank = whatever is live in staging)'
+        required: false
+        default: ''
+
+concurrency:
+  group: promote-to-prod
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve tags to promote
+        id: tags
+        env:
+          INPUT_BACKEND_TAG: ${{ github.event.inputs.backend_tag }}
+          INPUT_FRONTEND_TAG: ${{ github.event.inputs.frontend_tag }}
+        run: |
+          staging=infra/k8s/overlays/staging/kustomization.yaml
+          backend_tag="$INPUT_BACKEND_TAG"
+          frontend_tag="$INPUT_FRONTEND_TAG"
+          if [ -z "$backend_tag" ]; then
+            backend_tag=$(yq '.images[] | select(.name == "fssfmi/fmi-codes-backend") | .newTag' "$staging")
+          fi
+          if [ -z "$frontend_tag" ]; then
+            frontend_tag=$(yq '.images[] | select(.name == "fssfmi/fmi-codes-frontend") | .newTag' "$staging")
+          fi
+          if [ -z "$backend_tag" ] || [ "$backend_tag" = "null" ] \
+             || [ -z "$frontend_tag" ] || [ "$frontend_tag" = "null" ]; then
+            echo "Failed to resolve staging tags (backend='$backend_tag' frontend='$frontend_tag')" >&2
+            exit 1
+          fi
+          for t in "$backend_tag" "$frontend_tag"; do
+            case "$t" in
+              [0-9]*-*[0-9a-f]) : ;;
+              *)
+                echo "Invalid image tag '$t' — must match the <unix-ts>-<short-sha> scheme" >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "backend=$backend_tag" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Write tags into prod overlay
+        env:
+          BACKEND_TAG: ${{ steps.tags.outputs.backend }}
+          FRONTEND_TAG: ${{ steps.tags.outputs.frontend }}
+        run: |
+          cd infra/k8s/overlays/prod
+          kustomize edit set image \
+            "fssfmi/fmi-codes-backend=fssfmi/fmi-codes-backend:$BACKEND_TAG" \
+            "fssfmi/fmi-codes-frontend=fssfmi/fmi-codes-frontend:$FRONTEND_TAG"
+
+      - name: Open promotion PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKEND_TAG: ${{ steps.tags.outputs.backend }}
+          FRONTEND_TAG: ${{ steps.tags.outputs.frontend }}
+        run: |
+          if git diff --quiet -- infra/k8s/overlays/prod/kustomization.yaml; then
+            echo "Prod overlay already at backend=$BACKEND_TAG frontend=$FRONTEND_TAG — nothing to promote."
+            exit 0
+          fi
+          branch="promote-to-prod"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add infra/k8s/overlays/prod/kustomization.yaml
+          git commit -m "deploy: promote backend $BACKEND_TAG, frontend $FRONTEND_TAG to prod"
+          git push --force-with-lease origin "$branch"
+          existing=$(gh pr list --base main --head "$branch" \
+            --repo "$GITHUB_REPOSITORY" --json number --jq '.[0].number // ""')
+          if [ -z "$existing" ]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$branch" \
+              --title "deploy: promote to prod (backend $BACKEND_TAG, frontend $FRONTEND_TAG)" \
+              --body "Manual production promotion. Backend \`$BACKEND_TAG\`, frontend \`$FRONTEND_TAG\` — the tags currently live in staging. Merge to roll them to the prod namespace via Flux."
+          else
+            echo "Updated existing promotion PR #$existing on branch $branch."
+          fi

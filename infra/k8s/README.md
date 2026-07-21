@@ -20,12 +20,66 @@ Windows" means *inside WSL2*, not native Windows.
 ```
 infra/k8s/
   scripts/       all the executable bash — init-linux, init-windows, deploy, config, rotate, bootstrap, install, flux-bootstrap
-  manifests/     kubectl-applied YAML — namespace, backend, frontend, ingress, kustomization (Flux image override)
+  base/          environment-agnostic manifests, split into two Kustomize builds:
+                   base/app/     namespace, backend, frontend
+                   base/ingress/ security-headers, certificate, ingress
+  overlays/      per-environment Kustomize overlays layered on base:
+                   overlays/prod/     namespace fmi-codes, host fmicodes.com, Let's Encrypt issuer
+                   overlays/staging/  namespace fmi-codes-staging, host staging.fmicodes.com, self-signed issuer
   helm-values/   Bitnami chart values — postgresql, redis
-  secrets/       secrets.enc.yaml (SOPS-encrypted; .sops.yaml lives at the repo root)
+  secrets/       prod secrets.enc.yaml (SOPS-encrypted; staging's lives under overlays/staging/secrets/; .sops.yaml is at the repo root)
   flux/          Flux GitOps resources — source, image automation (Phase 6)
   README.md      this file
 ```
+
+### Environments (staging / prod)
+
+Both environments run on the same k3s node, isolated at the namespace level, and are
+built from one shared `base/` via Kustomize overlays. An overlay is selected with
+`ENV=staging` (default) or `ENV=prod` on the deploy scripts, or by the Kustomize path
+Flux reconciles.
+
+| | prod | staging |
+| --- | --- | --- |
+| namespace | `fmi-codes` | `fmi-codes-staging` |
+| host / origin | `fmicodes.com` | `staging.fmicodes.com` |
+| DB/Redis service FQDNs | `*.fmi-codes.svc` | `*.fmi-codes-staging.svc` |
+| TLS issuer | Let's Encrypt `ClusterIssuer` | self-signed namespaced `Issuer` |
+| image tags | `<ts>-<sha>` (promoted from staging) | `<ts>-<sha>` (Flux-bumped) |
+
+Both environments use one image-tag scheme: `<ts>-<sha>`, where `<ts>` is a Unix epoch
+and `<sha>` the short commit hash, produced by `docker-cd.yaml` on every push to `main`
+(plus a moving `latest`). There is no `staging` branch and no separate staging tag —
+staging simply tracks the newest tag automatically, and prod runs whatever tag was last
+promoted from staging. See "Phase 6 — GitOps continuous deploy" below for the full flow.
+
+Everything else — replicas, resource limits, probes, security context, feature-flag
+defaults, `FLASK_ENV`, security headers — is identical across the two, by design:
+staging exists to catch problems before they reach prod, so it must mirror prod. The
+prod overlay renders byte-identical to the pre-overlay flat manifests; verify with:
+
+```bash
+kubectl kustomize infra/k8s/overlays/prod
+kubectl kustomize infra/k8s/overlays/prod/ingress
+kubectl kustomize infra/k8s/overlays/staging
+kubectl kustomize infra/k8s/overlays/staging/ingress
+```
+
+Staging uses a self-signed certificate deliberately — it avoids spending the Let's
+Encrypt issuance budget on a throwaway environment, at the cost of a browser trust
+warning. Flux reconciliation of the staging overlay is wired up in a later phase; the
+overlay renders valid manifests now but is not yet reconciled automatically.
+
+Staging runs its **own** ingress-nginx controller (Helm release `ingress-nginx-staging`,
+namespace `ingress-nginx-staging`, ingress class `nginx-staging`, ServiceLB ports
+8080/8443) with its own `add-headers` pointing at `fmi-codes-staging/security-headers`.
+Prod keeps its controller (Helm release `ingress-nginx`, namespace `ingress-nginx`,
+ingress class `nginx`, ports 80/443, `add-headers` pointing at
+`fmi-codes/security-headers`). The two controllers are fully independent, so a staging
+deploy never mutates prod's served security headers. And staging has its **own** SOPS app
+secret (`overlays/staging/secrets/secrets.enc.yaml`, namespace `fmi-codes-staging`),
+encrypted with a **separate age key** from prod — see "Staging/prod secret isolation
+(two age keys)" below.
 
 Scripts resolve their siblings via a computed `K8S_DIR` (the `infra/k8s` root), so
 they work regardless of where you invoke them from — `bash infra/k8s/scripts/init-linux.sh`
@@ -34,23 +88,42 @@ from the repo root is the normal entrypoint.
 ## Quick start — bring up everything
 
 One command runs the whole sequence in order (tooling → cluster → stateful tier →
-app tier → ingress). Pick the entrypoint for your host:
+app tier → ingress). The repo-root `bootstrap.sh` is the front door — it runs the
+age-key + admin-password pre-flight, then hands off to the platform entrypoint:
+
+```bash
+# Staging (the default) — from the repo root:
+./bootstrap.sh
+
+# Production — the deliberate opt-in:
+./bootstrap.sh --env prod        # or the --prod shorthand
+```
+
+`bootstrap.sh` **defaults to staging**. Production is only ever stood up on purpose,
+so it requires an explicit `--env prod` (or `--prod`); a bare run can never touch it.
+The `--env` value drives everything downstream: the namespace (`fmi-codes-staging` vs
+`fmi-codes`), the ingress host (`staging.fmicodes.com` vs `fmicodes.com`), the SOPS
+secrets file, and the age recipient the pre-flight validates against. Staging needs the
+staging age private key present (see "Phase 4" for the key layout).
+
+Under the hood `bootstrap.sh` forwards to the platform entrypoint, which you can also
+run directly if the pre-flight was already done:
 
 ```bash
 # On a Debian/Ubuntu Linux server:
-bash infra/k8s/scripts/init-linux.sh
+bash infra/k8s/scripts/init-linux.sh --env staging
 
 # On a Windows dev box (from inside a WSL2 Ubuntu shell):
-bash infra/k8s/scripts/init-windows.sh
+bash infra/k8s/scripts/init-windows.sh --env staging
 ```
 
 `init-windows.sh` is a thin wrapper: it runs `init-linux.sh` (passing through any
-args, including `--from`), then prints the WSL2→Windows hosts-file steps. Both are
-idempotent and resumable — if a step fails, fix the cause and continue with
-`--from N` (N = 1-5) instead of redoing earlier steps. Steps 1-2 (k3s install,
-`/usr/local/bin` writes) need interactive sudo, so run it in a terminal. The
-phase-by-phase breakdown below explains what each step does and how to run them
-individually.
+args, including `--env` and `--from`), then prints the WSL2→Windows hosts-file steps.
+Both entrypoints — and the whole flow — are idempotent and resumable: if a step fails,
+fix the cause and continue with `--from N` (N = 1-6) instead of redoing earlier steps.
+Steps 1-2 (k3s install, `/usr/local/bin` writes) need interactive sudo, so run it in a
+terminal. The phase-by-phase breakdown below explains what each step does and how to
+run them individually.
 
 ## Changing a config value
 
@@ -60,15 +133,17 @@ Redis/DB coordinates) and roll the backend so pods pick it up:
 ```bash
 bash infra/k8s/scripts/apply-config.sh FRONTEND_ORIGIN https://fmicodes.com
 bash infra/k8s/scripts/apply-config.sh REGISTRATION_OPEN true
-bash infra/k8s/scripts/apply-config.sh          # re-apply manifests from disk, then roll
+bash infra/k8s/scripts/apply-config.sh          # re-apply the overlay from disk, then roll
 ```
 
 It patches the `fmi-codes-backend-config` ConfigMap and restarts the backend.
 **Secrets are refused** here — the script points you at `rotate-secret.sh` (app
 secrets) or `deploy-stateful.sh` (PVC-coupled DB/Redis passwords) instead. A live
-patch drifts from git, so also edit `manifests/backend.yaml` and commit it to keep
-the source of truth in sync (the script reminds you). Pass `RESTART=false` to skip
-the rollout when batching changes.
+patch drifts from git, so also edit the source of truth and commit it (the script
+reminds you): env-specific keys (`FRONTEND_ORIGIN`, `DB_HOST`, `REDIS_SENTINELS`)
+live in `overlays/<env>/backend-config-patch.yaml`; all other keys live in
+`base/app/backend.yaml`. Pass `RESTART=false` to skip the rollout when batching
+changes, or `ENV=staging` to target the staging namespace.
 
 ## Phase 1 — local cluster (#26)
 
@@ -77,7 +152,7 @@ Two scripts, run inside a Linux (or **WSL2 Ubuntu**) shell:
 | Script | What it does |
 | --- | --- |
 | `scripts/install-tools.sh` | Installs the CLIs — `kubectl`, `helm`, `k9s`, `sops`, `age`, `flux` — each pinned to a specific version and checksum-verified. The "npm install" of this workflow. |
-| `scripts/bootstrap-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `manifests/namespace.yaml`. |
+| `scripts/bootstrap-k3s.sh` | Stands up k3s (pinned version, Traefik disabled — Phase 4 installs `ingress-nginx`), wires up `kubectl`/Helm, and creates the app namespace from `base/app/namespace.yaml`. |
 
 ```bash
 # 1. Get the tooling (one-shot, idempotent)
@@ -89,7 +164,7 @@ bash infra/k8s/scripts/bootstrap-k3s.sh
 
 Re-running either is safe — every step is idempotent. Override the namespace
 with `NAMESPACE=my-ns bash infra/k8s/scripts/bootstrap-k3s.sh` if needed (that path
-labels an on-the-fly namespace instead of applying `manifests/namespace.yaml`). Tool and
+labels an on-the-fly namespace instead of applying `base/app/namespace.yaml`). Tool and
 cluster versions are pinned via `*_VERSION` env vars at the top of each script —
 override them to upgrade (e.g. `K3S_VERSION=v1.37.0+k3s1 bash …`).
 
@@ -186,14 +261,25 @@ cluster as managed stateful workloads, using the upstream Bitnami Helm charts.
 
 | File | What it is |
 | --- | --- |
-| `postgresql-values.yaml` | Bitnami `postgresql` chart values — single primary, PVC-backed, DB `fmi_hackathon_2026`, user `fmi_app`, schema loaded from a ConfigMap. |
-| `redis-values.yaml` | Bitnami `redis` chart values — `sentinel.enabled`, 1 master + 2 replicas + 3 sentinels, master set `mymaster`, quorum 2. Mirrors the docker-compose topology from #23. |
-| `deploy-stateful.sh` | Idempotent deploy: creates the DB/Redis Secrets (once), syncs `schema.sql` into a ConfigMap, adds the Bitnami repo, and `helm upgrade --install`s both charts into `fmi-codes`. |
+| `helm-values/postgresql-values.yaml` | Prod Bitnami `postgresql` chart values — single primary, PVC-backed, DB `fmi_hackathon_2026`, user `fmi_app`, schema loaded from a ConfigMap. |
+| `helm-values/redis-values.yaml` | Prod Bitnami `redis` chart values — `sentinel.enabled`, 1 master + 3 replicas + sentinels, master set `mymaster`, quorum 2. Mirrors the docker-compose topology from #23. |
+| `overlays/staging/postgresql-values.yaml` | Staging Postgres values — identical to prod except DB `fmi_hackathon_2026_staging`. Same `fullnameOverride: postgres`, so the service FQDN differs only by namespace (`postgres.fmi-codes-staging.svc`). |
+| `overlays/staging/redis-values.yaml` | Staging Redis values — identical to prod (same topology, `fullnameOverride: redis`, master set `mymaster`). Namespace isolation separates it from prod. |
+| `deploy-stateful.sh` | Idempotent deploy: creates the DB/Redis Secrets (once), syncs `schema.sql` into a ConfigMap, adds the Bitnami repo, and `helm upgrade --install`s both charts. `ENV=staging` (default) targets `fmi-codes-staging` with the `overlays/staging/*.yaml`; `ENV=prod` targets `fmi-codes` with the `helm-values/*.yaml`. |
 
 ```bash
 # Cluster must already be up (Phase 1). Then:
-bash infra/k8s/scripts/deploy-stateful.sh
+bash infra/k8s/scripts/deploy-stateful.sh              # prod (fmi-codes)
+ENV=staging bash infra/k8s/scripts/deploy-stateful.sh  # staging (fmi-codes-staging)
 ```
+
+Staging gets its own Postgres and Redis so schema migrations, data wipes, and config
+experiments never touch the prod database. Both environments run the same topology and
+share `schema.sql`; the only functional difference is the staging DB name
+(`fmi_hackathon_2026_staging`). Because staging deploys into a separate namespace, its
+PVCs, services, and in-cluster secrets are already isolated from prod — the release
+names (`postgres`, `redis`) and master set (`mymaster`) stay the same, matching the
+service FQDNs the staging app tier already expects (`overlays/staging/backend-config-patch.yaml`).
 
 **Secrets are generated in-cluster, never committed.** On first run the script
 creates two `Secret`s with random 32-char passwords — `fmi-codes-db`
@@ -442,7 +528,7 @@ cluster-native `Ingress`, and terminates TLS at the edge.
 | File | What it is |
 | --- | --- |
 | `ingress.yaml` | The `Ingress` (host `fmicodes.com`, path rules below), its `tls:` block, the `security-headers` ConfigMap, and the cert-manager Let's Encrypt `ClusterIssuer` + `Certificate`. |
-| `deploy-ingress.sh` | Idempotent deploy: `helm upgrade --install`s `ingress-nginx` and `cert-manager`, applies `ingress.yaml`, waits for the cert to be issued. |
+| `deploy-ingress.sh` | Idempotent deploy: `helm upgrade --install`s the env-appropriate controller release (`ingress-nginx` for prod, `ingress-nginx-staging` for staging) and `cert-manager`, applies `ingress.yaml`, waits for the cert to be issued. |
 
 ```bash
 # Cluster + stateful + app tiers must already be up (Phases 1–3). Then:
@@ -475,8 +561,11 @@ live in `frontend/nginx.conf`, where they only attached to responses the fronten
 served — `/api/` and `/static/` responses proxied straight through shipped **without**
 them. They now live in the `security-headers` ConfigMap, wired into the controller via
 `controller.config.add-headers=fmi-codes/security-headers`, so **every** response
-through the Ingress carries them uniformly. The `add_header` lines were removed from
-`frontend/nginx.conf` to avoid duplicate headers.
+through the Ingress carries them uniformly. Staging's controller uses
+`controller.config.add-headers=fmi-codes-staging/security-headers` and its own ingress
+class `nginx-staging`, so the two environments' header ConfigMaps are fully independent
+— a staging deploy never touches prod's headers. The `add_header` lines were removed
+from `frontend/nginx.conf` to avoid duplicate headers.
 
 This uses ingress-nginx's supported `add-headers` mechanism, **not**
 `configuration-snippet` annotations. Snippet annotations are disabled by default
@@ -518,6 +607,15 @@ line):
 INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
+```
+
+For staging, the controller is in its own namespace and exposes HTTPS on port 8443:
+
+```bash
+INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts
+# Then reach staging at https://staging.fmicodes.com:8443
 ```
 
 On the production server, set the `fmicodes.com` A record in DNS instead.
@@ -625,10 +723,79 @@ Back this file up somewhere safe (a password manager). Lose every recipient's
 private key and the committed secrets become permanently undecryptable — you'd
 have to regenerate every value from scratch.
 
+### Staging/prod secret isolation (two age keys)
+
+Staging and prod each own a **separate** app secret encrypted with a **separate**
+age key, so a leak of one environment's key never exposes the other's secrets.
+
+| | prod | staging |
+| --- | --- | --- |
+| encrypted file | `infra/k8s/secrets/secrets.enc.yaml` | `infra/k8s/overlays/staging/secrets/secrets.enc.yaml` |
+| Secret namespace | `fmi-codes` | `fmi-codes-staging` |
+| age recipient (public) | `age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh` | `age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5` |
+| operator private key | `SOPS_AGE_KEY_STAGING` (CI) / a line in `~/.config/sops/age/keys.txt` | same file, second line |
+
+`.sops.yaml` routes each file to its own recipient with two `creation_rules` (the
+staging path rule is listed first so its more-specific path matches before the prod
+rule). SOPS picks the rule by the file path being encrypted, so `sops` on either file
+automatically encrypts to the right key — no per-file flags:
+
+```yaml
+creation_rules:
+  - path_regex: infra/k8s/overlays/staging/secrets/secrets\.enc\.yaml$
+    age: age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5
+  - path_regex: infra/k8s/secrets/secrets\.enc\.yaml$
+    age: age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh
+```
+
+The isolation is enforced by age itself: the staging key is **not** a recipient of the
+prod file and vice versa, so each key decrypts exactly one environment. Verify both
+directions:
+
+```bash
+sops -d infra/k8s/overlays/staging/secrets/secrets.enc.yaml   # staging key: succeeds
+sops -d infra/k8s/secrets/secrets.enc.yaml                    # staging key alone: fails
+```
+
+**An operator who manages both environments keeps both private keys in one keyring.**
+`sops` reads every key line in `~/.config/sops/age/keys.txt`, so append the staging
+key as a second line and one file decrypts both:
+
+```bash
+cat >> ~/.config/sops/age/keys.txt <<'KEY'
+# staging
+AGE-SECRET-KEY-1... (staging private key)
+KEY
+```
+
+Or point `SOPS_AGE_KEY_FILE` at a file that holds the key(s) you need for a given run.
+
+The deploy/rotate scripts are environment-aware via `ENV`: `ENV=staging` (default)
+targets the staging file and the `fmi-codes-staging` namespace, `ENV=prod` targets prod.
+Both scripts assert the decrypted manifest's `namespace:` matches the environment they
+were asked to act on and refuse to apply across environments, so pointing the wrong
+`ENV` at a file can't silently write one environment's secret into the other's
+namespace.
+
+```bash
+ENV=staging bash infra/k8s/scripts/deploy-app.sh
+ENV=staging bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
+```
+
+The **staging private key is stored as the `SOPS_AGE_KEY_STAGING` GitHub Actions
+secret** (repo → Settings → Secrets and variables → Actions), mirroring how the prod
+key will be provided to CI. No workflow consumes it yet — staging CI image builds
+(#56) and staging Flux reconciliation (#57) wire it in later; storing it now keeps the
+key material out of the repo and ready for those phases. `bootstrap.sh` is
+environment-aware: it defaults to staging and selects the matching age recipient +
+secrets file, so `./bootstrap.sh` runs the pre-flight against the staging key and
+`./bootstrap.sh --env prod` against the prod key.
+
 ### Editing a secret
 
 ```bash
-sops infra/k8s/secrets/secrets.enc.yaml
+sops infra/k8s/secrets/secrets.enc.yaml                       # prod
+sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml      # staging
 ```
 
 This decrypts into your `$EDITOR`, you edit plaintext, and on save SOPS
@@ -711,6 +878,17 @@ grep -E 'SECRET_KEY|JWT_SECRET_KEY|ADMIN_PASSWORD_HASH' infra/k8s/secrets/secret
 # every hit is ENC[…]; no readable value
 ```
 
+**Staging and prod keys are isolated (#54)** — each key decrypts only its own
+environment's file:
+
+```bash
+sops -d infra/k8s/overlays/staging/secrets/secrets.enc.yaml   # only the staging key succeeds
+sops -d infra/k8s/secrets/secrets.enc.yaml                    # only the prod key succeeds
+```
+
+With only the prod key in your keyring the first command fails; with only the staging
+key the second fails. That mutual failure is the isolation guarantee.
+
 **Backend starts reading config exclusively from ConfigMap/Secret** — the pod has
 no `.env`, and the readiness probe proves it reached Postgres/Redis on env alone:
 
@@ -731,17 +909,29 @@ bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY
 ## Phase 6 — GitOps continuous deploy (#30)
 
 Merging a backend/frontend change should redeploy the running pods with no manual
-step. The cluster lives on a local server (WSL2 or a Linux box) that GitHub's
-cloud runners **cannot reach**, so a push-based CI deploy is impossible. Instead
+step **in staging**, while production stays behind a deliberate human gate. The
+cluster lives on a local server (WSL2 or a Linux box) that GitHub's cloud runners
+**cannot reach**, so a push-based CI deploy is impossible. Instead
 [Flux](https://fluxcd.io/) runs *inside* the cluster and **pulls** — it watches
 the registry for new images and git for manifest changes, and reconciles the
 cluster to match. Nothing inbound is ever needed.
 
+The model is **continuous-deploy-to-staging, manual-promote-to-prod**, off a single
+`main` branch (no `staging` branch exists):
+
+- Push to `main` → images build → Flux auto-bumps the **staging** overlay → staging
+  redeploys. Every merge lands in staging automatically.
+- A dev promotes to **prod** by running the `promote-to-prod` workflow once staging is
+  vetted. It copies the tag currently live in staging into the prod overlay and opens a
+  PR — merging that PR is the production gate.
+
 | File | What it is |
 | --- | --- |
-| `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + `Kustomization` reconciling `manifests/` into the cluster. |
-| `flux/image-automation.yaml` | `ImageRepository`/`ImagePolicy` ×2 (watch the two Docker Hub repos, pick the newest tag) + `ImageUpdateAutomation` (commits tag bumps to the `flux-image-updates` branch). |
-| `manifests/kustomization.yaml` | Kustomize `images:` override Flux edits — keeps the tag out of the Deployment manifests. |
+| `flux/source.yaml` | `GitRepository` (this repo, `main`, over SSH) + four `Kustomization`s: `fmi-codes` / `fmi-codes-ingress` reconcile `overlays/prod/`, and `fmi-codes-staging` / `fmi-codes-staging-ingress` reconcile `overlays/staging/`. |
+| `flux/image-automation.yaml` | `ImageRepository` ×2 (watch the two Docker Hub repos) + `ImagePolicy` ×2 (`*-staging`, pick the newest `<ts>-<sha>` tag) + `ImageUpdateAutomation` (commits tag bumps to `overlays/staging/` on the `flux-image-updates` branch). Prod has **no** ImagePolicy — its tag only ever changes via the promote workflow. |
+| `overlays/staging/kustomization.yaml` | Kustomize `images:` override Flux edits (carries the `$imagepolicy` setter markers). |
+| `overlays/prod/kustomization.yaml` | Kustomize `images:` override — **no** setter markers, so Flux never auto-edits it. The promote workflow writes the tag here. |
+| `.github/workflows/promote-to-prod.yaml` | `workflow_dispatch` — reads the live staging tags per service (or explicit per-service inputs), writes them into the prod overlay, opens a PR to `main`. Does **not** auto-merge. |
 | `scripts/flux-bootstrap.sh` | Idempotent: `flux install`, create the git-auth Secret from your SSH deploy key, apply the `flux/` resources, reconcile. |
 
 ### The deploy loop
@@ -750,25 +940,33 @@ cluster to match. Nothing inbound is ever needed.
 merge backend change to main
   → docker-cd.yaml builds & pushes fssfmi/fmi-codes-backend:<unix-ts>-<sha>
   → Flux ImagePolicy sees the newer tag (sorted numerically on the timestamp)
-  → Flux commits the bump to manifests/kustomization.yaml on branch flux-image-updates
-  → you review & merge that branch into main
-  → Flux reconciles main and rolls ONLY the backend Deployment (frontend untouched)
+  → Flux commits the bump to overlays/staging/kustomization.yaml on branch flux-image-updates
+  → that branch auto-merges into main (flux-auto-pr.yaml)
+  → Flux reconciles main and rolls ONLY the backend Deployment in STAGING (frontend untouched)
+
+when staging is vetted, promote to prod
+  → run the "Promote to production" workflow (Actions tab → Run workflow)
+  → it copies staging's current tag into overlays/prod/kustomization.yaml and opens a PR
+  → you review & merge that PR into main
+  → Flux reconciles main and rolls the prod Deployment(s) to the promoted tag
 ```
 
 Image tags are immutable `<unix-ts>-<sha>` (not `:latest`) precisely so Flux can
-order them and detect "backend changed" per service. The write-back goes to a
-**separate branch you merge via PR**, so every deploy has a human gate and a git
-audit trail — `git revert` is a rollback.
+order them and detect "backend changed" per service. Staging bumps auto-merge (fast
+feedback); the prod promote PR is merged by a human (the gate) — `git revert` of a
+promote commit is a prod rollback.
 
 ### Ownership: Flux owns the app Deployments
 
 Once Flux is bootstrapped it is the **single owner of the backend/frontend
-Deployments**. `deploy-app.sh` still owns the SOPS app secret and first-time
-bootstrap, but it detects the Flux `Kustomization` and **skips re-applying the
-Deployments** when Flux is active — no tug-of-war over the image tag. The
-stateful tier (Postgres/Redis via Helm) and ingress stay owned by their
-respective `deploy-*.sh` scripts; Flux only reconciles `manifests/` (backend +
-frontend), so `prune: true` can never touch them.
+Deployments** in both namespaces. `deploy-app.sh` still owns the SOPS app secret and
+first-time bootstrap, but it detects the Flux `Kustomization` (`FLUX_KUSTOMIZATION`:
+`fmi-codes` for prod, `fmi-codes-staging` for staging) and **skips re-applying the
+Deployments** when Flux is active — no tug-of-war over the image tag. The stateful
+tier (Postgres/Redis via Helm) and ingress stay owned by their respective
+`deploy-*.sh` scripts; Flux reconciles `overlays/prod/` and `overlays/staging/`
+(backend + frontend, plus the ingress build each depends on), so `prune: true` can
+never touch them.
 
 ### One-time setup — SSH deploy key
 
@@ -805,22 +1003,247 @@ bash infra/k8s/scripts/init-linux.sh --with-flux
 
 ```bash
 flux get sources git --namespace flux-system        # fmi-codes: Ready, latest revision
-flux get kustomizations --namespace flux-system      # fmi-codes: Ready, Applied revision
+flux get kustomizations --namespace flux-system      # prod + staging: Ready, Applied revision
 flux get images all --namespace flux-system          # both repos scanned, latest tag picked
 ```
 
-**Per-service redeploy** — push a backend-only change, confirm only the backend
-rolls after you merge the `flux-image-updates` PR:
+**Auto-deploy to staging** — push a backend-only change, confirm only the backend
+rolls in the staging namespace after the `flux-image-updates` bump auto-merges:
 
 ```bash
-kubectl -n fmi-codes get pods -l app.kubernetes.io/name=fmi-codes-backend -w
+kubectl -n fmi-codes-staging get pods -l app.kubernetes.io/name=fmi-codes-backend -w
 # backend pods roll to the new image; frontend pods keep their AGE (untouched)
+kubectl -n fmi-codes-staging get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+kubectl -n fmi-codes-staging get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+**Manual promote to prod** — run the promote workflow, merge the PR it opens, confirm
+prod moves to the same tag staging is running:
+
+```bash
 kubectl -n fmi-codes get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
 kubectl -n fmi-codes get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
 ```
 
-**Rollback** — revert the tag-bump commit on main; Flux reconciles back to the
+**Rollback** — revert the promote commit on main; Flux reconciles prod back to the
 previous image automatically.
+
+## End-to-end validation & operation (#60)
+
+This section is the capstone runbook for the completed staging/prod split epic (#52).
+Phases 1–6 built every piece; this section is the ordered "stand it up on a fresh
+server and prove every epic acceptance criterion" guide. It is self-contained — every
+command you need to run the full validation top-to-bottom is inline here. You do not
+need to scroll back through the phase sections to execute it, though each phase's
+section has deeper background if you want it.
+
+### Prerequisite: DNS
+
+**Prod (`fmicodes.com`).** An A record pointing at the server's public IP must exist
+and resolve publicly *before* `deploy-ingress.sh` runs for prod. The prod certificate
+is issued by Let's Encrypt via an HTTP-01 ACME challenge: cert-manager reaches out to
+the public internet to verify that `fmicodes.com` resolves to this server. If the
+record is missing or not yet propagated the challenge fails and no certificate is
+issued.
+
+**Staging (`staging.fmicodes.com`).** An A record (or a hosts-file entry for local
+testing) is only needed so that a client can *reach* `staging.fmicodes.com:8443`.
+It is not a certificate prerequisite — staging uses a self-signed certificate issued
+by an in-cluster `Issuer`, so there is no ACME challenge and nothing to verify against
+public DNS. Set up the record however is convenient; for local testing a hosts-file
+entry is enough:
+
+```bash
+INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts
+```
+
+Because the cert is self-signed, every staging `curl` in this section passes `-k`.
+Prod curls do not — the Let's Encrypt cert is browser-trusted.
+
+### Cold start: bring both environments up
+
+Bootstrap staging first (the default), then prod as the deliberate opt-in:
+
+```bash
+./bootstrap.sh
+./bootstrap.sh --env prod
+```
+
+`--staging` is a valid flag but redundant — it is identical to a bare `./bootstrap.sh`
+run. Production is always explicit.
+
+After both bootstraps complete, verify all pods are Running and Ready:
+
+```bash
+kubectl -n fmi-codes-staging get pods
+kubectl -n fmi-codes get pods
+```
+
+**Flux precondition for auto-deploy (smoke test 3).** The auto-deploy flow requires
+Flux to be bootstrapped inside the cluster. If it has not been set up yet, run step 6
+only (skipping the already-completed tooling, cluster, stateful, app, and ingress steps):
+
+```bash
+bash infra/k8s/scripts/init-linux.sh --with-flux --from 6
+```
+
+This generates (or reuses) the SSH deploy key, adds it to the repo with write access,
+and wires up the `flux/` resources. Flux must be running before smoke test 3 is
+meaningful. See "Phase 6 — GitOps continuous deploy" for the full one-time setup steps.
+
+### Smoke tests
+
+**1. Frontend loads — both environments.**
+
+```bash
+curl https://fmicodes.com/
+curl -k https://staging.fmicodes.com:8443/
+```
+
+Both return HTTP 200 with `index.html`. A non-200 or a connection error means the
+ingress or app tier is not up; return to the cold-start section above.
+
+**2. `/api/health` and `/api/health/ready` respond — both environments.**
+
+`/api/health` is the liveness probe: it touches no dependencies and returns 200
+whenever the process is alive. `/api/health/ready` is the readiness probe: it runs
+a pooled `SELECT 1` against Postgres and pings Redis, returning `{"db": "ok", "redis": "ok"}`
+on success and 503 if Postgres is unreachable (Redis is fail-open and reported but
+never gates readiness).
+
+```bash
+curl https://fmicodes.com/api/health
+curl -k https://staging.fmicodes.com:8443/api/health
+curl https://fmicodes.com/api/health/ready
+curl -k https://staging.fmicodes.com:8443/api/health/ready
+```
+
+All four return HTTP 200. The readiness responses contain `{"db": "ok", "redis": "ok"}`,
+confirming each environment's stateful tier is reachable from its backend pod.
+
+**3. Auto-deploy to staging works (requires Flux).**
+
+Push a backend change to `main`. The pipeline runs automatically:
+
+```
+docker-cd.yaml builds & pushes fssfmi/fmi-codes-backend:<ts>-<sha>
+  → Flux ImagePolicy fmi-codes-backend-staging picks the newer tag
+  → ImageUpdateAutomation commits the bump to overlays/staging/kustomization.yaml
+    on the flux-image-updates branch
+  → flux-auto-pr.yaml auto-squash-merges flux-image-updates into main
+  → Flux reconciles main and rolls ONLY the backend Deployment in fmi-codes-staging
+```
+
+After the roll completes, verify the staging backend image updated and the staging
+frontend image is untouched:
+
+```bash
+kubectl -n fmi-codes-staging get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+kubectl -n fmi-codes-staging get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+The backend tag contains the new `<ts>-<sha>` pushed in your change. The frontend
+tag is unchanged from before the push. (See "Phase 6 — GitOps continuous deploy"
+for depth on the full Flux wiring.)
+
+**4. Manual promote to prod works.**
+
+With staging running a vetted tag, trigger the promote workflow: GitHub Actions →
+"Promote to production" → Run workflow. The workflow reads the tag currently live in
+`overlays/staging/kustomization.yaml` for each service, writes those tags into
+`overlays/prod/kustomization.yaml`, and opens a `promote-to-prod` PR against `main`.
+The workflow does **not** auto-merge — a human reviews and merges the PR. Once merged,
+Flux reconciles `overlays/prod/` and rolls the prod Deployments.
+
+Verify prod now runs the same tags staging was running:
+
+```bash
+kubectl -n fmi-codes get deploy backend  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+kubectl -n fmi-codes get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+Both tags should match what staging was running before the promote. (See "Phase 6"
+for rollback: revert the promote commit on main and Flux reconciles prod back.)
+
+**5. The gate holds — a push to main does NOT move prod.**
+
+This is the most important structural assertion in the epic. Record prod's current
+backend image tag before any push:
+
+```bash
+kubectl -n fmi-codes get deploy backend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+Now push a change to `main` (or simply wait for the staging roll from smoke test 3
+to complete). After staging has rolled to the new tag, read prod's tag again:
+
+```bash
+kubectl -n fmi-codes get deploy backend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+```
+
+The prod tag must be identical to what it was before the push. The gate holds
+structurally, not by policy: `flux/image-automation.yaml` defines only
+`fmi-codes-backend-staging` and `fmi-codes-frontend-staging` ImagePolicies, and the
+`ImageUpdateAutomation` targets only `./infra/k8s/overlays/staging`. The prod overlay
+(`overlays/prod/kustomization.yaml`) contains plain `newTag:` values with no
+`$imagepolicy` setter markers, so the Flux automation has no anchor to write into —
+it literally cannot rewrite the prod tag. The only thing that ever changes prod's tag
+is the `promote-to-prod` workflow, and that requires a human to merge the PR it opens.
+
+**6. Prod is unaffected by a staging deploy.**
+
+Re-run smoke tests 1 and 2 against prod after staging has rolled:
+
+```bash
+curl https://fmicodes.com/
+curl https://fmicodes.com/api/health/ready
+```
+
+Both return 200 with the same response as before the staging roll. The two
+environments use independent ingress-nginx controller releases (`ingress-nginx` for
+prod in namespace `ingress-nginx`, `ingress-nginx-staging` for staging in namespace
+`ingress-nginx-staging`), so a staging deploy never mutates prod's served headers or
+routing rules.
+
+**7. Staging DB is isolated from prod.**
+
+Write a probe row into the staging database, then confirm it is absent from prod.
+
+Read the staging DB password and insert the probe:
+
+```bash
+STAGING_DB_PW=$(kubectl -n fmi-codes-staging get secret fmi-codes-db \
+  -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n fmi-codes-staging exec -it postgres-0 -- \
+  env PGPASSWORD="$STAGING_DB_PW" psql -U fmi_app -d fmi_hackathon_2026_staging \
+  -c "INSERT INTO universities (name, is_seed) VALUES ('staging-isolation-probe', false) ON CONFLICT DO NOTHING;"
+```
+
+Read the prod DB password and query for the probe row:
+
+```bash
+PROD_DB_PW=$(kubectl -n fmi-codes get secret fmi-codes-db \
+  -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n fmi-codes exec -it postgres-0 -- \
+  env PGPASSWORD="$PROD_DB_PW" psql -U fmi_app -d fmi_hackathon_2026 \
+  -c "SELECT name FROM universities WHERE name = 'staging-isolation-probe';"
+```
+
+The prod query must return zero rows. The two databases (`fmi_hackathon_2026_staging`
+in `fmi-codes-staging`, `fmi_hackathon_2026` in `fmi-codes`) run in separate
+StatefulSets with separate PVCs and separate SOPS-encrypted secrets encrypted with
+separate age keys, so there is no shared data path between them.
+
+### Sign-off
+
+Epic #60 is complete when all seven smoke tests above pass in order. The two tests
+that matter most are smoke test 5 (the gate holds) and smoke test 7 (DB isolation) —
+these are the entire reason the staging/prod split epic (#52) exists. A deployment
+pipeline that auto-deploys to staging on every push and holds prod behind a human
+promote gate is only as strong as these two invariants. If either fails, the split
+has not been achieved regardless of what the manifests look like.
 
 ## Connect k9s
 
@@ -847,13 +1270,19 @@ flux uninstall --namespace flux-system --silent
 
 # Remove the Phase 4 networking tier (Ingress, cert, issuer, headers ConfigMap,
 # then the two controllers and their namespaces):
-kubectl -n fmi-codes delete -f manifests/ingress.yaml
+kubectl delete -k overlays/prod/ingress
+kubectl delete -k overlays/staging/ingress
 helm -n ingress-nginx uninstall ingress-nginx
+helm -n ingress-nginx-staging uninstall ingress-nginx-staging
 helm -n cert-manager uninstall cert-manager
-kubectl delete namespace ingress-nginx cert-manager
+kubectl delete namespace ingress-nginx ingress-nginx-staging cert-manager
 
-# Remove the Phase 3 app tier (stateless — nothing to preserve):
-kubectl -n fmi-codes delete -f manifests/frontend.yaml -f manifests/backend.yaml
+# Remove the Phase 3 app tier (stateless — nothing to preserve). Delete the
+# workloads by label rather than `-k overlays/prod`, since that overlay includes
+# the namespace and would cascade-delete the Phase 2 stateful tier with it:
+kubectl -n fmi-codes delete deployment,service -l app.kubernetes.io/name=fmi-codes-backend
+kubectl -n fmi-codes delete deployment,service -l app.kubernetes.io/name=fmi-codes-frontend
+kubectl -n fmi-codes delete configmap fmi-codes-backend-config
 kubectl -n fmi-codes delete secret fmi-codes-app
 
 # Remove just the Phase 2 stateful releases (keeps the cluster):

@@ -2,13 +2,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: fmi-codes
 resources:
-  - namespace.yaml
-  - backend.yaml
-  - frontend.yaml
+  - ../../base/app
 images:
   - name: fssfmi/fmi-codes-backend
     newName: fssfmi/fmi-codes-backend
-    newTag: 1784211284-de617ba # {"$imagepolicy": "flux-system:fmi-codes-backend:tag"}
+    newTag: 1784114570-26c1b7b
   - name: fssfmi/fmi-codes-frontend
     newName: fssfmi/fmi-codes-frontend
-    newTag: 1784211284-de617ba # {"$imagepolicy": "flux-system:fmi-codes-frontend:tag"}
+    newTag: 1784114112-33a9752

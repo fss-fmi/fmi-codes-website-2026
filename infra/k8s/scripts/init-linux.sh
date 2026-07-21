@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-fmi-codes}"
+ENV="${ENV:-staging}"
 FROM="${FROM:-1}"
 WITH_FLUX="${WITH_FLUX:-false}"
 
@@ -13,12 +13,12 @@ die() { echo "Error: $1" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--from N] [--with-flux]
+Usage: $(basename "$0") [--env staging|prod] [--from N] [--with-flux]
 
 All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
 
   1. install-tools.sh    CLIs (kubectl, helm, k9s, sops, age, flux)
-  2. bootstrap-k3s.sh    k3s cluster + '$NAMESPACE' namespace
+  2. bootstrap-k3s.sh    k3s cluster + target namespace
   3. deploy-stateful.sh  Postgres + Redis Sentinel (Helm)
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
   5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
@@ -27,6 +27,8 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
 
+  --env E       target environment: staging (default) or prod. Prod is normally
+                promoted via the workflow action, not hand-bootstrapped.
   --from N      start at step N (1-6). Default 1.
   --with-flux   also run step 6 (Flux GitOps). Off by default because it needs an
                 SSH deploy key present — see README 'Phase 6' before enabling.
@@ -43,11 +45,30 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
+    --env) ENV="${2:-}"; [ -n "$ENV" ] || die "--env needs a value (staging|prod)"; shift 2 ;;
     --from) FROM="${2:-}"; [ -n "$FROM" ] || die "--from needs a step number (1-6)"; shift 2 ;;
     --with-flux) WITH_FLUX=true; shift ;;
     *) die "unknown argument '$1' (see --help)" ;;
   esac
 done
+
+case "$ENV" in
+  prod)
+    NAMESPACE="${NAMESPACE:-fmi-codes}"
+    HOST="${HOST:-fmicodes.com}"
+    INGRESS_NAMESPACE="ingress-nginx"
+    INGRESS_RELEASE="ingress-nginx"
+    HOST_URL="https://$HOST"
+    ;;
+  staging)
+    NAMESPACE="${NAMESPACE:-fmi-codes-staging}"
+    HOST="${HOST:-staging.fmicodes.com}"
+    INGRESS_NAMESPACE="ingress-nginx-staging"
+    INGRESS_RELEASE="ingress-nginx-staging"
+    HOST_URL="https://$HOST:8443"
+    ;;
+  *)       die "--env must be 'staging' or 'prod', got '$ENV'" ;;
+esac
 
 case "$FROM" in
   1|2|3|4|5|6) : ;;
@@ -66,7 +87,7 @@ run_step() {
   fi
   [ -f "$SCRIPT_DIR/$script" ] || die "step $n: missing $SCRIPT_DIR/$script"
   log "Step $n/6 — $name"
-  bash "$SCRIPT_DIR/$script" \
+  ENV="$ENV" bash "$SCRIPT_DIR/$script" \
     || die "step $n ($name) failed. Fix the cause above, then resume with: $(basename "$0") --from $n"
 }
 
@@ -82,21 +103,28 @@ else
   log "Step 6 (GitOps CD) — skipped (pass --with-flux to enable; see README 'Phase 6')"
 fi
 
-INGRESS_IP="$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-external-ip>"
+
+if [ "$ENV" = "prod" ]; then
+  TLS_NOTE="For production, point the $HOST A record at $INGRESS_IP in DNS.
+Let's Encrypt issues the cert automatically once DNS resolves."
+else
+  TLS_NOTE="For staging, the /etc/hosts entry above is enough — TLS is a self-signed
+certificate from a namespaced Issuer, so expect a browser warning."
+fi
 
 cat <<EOF
 
 $(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
 
 Point the host name at the ingress so clients can reach it. On this host:
-  echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
+  echo "$INGRESS_IP $HOST" | sudo tee -a /etc/hosts
 
-For production, point the fmicodes.com A record at $INGRESS_IP in DNS.
-Let's Encrypt issues the cert automatically once DNS resolves.
+$TLS_NOTE
 
 Verify the stack:
   kubectl -n $NAMESPACE get pods
-  curl https://fmicodes.com/api/health
+  curl ${HOST_URL}/api/health
 EOF

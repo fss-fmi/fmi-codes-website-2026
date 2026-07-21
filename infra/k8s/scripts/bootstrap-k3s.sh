@@ -2,7 +2,12 @@
 
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-fmi-codes}"
+ENV="${ENV:-staging}"
+case "$ENV" in
+  prod)    NAMESPACE="${NAMESPACE:-fmi-codes}" ;;
+  staging) NAMESPACE="${NAMESPACE:-fmi-codes-staging}" ;;
+  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+esac
 K3S_VERSION="${K3S_VERSION:-v1.36.2+k3s1}"
 HELM_VERSION="${HELM_VERSION:-v3.21.3}"
 
@@ -119,7 +124,7 @@ fi
 
 log "Creating namespace '$NAMESPACE'"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
-NAMESPACE_MANIFEST="${SCRIPT_DIR:+$SCRIPT_DIR/../manifests}/namespace.yaml"
+NAMESPACE_MANIFEST="${SCRIPT_DIR:+$SCRIPT_DIR/../base/app}/namespace.yaml"
 if [ "$NAMESPACE" = "fmi-codes" ] && [ -f "$NAMESPACE_MANIFEST" ]; then
   kubectl apply -f "$NAMESPACE_MANIFEST"
 else

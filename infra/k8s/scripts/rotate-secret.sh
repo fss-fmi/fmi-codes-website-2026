@@ -2,10 +2,16 @@
 
 set -euo pipefail
 
-NAMESPACE="${NAMESPACE:-fmi-codes}"
+ENV="${ENV:-staging}"
+case "$ENV" in
+  prod)    DEFAULT_NAMESPACE="fmi-codes"; SECRETS_REL="secrets/secrets.enc.yaml" ;;
+  staging) DEFAULT_NAMESPACE="fmi-codes-staging"; SECRETS_REL="overlays/staging/secrets/secrets.enc.yaml" ;;
+  *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
+esac
+NAMESPACE="${NAMESPACE:-$DEFAULT_NAMESPACE}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/secrets/secrets.enc.yaml}"
+SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL}"
 RESTART="${RESTART:-true}"
 
 die() { echo "Error: $1" >&2; exit 1; }
@@ -24,11 +30,13 @@ cluster, and restart the backend so pods pick up the new value.
   VALUE   The new value. If omitted, a strong random 64-char value is
           generated (use for SECRET_KEY / JWT_SECRET_KEY).
 
-Env overrides: NAMESPACE ($NAMESPACE), SECRETS_ENC ($SECRETS_ENC),
+Env overrides: ENV (prod|staging — selects the secrets file and namespace),
+NAMESPACE ($NAMESPACE), SECRETS_ENC ($SECRETS_ENC),
 RESTART (true|false — skip the rollout restart when false).
 
 Examples:
   $(basename "$0") JWT_SECRET_KEY
+  ENV=staging $(basename "$0") JWT_SECRET_KEY
   $(basename "$0") MAIL_PASSWORD 'my-smtp-app-password'
   ADMIN_PASSWORD_HASH rotation (generate the bcrypt hash first):
     HASH=\$(python3 -c "import bcrypt;print(bcrypt.hashpw(b'newpass', bcrypt.gensalt(12)).decode())")
@@ -48,6 +56,10 @@ command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-too
 
 sops --decrypt "$SECRETS_ENC" >/dev/null 2>&1 \
   || die "cannot decrypt $SECRETS_ENC — is your age key at ~/.config/sops/age/keys.txt?"
+
+secret_ns="$(sops --decrypt "$SECRETS_ENC" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
+[ "$secret_ns" = "$NAMESPACE" ] \
+  || die "$SECRETS_ENC targets namespace '${secret_ns:-<none>}' but ENV=$ENV expects '$NAMESPACE' — refusing to rotate across environments."
 
 sops --decrypt "$SECRETS_ENC" \
   | grep -qE "^[[:space:]]+$(printf '%s' "$KEY" | sed 's/[.[\*^$/]/\\&/g'):" \

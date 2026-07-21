@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: fmi-codes-staging
+resources:
+  - ../../base/app
+patches:
+  - path: backend-config-patch.yaml
+    target:
+      kind: ConfigMap
+      name: fmi-codes-backend-config
+images:
+  - name: fssfmi/fmi-codes-backend
+    newName: fssfmi/fmi-codes-backend
+    newTag: 1784211284-de617ba # {"$imagepolicy": "flux-system:fmi-codes-backend-staging:tag"}
+  - name: fssfmi/fmi-codes-frontend
+    newName: fssfmi/fmi-codes-frontend
+    newTag: 1784211284-de617ba # {"$imagepolicy": "flux-system:fmi-codes-frontend-staging:tag"}
