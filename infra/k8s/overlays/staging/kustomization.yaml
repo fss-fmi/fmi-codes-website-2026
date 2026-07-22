@@ -14,4 +14,4 @@ images:
     newTag: 1784711406-52296c5 # {"$imagepolicy": "flux-system:fmi-codes-backend-staging:tag"}
   - name: fssfmi/fmi-codes-frontend
     newName: fssfmi/fmi-codes-frontend
-    newTag: 1784710962-8b76ca2 # {"$imagepolicy": "flux-system:fmi-codes-frontend-staging:tag"}
+    newTag: 1784711406-52296c5 # {"$imagepolicy": "flux-system:fmi-codes-frontend-staging:tag"}
