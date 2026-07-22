@@ -6,7 +6,7 @@ resources:
 images:
 - name: fssfmi/fmi-codes-backend
   newName: fssfmi/fmi-codes-backend
-  newTag: 1784656826-a7348e5
+  newTag: 1784706740-5fff2e5
 - name: fssfmi/fmi-codes-frontend
   newName: fssfmi/fmi-codes-frontend
-  newTag: 1784656826-a7348e5
+  newTag: 1784706740-5fff2e5
