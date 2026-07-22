@@ -43,7 +43,7 @@ spec:
     name: fmi-codes
   path: ./infra/k8s/overlays/prod/ingress
   prune: true
-  wait: true
+  wait: false
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -77,4 +77,4 @@ spec:
     name: fmi-codes
   path: ./infra/k8s/overlays/staging/ingress
   prune: true
-  wait: true
+  wait: false
