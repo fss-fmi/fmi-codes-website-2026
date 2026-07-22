@@ -44,37 +44,160 @@ is identical by design: staging mirrors prod so it catches problems before prod 
 two ingress controllers are fully independent, so a staging deploy never touches prod's
 routing or headers. Verify an overlay renders with `kubectl kustomize infra/k8s/overlays/<env>`.
 
-## Quick start
+## TL;DR
 
-`bootstrap.sh` (repo root) is the front door — it runs the age-key + admin-password
-pre-flight, then hands off to the platform entrypoint. It **defaults to staging**; prod is
-always an explicit opt-in.
+From the repo root: `./bootstrap.sh` (staging) or `./bootstrap.sh --env prod`. It runs a
+pre-flight (asks for the age key + admin password), then installs tools → k3s →
+Postgres/Redis → app → ingress. Idempotent and resumable (`--from N`, N = 1–6). Full
+walkthrough below.
+
+## Set up on a brand-new machine — step by step
+
+End-to-end, bare server → running cluster. Do it for staging first, then repeat with
+`--env prod` for production.
+
+### 0. Prerequisites
+
+- A **Debian/Ubuntu** box (or WSL2 Ubuntu) with `sudo`, `git`, and `curl`. Nothing else —
+  `install-tools.sh` fetches kubectl/helm/sops/age/flux.
+- **The environment's age private key.** SOPS decrypts the committed app secrets with it.
+  Two cases:
+  - **Deploying the existing project** (normal case): get the private key from a teammate
+    who already has it (the `AGE-SECRET-KEY-1…` line out of their
+    `~/.config/sops/age/keys.txt`). You'll paste it in step 3 — no files to edit.
+  - **Forking to your own project:** you don't have the org's key, so mint your own and take
+    over the recipient — see [Forking: use your own keys](#forking-use-your-own-keys) below,
+    do that once, then come back here.
+- **DNS for prod only:** `fmicodes.com` needs a public A-record → the server's IP, resolving
+  *before* you deploy (Let's Encrypt verifies it over HTTP-01, so port 80 must be reachable
+  from the internet). Staging uses a self-signed cert — a hosts-file entry is enough.
+
+### 1. Clone
 
 ```bash
-./bootstrap.sh              # staging
+git clone https://github.com/fss-fmi/fmi-codes-website-2026.git
+cd fmi-codes-website-2026
+```
+
+### 2. Know what secrets exist and where they live
+
+Nothing to create by hand — the passwords split three ways and every one is handled for you:
+
+| Secret | Keys | How it's set |
+| --- | --- | --- |
+| `fmi-codes-app` (SOPS, in git) | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
+| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords | **generated in-cluster** by `deploy-stateful.sh` on first run — you never touch these |
+
+So the only secret you actively decide on a fresh deploy is the **admin password** — and the
+bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` are
+optional; set them later with `rotate-secret.sh` (step 5) if you want password-reset mail or
+bug-report webhooks.
+
+### 3. Run the bootstrap
+
+`./bootstrap.sh` is the front door. It runs a pre-flight, then installs tools → k3s →
+Postgres/Redis → app → ingress in order.
+
+```bash
+./bootstrap.sh              # staging (default)
 ./bootstrap.sh --env prod   # production
 ```
 
-The whole flow (tools → k3s → Postgres/Redis → app → ingress) is idempotent and resumable —
-if a step fails, fix the cause and continue with `--from N` (N = 1–6). Steps 1–2 need
-interactive sudo, so run it in a terminal. On a WSL2 dev box use `init-windows.sh` instead
-(it runs `init-linux.sh`, then prints the Windows hosts-file steps a Windows browser needs):
+The pre-flight prompts you for exactly two things on a fresh machine:
+
+1. **The age private key** — it detects none at `~/.config/sops/age/keys.txt`, prints the
+   public recipient it expects, and asks you to paste the `AGE-SECRET-KEY-1…` line. It writes
+   it `chmod 600` and immediately verifies it can decrypt that env's `secrets.enc.yaml`
+   (wrong key → it aborts).
+2. **The admin password** — if `ADMIN_PASSWORD_HASH` is empty in the secrets file, it asks
+   for a password, bcrypt-hashes it, and writes the hash back into `secrets.enc.yaml`. Commit
+   and push that file afterward so other servers get the same hash. (Skip it and the backend
+   CrashLoops until you set one — fix later with `rotate-secret.sh ADMIN_PASSWORD_HASH`.)
+
+It's idempotent and resumable — if a step fails, fix the cause and re-run with `--from N`
+(N = 1–6). Steps 1–2 need interactive sudo, so run it in a real terminal.
+
+> **WSL2 dev box:** use `bash infra/k8s/scripts/init-windows.sh --env staging` instead — it
+> runs the same flow, then prints the Windows hosts-file line a Windows browser needs.
+
+### 4. Point the host at the cluster
+
+**Prod:** set the `fmicodes.com` A-record in public DNS → the server's IP (do this *before*
+step 3 so the TLS cert issues). **Staging** (or prod local testing): add a hosts entry to the
+controller's IP — the deploy script prints the exact line:
 
 ```bash
-bash infra/k8s/scripts/init-linux.sh --env staging     # real Linux server
-bash infra/k8s/scripts/init-windows.sh --env staging   # WSL2
+INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts   # reach it at :8443
 ```
 
-## Prerequisites for a fresh server
+### 5. (Optional) Set mail / webhook secrets
 
-- **DNS (prod only):** `fmicodes.com` must have a public A-record → the server's IP,
-  resolving *before* `deploy-ingress.sh` runs. Let's Encrypt verifies it over HTTP-01, so
-  port 80 must be reachable from the internet. Staging uses a self-signed cert (no ACME), so
-  a hosts-file entry is enough.
-- **age private key:** SOPS decrypts the committed app secrets with it. Generate once and
-  keep it out of the repo (see [Secrets](#secrets)).
+```bash
+bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD 'gmail-app-password'
+bash infra/k8s/scripts/rotate-secret.sh DISCORD_BUG_WEBHOOK_URL 'https://discord.com/api/webhooks/…'
+```
 
-## The phases
+Each re-encrypts the one key, re-applies the secret, and restarts the backend. `ENV=staging`
+(default) or `ENV=prod`. Commit the `.enc.yaml` afterward.
+
+### 6. (Optional) Enable GitOps auto-deploy — the Flux deploy key
+
+Skip this for a one-shot deploy; do it if you want pushes to `main` to auto-deploy staging.
+Flux commits image-tag bumps back to the repo, so it needs a **write-capable** SSH key. Use a
+repo **deploy key** (repo-scoped, not tied to a personal account):
+
+```bash
+# a) Generate a keypair on the server (no passphrase — Flux reads it non-interactively):
+ssh-keygen -t ed25519 -f ~/.ssh/fmi-codes-flux -N ""
+
+# b) Add the PUBLIC key to the repo WITH write access:
+#    GitHub → repo → Settings → Deploy keys → Add deploy key → paste the line below,
+#    tick "Allow write access", save.
+cat ~/.ssh/fmi-codes-flux.pub
+
+# c) Bootstrap Flux (loads the PRIVATE key into the in-cluster flux-git-auth secret):
+bash infra/k8s/scripts/flux-bootstrap.sh
+```
+
+The private key never leaves the server and is never committed. Override the path with
+`DEPLOY_KEY=/path/to/key` if you keep it elsewhere. `init-linux.sh --with-flux` runs this as
+step 6 automatically once the key file exists.
+
+### 7. Verify
+
+```bash
+kubectl -n fmi-codes-staging get pods                        # all Running/Ready
+curl -k https://staging.fmicodes.com:8443/api/health/ready   # {"db":"ok","redis":"ok"}
+```
+
+### Forking: use your own keys
+
+Only if you're standing up your *own* project rather than deploying this one. The repo ships
+two committed age recipients (staging + prod) in `.sops.yaml`; to take ownership, replace the
+recipient for the env you control and re-encrypt:
+
+```bash
+# 1. Generate your key pair:
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt && chmod 600 ~/.config/sops/age/keys.txt
+age-keygen -y ~/.config/sops/age/keys.txt      # prints your age1… public recipient
+
+# 2. In .sops.yaml, swap the `age:` recipient for your env's rule to that age1… value.
+# 3. Re-encrypt the existing secrets file to your key:
+sops updatekeys infra/k8s/overlays/staging/secrets/secrets.enc.yaml   # (prod: infra/k8s/secrets/secrets.enc.yaml)
+# 4. Commit .sops.yaml + the re-encrypted file. Now bootstrap accepts YOUR key.
+```
+
+You'll also want your own Docker Hub images and hostnames — see
+[Forking to your own infra](#forking-to-your-own-infra).
+
+## The phases (reference)
+
+The bootstrap runs these for you; this is what each does if you need to run one alone. Each
+script refuses to run until the previous phase's resources exist, so ordering is enforced.
+`ENV=staging` (default) or `ENV=prod` selects the target.
 
 Each script refuses to run until the previous phase's resources exist, so ordering is
 enforced, not assumed. `ENV=staging` (default) or `ENV=prod` selects the target.
@@ -180,21 +303,14 @@ is base64, not encryption, and `base64 -d` reveals it instantly.
 DB/Redis passwords are deliberately **not** in SOPS — they're PVC-coupled and generated
 in-cluster (see Phase 2). SOPS owns only the five `fmi-codes-app` values.
 
-**Generate your key once**, then back it up (lose every recipient's key and the committed
-secrets are permanently undecryptable):
-
-```bash
-mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
-chmod 600 ~/.config/sops/age/keys.txt
-age-keygen -y ~/.config/sops/age/keys.txt   # prints your age1… public recipient
-```
-
-Staging and prod use **separate** age keys, so a leak of one never exposes the other.
-`.sops.yaml` routes each file to its recipient by path (staging rule first, more specific).
-An operator managing both keeps both private keys in `~/.config/sops/age/keys.txt` (one per
-line). The deploy/rotate scripts assert the decrypted manifest's namespace matches `ENV` and
-refuse to apply across environments.
+Getting the age key onto a machine is covered in the setup guide (paste it when bootstrap
+prompts) and [Forking: use your own keys](#forking-use-your-own-keys) (mint your own). Back
+the key up — lose every recipient's key and the committed secrets are permanently
+undecryptable. Staging and prod use **separate** age keys, so a leak of one never exposes the
+other; `.sops.yaml` routes each file to its recipient by path (staging rule first, more
+specific). An operator managing both keeps both private keys in `~/.config/sops/age/keys.txt`
+(one per line). The deploy/rotate scripts assert the decrypted manifest's namespace matches
+`ENV` and refuse to apply across environments.
 
 **Edit / rotate:**
 
@@ -225,17 +341,10 @@ the **staging** overlay → staging redeploys. **Prod** has no ImagePolicy — i
 when the `promote-to-prod` workflow opens a PR and a human merges it. That human merge is the
 production gate; a `git revert` of a promote commit is a rollback.
 
-One-time SSH deploy-key setup (Flux commits tag bumps back, so it needs write access):
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/fmi-codes-flux -N ""
-cat ~/.ssh/fmi-codes-flux.pub    # add as a repo Deploy key WITH write access
-bash infra/k8s/scripts/flux-bootstrap.sh
-```
-
-Then enable it as step 6: `bash infra/k8s/scripts/init-linux.sh --with-flux`. Once
-bootstrapped, Flux owns the app Deployments in both namespaces; `deploy-app.sh` detects this
-and skips re-applying them (no tug-of-war over the image tag). The `flux/` directory is
+One-time setup is the SSH deploy key (Flux commits tag bumps back, so it needs write access)
+plus `flux-bootstrap.sh` — see [step 6 of the setup guide](#6-optional-enable-gitops-auto-deploy--the-flux-deploy-key).
+Once bootstrapped, Flux owns the app Deployments in both namespaces; `deploy-app.sh` detects
+this and skips re-applying them (no tug-of-war over the image tag). The `flux/` directory is
 itself GitOps-managed — edits to `source.yaml`/`image-automation.yaml` self-reconcile within
 5m; editing `self.yaml` needs a `flux-bootstrap.sh` re-run.
 
@@ -243,6 +352,21 @@ itself GitOps-managed — edits to `source.yaml`/`image-automation.yaml` self-re
 > without the guard it would re-fire the build, mint a newer tag, and loop forever. The
 > constraint this creates: build inputs (Dockerfiles, build scripts) must stay OUT of
 > `infra/`. Today they're in `./backend` and `./frontend` — keep them there.
+
+## Forking to your own infra
+
+To deploy this under your own project — your Docker Hub, your domain, your keys — change:
+
+- **age keys** — mint your own and re-encrypt, per [Forking: use your own keys](#forking-use-your-own-keys).
+- **Image registry** — the `fssfmi/fmi-codes-{backend,frontend}` names in `base/app/*.yaml`,
+  `overlays/*/kustomization.yaml`, `.github/workflows/docker-cd.yaml`, and
+  `flux/image-automation.yaml`; set the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets.
+- **Hostnames** — `fmicodes.com` / `staging.fmicodes.com` in `base/ingress/ingress.yaml`,
+  `overlays/*/ingress/*`, and `FRONTEND_ORIGIN` in `base/app/backend.yaml` +
+  `overlays/staging/backend-config-patch.yaml`.
+- **Flux git URL / deploy key** — `flux-bootstrap.sh` defaults to
+  `ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git`; override with
+  `GIT_URL=… bash …` and add your own deploy key (step 6).
 
 ## Change a config value
 
