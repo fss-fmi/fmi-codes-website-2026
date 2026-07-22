@@ -49,7 +49,8 @@ Flux reconciles.
 
 Both environments use one image-tag scheme: `<ts>-<sha>`, where `<ts>` is a Unix epoch
 and `<sha>` the short commit hash, produced by `docker-cd.yaml` on every push to `main`
-(plus a moving `latest`). There is no `staging` branch and no separate staging tag —
+that touches application code (pushes that change only `infra/**` are skipped — see the
+GitOps flow below for why). There is no `staging` branch and no separate staging tag —
 staging simply tracks the newest tag automatically, and prod runs whatever tag was last
 promoted from staging. See "Phase 6 — GitOps continuous deploy" below for the full flow.
 
@@ -957,6 +958,23 @@ Image tags are immutable `<unix-ts>-<sha>` (not `:latest`) precisely so Flux can
 order them and detect "backend changed" per service. Staging bumps auto-merge (fast
 feedback); the prod promote PR is merged by a human (the gate) — `git revert` of a
 promote commit is a prod rollback.
+
+**Why `docker-cd.yaml` ignores `infra/**`.** The bump auto-merge (step `flux-auto-pr.yaml`
+above) is itself a push to `main`. Without a guard, that push would re-fire `docker-cd.yaml`,
+which mints a *newer* `<unix-ts>-<sha>` tag every run (the timestamp always advances, even
+though the image is byte-identical). Flux's numerical ImagePolicy would then pick that newer
+tag and bump again — a self-perpetuating echo of no-op rebuilds and no-op bump PRs, roughly
+one hop every 10–15m, forever. `strategy: Setters` stops Flux looping on a pure git change,
+but it can't stop a genuinely newer tag from existing. The fix is `paths-ignore: ['infra/**']`
+on the `docker-cd.yaml` push trigger: bump commits only ever touch
+`overlays/staging/kustomization.yaml` (guaranteed structurally by `image-automation.yaml`'s
+`update.path`), so ignoring `infra/**` skips exactly the no-op rebuilds and nothing else. A
+mixed commit touching both app code and `infra/**` still builds — `paths-ignore` only skips
+when *every* changed file matches. **Constraint this creates:** build-relevant files
+(Dockerfiles, build scripts, base images) must stay OUT of `infra/`. Today they don't — the
+build contexts are `./backend` and `./frontend` and both Dockerfiles live there. If a
+build input ever moves under `infra/`, `docker-cd.yaml` will silently stop rebuilding on
+changes to it; move it back or narrow the `paths-ignore` glob.
 
 ### flux/ is self-managed
 
