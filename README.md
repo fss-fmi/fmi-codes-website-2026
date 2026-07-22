@@ -1,412 +1,150 @@
-# FMI Codes 2026 — Developer README
+# FMI{Codes} 2026
 
-Hackathon management system for FMI Codes 2026. Handles participant registration, team formation, mentor selection, join-request flows, registration queue management, and the Gale-Shapley mentor-team matching algorithm.
+The **FMI{Codes} hackathon platform** — one web app for both participants and mentors. Participants register, form teams (join by code or browse-and-apply), and land on the registration queue; mentors publish their profiles and rank teams. An admin runs a Gale–Shapley matching pass that pairs mentors to teams from their mutual preferences.
 
-**Stack:** Python 3.12 / Flask 3.0, PostgreSQL 16, vanilla JS + Jinja2 templates, JWT auth, Gunicorn (production).
-
----
-
-## Local Setup
-
-### Option 1 — Docker (recommended, no local installs needed)
-
-Requires: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
-Docker runs the app under Gunicorn (4 workers × 8 threads) against a containerised PostgreSQL 16 instance. The database name inside Docker is `fmi_hackathon_2026` (no `_dev` suffix).
-
-```bash
-# First time — builds the app image and starts both containers (app + postgres)
-docker compose up --build
-
-# Subsequent runs (no code changes to rebuild)
-docker compose up
-
-# After making code changes — rebuild app image, DB volume is kept intact
-docker compose up --build
-
-# Wipe DB and start completely fresh (re-runs schema + migrations + seeds)
-docker compose down -v && docker compose up --build
-```
-
-Docker reads variables from a `.env` file in the project root. Create one with at minimum:
-
-```dotenv
-DB_PASSWORD=postgres
-SECRET_KEY=your-secret-key-here
-JWT_SECRET_KEY=your-jwt-secret-here
-ADMIN_EMAIL=admin@fmicodes.bg
-ADMIN_PASSWORD=admin-pass
-MENTORS_STAY_TUNED=false
-```
-
-App runs at **http://localhost:5001**
+**Stack:** Flask 3 / Python 3.12 (Gunicorn in prod) · PostgreSQL 16 · Redis (rate limiting, JWT revocation, caches) · React 19 + TypeScript + Vite + Tailwind SPA. Deployed to a self-hosted **k3s** cluster with a staging/prod split (Kustomize + SOPS + Flux GitOps).
 
 ---
 
-### Option 2 — Run locally (requires manual Postgres setup)
+## Repo layout
 
-**Prerequisites:** Python 3.12+, PostgreSQL 16 running locally
-
-**1. Clone and install dependencies**
-
-```bash
-git clone <repo-url>
-cd fmi-codes-website-2026
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-
-pip install -r requirements.txt
 ```
-
-**2. Set up the database**
-
-Create the database and apply the base schema. The `schema.sql` already incorporates all migrations, so for a fresh setup this is all you need:
-
-```bash
-psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026_dev;"
-psql -U postgres -d fmi_hackathon_2026_dev -f database/schema.sql
+backend/     Flask API — app/ (routes, services, utils), database/ (schema.sql, migrations, seeds),
+             config.py, run_server.py (dev), wsgi.py (gunicorn), Dockerfile
+frontend/    React + Vite SPA — src/, vite.config.ts, nginx.conf, Dockerfile
+infra/k8s/   Full cluster deployment — scripts/, base/, overlays/{prod,staging}, helm-values/, flux/
+             └── README.md  ← the operator runbook (deploy, secrets, GitOps, teardown)
+dev.py       One-command local dev: backend hot-reload + frontend HMR together
+docker-compose.dev.yml   Local full stack in Docker (single Redis, hot reload)
+docker-compose.yml       Prod-like stack (Redis Sentinel HA — for exercising failover locally)
+.env.example             Environment template — copy to .env
 ```
-
-The files under `database/migrations/` are incremental patches for upgrading an existing database. If you are starting from scratch, ignore them — `schema.sql` is authoritative.
-
-**3. Create a `.env` file**
-
-Create a `.env` file in the project root. Copy the block below and fill in your values:
-
-```dotenv
-# Flask
-FLASK_ENV=development
-FLASK_DEBUG=True
-SECRET_KEY=your-secret-key-here
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=fmi_hackathon_2026_dev
-DB_USER=postgres
-DB_PASSWORD=postgres
-
-# JWT
-JWT_SECRET_KEY=local-dev-jwt-secret-key
-JWT_EXPIRY_DAYS=3
-
-# Admin account (seeded on first run)
-ADMIN_EMAIL=admin@fmicodes.bg
-ADMIN_PASSWORD=admin-pass
-
-# Email / SMTP (used for password reset emails)
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=your-email@gmail.com
-MAIL_PASSWORD=your-app-password
-MAIL_USE_TLS=true
-
-# Discord webhook for bug reports (optional)
-DISCORD_BUG_WEBHOOK_URL=
-
-# Social media / contact links (shown in the home page contact section)
-DISCORD_URL=https://discord.gg/your-invite-code
-INSTAGRAM_URL=https://instagram.com/fmicodes
-FACEBOOK_URL=https://facebook.com/fmicodes
-CONTACT_EMAIL=contact@fmicodes.bg
-CONTACT_PHONE=+359 88 000 0000
-
-# Feature flags
-# Set to true to show the "stay tuned" placeholder instead of the live mentors grid
-MENTORS_STAY_TUNED=false
-```
-
-All variables have sensible defaults for local dev (see `config.py`) so the app will start without a `.env`, but having one makes overrides explicit and avoids surprises.
-
-| Variable                  | Default                       | Notes                                                 |
-| ------------------------- | ----------------------------- | ----------------------------------------------------- |
-| `SECRET_KEY`              | `dev-secret-key-12345`        | Change in production                                  |
-| `JWT_SECRET_KEY`          | falls back to `SECRET_KEY`    | Change in production                                  |
-| `JWT_EXPIRY_DAYS`         | `3`                           | Token lifetime in days                                |
-| `DB_HOST`                 | `localhost`                   |                                                       |
-| `DB_PORT`                 | `5432`                        |                                                       |
-| `DB_NAME`                 | `fmi_hackathon_2026_dev`      |                                                       |
-| `DB_USER`                 | `postgres`                    |                                                       |
-| `DB_PASSWORD`             | `postgres`                    |                                                       |
-| `DATABASE_URL`            | built from above fields       | Override with a full connection string if needed      |
-| `ADMIN_EMAIL`             | `admin@fmicodes.bg`           |                                                       |
-| `ADMIN_PASSWORD`          | `admin-pass`                  | Change in production                                  |
-| `MENTORS_STAY_TUNED`      | `false`                       | `true` shows coming-soon placeholder; `false` is live |
-| `FLASK_ENV`               | `development`                 |                                                       |
-| `MAIL_HOST`               | `smtp.gmail.com`              | SMTP server for password reset emails                 |
-| `MAIL_PORT`               | `587`                         |                                                       |
-| `MAIL_USERNAME`           | `fss.fmi.uni.sofia@gmail.com` | Sender address                                        |
-| `MAIL_PASSWORD`           | _(none)_                      | **Must be set** — Gmail App Password recommended      |
-| `MAIL_USE_TLS`            | `true`                        |                                                       |
-| `DISCORD_BUG_WEBHOOK_URL` | _(none)_                      | If empty, bug reports are silently dropped            |
-| `DISCORD_URL`             | _(none)_                      | Invite link shown in the home page contact section    |
-| `INSTAGRAM_URL`           | _(none)_                      | Instagram profile URL for the contact section         |
-| `FACEBOOK_URL`            | _(none)_                      | Facebook page URL for the contact section             |
-| `CONTACT_EMAIL`           | _(none)_                      | Contact e-mail shown in the contact section           |
-| `CONTACT_PHONE`           | _(none)_                      | Contact phone shown in the contact section            |
-| `DB_POOL_MIN`             | `2`                           | Min connections per worker                            |
-| `DB_POOL_MAX`             | `20`                          | Max connections per worker                            |
-| `DB_POOL_TIMEOUT`         | `5`                           | Seconds to wait for a free connection                 |
-
-**4. Start the server**
-
-```bash
-python run_server.py
-```
-
-App runs at **http://localhost:5001**. On startup, seed data (mentors, universities, specialties) from `database/seeds/` is automatically loaded into the DB.
 
 ---
 
-## Main Functionalities
+## Local development
 
-### Participant registration & authentication
+**1. Configure env**
 
-Participants register with their name, email, university, specialty, and year. On login, a JWT (HS256, 3-day expiry) is issued and stored in `localStorage`. All protected routes validate this token via the `@token_required` decorator family.
+```bash
+cp .env.example .env
+```
 
-Password reset is also supported — participants request a reset link by email; the service sends a time-limited token via SMTP.
+Fill in `SECRET_KEY`, `JWT_SECRET_KEY`, `DB_PASSWORD`, and `ADMIN_PASSWORD_HASH` (the file has the generator commands inline). Everything else has a sane local default. `.env` is gitignored.
 
-### Team management
+**2. Pick a way to run it**
 
-A participant creates a team and becomes its **captain**, receiving a unique `join_code`. The two supported paths to joining a team are:
+| Command | What you get |
+| --- | --- |
+| `python dev.py` | Backend (`:5001`, Flask reload) + frontend (`:5173`, Vite HMR) together. Needs Python 3.12, Node 22, and a reachable Postgres. **The daily driver.** |
+| `docker compose up --build` | The whole stack in Docker — Postgres + single Redis + backend + frontend, all hot-reloading. Only needs Docker. |
+| `docker compose -f docker-compose.yml up -d` | Prod-like stack with the Redis Sentinel topology (1 master + 2 replicas + 3 sentinels). Use it to rehearse a failover: `docker kill fmi-codes-redis-master` and watch the app follow the promoted replica. |
 
-- **Direct join** — enter the `join_code` on the Join Team page.
-- **Browse & apply** — browse the available teams grid (`/browseTeams`), apply to one or more teams, and wait for the captain to accept or decline.
+App → **http://localhost:5001** (API + server-rendered routes), SPA dev server → **http://localhost:5173** (proxies `/api` and `/static` to the backend). Seed data (universities, specialties, mentors) loads automatically on first backend start.
 
-Teams auto-activate when they reach 3 members and auto-deactivate if they fall below 3. Max team size is 6.
+**Database (for `python dev.py`)** — create it once and apply the authoritative schema; `schema.sql` already folds in every migration, so a fresh setup needs nothing from `database/migrations/`:
 
-### Registration queue
+```bash
+psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026;"
+psql -U postgres -d fmi_hackathon_2026 -f backend/database/schema.sql
+```
 
-The first 18 active teams are automatically **registered** for the hackathon (`is_registered = TRUE`). Additional active teams sit in a numbered queue. When a registered team loses its status (members leave, disbands, etc.), the first queued team is automatically promoted. All queue mutations use `pg_advisory_xact_lock(1)` for concurrency safety.
+---
 
-Admins can manually register or unregister individual teams via the admin endpoints; manual unregistration does **not** trigger auto-promotion (explicit control).
+## Tests
 
-### Mentors
+```bash
+# Backend — unit tests need no DB or .env
+cd backend && pytest tests/ --ignore=tests/e2e -v
+# Backend — e2e needs a local Postgres (auto-skips if unreachable); creates its own test DB
+pytest tests/e2e/ -v
 
-All mentors are seeded from `database/seeds/mentors.json` and displayed on `/mentors` as a grid with technology-stack pills and availability chips. A feature flag (`MENTORS_STAY_TUNED`) can swap the live grid out for a coming-soon placeholder page.
+# Frontend
+cd frontend && npm test
+```
 
-Captains rank exactly 3 mentors as team preferences. Mentors also rank exactly 3 teams.
+---
 
-### Gale-Shapley matching
+## Environment variables
 
-An admin triggers the matching manually via `POST /api/admin/run-matching`. The algorithm runs Hospital-Resident Gale-Shapley (mentor-proposing): each team can be matched to up to 3 mentors, each mentor to exactly 1 team. Results are persisted to the `team_mentors` table and visible on each team's Mentors page.
+`.env.example` is the complete list with inline notes — copy it and fill in the blanks. The ones with no safe default that **must** be set:
 
-### Contact section
+| Variable | Notes |
+| --- | --- |
+| `SECRET_KEY`, `JWT_SECRET_KEY` | Flask/JWT signing. Production **hard-fails at startup** if unset or weak. |
+| `ADMIN_PASSWORD_HASH` | bcrypt hash of the admin password (never the plaintext). Production hard-fails if unset. |
+| `DB_PASSWORD` | Postgres password. |
 
-The home page footer area includes a contacts section with a prominent Discord call-to-action and pill links for Instagram, Facebook, email, and phone. Each entry is conditionally rendered — if the corresponding env variable is empty the element is simply omitted. Configure the links via `DISCORD_URL`, `INSTAGRAM_URL`, `FACEBOOK_URL`, `CONTACT_EMAIL`, and `CONTACT_PHONE` in `.env`.
+Everything else (mail, feature flags, contact links, Redis timeouts, pool sizes) has a default and is optional for local dev. Redis is optional entirely — leave every `REDIS_*` unset and the app degrades gracefully (in-memory rate limiting, DB/file fallbacks), though token revocation is effectively off without a shared Redis, so configure it in production.
+
+---
+
+## Deployment (k3s: staging + prod)
+
+The app is deployed to a self-hosted single-node **k3s** cluster. Staging and prod live on the same node, isolated by namespace, built from one shared `base/` via Kustomize overlays:
+
+| | prod | staging |
+| --- | --- | --- |
+| namespace | `fmi-codes` | `fmi-codes-staging` |
+| host | `fmicodes.com` (443) | `staging.fmicodes.com` (8443) |
+| TLS | Let's Encrypt (browser-trusted) | self-signed (`curl -k`) |
+| deploy | manual promote (human-merged PR) | automatic on every push to `main` |
+
+Images are built and pushed to Docker Hub (`fssfmi/fmi-codes-backend`, `fssfmi/fmi-codes-frontend`) by `.github/workflows/docker-cd.yaml` on each push to `main`. Flux, running **inside** the cluster, pulls: it auto-bumps the **staging** overlay to the newest tag; **prod** only moves when the `promote-to-prod` workflow opens a PR and a human merges it.
+
+### Stand it up on a fresh Linux server
+
+The full step-by-step runbook — with per-phase verification, secret rotation, GitOps wiring, and teardown — is **[`infra/k8s/README.md`](infra/k8s/README.md)**. The short version:
+
+**Prerequisites**
+- Debian/Ubuntu Linux (the scripts are apt + bash; k3s is Linux-native).
+- For **prod**: a public DNS A-record for `fmicodes.com` → the server's IP, resolving *before* you deploy ingress (Let's Encrypt verifies it over HTTP-01). For **staging** a hosts-file entry is enough.
+- The **age private key** for the environment you're deploying (SOPS decrypts the committed secrets with it). Generate/obtain per the runbook's Phase 5.
+
+**Bring it up** — one front-door script runs the whole sequence (tools → k3s → Postgres/Redis → app → ingress) in order:
+
+```bash
+./bootstrap.sh              # staging (the default)
+./bootstrap.sh --env prod   # production — deliberate opt-in
+```
+
+It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: `bash infra/k8s/scripts/init-linux.sh --with-flux` after a one-time SSH deploy-key setup.
+
+### What changes to hit *your own* cluster
+
+Runtime config is split in two — this is what you edit to point the deployment at your infrastructure:
+
+- **Non-secret config → the `fmi-codes-backend-config` ConfigMap.** Keys: `FLASK_ENV`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `REDIS_URL`, `FRONTEND_ORIGIN`, `MENTORS_STAY_TUNED`, `REGISTRATION_OPEN`, `RANKINGS_LIVE`. Global values live in `infra/k8s/base/app/backend.yaml`; per-env overrides in `infra/k8s/overlays/<env>/backend-config-patch.yaml`. Change one live with `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>` (then commit the source YAML too).
+- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`. Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY> [VALUE]`.
+- **DB / Redis passwords** are generated in-cluster by `deploy-stateful.sh` and never committed (they're coupled to the datastore PVC).
+
+Forking this to a different domain or registry means updating the hostnames (`base/ingress/ingress.yaml`, `overlays/*/ingress/*`, and `FRONTEND_ORIGIN`), the image names (`base/app/*.yaml`, `overlays/*/kustomization.yaml`, `docker-cd.yaml`, `flux/image-automation.yaml`), the age recipients in `.sops.yaml`, and the Flux git URL/deploy key. Details in the runbook.
+
+---
+
+## How it works
+
+### Teams & registration queue
+
+A participant who creates a team becomes its **captain** and gets a unique `join_code`. Others join by entering that code, or by browsing `/browseTeams` and applying for the captain to accept. Teams auto-activate at 3 members, auto-deactivate below 3, and cap at 6. The first 18 active teams are auto-**registered**; the rest sit in a numbered queue, and when a registered team drops out the first queued team is promoted. All queue mutations take `pg_advisory_xact_lock(1)` for concurrency safety.
+
+### Mentors & Gale–Shapley matching
+
+Mentors are seeded from `backend/database/seeds/mentors.json` and shown on `/mentors`. Captains rank exactly 3 mentors; mentors rank exactly 3 teams. An admin triggers `POST /api/admin/run-matching`, which runs Hospital-Resident Gale–Shapley (mentor-proposing) — each team gets up to 3 mentors, each mentor exactly 1 team — and persists results to `team_mentors`.
+
+### Auth
+
+JWT (HS256, 3-day expiry) issued on login, stored in `localStorage`, validated by the `@token_required` decorator family. Password reset is via a time-limited emailed token. With Redis configured, revoked tokens hit a shared blocklist.
 
 ### Bug reporting
 
-Any logged-in user can submit a bug report from the UI. Reports are forwarded to a Discord channel via a webhook (`DISCORD_BUG_WEBHOOK_URL`). Delivery is fire-and-forget using a bounded `ThreadPoolExecutor` (20 workers) so it never blocks the request thread. If the webhook URL is not configured, reports are silently dropped and a warning is logged.
+Any logged-in user can file a bug from the UI; it's forwarded to Discord via `DISCORD_BUG_WEBHOOK_URL` (fire-and-forget on a bounded thread pool — never blocks the request). No webhook configured → silently dropped with a warning.
 
 ---
 
-## Project Structure
+## Default credentials
 
-```
-├── app/
-│   ├── routes/             Route handlers (HTTP layer only — no business logic)
-│   │   ├── pages.py
-│   │   ├── auth.py
-│   │   ├── teams.py
-│   │   ├── mentors.py
-│   │   └── api_routes.py
-│   ├── services/           Business logic layer
-│   ├── utils/              Shared utilities (auth decorators)
-│   ├── templates/          Jinja2 HTML pages
-│   │   ├── base.html / navbar.html / home.html  (home includes contact section)
-│   │   ├── auth/           login, registration, profile
-│   │   ├── teams/          team, createTeam, joinTeam, browseTeams, registeredTeams
-│   │   ├── mentors/        mentors, mentorsStayTuned, chooseMentor, mentorDashboard
-│   │   ├── rankings/       ranking, teamRanking
-│   │   └── admin/          matching dashboard
-│   ├── static/             Images, company logos, mentor pictures
-│   └── database.py         DB connection pool and query helpers
-├── database/
-│   ├── schema.sql          Authoritative table definitions (includes all changes)
-│   ├── migrations/         Incremental patches for upgrading an existing DB
-│   └── seeds/              JSON data — mentors, universities, specialties, rankings, regulations
-├── config.py               Environment-based configuration (dev / prod / test)
-├── run_server.py           Local dev entry point (Flask dev server, port 5001)
-└── wsgi.py                 Production entry point (loaded by Gunicorn in Docker)
-```
-
----
-
-## Module Responsibilities
-
-### Routes (`app/routes/`)
-
-Routes are thin: validate the request, call a service, return JSON or render a template. No business logic lives here.
-
-| File            | Responsibility                                                                                                                 |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `pages.py`      | Serves HTML templates for public pages: home (with contact section), schedule, regulations, rankings, admin matching dashboard |
-| `auth.py`       | Participant register, login, logout, password reset request & confirm; issues JWTs                                             |
-| `teams.py`      | Team create / join (code) / leave / disband / kick; browse available teams; join-request apply / accept / decline / cancel     |
-| `mentors.py`    | Mentor listing, picture serving, team and mentor preference submission / retrieval                                             |
-| `api_routes.py` | Universities & specialties lookups; rankings & regulations data; admin endpoints (matching, registration queue, bug report)    |
-
-### Services (`app/services/`)
-
-| File                          | Responsibility                                                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `auth_service.py`             | JWT generation / validation, bcrypt password hashing, password reset token lifecycle                        |
-| `email_service.py`            | Sends password reset emails via SMTP/TLS; reads `MAIL_*` config                                             |
-| `team_service.py`             | Team CRUD, join-code generation, member management, registration queue, join-request flow                   |
-| `mentor_service.py`           | Mentor profile management, picture serving, availability and technology data                                |
-| `mentor_selection_service.py` | Enforces the "exactly 3 ranked mentors per team" preference rules                                           |
-| `matching_service.py`         | Hospital-Resident Gale-Shapley — assigns mentors to teams from mutual ranked preferences                    |
-| `ranking_service.py`          | Loads and serves team rankings from `seeds/rankings.json` with a short-TTL Redis cache (falls back to file load when Redis is off) |
-| `regulations_service.py`      | Loads FAQ / regulations content from `seeds/regulations.json` with a short-TTL Redis cache (falls back to file load when Redis is off) |
-| `participants_service.py`     | Participant lookups with joined specialty, university, and team data                                        |
-| `bug_report_service.py`       | Fire-and-forget Discord webhook delivery (bounded `ThreadPoolExecutor`, stdlib only, never blocks requests) |
-
-### Utils (`app/utils/`)
-
-| File                 | Responsibility                                                                                                                                                    |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auth_decorators.py` | Route decorators for JWT validation and role-based access: `@token_required`, `@participant_required`, `@captain_required`, `@mentor_required`, `@admin_required` |
-
-### Database (`app/database.py`)
-
-PostgreSQL `ThreadedConnectionPool` (min 2, max 20 per worker, 5 s timeout). Provides `execute_query()`, `execute_insert()`, and `execute_update()` helpers used by all services. Results come back as plain Python dicts via `RealDictCursor`. All team-mutating operations use `SELECT ... FOR UPDATE` row locks plus `pg_advisory_xact_lock(1)` for full concurrency safety.
-
----
-
-## Database Migrations
-
-`database/schema.sql` is the single source of truth for a fresh install. The files under `database/migrations/` are ordered incremental patches for upgrading an existing database without dropping it.
-
-| File                                         | What it adds                                                      |
-| -------------------------------------------- | ----------------------------------------------------------------- |
-| `002_auth_and_preferences.sql`               | Auth tables and preference columns                                |
-| `003_seed_flag_universities_specialties.sql` | `is_seed` flag on universities / specialties                      |
-| `004_mentor_technologies.sql`                | `technologies TEXT[]` column on mentors                           |
-| `005_course_bachelor_masters.sql`            | Bachelor / master course options                                  |
-| `006_password_reset_cooldown.sql`            | Rate-limiting columns for password reset                          |
-| `007_team_registration_queue.sql`            | `is_registered`, `registered_at`, `queue_position` on teams       |
-| `008_mentor_availability.sql`                | `availability_text` column on mentors                             |
-| `009_backfill_mentor_availability.sql`       | Idempotent back-fill for seeded mentor availability data          |
-| `010_fix_availability_text_encoding.sql`     | Fixes encoding issues in availability text                        |
-| `011_team_join_requests.sql`                 | `team_join_requests` table with status workflow + partial indexes |
-
----
-
-## Redis (rate limiting, JWT revocation, caches)
-
-Redis backs three things: the shared rate-limiter storage, the JWT revocation blocklist, and a handful of short-TTL read caches (mentors, rankings, regulations, per-user token revocation epoch). The app talks to Redis in one of **two modes, chosen purely by environment variables — the application code is identical between them**.
-
-### Single-instance mode — `REDIS_URL`
-
-Point `REDIS_URL` at one Redis instance:
-
-```dotenv
-REDIS_URL=redis://redis:6379
-```
-
-Simple, no replication. This is what `docker-compose.dev.yml` uses (a single `redis` container) and the right choice for local and everyday development.
-
-### Sentinel (HA) mode — `REDIS_SENTINELS` + `REDIS_MASTER_NAME`
-
-For a production-shaped, highly-available setup, give the app a set of sentinels and the monitored master's name instead:
-
-```dotenv
-REDIS_SENTINELS=sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
-REDIS_MASTER_NAME=mymaster
-```
-
-The app discovers the current master through the sentinels and **transparently follows failovers** — when the master goes down and the sentinels promote a replica, the app re-resolves and keeps serving against the new master with no restart. `docker-compose.yml` (the prod-like compose) runs this topology: **1 master + 2 replicas + 3 sentinels, quorum 2**.
-
-### Disabled — neither set
-
-If neither mode is configured, Redis is simply off and the app **degrades gracefully**: the rate limiter falls back to in-memory per-process counters, and the JWT blocklist and caches fall back to the DB / file loads. Note that this means **token revocation is effectively off without Redis** (there is no shared blocklist across processes), so configure one of the two modes in production.
-
-### Which to use, and precedence
-
-| Situation                     | Use                                             |
-| ----------------------------- | ----------------------------------------------- |
-| Local / simple dev            | `REDIS_URL`                                      |
-| HA / production-shaped        | `REDIS_SENTINELS` + `REDIS_MASTER_NAME`          |
-| No Redis available            | leave all unset (graceful in-memory / DB fallback) |
-
-If **both** `REDIS_SENTINELS` + `REDIS_MASTER_NAME` and `REDIS_URL` are set, **Sentinel mode wins**.
-
-### Optional timeouts
-
-`REDIS_SOCKET_TIMEOUT` and `REDIS_CONNECT_TIMEOUT` (both in seconds, default `2`) control how fast a Redis blip fails into the fallback path rather than stalling a request.
-
-### Production on Kubernetes
-
-The k8s deployment will later swap these env vars to point at a Helm-managed Sentinel service (e.g. the Bitnami Redis chart) — **with no application code changes**. The app already speaks the same `REDIS_SENTINELS` / `REDIS_MASTER_NAME` contract, so moving to a managed HA Redis is purely a matter of injecting the right env values.
-
-### Try a failover locally
-
-Bring up the prod-like topology, then kill the master and watch the app keep serving:
-
-```bash
-docker compose -f docker-compose.yml up -d
-docker kill fmi-codes-redis-master
-```
-
-The three sentinels reach quorum, promote a replica to master, and the app follows the new master automatically — no restart required.
-
----
-
-## Running Tests
-
-### Unit tests
-
-No database or `.env` needed.
-
-```bash
-pytest tests/ --ignore=tests/e2e -v
-```
-
-### E2E tests
-
-E2E tests require a local PostgreSQL 16 instance. They run against a dedicated test database and are automatically skipped if Postgres is unreachable.
-
-**1. Create the test database (one-time setup)**
-
-```bash
-psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026_test;"
-```
-
-That's it — the test suite applies the full schema automatically on the first run.
-
-**2. Run the tests**
-
-```bash
-# From the project root (with .venv activated)
-pytest tests/e2e/ -v
-
-# Or run everything at once
-pytest -v
-```
-
-**Custom DB URL**
-
-If your Postgres user, password, or host differs from the defaults (`postgres:postgres@localhost:5432`), set `TEST_DATABASE_URL`:
-
-```bash
-TEST_DATABASE_URL=postgresql://user:pw@host/fmi_hackathon_2026_test pytest tests/e2e/ -v
-```
-
-**Notes**
-
-- The test admin credentials (`admin@fmicodes.bg` / `test-admin-pw!`) are injected directly into the Flask test app — no `.env` file needed to run tests.
-- Each test starts with a clean slate: all participant, team, and preference data is wiped between tests via `TRUNCATE ... CASCADE`.
-- Seed data (universities, specialties, mentors) is loaded once per test session and preserved across tests.
-
----
-
-## Default Credentials
-
-| Role         | Email                             | Password     |
-| ------------ | --------------------------------- | ------------ |
-| Admin        | `admin@fmicodes.bg`               | `admin-pass` |
-| Mentor (any) | see `database/seeds/mentors.json` | `mentor123`  |
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@fmicodes.bg` | `admin-pass` (local) — set a real `ADMIN_PASSWORD_HASH` anywhere else |
+| Mentor | see `backend/database/seeds/mentors.json` | `mentor123` |
