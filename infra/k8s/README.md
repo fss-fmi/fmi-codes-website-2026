@@ -48,7 +48,7 @@ routing or headers. Verify an overlay renders with `kubectl kustomize infra/k8s/
 
 From the repo root: `./bootstrap.sh` (staging) or `./bootstrap.sh --env prod`. It runs a
 pre-flight (asks for the age key + admin password), then installs tools → k3s →
-Postgres/Redis → app → ingress. Idempotent and resumable (`--from N`, N = 1–6). Full
+Postgres/Redis → app → ingress. Idempotent and resumable (`--from N`, N = 1–7). Full
 walkthrough below.
 
 ## Set up on a brand-new machine — step by step
