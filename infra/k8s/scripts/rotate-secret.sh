@@ -12,6 +12,8 @@ NAMESPACE="${NAMESPACE:-$DEFAULT_NAMESPACE}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL}"
+SECRET_NAME="${SECRET_NAME:-fmi-codes-app}"
+RESTART_TARGET="${RESTART_TARGET:-deployment/backend}"
 RESTART="${RESTART:-true}"
 
 die() { echo "Error: $1" >&2; exit 1; }
@@ -32,6 +34,8 @@ cluster, and restart the backend so pods pick up the new value.
 
 Env overrides: ENV (prod|staging — selects the secrets file and namespace),
 NAMESPACE ($NAMESPACE), SECRETS_ENC ($SECRETS_ENC),
+SECRET_NAME ($SECRET_NAME — the k8s Secret whose key is rotated),
+RESTART_TARGET ($RESTART_TARGET — the workload restarted after applying),
 RESTART (true|false — skip the rollout restart when false).
 
 Examples:
@@ -41,6 +45,15 @@ Examples:
   ADMIN_PASSWORD_HASH rotation (generate the bcrypt hash first):
     HASH=\$(python3 -c "import bcrypt;print(bcrypt.hashpw(b'newpass', bcrypt.gensalt(12)).decode())")
     $(basename "$0") ADMIN_PASSWORD_HASH "\$HASH"
+  Grafana admin password rotation:
+    ENV=staging NAMESPACE=monitoring \\
+      SECRETS_ENC=$K8S_DIR/overlays/staging/secrets/grafana-secret.enc.yaml \\
+      RESTART_TARGET=deployment/kps-grafana \\
+      $(basename "$0") admin-password 'newpass'
+    ENV=prod NAMESPACE=monitoring \\
+      SECRETS_ENC=$K8S_DIR/secrets/grafana-secret.enc.yaml \\
+      RESTART_TARGET=deployment/kps-grafana \\
+      $(basename "$0") admin-password 'newpass'
 EOF
 }
 
@@ -83,12 +96,12 @@ log "Applying updated secret from $SECRETS_ENC"
 sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
 
 if [ "$RESTART" = "true" ]; then
-  log "Restarting backend so pods pick up the rotated value"
-  kubectl -n "$NAMESPACE" rollout restart deployment/backend
-  kubectl -n "$NAMESPACE" rollout status deployment/backend --timeout=120s
+  log "Restarting $RESTART_TARGET so pods pick up the rotated value"
+  kubectl -n "$NAMESPACE" rollout restart "$RESTART_TARGET"
+  kubectl -n "$NAMESPACE" rollout status "$RESTART_TARGET" --timeout=120s
 else
   echo "RESTART=false — skipping rollout restart. Restart manually to apply:"
-  echo "  kubectl -n $NAMESPACE rollout restart deployment/backend"
+  echo "  kubectl -n $NAMESPACE rollout restart $RESTART_TARGET"
 fi
 
 log "Done. Commit the updated $SECRETS_ENC so the change is the new source of truth."

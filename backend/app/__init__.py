@@ -9,6 +9,7 @@ from flask import Flask
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from prometheus_flask_exporter import PrometheusMetrics
 
 from app.services.redis_client import build_limiter_storage_uri
 
@@ -44,6 +45,8 @@ def create_app(config_name="development"):
         static_folder=str(config.STATIC_FOLDER),
     )
     app.config.from_object(config)
+
+    PrometheusMetrics(app)
 
     # Resolve the rate-limit storage URI now that env/config is loaded, then
     # attach the limiter. build_limiter_storage_uri() returns a redis+sentinel://

@@ -353,6 +353,94 @@ itself GitOps-managed — edits to `source.yaml`/`image-automation.yaml` self-re
 > constraint this creates: build inputs (Dockerfiles, build scripts) must stay OUT of
 > `infra/`. Today they're in `./backend` and `./frontend` — keep them there.
 
+### 7 — Observability (Prometheus + Grafana)
+
+Answers "is the backend leaking memory?" with a memory-per-pod graph over **days**, instead
+of a manual `kubectl top` marathon. **Fully self-hosted — no external accounts, no SaaS, no
+cost, nothing phones home.** The `kube-prometheus-stack` Helm chart (Prometheus operator +
+Grafana + node-exporter + kube-state-metrics) runs in its own `monitoring` namespace; a Flask
+`/metrics` endpoint feeds app-level series alongside the cluster resource metrics.
+
+```bash
+ENV=staging bash infra/k8s/scripts/deploy-observability.sh   # ENV=prod for production creds
+```
+
+One stack scrapes **both** app namespaces. The chart always installs into `monitoring`; the
+`ENV` flag only selects which SOPS-encrypted Grafana secret to decrypt (staging and prod are
+encrypted with different age keys). Prereq: the env's age key at `~/.config/sops/age/keys.txt`
+so sops can decrypt the Grafana admin secret. Monitoring is independent of the app tier, but
+the app must be running for the ServiceMonitor to have a scrape target.
+
+| | value | why |
+| --- | --- | --- |
+| namespace | `monitoring` | kube-prometheus-stack convention; single shared stack |
+| scrapes | `fmi-codes` **and** `fmi-codes-staging` | one ServiceMonitor, `namespaceSelector.matchNames` lists both |
+| retention | `14d` | the leak window is multi-day; 10d default is too short |
+| Prometheus PVC | 5Gi (prod) / 3Gi (staging) | TSDB survives `wsl --shutdown`; in-memory would reset and defeat the investigation |
+| Grafana PVC | 2Gi (prod) / 1Gi (staging) | dashboards + admin session survive restarts |
+| alertmanager | **off** | no paging on a hobby cluster |
+| node-exporter + kube-state-metrics | **on** | they produce the node/pod resource series — the whole point |
+
+Resource requests+limits are set on every component (see `helm-values/observability-values.yaml`)
+to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the limits are the
+guardrail on a single WSL2 box already running the app+stateful tiers.
+
+**Access Grafana** (operator-only, no public exposure — sidesteps the locked CSP and the
+Windows-can't-resolve-in-cluster-hostname caveat, since port-forward binds the host localhost):
+
+```bash
+kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
+```
+
+Log in with the admin user/password from the SOPS secret (`sops --decrypt
+infra/k8s/secrets/grafana-secret.enc.yaml`). Anonymous access and sign-up are **disabled** in
+the chart values, so there is no `admin/admin` and no open registration.
+
+**The memory-per-pod leak graph:** Grafana → Dashboards → **"Kubernetes / Compute Resources /
+Pod"**, filter `namespace=fmi-codes-staging`, `pod=~backend.*`, the memory panel, set the range
+to 7d. A steadily climbing line that never plateaus is the leak signature.
+
+**Check scrape targets** (confirm the backend is actually being scraped):
+
+```bash
+kubectl -n monitoring port-forward svc/kps-kube-prometheus-stack-prometheus 9090:9090
+# http://localhost:9090 -> Status -> Targets -> the fmi-codes-backend target is UP
+```
+
+> **The app `/metrics` gotcha.** The exporter registers `/metrics` at the backend ROOT, but the
+> ingress routes `/`→frontend and only `/api`+`/static`→backend. So `/metrics` through the
+> **public ingress** hits the frontend, not the backend — and that's FINE. Prometheus scrapes
+> **in-cluster** via the ServiceMonitor at `backend.<ns>.svc:5001/metrics`, never through the
+> ingress. Do **not** "fix" this by adding an ingress route — it would expose app metrics
+> publicly for zero benefit.
+
+**Known limitation — multiprocess counters.** The backend runs multiple Gunicorn workers, and
+plain `PrometheusMetrics(app)` gives **per-worker** app counters (each scrape hits one random
+worker). This is accepted for the first pass: the PRIMARY deliverable — memory-per-pod — comes
+from cAdvisor/kube-state-metrics and is 100% independent of app counters. To get aggregated
+app counters later, switch to `GunicornPrometheusMetrics`, set `PROMETHEUS_MULTIPROC_DIR` to a
+tmpfs volume, and add a `child_exit` hook in the Gunicorn config — real complexity for marginal
+value on a hobby cluster.
+
+**Rotate the Grafana admin password** (the generalized `rotate-secret.sh`):
+
+```bash
+ENV=staging NAMESPACE=monitoring \
+  SECRETS_ENC=infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml \
+  RESTART_TARGET=deployment/kps-grafana \
+  bash infra/k8s/scripts/rotate-secret.sh admin-password 'newpass'
+```
+
+The Grafana deployment name is `kps-grafana` because the values set `fullnameOverride: kps` —
+verify with `kubectl -n monitoring get deploy` if you change it.
+
+**Recorded decisions** (restated so this section is self-contained): a single shared
+`monitoring` stack scrapes both envs (separation by namespace selector, not separate stacks);
+persistence is PVC-backed (the multi-day window is the entire point); Grafana is port-forward
+only (operator tool, no public attack surface). An ingress for Grafana is a documented
+alternative — it would need the `nginx-staging` class, a Windows hosts entry, and a self-signed
+cert — NOT built in this pass.
+
 ## Forking to your own infra
 
 To deploy this under your own project — your Docker Hub, your domain, your keys — change:
@@ -425,6 +513,10 @@ k9s -n fmi-codes
 kubectl -n flux-system delete -f flux/self.yaml
 kubectl -n flux-system delete -f flux/image-automation.yaml -f flux/source.yaml
 flux uninstall --namespace flux-system --silent
+
+# Phase 7 — observability (uninstall the chart, then delete the ns — PVCs cascade with it):
+helm -n monitoring uninstall kps
+kubectl delete namespace monitoring
 
 # Phase 4 — networking:
 kubectl delete -k overlays/prod/ingress; kubectl delete -k overlays/staging/ingress

@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fmi-codes-backend
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+spec:
+  namespaceSelector:
+    matchNames:
+      - fmi-codes
+      - fmi-codes-staging
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fmi-codes-backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
