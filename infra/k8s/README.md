@@ -14,7 +14,7 @@ native Windows (the scripts are apt + bash, k3s is Linux-native).
 infra/k8s/
   scripts/       init-linux, init-windows, install-tools, bootstrap-k3s,
                  deploy-stateful, deploy-app, deploy-ingress, flux-bootstrap,
-                 apply-config, rotate-secret
+                 deploy-observability, grafana-forward, apply-config, rotate-secret
   base/          environment-agnostic manifests
                    base/app/     namespace, backend, frontend
                    base/ingress/ security-headers, certificate, ingress
@@ -385,26 +385,15 @@ Resource requests+limits are set on every component (see `helm-values/observabil
 to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the limits are the
 guardrail on a single WSL2 box already running the app+stateful tiers.
 
-**Access Grafana** via local ingress (prod: `grafana.fmicodes.com`, staging: `grafana.staging.fmicodes.com`):
-
-Both hostnames resolve only on the host machine — add them to the **Windows** hosts file
-(`C:\Windows\System32\drivers\etc\hosts`), pointing at the WSL2 node IP:
-
-```
-<WSL2-node-IP>  grafana.fmicodes.com
-<WSL2-node-IP>  grafana.staging.fmicodes.com
-```
-
-Get the current WSL2 node IP with:
+**Access Grafana** — on a WSL2 dev box, via port-forward (the reliable route):
 
 ```bash
-wsl.exe --exec bash -lc 'kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath="{.status.loadBalancer.ingress[0].ip}"'
+ENV=staging bash infra/k8s/scripts/grafana-forward.sh   # ENV=prod for prod creds
+# open http://localhost:3000
 ```
 
-The IP changes across `wsl --shutdown` / reboot unless mirrored networking is enabled — re-check
-after restarts. The ingress uses plain HTTP (no TLS) since both hosts are local-only.
-
-**Access Grafana via port-forward** (no hosts entry needed):
+It forwards `svc/kps-grafana` to `localhost:3000` (override with `PORT=`), verifies the stack is
+up first, and prints the SOPS command for the login. Manual equivalent:
 
 ```bash
 kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
@@ -413,6 +402,16 @@ kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost
 Log in with the admin user/password from the SOPS secret (`sops --decrypt
 infra/k8s/secrets/grafana-secret.enc.yaml`). Anonymous access and sign-up are **disabled** in
 the chart values, so there is no `admin/admin` and no open registration.
+
+**Why not the ingress host?** The chart provisions a Grafana ingress (prod: `grafana.fmicodes.com`,
+staging: `grafana.staging.fmicodes.com`), and that works on a **native Linux host** with a real
+LoadBalancer. But on **WSL2/k3s it does not reach a Windows browser**: k3s's built-in ServiceLB
+(klipper) does not expose the ingress controller's LoadBalancer ports to the Windows host, so no
+Windows hosts-file entry — node IP or `127.0.0.1` — can open a TCP connection to them. Pointing the
+hosts file at the WSL node IP resolves the name but the port is dead. The port-forward above is what
+actually bridges the cluster to Windows-visible localhost, the same way the app tier is reached in
+local testing. On a native Linux host, add the host to `/etc/hosts` → the controller IP and browse
+`http://<grafana-host>` directly (plain HTTP, no TLS — both hosts are local-only).
 
 **App-only dashboards:** Grafana → Dashboards → **FMI Codes** folder → **FMI Production** or
 **FMI Staging**. Each shows request rate, request duration (p50/p95/p99), and error rate for
@@ -459,10 +458,12 @@ verify with `kubectl -n monitoring get deploy` if you change it.
 
 **Recorded decisions** (restated so this section is self-contained): a single shared
 `monitoring` stack scrapes both envs (separation by namespace selector, not separate stacks);
-persistence is PVC-backed (the multi-day window is the entire point); Grafana is accessible via
-local ingress (`grafana.fmicodes.com` / `grafana.staging.fmicodes.com`) using the env's nginx
-class — prod uses `nginx`, staging uses `nginx-staging`; TLS is omitted since both are
-local-only. Two provisioned dashboards ("FMI Production", "FMI Staging") ship with every install
+persistence is PVC-backed (the multi-day window is the entire point); on a WSL2 dev box Grafana is
+reached via `grafana-forward.sh` (port-forward to `localhost:3000`) because klipper does not expose
+the LoadBalancer ports to the Windows host — the chart's Grafana ingress
+(`grafana.fmicodes.com` / `grafana.staging.fmicodes.com`, env's nginx class, TLS omitted since both
+are local-only) stays in place and is the access path only on a native Linux host with a real
+LoadBalancer. Two provisioned dashboards ("FMI Production", "FMI Staging") ship with every install
 via `grafana.dashboards` in the Helm values — no manual import needed.
 
 ## Forking to your own infra
