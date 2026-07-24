@@ -1,4 +1,10 @@
 creation_rules:
+  - path_regex: infra/k8s/overlays/staging/secrets/grafana-secret\.enc\.yaml$
+    encrypted_regex: "^(data|stringData)$"
+    age: age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5
+  - path_regex: infra/k8s/secrets/grafana-secret\.enc\.yaml$
+    encrypted_regex: "^(data|stringData)$"
+    age: age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh
   - path_regex: infra/k8s/overlays/staging/secrets/secrets\.enc\.yaml$
     encrypted_regex: "^(data|stringData)$"
     age: age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5

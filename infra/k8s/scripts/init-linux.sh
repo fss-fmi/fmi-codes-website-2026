@@ -5,6 +5,7 @@ set -euo pipefail
 ENV="${ENV:-staging}"
 FROM="${FROM:-1}"
 WITH_FLUX="${WITH_FLUX:-false}"
+WITH_OBSERVABILITY="${WITH_OBSERVABILITY:-false}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -13,7 +14,7 @@ die() { echo "Error: $1" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--env staging|prod] [--from N] [--with-flux]
+Usage: $(basename "$0") [--env staging|prod] [--from N] [--with-flux] [--with-observability]
 
 All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
 
@@ -23,15 +24,19 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
   5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
+  7. deploy-observability.sh  Prometheus + Grafana (only with --with-observability)
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
 
-  --env E       target environment: staging (default) or prod. Prod is normally
-                promoted via the workflow action, not hand-bootstrapped.
-  --from N      start at step N (1-6). Default 1.
-  --with-flux   also run step 6 (Flux GitOps). Off by default because it needs an
-                SSH deploy key present — see README 'Phase 6' before enabling.
+  --env E                 target environment: staging (default) or prod. Prod is normally
+                          promoted via the workflow action, not hand-bootstrapped.
+  --from N                start at step N (1-7). Default 1.
+  --with-flux             also run step 6 (Flux GitOps). Off by default because it needs an
+                          SSH deploy key present — see README 'Phase 6' before enabling.
+  --with-observability    also run step 7 (Prometheus + Grafana). Off by default because it
+                          needs the env's age key at ~/.config/sops/age/keys.txt — see
+                          README 'Phase 7' before enabling.
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
 this in a terminal, not a headless context.
@@ -46,8 +51,9 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --env) ENV="${2:-}"; [ -n "$ENV" ] || die "--env needs a value (staging|prod)"; shift 2 ;;
-    --from) FROM="${2:-}"; [ -n "$FROM" ] || die "--from needs a step number (1-6)"; shift 2 ;;
+    --from) FROM="${2:-}"; [ -n "$FROM" ] || die "--from needs a step number (1-7)"; shift 2 ;;
     --with-flux) WITH_FLUX=true; shift ;;
+    --with-observability) WITH_OBSERVABILITY=true; shift ;;
     *) die "unknown argument '$1' (see --help)" ;;
   esac
 done
@@ -71,12 +77,16 @@ case "$ENV" in
 esac
 
 case "$FROM" in
-  1|2|3|4|5|6) : ;;
-  *) die "--from must be 1-6, got '$FROM'" ;;
+  1|2|3|4|5|6|7) : ;;
+  *) die "--from must be 1-7, got '$FROM'" ;;
 esac
 
 if [ "$FROM" = "6" ]; then
   WITH_FLUX=true
+fi
+
+if [ "$FROM" = "7" ]; then
+  WITH_OBSERVABILITY=true
 fi
 
 run_step() {
@@ -86,7 +96,7 @@ run_step() {
     return 0
   fi
   [ -f "$SCRIPT_DIR/$script" ] || die "step $n: missing $SCRIPT_DIR/$script"
-  log "Step $n/6 — $name"
+  log "Step $n/7 — $name"
   ENV="$ENV" bash "$SCRIPT_DIR/$script" \
     || die "step $n ($name) failed. Fix the cause above, then resume with: $(basename "$0") --from $n"
 }
@@ -101,6 +111,12 @@ if [ "$WITH_FLUX" = "true" ]; then
   run_step 6 "GitOps CD (Flux)"     flux-bootstrap.sh
 else
   log "Step 6 (GitOps CD) — skipped (pass --with-flux to enable; see README 'Phase 6')"
+fi
+
+if [ "$WITH_OBSERVABILITY" = "true" ]; then
+  run_step 7 "observability (Prometheus + Grafana)"  deploy-observability.sh
+else
+  log "Step 7 (observability) — skipped (pass --with-observability to enable; see README 'Phase 7')"
 fi
 
 INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
