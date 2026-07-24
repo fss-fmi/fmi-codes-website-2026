@@ -20,6 +20,13 @@ grafana:
       allow_sign_up: false
     auth.anonymous:
       enabled: false
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - grafana.fmicodes.com
+    path: /
+    pathType: Prefix
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
@@ -65,17 +72,17 @@ grafana:
                 "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
                 "targets": [
                   {
-                    "expr": "histogram_quantile(0.50, rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m]))",
+                    "expr": "histogram_quantile(0.50, sum(rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m])) by (le))",
                     "legendFormat": "p50",
                     "refId": "A"
                   },
                   {
-                    "expr": "histogram_quantile(0.95, rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m]))",
+                    "expr": "histogram_quantile(0.95, sum(rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m])) by (le))",
                     "legendFormat": "p95",
                     "refId": "B"
                   },
                   {
-                    "expr": "histogram_quantile(0.99, rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m]))",
+                    "expr": "histogram_quantile(0.99, sum(rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m])) by (le))",
                     "legendFormat": "p99",
                     "refId": "C"
                   }

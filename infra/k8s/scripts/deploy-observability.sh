@@ -9,8 +9,8 @@ case "$ENV" in
   *)       echo "Error: ENV must be 'prod' or 'staging', got '$ENV'." >&2; exit 1 ;;
 esac
 case "$ENV" in
-  prod)    OBS_VALUES_REL="helm-values/observability-values.yaml";          GRAFANA_INGRESS_REL="base/observability/grafana-ingress.yaml" ;;
-  staging) OBS_VALUES_REL="overlays/staging/observability-values.yaml";     GRAFANA_INGRESS_REL="overlays/staging/grafana-ingress.yaml" ;;
+  prod)    OBS_VALUES_REL="helm-values/observability-values.yaml" ;;
+  staging) OBS_VALUES_REL="overlays/staging/observability-values.yaml" ;;
 esac
 
 MONITORING_NS="${MONITORING_NS:-monitoring}"
@@ -25,7 +25,6 @@ REPO_ROOT="$(cd "$K8S_DIR/../.." && pwd)"
 OBS_VALUES="${OBS_VALUES:-$K8S_DIR/$OBS_VALUES_REL}"
 GRAFANA_SECRET_ENC="${GRAFANA_SECRET_ENC:-$K8S_DIR/$GRAFANA_SECRET_REL}"
 SERVICEMONITOR="${SERVICEMONITOR:-$K8S_DIR/base/observability/backend-servicemonitor.yaml}"
-GRAFANA_INGRESS="${GRAFANA_INGRESS:-$K8S_DIR/$GRAFANA_INGRESS_REL}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -36,7 +35,6 @@ command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools.
 [ -f "$OBS_VALUES" ]         || die "missing $OBS_VALUES"
 [ -f "$GRAFANA_SECRET_ENC" ] || die "missing $GRAFANA_SECRET_ENC"
 [ -f "$SERVICEMONITOR" ]     || die "missing $SERVICEMONITOR"
-[ -f "$GRAFANA_INGRESS" ]    || die "missing $GRAFANA_INGRESS"
 
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
@@ -74,9 +72,6 @@ helm upgrade --install kps prometheus-community/kube-prometheus-stack \
 
 log "Applying the backend ServiceMonitor (scrapes fmi-codes + fmi-codes-staging)"
 kubectl apply -f "$SERVICEMONITOR"
-
-log "Applying Grafana ingress"
-kubectl apply -f "$GRAFANA_INGRESS"
 
 log "Deployed. Current state in '$MONITORING_NS':"
 kubectl -n "$MONITORING_NS" get pods -o wide
