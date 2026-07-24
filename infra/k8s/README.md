@@ -377,7 +377,7 @@ the app must be running for the ServiceMonitor to have a scrape target.
 | scrapes | `fmi-codes` **and** `fmi-codes-staging` | one ServiceMonitor, `namespaceSelector.matchNames` lists both |
 | retention | `14d` | the leak window is multi-day; 10d default is too short |
 | Prometheus PVC | 5Gi (prod) / 3Gi (staging) | TSDB survives `wsl --shutdown`; in-memory would reset and defeat the investigation |
-| Grafana PVC | 2Gi (prod) / 1Gi (staging) | dashboards + admin session survive restarts |
+| Grafana PVC | 1Gi (both envs) | dashboards + admin session survive restarts; `local-path` StorageClass doesn't support resize so both envs must match |
 | alertmanager | **off** | no paging on a hobby cluster |
 | node-exporter + kube-state-metrics | **on** | they produce the node/pod resource series — the whole point |
 
@@ -385,8 +385,26 @@ Resource requests+limits are set on every component (see `helm-values/observabil
 to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the limits are the
 guardrail on a single WSL2 box already running the app+stateful tiers.
 
-**Access Grafana** (operator-only, no public exposure — sidesteps the locked CSP and the
-Windows-can't-resolve-in-cluster-hostname caveat, since port-forward binds the host localhost):
+**Access Grafana** via local ingress (prod: `grafana.fmicodes.com`, staging: `grafana.staging.fmicodes.com`):
+
+Both hostnames resolve only on the host machine — add them to the **Windows** hosts file
+(`C:\Windows\System32\drivers\etc\hosts`), pointing at the WSL2 node IP:
+
+```
+<WSL2-node-IP>  grafana.fmicodes.com
+<WSL2-node-IP>  grafana.staging.fmicodes.com
+```
+
+Get the current WSL2 node IP with:
+
+```bash
+wsl.exe --exec bash -lc 'kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath="{.status.loadBalancer.ingress[0].ip}"'
+```
+
+The IP changes across `wsl --shutdown` / reboot unless mirrored networking is enabled — re-check
+after restarts. The ingress uses plain HTTP (no TLS) since both hosts are local-only.
+
+**Access Grafana via port-forward** (no hosts entry needed):
 
 ```bash
 kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
@@ -395,6 +413,11 @@ kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost
 Log in with the admin user/password from the SOPS secret (`sops --decrypt
 infra/k8s/secrets/grafana-secret.enc.yaml`). Anonymous access and sign-up are **disabled** in
 the chart values, so there is no `admin/admin` and no open registration.
+
+**App-only dashboards:** Grafana → Dashboards → **FMI Codes** folder → **FMI Production** or
+**FMI Staging**. Each shows request rate, request duration (p50/p95/p99), and error rate for
+its namespace, hardcoded so there is no shared dropdown or data mixing between envs. These
+dashboards provision automatically on every `deploy-observability.sh` run — no manual import.
 
 **The memory-per-pod leak graph:** Grafana → Dashboards → **"Kubernetes / Compute Resources /
 Pod"**, filter `namespace=fmi-codes-staging`, `pod=~backend.*`, the memory panel, set the range
@@ -436,10 +459,11 @@ verify with `kubectl -n monitoring get deploy` if you change it.
 
 **Recorded decisions** (restated so this section is self-contained): a single shared
 `monitoring` stack scrapes both envs (separation by namespace selector, not separate stacks);
-persistence is PVC-backed (the multi-day window is the entire point); Grafana is port-forward
-only (operator tool, no public attack surface). An ingress for Grafana is a documented
-alternative — it would need the `nginx-staging` class, a Windows hosts entry, and a self-signed
-cert — NOT built in this pass.
+persistence is PVC-backed (the multi-day window is the entire point); Grafana is accessible via
+local ingress (`grafana.fmicodes.com` / `grafana.staging.fmicodes.com`) using the env's nginx
+class — prod uses `nginx`, staging uses `nginx-staging`; TLS is omitted since both are
+local-only. Two provisioned dashboards ("FMI Production", "FMI Staging") ship with every install
+via `grafana.dashboards` in the Helm values — no manual import needed.
 
 ## Forking to your own infra
 

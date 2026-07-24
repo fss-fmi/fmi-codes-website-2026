@@ -20,6 +20,84 @@ grafana:
       allow_sign_up: false
     auth.anonymous:
       enabled: false
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: fmi-codes
+          orgId: 1
+          folder: FMI Codes
+          type: file
+          disableDeletion: true
+          editable: false
+          options:
+            path: /var/lib/grafana/dashboards/fmi-codes
+  dashboards:
+    fmi-codes:
+      fmi-staging:
+        json: |
+          {
+            "title": "FMI Staging",
+            "uid": "fmi-staging",
+            "schemaVersion": 38,
+            "version": 1,
+            "refresh": "30s",
+            "time": { "from": "now-1h", "to": "now" },
+            "panels": [
+              {
+                "id": 1,
+                "title": "Request Rate",
+                "type": "timeseries",
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+                "targets": [
+                  {
+                    "expr": "rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[5m])",
+                    "legendFormat": "{{method}} {{path}} {{status}}",
+                    "refId": "A"
+                  }
+                ],
+                "fieldConfig": { "defaults": { "unit": "reqps" } }
+              },
+              {
+                "id": 2,
+                "title": "Request Duration (p50 / p95 / p99)",
+                "type": "timeseries",
+                "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+                "targets": [
+                  {
+                    "expr": "histogram_quantile(0.50, rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes-staging\"}[5m]))",
+                    "legendFormat": "p50",
+                    "refId": "A"
+                  },
+                  {
+                    "expr": "histogram_quantile(0.95, rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes-staging\"}[5m]))",
+                    "legendFormat": "p95",
+                    "refId": "B"
+                  },
+                  {
+                    "expr": "histogram_quantile(0.99, rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes-staging\"}[5m]))",
+                    "legendFormat": "p99",
+                    "refId": "C"
+                  }
+                ],
+                "fieldConfig": { "defaults": { "unit": "s" } }
+              },
+              {
+                "id": 3,
+                "title": "Error Rate",
+                "type": "timeseries",
+                "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+                "targets": [
+                  {
+                    "expr": "rate(flask_http_request_exceptions_total{namespace=\"fmi-codes-staging\"}[5m])",
+                    "legendFormat": "{{method}} {{path}}",
+                    "refId": "A"
+                  }
+                ],
+                "fieldConfig": { "defaults": { "unit": "reqps" } }
+              }
+            ]
+          }
 prometheus:
   prometheusSpec:
     retention: "14d"

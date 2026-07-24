@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kps-grafana
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kps-grafana-ingress
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: grafana.fmicodes.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kps-grafana
+                port:
+                  number: 80
