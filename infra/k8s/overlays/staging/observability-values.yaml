@@ -125,6 +125,8 @@ prometheus:
             requests:
               storage: 3Gi
 prometheus-node-exporter:
+  hostRootFsMount:
+    enabled: false
   resources:
     requests:
       cpu: 20m
