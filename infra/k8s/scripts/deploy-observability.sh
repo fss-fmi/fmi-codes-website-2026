@@ -32,9 +32,9 @@ die() { echo "Error: $1" >&2; exit 1; }
 command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
 command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.sh first."
 command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
-[ -f "$OBS_VALUES" ]        || die "missing $OBS_VALUES"
+[ -f "$OBS_VALUES" ]         || die "missing $OBS_VALUES"
 [ -f "$GRAFANA_SECRET_ENC" ] || die "missing $GRAFANA_SECRET_ENC"
-[ -f "$SERVICEMONITOR" ]    || die "missing $SERVICEMONITOR"
+[ -f "$SERVICEMONITOR" ]     || die "missing $SERVICEMONITOR"
 
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
@@ -77,15 +77,23 @@ log "Deployed. Current state in '$MONITORING_NS':"
 kubectl -n "$MONITORING_NS" get pods -o wide
 kubectl -n "$MONITORING_NS" get svc
 
+case "$ENV" in
+  prod)    GRAFANA_HOST="grafana.fmicodes.com" ;;
+  staging) GRAFANA_HOST="grafana.staging.fmicodes.com" ;;
+esac
+
 cat <<EOF
 
 Observability stack ($ENV context, scraping namespace '$APP_NAMESPACE') is up.
 
-Access Grafana (operator-only, no public exposure):
-  kubectl -n $MONITORING_NS port-forward svc/kps-grafana 3000:80
-  open http://localhost:3000
+Access Grafana via ingress (add host entry to Windows hosts file first — see infra/k8s/README.md 'Phase 7'):
+  open http://$GRAFANA_HOST
   log in with the admin user/password from the SOPS secret '$GRAFANA_SECRET'
   (read them with: sops --decrypt $GRAFANA_SECRET_ENC)
+
+Access Grafana via port-forward (no hosts entry needed):
+  kubectl -n $MONITORING_NS port-forward svc/kps-grafana 3000:80
+  open http://localhost:3000
 
 Access Prometheus (check scrape targets):
   kubectl -n $MONITORING_NS port-forward svc/kps-kube-prometheus-stack-prometheus 9090:9090
