@@ -13,7 +13,7 @@ native Windows (the scripts are apt + bash, k3s is Linux-native).
 ```
 infra/k8s/
   scripts/       init-linux, init-windows, install-tools, bootstrap-k3s,
-                 deploy-stateful, deploy-app, deploy-ingress, flux-bootstrap,
+                 deploy-stateful, deploy-app, deploy-ingress, app-forward,
                  deploy-observability, grafana-forward, apply-config, rotate-secret
   base/          environment-agnostic manifests
                    base/app/     namespace, backend, frontend
@@ -131,6 +131,10 @@ INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-cont
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts   # reach it at :8443
 ```
+
+That line is for reaching the cluster from **inside WSL** (or a native Linux host). To reach it
+from a **Windows browser** the node IP does not work — map the host to `127.0.0.1` in the Windows
+hosts file and run `app-forward.sh` instead (see [Phase 4](#4--ingress--tls)).
 
 ### 5. (Optional) Set mail / webhook secrets
 
@@ -291,6 +295,21 @@ echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
 ```
 
 On the production server, set the `fmicodes.com` A-record in DNS instead.
+
+**From a Windows browser (WSL2 dev box):** the node IP above does **not** work — k3s/klipper does
+not expose the ingress LoadBalancer ports to the Windows host, so a hosts entry pointing at it
+resolves the name but cannot open a connection. Instead map the host to loopback and run a
+port-forward:
+
+```bash
+# Windows hosts file (elevated PowerShell):
+#   Add-Content -Path $env:WINDIR\System32\drivers\etc\hosts -Value "127.0.0.1 fmicodes.com"
+ENV=prod bash infra/k8s/scripts/app-forward.sh   # ENV=staging for staging
+```
+
+`app-forward.sh` forwards the env's ingress controller to `localhost` (prod bridges `:443` via
+`socat` if present so you can browse `https://fmicodes.com`; staging uses `:8443`). Leave it running
+while you use the site. This is the same mechanism `grafana-forward.sh` uses for Grafana.
 
 ### 5 — Secrets (SOPS + age)
 

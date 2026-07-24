@@ -7,14 +7,10 @@ ENV="${ENV:-staging}"
 case "$ENV" in
   prod)
     HOST="${HOST:-fmicodes.com}"
-    INGRESS_NAMESPACE="ingress-nginx"
-    INGRESS_RELEASE="ingress-nginx"
     HOST_URL="https://$HOST"
     ;;
   staging)
     HOST="${HOST:-staging.fmicodes.com}"
-    INGRESS_NAMESPACE="ingress-nginx-staging"
-    INGRESS_RELEASE="ingress-nginx-staging"
     HOST_URL="https://$HOST:8443"
     ;;
   *)
@@ -32,10 +28,6 @@ fi
 log "Running the Linux bring-up (init-linux.sh)"
 bash "$SCRIPT_DIR/init-linux.sh" "$@"
 
-INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-[ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-node-ip>"
-
 if [ "$ENV" = "prod" ]; then
   DNS_NOTE="Note: adding $HOST to your hosts file overrides public DNS on this machine.
 Remove this line when you want your browser to reach the production server instead."
@@ -48,22 +40,20 @@ cat <<EOF
 
 $(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
 
-The cluster runs inside WSL2. A Windows browser cannot resolve $HOST
-unless the name is in the WINDOWS hosts file — editing WSL's /etc/hosts does not
-help the Windows side. Open an elevated (Administrator) editor on Windows and add
-this line to C:\\Windows\\System32\\drivers\\etc\\hosts:
+The cluster runs inside WSL2. Two things are needed for a Windows browser to reach
+$HOST, and the WSL node IP is NOT one of them: k3s/klipper does not expose the
+ingress LoadBalancer ports to the Windows host, so a hosts entry pointing at the
+node IP resolves the name but cannot open a connection.
 
-  $INGRESS_IP $HOST
+1) Map the host to loopback in the WINDOWS hosts file
+   (C:\\Windows\\System32\\drivers\\etc\\hosts) — editing WSL's /etc/hosts does not
+   help the Windows side. From an elevated PowerShell:
+     Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
 
-From PowerShell as Administrator you can append it in one line:
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "$INGRESS_IP $HOST"
+2) Run the forward that bridges the ingress to loopback (leave it running):
+     ENV=$ENV bash infra/k8s/scripts/app-forward.sh
 
 Then browse to ${HOST_URL}
 
 $DNS_NOTE
-
-Caveat: the WSL node IP above changes across 'wsl --shutdown' / reboot unless
-mirrored networking is enabled. After a restart, re-check it and update the hosts
-line:
-  kubectl -n $INGRESS_NAMESPACE get svc ${INGRESS_RELEASE}-controller
 EOF
