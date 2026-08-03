@@ -27,6 +27,8 @@ case "$ENV" in
 esac
 
 ADDRESS="${ADDRESS:-127.0.0.1}"
+DETACH="${DETACH:-1}"
+LOG_FILE="${LOG_FILE:-/tmp/app-forward-${ENV}-${LOCAL_PORT}.log}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -39,15 +41,13 @@ kubectl cluster-info >/dev/null 2>&1 \
 kubectl -n "$INGRESS_NS" get svc "$INGRESS_SVC" >/dev/null 2>&1 \
   || die "service '$INGRESS_SVC' not found in namespace '$INGRESS_NS' — deploy ingress first with deploy-ingress.sh (see infra/k8s/README.md 'Phase 4')."
 
-SOCAT_PID=""
-cleanup() { [ -n "$SOCAT_PID" ] && kill "$SOCAT_PID" 2>/dev/null || true; }
-trap cleanup EXIT INT TERM
+PF_MATCH="port-forward --address $ADDRESS svc/$INGRESS_SVC ${LOCAL_PORT}:${SVC_HTTPS_PORT}\$"
+SOCAT_MATCH="socat TCP4-LISTEN:${BROWSE_PORT},bind=${ADDRESS}"
 
+NEED_SOCAT=0
 if [ "$BROWSE_PORT" != "$LOCAL_PORT" ]; then
   if command -v socat >/dev/null 2>&1; then
-    log "Bridging $ADDRESS:$BROWSE_PORT -> $ADDRESS:$LOCAL_PORT (socat)"
-    socat "TCP4-LISTEN:${BROWSE_PORT},bind=${ADDRESS},fork,reuseaddr" "TCP4:${ADDRESS}:${LOCAL_PORT}" &
-    SOCAT_PID=$!
+    NEED_SOCAT=1
     BROWSE_URL="https://$HOST"
   else
     echo "Note: socat not found — cannot bridge :$BROWSE_PORT, browse the forwarded port directly." >&2
@@ -57,23 +57,62 @@ else
   BROWSE_URL="https://$HOST:$BROWSE_PORT"
 fi
 
-cat <<EOF
+STOP_HINT="pkill -f \"$PF_MATCH\""
+[ "$NEED_SOCAT" = "1" ] && STOP_HINT="$STOP_HINT; pkill -f \"$SOCAT_MATCH\""
 
-Forwarding the $ENV ingress ($INGRESS_SVC) to $ADDRESS:$LOCAL_PORT
+print_access() {
+  cat <<EOF
+
+The $ENV app ($INGRESS_SVC) is forwarded to $ADDRESS:$LOCAL_PORT.
 
   add to the Windows hosts file (C:\\Windows\\System32\\drivers\\etc\\hosts):
     127.0.0.1 $HOST
   then browse: $BROWSE_URL
   $CERT_NOTE
 
-This is how the app is reached from a Windows browser on a WSL2 dev box: k3s/klipper
-does not expose the ingress LoadBalancer ports to the Windows host, so 127.0.0.1 plus
-this forward is what actually connects — a hosts entry pointing at the WSL node IP does not.
-
-Press Ctrl-C to stop.
+  stop it with: $STOP_HINT
 EOF
+}
 
-log "Starting port-forward ($ADDRESS:$LOCAL_PORT -> $INGRESS_SVC:$SVC_HTTPS_PORT)"
+start_socat() {
+  setsid socat "TCP4-LISTEN:${BROWSE_PORT},bind=${ADDRESS},fork,reuseaddr" "TCP4:${ADDRESS}:${LOCAL_PORT}" \
+    </dev/null >>"$LOG_FILE" 2>&1 &
+}
+
+if [ "$DETACH" = "1" ]; then
+  if pgrep -f "$PF_MATCH" >/dev/null 2>&1; then
+    log "An app forward for $ENV on port $LOCAL_PORT is already running — leaving it as is"
+    print_access
+    exit 0
+  fi
+  : > "$LOG_FILE"
+  [ "$NEED_SOCAT" = "1" ] && { log "Bridging $ADDRESS:$BROWSE_PORT -> $ADDRESS:$LOCAL_PORT (socat, detached)"; start_socat; }
+  log "Starting detached port-forward ($ADDRESS:$LOCAL_PORT -> $INGRESS_SVC:$SVC_HTTPS_PORT)"
+  setsid kubectl -n "$INGRESS_NS" port-forward --address "$ADDRESS" "svc/$INGRESS_SVC" "${LOCAL_PORT}:${SVC_HTTPS_PORT}" \
+    </dev/null >>"$LOG_FILE" 2>&1 &
+  pf_pid=$!
+  sleep 1
+  if ! kill -0 "$pf_pid" 2>/dev/null; then
+    [ "$NEED_SOCAT" = "1" ] && pkill -f "$SOCAT_MATCH" 2>/dev/null || true
+    die "port-forward exited immediately — is $ADDRESS:$LOCAL_PORT already in use? check $LOG_FILE"
+  fi
+  print_access
+  echo "  logs: $LOG_FILE"
+  exit 0
+fi
+
+SOCAT_PID=""
+cleanup() { [ -n "$SOCAT_PID" ] && kill "$SOCAT_PID" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+
+if [ "$NEED_SOCAT" = "1" ]; then
+  log "Bridging $ADDRESS:$BROWSE_PORT -> $ADDRESS:$LOCAL_PORT (socat)"
+  socat "TCP4-LISTEN:${BROWSE_PORT},bind=${ADDRESS},fork,reuseaddr" "TCP4:${ADDRESS}:${LOCAL_PORT}" &
+  SOCAT_PID=$!
+fi
+
+print_access
+log "Starting port-forward in the foreground — press Ctrl-C to stop"
 if [ -n "$SOCAT_PID" ]; then
   kubectl -n "$INGRESS_NS" port-forward --address "$ADDRESS" "svc/$INGRESS_SVC" "${LOCAL_PORT}:${SVC_HTTPS_PORT}"
 else

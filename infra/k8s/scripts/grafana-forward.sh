@@ -13,6 +13,8 @@ MONITORING_NS="${MONITORING_NS:-monitoring}"
 GRAFANA_SVC="${GRAFANA_SVC:-kps-grafana}"
 PORT="${PORT:-3000}"
 ADDRESS="${ADDRESS:-127.0.0.1}"
+DETACH="${DETACH:-1}"
+LOG_FILE="${LOG_FILE:-/tmp/grafana-forward-${PORT}.log}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -29,21 +31,45 @@ kubectl cluster-info >/dev/null 2>&1 \
 kubectl -n "$MONITORING_NS" get svc "$GRAFANA_SVC" >/dev/null 2>&1 \
   || die "service '$GRAFANA_SVC' not found in namespace '$MONITORING_NS' — deploy the stack first with deploy-observability.sh (see infra/k8s/README.md 'Phase 7')."
 
-cat <<EOF
+PF_MATCH="port-forward --address $ADDRESS svc/$GRAFANA_SVC ${PORT}:80\$"
 
-Forwarding Grafana ($ENV creds) to http://localhost:${PORT}
+print_access() {
+  cat <<EOF
 
-  open http://localhost:${PORT}
+Grafana ($ENV creds) is forwarded to $ADDRESS:${PORT}.
+
+  browse: http://localhost:${PORT}
+  or add these to the Windows hosts file (C:\\Windows\\System32\\drivers\\etc\\hosts)
+  and browse http://grafana.fmicodes.com:${PORT} / http://grafana.staging.fmicodes.com:${PORT}:
+    127.0.0.1 grafana.fmicodes.com
+    127.0.0.1 grafana.staging.fmicodes.com
+
   log in with the admin user/password from the SOPS secret:
     sops --decrypt $GRAFANA_SECRET_ENC
 
-This is the reliable way to reach Grafana on a WSL2 dev box: k3s/klipper does not
-expose the ingress LoadBalancer ports to the Windows host, so the ingress host
-($GRAFANA_HOST) is not reachable from a Windows browser — this forward is.
-
-Set ADDRESS=0.0.0.0 if 127.0.0.1 is not reachable from Windows on your setup.
-Press Ctrl-C to stop.
+  set ADDRESS=0.0.0.0 if 127.0.0.1 is not reachable from Windows on your setup.
+  stop it with: pkill -f "$PF_MATCH"
 EOF
+}
 
-log "Starting port-forward ($ADDRESS:$PORT -> $GRAFANA_SVC:80)"
+if [ "$DETACH" = "1" ]; then
+  if pgrep -f "$PF_MATCH" >/dev/null 2>&1; then
+    log "A Grafana forward on port $PORT is already running — leaving it as is"
+    print_access
+    exit 0
+  fi
+  log "Starting detached port-forward ($ADDRESS:$PORT -> $GRAFANA_SVC:80)"
+  setsid kubectl -n "$MONITORING_NS" port-forward --address "$ADDRESS" "svc/$GRAFANA_SVC" "${PORT}:80" \
+    </dev/null >"$LOG_FILE" 2>&1 &
+  pf_pid=$!
+  sleep 1
+  kill -0 "$pf_pid" 2>/dev/null \
+    || die "port-forward exited immediately — is $ADDRESS:$PORT already in use? check $LOG_FILE"
+  print_access
+  echo "  logs: $LOG_FILE"
+  exit 0
+fi
+
+print_access
+log "Starting port-forward in the foreground — press Ctrl-C to stop"
 exec kubectl -n "$MONITORING_NS" port-forward --address "$ADDRESS" "svc/$GRAFANA_SVC" "${PORT}:80"
