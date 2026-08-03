@@ -44,6 +44,8 @@ if [ "$ACTION" = "uninstall" ]; then
   done
   systemctl daemon-reload
   systemctl reset-failed $UNITS 2>/dev/null || true
+  rm -f /etc/sysctl.d/99-unpriv443.conf
+  sysctl -w net.ipv4.ip_unprivileged_port_start=1024 >/dev/null 2>&1 || true
   echo "Removed: $UNITS"
   exit 0
 fi
@@ -51,6 +53,7 @@ fi
 [ "$ACTION" = "install" ] || die "unknown action '$ACTION' — use 'install' or 'uninstall'."
 need_root
 
+[ "$SVC_USER" != "root" ] || die "refusing to install services as root — set SVC_USER to your normal WSL user."
 [ -x "$KUBECTL_BIN" ] || die "kubectl not found at '$KUBECTL_BIN' — run install-tools.sh first."
 [ -x "$SOCAT_BIN" ]   || die "socat not found at '$SOCAT_BIN' — install it (apt-get install -y socat)."
 [ -f "$KUBECONFIG_PATH" ] || die "kubeconfig not found at '$KUBECONFIG_PATH' — set KUBECONFIG_PATH."
@@ -66,6 +69,7 @@ cat > "$UNIT_DIR/fmi-forward-prod.service" <<EOF
 Description=Port-forward prod ingress-nginx to 127.0.0.1:${PROD_LOCAL} for Windows browser access
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -87,6 +91,7 @@ Description=socat 127.0.0.1:443 to prod forward ${PROD_LOCAL} (serves fmicodes.c
 After=network-online.target fmi-forward-prod.service
 Wants=network-online.target
 Requires=fmi-forward-prod.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -106,6 +111,7 @@ cat > "$UNIT_DIR/fmi-forward-staging.service" <<EOF
 Description=Port-forward staging ingress-nginx to 127.0.0.1:${STAGING_LOCAL} for Windows browser access
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
