@@ -308,8 +308,11 @@ ENV=prod bash infra/k8s/scripts/app-forward.sh   # ENV=staging for staging
 ```
 
 `app-forward.sh` forwards the env's ingress controller to `localhost` (prod bridges `:443` via
-`socat` if present so you can browse `https://fmicodes.com`; staging uses `:8443`). Leave it running
-while you use the site. This is the same mechanism `grafana-forward.sh` uses for Grafana.
+`socat` if present so you can browse `https://fmicodes.com`; staging uses `:8443`). By default it
+launches **detached** and returns your terminal — the forward keeps running in the background and
+survives closing the shell; it prints the exact `pkill` line to stop it. Re-running is idempotent
+(it won't start a second forward on the same port). Pass `DETACH=0` to run it in the foreground
+instead (Ctrl-C to stop). This is the same mechanism `grafana-forward.sh` uses for Grafana.
 
 ### 5 — Secrets (SOPS + age)
 
@@ -412,7 +415,20 @@ ENV=staging bash infra/k8s/scripts/grafana-forward.sh   # ENV=prod for prod cred
 ```
 
 It forwards `svc/kps-grafana` to `localhost:3000` (override with `PORT=`), verifies the stack is
-up first, and prints the SOPS command for the login. Manual equivalent:
+up first, and prints the SOPS command for the login. By default it launches **detached** and returns
+your terminal — the forward keeps running in the background, survives closing the shell, and prints
+the `pkill` line to stop it; re-running is idempotent. Pass `DETACH=0` to run in the foreground.
+
+There is a single shared Grafana (it holds both the **FMI Production** and **FMI Staging**
+dashboards), so one forward covers both envs. To reach it by name, add either alias to the Windows
+hosts file and browse on the forwarded port (e.g. `http://grafana.fmicodes.com:3000`):
+
+```
+127.0.0.1 grafana.fmicodes.com
+127.0.0.1 grafana.staging.fmicodes.com
+```
+
+Manual equivalent:
 
 ```bash
 kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
