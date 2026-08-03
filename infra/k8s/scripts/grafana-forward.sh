@@ -31,7 +31,7 @@ kubectl cluster-info >/dev/null 2>&1 \
 kubectl -n "$MONITORING_NS" get svc "$GRAFANA_SVC" >/dev/null 2>&1 \
   || die "service '$GRAFANA_SVC' not found in namespace '$MONITORING_NS' — deploy the stack first with deploy-observability.sh (see infra/k8s/README.md 'Phase 7')."
 
-PF_MATCH="port-forward .*svc/$GRAFANA_SVC ${PORT}:80"
+PF_MATCH="port-forward --address $ADDRESS svc/$GRAFANA_SVC ${PORT}:80\$"
 
 print_access() {
   cat <<EOF
@@ -47,6 +47,7 @@ Grafana ($ENV creds) is forwarded to $ADDRESS:${PORT}.
   log in with the admin user/password from the SOPS secret:
     sops --decrypt $GRAFANA_SECRET_ENC
 
+  set ADDRESS=0.0.0.0 if 127.0.0.1 is not reachable from Windows on your setup.
   stop it with: pkill -f "$PF_MATCH"
 EOF
 }
@@ -60,7 +61,10 @@ if [ "$DETACH" = "1" ]; then
   log "Starting detached port-forward ($ADDRESS:$PORT -> $GRAFANA_SVC:80)"
   setsid kubectl -n "$MONITORING_NS" port-forward --address "$ADDRESS" "svc/$GRAFANA_SVC" "${PORT}:80" \
     </dev/null >"$LOG_FILE" 2>&1 &
-  disown 2>/dev/null || true
+  pf_pid=$!
+  sleep 1
+  kill -0 "$pf_pid" 2>/dev/null \
+    || die "port-forward exited immediately — is $ADDRESS:$PORT already in use? check $LOG_FILE"
   print_access
   echo "  logs: $LOG_FILE"
   exit 0

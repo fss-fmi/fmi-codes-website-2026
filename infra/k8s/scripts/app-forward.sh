@@ -41,7 +41,7 @@ kubectl cluster-info >/dev/null 2>&1 \
 kubectl -n "$INGRESS_NS" get svc "$INGRESS_SVC" >/dev/null 2>&1 \
   || die "service '$INGRESS_SVC' not found in namespace '$INGRESS_NS' — deploy ingress first with deploy-ingress.sh (see infra/k8s/README.md 'Phase 4')."
 
-PF_MATCH="port-forward .*svc/$INGRESS_SVC ${LOCAL_PORT}:${SVC_HTTPS_PORT}"
+PF_MATCH="port-forward --address $ADDRESS svc/$INGRESS_SVC ${LOCAL_PORT}:${SVC_HTTPS_PORT}\$"
 SOCAT_MATCH="socat TCP4-LISTEN:${BROWSE_PORT},bind=${ADDRESS}"
 
 NEED_SOCAT=0
@@ -77,7 +77,6 @@ EOF
 start_socat() {
   setsid socat "TCP4-LISTEN:${BROWSE_PORT},bind=${ADDRESS},fork,reuseaddr" "TCP4:${ADDRESS}:${LOCAL_PORT}" \
     </dev/null >>"$LOG_FILE" 2>&1 &
-  disown 2>/dev/null || true
 }
 
 if [ "$DETACH" = "1" ]; then
@@ -86,11 +85,17 @@ if [ "$DETACH" = "1" ]; then
     print_access
     exit 0
   fi
+  : > "$LOG_FILE"
   [ "$NEED_SOCAT" = "1" ] && { log "Bridging $ADDRESS:$BROWSE_PORT -> $ADDRESS:$LOCAL_PORT (socat, detached)"; start_socat; }
   log "Starting detached port-forward ($ADDRESS:$LOCAL_PORT -> $INGRESS_SVC:$SVC_HTTPS_PORT)"
   setsid kubectl -n "$INGRESS_NS" port-forward --address "$ADDRESS" "svc/$INGRESS_SVC" "${LOCAL_PORT}:${SVC_HTTPS_PORT}" \
     </dev/null >>"$LOG_FILE" 2>&1 &
-  disown 2>/dev/null || true
+  pf_pid=$!
+  sleep 1
+  if ! kill -0 "$pf_pid" 2>/dev/null; then
+    [ "$NEED_SOCAT" = "1" ] && pkill -f "$SOCAT_MATCH" 2>/dev/null || true
+    die "port-forward exited immediately — is $ADDRESS:$LOCAL_PORT already in use? check $LOG_FILE"
+  fi
   print_access
   echo "  logs: $LOG_FILE"
   exit 0
