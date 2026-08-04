@@ -12,7 +12,11 @@ case "$ENV" in
     INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
     INGRESS_RELEASE="${INGRESS_RELEASE:-ingress-nginx}"
     HOST_URL="https://$HOST"
-    HELM_SET_ARGS=(--set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP")
+    HELM_SET_ARGS=(
+      --set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP"
+      --set "controller.config.allow-snippet-annotations=true"
+      --set "controller.config.annotations-risk-level=Critical"
+    )
     ;;
   staging)
     NAMESPACE="${NAMESPACE:-fmi-codes-staging}"
@@ -22,6 +26,8 @@ case "$ENV" in
     HOST_URL="https://$HOST:8443"
     HELM_SET_ARGS=(
       --set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP"
+      --set "controller.config.allow-snippet-annotations=true"
+      --set "controller.config.annotations-risk-level=Critical"
       --set "controller.ingressClassResource.name=nginx-staging"
       --set "controller.ingressClassResource.controllerValue=k8s.io/ingress-nginx-staging"
       --set "controller.ingressClass=nginx-staging"

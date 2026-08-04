@@ -452,6 +452,19 @@ actually bridges the cluster to Windows-visible localhost, the same way the app 
 local testing. On a native Linux host, add the host to `/etc/hosts` → the controller IP and browse
 `http://<grafana-host>` directly (plain HTTP, no TLS — both hosts are local-only).
 
+**Grafana CSP vs the shared app CSP.** The ingress controller injects the app's strict
+`security-headers` Content-Security-Policy (`script-src 'self'`) on *every* response via
+`controller.config.add-headers` — including the Grafana vhost. Grafana boots from an inline
+`<script>`, which `script-src 'self'` blocks, so the Grafana SPA dies on a blank `/login` unless
+its CSP is handled. Rather than weaken the app CSP, Grafana emits its **own** nonce-based CSP
+(`grafana.ini` `[security] content_security_policy = true`, which stamps a per-response `$NONCE`
+on both the header and the inline boot script), and the Grafana ingress carries a
+`configuration-snippet` that overwrites the injected app CSP with Grafana's upstream one
+(`more_set_headers "Content-Security-Policy: $upstream_http_content_security_policy"`). The app's
+own hosts keep the strict CSP untouched. This needs `allow-snippet-annotations=true` and
+`annotations-risk-level=Critical` on the controller (both set by `deploy-ingress.sh`), because
+ingress-nginx gates `configuration-snippet` behind them by default.
+
 **App-only dashboards:** Grafana → Dashboards → **FMI Codes** folder → **FMI Production** or
 **FMI Staging**. Each shows request rate, request duration (p50/p95/p99), and error rate for
 its namespace, hardcoded so there is no shared dropdown or data mixing between envs. These

@@ -20,9 +20,16 @@ grafana:
       allow_sign_up: false
     auth.anonymous:
       enabled: false
+    security:
+      content_security_policy: true
+      content_security_policy_template: |-
+        script-src 'self' 'unsafe-eval' 'unsafe-inline' 'strict-dynamic' $NONCE;object-src 'none';font-src 'self';style-src 'self' 'unsafe-inline' blob:;img-src * data:;base-uri 'self';connect-src 'self' grafana.com ws://$ROOT_PATH wss://$ROOT_PATH;manifest-src 'self';media-src 'none';form-action 'self' $FORM_ACTION_ADDITIONAL_HOSTS;
   ingress:
     enabled: true
     ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        more_set_headers "Content-Security-Policy: $upstream_http_content_security_policy";
     hosts:
       - grafana.fmicodes.com
     path: /
