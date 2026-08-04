@@ -117,8 +117,8 @@ The pre-flight prompts you for exactly two things on a fresh machine:
 It's idempotent and resumable — if a step fails, fix the cause and re-run with `--from N`
 (N = 1–6). Steps 1–2 need interactive sudo, so run it in a real terminal.
 
-> **WSL2 dev box:** use `bash infra/k8s/scripts/init-windows.sh --env staging` instead — it
-> runs the same flow, then prints the Windows hosts-file line a Windows browser needs.
+> **WSL2 dev box:** `./bootstrap.sh` works identically — after the Linux bring-up it detects
+> WSL2 and prints the Windows hosts-file and forward-services steps automatically.
 
 ### 4. Point the host at the cluster
 
