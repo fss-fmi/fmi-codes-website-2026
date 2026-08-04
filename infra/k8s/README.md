@@ -400,8 +400,9 @@ Grafana + node-exporter + kube-state-metrics) runs in its own `monitoring` names
 **The observability stack is GitOps-managed by Flux.** The chart install, upgrades, and the
 backend `ServiceMonitor` are all reconciled from `infra/k8s/` — a values change merged to
 `main` rolls out automatically with no script run. The Flux wiring lives in `flux/source.yaml`
-(`fmi-codes-observability`, `fmi-codes-observability-staging`, and
-`fmi-codes-observability-monitors` Kustomizations).
+(`fmi-codes-observability` and `fmi-codes-observability-staging` Kustomizations); each pulls in
+the backend `ServiceMonitor` from `base/observability/monitors` as part of its own overlay, so
+the monitor reconciles with whichever env is live.
 
 **One-time bootstrap — Grafana admin secret only.** The only manual step is decrypting and
 applying the SOPS-encrypted Grafana secret before Flux's first reconcile (so the chart can
@@ -613,8 +614,8 @@ flux uninstall --namespace flux-system --silent
 
 # Phase 7 — observability (suspend the Flux kustomizations first so Flux stops
 # reconciling, then let Helm uninstall clean up; deleting the ns cascades the PVCs):
-flux suspend kustomization fmi-codes-observability-monitors -n flux-system
 flux suspend kustomization fmi-codes-observability -n flux-system
+flux suspend kustomization fmi-codes-observability-staging -n flux-system
 helm -n monitoring uninstall kps
 kubectl delete namespace monitoring
 

@@ -44,9 +44,17 @@ spec:
       resources:
         requests:
           cpu: 50m
-          memory: 128Mi
-        limits:
           memory: 256Mi
+        limits:
+          memory: 512Mi
+      readinessProbe:
+        httpGet:
+          path: /api/health
+          port: grafana
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 5
       grafana.ini:
         users:
           allow_sign_up: false
