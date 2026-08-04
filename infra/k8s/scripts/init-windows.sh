@@ -51,7 +51,9 @@ node IP resolves the name but cannot open a connection.
      Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
 
 2) Install the boot-persistent forward services once (they auto-start on every boot,
-   no terminal to keep open) — this also lets grafana.fmicodes.com ride the same bridge:
+   no terminal to keep open) — this also lets grafana.fmicodes.com and
+   grafana.staging.fmicodes.com:9443 ride the same bridges:
+     apt-get install -y socat   # prerequisite, if not already installed
      wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install
 
 Then browse to ${HOST_URL}
