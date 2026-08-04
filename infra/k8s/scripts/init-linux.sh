@@ -24,7 +24,7 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
   5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
-  7. deploy-observability.sh  Grafana admin secret bootstrap; chart installed by Flux (only with --with-observability; requires --with-flux)
+  7. deploy-observability.sh  Prometheus + Grafana (only with --with-observability)
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
@@ -34,10 +34,9 @@ fix the cause and resume without redoing earlier steps:
   --from N                start at step N (1-7). Default 1.
   --with-flux             also run step 6 (Flux GitOps). Off by default because it needs an
                           SSH deploy key present — see README 'Phase 6' before enabling.
-  --with-observability    also run step 7 (Grafana admin secret bootstrap; Flux reconciles the
-                          kube-prometheus-stack HelmRelease automatically after that). Requires
-                          --with-flux and the env's age key at ~/.config/sops/age/keys.txt —
-                          see README 'Phase 7' before enabling.
+  --with-observability    also run step 7 (Prometheus + Grafana). Off by default because it
+                          needs the env's age key at ~/.config/sops/age/keys.txt — see
+                          README 'Phase 7' before enabling.
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
 this in a terminal, not a headless context.
@@ -87,12 +86,7 @@ if [ "$FROM" = "6" ]; then
 fi
 
 if [ "$FROM" = "7" ]; then
-  WITH_FLUX=true
   WITH_OBSERVABILITY=true
-fi
-
-if [ "$WITH_OBSERVABILITY" = "true" ] && [ "$WITH_FLUX" != "true" ]; then
-  die "--with-observability requires --with-flux: the chart is installed by Flux, not imperatively."
 fi
 
 run_step() {
@@ -120,7 +114,7 @@ else
 fi
 
 if [ "$WITH_OBSERVABILITY" = "true" ]; then
-  run_step 7 "observability (Grafana secret)"  deploy-observability.sh
+  run_step 7 "observability (Prometheus + Grafana)"  deploy-observability.sh
 else
   log "Step 7 (observability) — skipped (pass --with-observability to enable; see README 'Phase 7')"
 fi
@@ -150,21 +144,3 @@ Verify the stack:
   kubectl -n $NAMESPACE get pods
   curl ${HOST_URL}/api/health
 EOF
-
-if [ "$WITH_FLUX" = "true" ]; then
-  cat <<EOF
-
-Verify Flux GitOps:
-  flux get kustomizations -n flux-system
-  flux get helmreleases -n flux-system
-EOF
-fi
-
-if [ "$WITH_OBSERVABILITY" = "true" ]; then
-  cat <<EOF
-
-Verify observability (Flux reconciles the chart — may take a few minutes):
-  kubectl -n monitoring get pods -w
-  flux get helmreleases -n flux-system
-EOF
-fi

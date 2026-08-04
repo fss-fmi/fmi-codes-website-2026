@@ -131,17 +131,5 @@ fi
 
 log "Handing off to init-linux.sh"
 
-WANT_FLUX=false
-for arg in "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}"; do
-  [ "$arg" = "--with-flux" ] && WANT_FLUX=true
-done
-if [ "$WANT_FLUX" = "true" ] && [ ! -f "$HOME/.ssh/fmi-codes-flux" ]; then
-  warn "SSH deploy key ~/.ssh/fmi-codes-flux not found"
-  warn "Flux bootstrap (step 6) requires this key — see README 'Phase 6: GitOps with Flux' before continuing."
-  warn "Generate it with: ssh-keygen -t ed25519 -f ~/.ssh/fmi-codes-flux -N ''"
-  warn "Then add the public key as a deploy key in the GitHub repo and re-run."
-  die "missing Flux deploy key — cannot proceed with --with-flux"
-fi
-
 export ENV
 exec bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}

@@ -138,13 +138,11 @@ Add to the Windows hosts file (C:\\Windows\\System32\\drivers\\etc\\hosts):
   127.0.0.1 fmicodes.com
   127.0.0.1 grafana.fmicodes.com
   127.0.0.1 staging.fmicodes.com
-  127.0.0.1 grafana.staging.fmicodes.com
 
 Then browse (no terminal needed, survives reboot):
-  https://fmicodes.com                                  prod app
-  https://grafana.fmicodes.com                          Grafana prod (rides the prod ingress bridge)
-  https://staging.fmicodes.com:${STAGING_LOCAL}                 staging app (self-signed cert)
-  https://grafana.staging.fmicodes.com:${STAGING_LOCAL}         Grafana staging (self-signed cert)
+  https://fmicodes.com           prod app
+  https://grafana.fmicodes.com   Grafana (rides the prod ingress bridge)
+  https://staging.fmicodes.com:${STAGING_LOCAL}   staging app (self-signed cert)
 
 Manage:
   systemctl status $UNITS
