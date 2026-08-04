@@ -128,7 +128,11 @@ EOF
 
 log "Enabling + starting services"
 systemctl daemon-reload
-systemctl enable --now $UNITS
+if systemctl is-active --quiet fmi-forward-prod.service 2>/dev/null; then
+  systemctl enable $UNITS 2>/dev/null || true
+else
+  systemctl enable --now $UNITS
+fi
 
 cat <<EOF
 

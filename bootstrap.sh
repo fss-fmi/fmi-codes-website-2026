@@ -149,7 +149,8 @@ cluster in WSL2. Remove the line when you no longer need it."
   fi
 
   log "Installing boot-persistent forward services (prod + staging bridges)"
-  wsl.exe -u root -- bash "$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh" install \
+  INSTALL_SVC_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh"
+  wsl.exe -u root -- bash -c "bash '${INSTALL_SVC_SCRIPT}' install" \
     || warn "forward services install failed — run manually: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
 
   cat <<EOF
@@ -161,7 +162,15 @@ One manual step remains — map the hostnames to loopback in the WINDOWS hosts f
 (C:\\Windows\\System32\\drivers\\etc\\hosts). Editing WSL's /etc/hosts does not help
 the Windows browser. From an elevated PowerShell:
   Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
+EOF
+
+  if [ "$ENV" = "prod" ]; then
+    cat <<EOF
   Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 grafana.fmicodes.com"
+EOF
+  fi
+
+  cat <<EOF
 
 Then browse to ${HOST_URL}
 
@@ -177,7 +186,8 @@ Staging is up. To bring up prod (app + Grafana), run:
   ENV=prod bash bootstrap.sh
 
 Grafana (grafana.fmicodes.com) only becomes reachable once prod is bootstrapped —
-it rides the prod ingress bridge.
+it rides the prod ingress bridge. When you do, also add to the Windows hosts file:
+  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 grafana.fmicodes.com"
 EOF
   fi
 fi
