@@ -43,8 +43,8 @@ Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
 this in a terminal, not a headless context.
 
 Runs on native Debian/Ubuntu Linux and on WSL2 (Ubuntu). On WSL2, run
-init-windows.sh instead — it runs this script, then prints the Windows-side
-host-resolution steps the browser needs.
+bootstrap.sh from the repo root instead — it handles the age key pre-flight,
+runs this script, and auto-installs the boot-persistent port-forward services.
 EOF
 }
 
@@ -72,7 +72,7 @@ case "$ENV" in
     HOST="${HOST:-staging.fmicodes.com}"
     INGRESS_NAMESPACE="ingress-nginx-staging"
     INGRESS_RELEASE="ingress-nginx-staging"
-    HOST_URL="https://$HOST:8443"
+    HOST_URL="https://$HOST:9443"
     ;;
   *)       die "--env must be 'staging' or 'prod', got '$ENV'" ;;
 esac
