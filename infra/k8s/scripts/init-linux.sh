@@ -24,7 +24,7 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
   5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
-  7. deploy-observability.sh  Prometheus + Grafana (only with --with-observability)
+  7. deploy-observability.sh  Grafana admin secret (Flux installs kube-prometheus-stack; only with --with-observability)
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
@@ -34,8 +34,9 @@ fix the cause and resume without redoing earlier steps:
   --from N                start at step N (1-7). Default 1.
   --with-flux             also run step 6 (Flux GitOps). Off by default because it needs an
                           SSH deploy key present — see README 'Phase 6' before enabling.
-  --with-observability    also run step 7 (Prometheus + Grafana). Off by default because it
-                          needs the env's age key at ~/.config/sops/age/keys.txt — see
+  --with-observability    also run step 7 (Grafana admin secret; Flux then reconciles the
+                          kube-prometheus-stack chart automatically). Requires --with-flux
+                          and the env's age key at ~/.config/sops/age/keys.txt — see
                           README 'Phase 7' before enabling.
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
@@ -86,6 +87,7 @@ if [ "$FROM" = "6" ]; then
 fi
 
 if [ "$FROM" = "7" ]; then
+  WITH_FLUX=true
   WITH_OBSERVABILITY=true
 fi
 
