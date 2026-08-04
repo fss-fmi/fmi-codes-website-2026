@@ -104,7 +104,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  retryInterval: 2m
+  retryInterval: 30s
   timeout: 5m
   sourceRef:
     kind: GitRepository
@@ -122,7 +122,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  retryInterval: 2m
+  retryInterval: 30s
   timeout: 5m
   sourceRef:
     kind: GitRepository
@@ -131,4 +131,6 @@ spec:
   prune: true
   wait: true
   dependsOn:
+    # kube-prometheus-stack is a single shared install deployed via fmi-codes-observability.
+    # Both prod and staging ServiceMonitors depend on it — there is no separate staging kps.
     - name: fmi-codes-observability
