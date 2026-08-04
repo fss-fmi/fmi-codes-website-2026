@@ -1,0 +1,78 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kps
+  namespace: flux-system
+spec:
+  values:
+    grafana:
+      ingress:
+        ingressClassName: nginx
+        hosts:
+          - grafana.fmicodes.com
+      dashboards:
+        fmi-codes:
+          fmi-production:
+            json: |
+              {
+                "title": "FMI Production",
+                "uid": "fmi-prod",
+                "schemaVersion": 38,
+                "version": 1,
+                "refresh": "30s",
+                "time": { "from": "now-1h", "to": "now" },
+                "panels": [
+                  {
+                    "id": 1,
+                    "title": "Request Rate",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+                    "targets": [
+                      {
+                        "expr": "rate(flask_http_request_total{namespace=\"fmi-codes\"}[5m])",
+                        "legendFormat": "{{method}} {{path}} {{status}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "reqps" } }
+                  },
+                  {
+                    "id": 2,
+                    "title": "Request Duration (p50 / p95 / p99)",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+                    "targets": [
+                      {
+                        "expr": "histogram_quantile(0.50, sum(rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m])) by (le))",
+                        "legendFormat": "p50",
+                        "refId": "A"
+                      },
+                      {
+                        "expr": "histogram_quantile(0.95, sum(rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m])) by (le))",
+                        "legendFormat": "p95",
+                        "refId": "B"
+                      },
+                      {
+                        "expr": "histogram_quantile(0.99, sum(rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\"}[5m])) by (le))",
+                        "legendFormat": "p99",
+                        "refId": "C"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "s" } }
+                  },
+                  {
+                    "id": 3,
+                    "title": "Error Rate",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+                    "targets": [
+                      {
+                        "expr": "rate(flask_http_request_exceptions_total{namespace=\"fmi-codes\"}[5m])",
+                        "legendFormat": "{{method}} {{path}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "reqps" } }
+                  }
+                ]
+              }

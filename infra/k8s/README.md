@@ -397,15 +397,32 @@ cost, nothing phones home.** The `kube-prometheus-stack` Helm chart (Prometheus 
 Grafana + node-exporter + kube-state-metrics) runs in its own `monitoring` namespace; a Flask
 `/metrics` endpoint feeds app-level series alongside the cluster resource metrics.
 
+**The observability stack is GitOps-managed by Flux.** The chart install, upgrades, and the
+backend `ServiceMonitor` are all reconciled from `infra/k8s/` — a values change merged to
+`main` rolls out automatically with no script run. The Flux wiring lives in `flux/source.yaml`
+(`fmi-codes-observability`, `fmi-codes-observability-staging`, and
+`fmi-codes-observability-monitors` Kustomizations).
+
+**One-time bootstrap — Grafana admin secret only.** The only manual step is decrypting and
+applying the SOPS-encrypted Grafana secret before Flux's first reconcile (so the chart can
+mount it):
+
 ```bash
 ENV=staging bash infra/k8s/scripts/deploy-observability.sh   # ENV=prod for production creds
 ```
 
-One stack scrapes **both** app namespaces. The chart always installs into `monitoring`; the
-`ENV` flag only selects which SOPS-encrypted Grafana secret to decrypt (staging and prod are
-encrypted with different age keys). Prereq: the env's age key at `~/.config/sops/age/keys.txt`
-so sops can decrypt the Grafana admin secret. Monitoring is independent of the app tier, but
-the app must be running for the ServiceMonitor to have a scrape target.
+The script creates the `monitoring` namespace (if needed) and applies the Grafana admin secret.
+Flux then installs the chart and applies the ServiceMonitor. If `flux-bootstrap.sh` has not been
+run yet, apply the Flux objects manually once first:
+
+```bash
+kubectl apply -f infra/k8s/flux/source.yaml
+```
+
+One stack scrapes **both** app namespaces. The `ENV` flag only selects which SOPS-encrypted
+Grafana secret to decrypt (staging and prod are encrypted with different age keys). Monitoring
+is independent of the app tier, but the app must be running for the ServiceMonitor to have a
+scrape target.
 
 | | value | why |
 | --- | --- | --- |
@@ -417,7 +434,8 @@ the app must be running for the ServiceMonitor to have a scrape target.
 | alertmanager | **off** | no paging on a hobby cluster |
 | node-exporter + kube-state-metrics | **on** | they produce the node/pod resource series — the whole point |
 
-Resource requests+limits are set on every component (see `helm-values/observability-values.yaml`)
+Resource requests+limits are set on every component (see `base/observability/helmrelease.yaml`
+`spec.values`, with per-env overrides in the overlay patches)
 to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the limits are the
 guardrail on a single WSL2 box already running the app+stateful tiers.
 
@@ -593,7 +611,10 @@ kubectl -n flux-system delete -f flux/self.yaml
 kubectl -n flux-system delete -f flux/image-automation.yaml -f flux/source.yaml
 flux uninstall --namespace flux-system --silent
 
-# Phase 7 — observability (uninstall the chart, then delete the ns — PVCs cascade with it):
+# Phase 7 — observability (suspend the Flux kustomizations first so Flux stops
+# reconciling, then let Helm uninstall clean up; deleting the ns cascades the PVCs):
+flux suspend kustomization fmi-codes-observability-monitors -n flux-system
+flux suspend kustomization fmi-codes-observability -n flux-system
 helm -n monitoring uninstall kps
 kubectl delete namespace monitoring
 
