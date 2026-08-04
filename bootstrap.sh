@@ -137,7 +137,7 @@ bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
 if grep -qi microsoft /proc/version 2>/dev/null; then
   case "$ENV" in
     prod)    HOST="fmicodes.com";         HOST_URL="https://$HOST" ;;
-    staging) HOST="staging.fmicodes.com"; HOST_URL="https://$HOST:8443" ;;
+    staging) HOST="staging.fmicodes.com"; HOST_URL="https://$HOST:9443" ;;
   esac
 
   if [ "$ENV" = "prod" ]; then
@@ -148,29 +148,36 @@ Remove this line when you want your browser to reach the production server inste
 cluster in WSL2. Remove the line when you no longer need it."
   fi
 
-  GRAFANA_HOST_LINE=""
-  [ "$WITH_OBSERVABILITY" = "true" ] && GRAFANA_HOST_LINE=$'\n     Add-Content -Path $env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 grafana.fmicodes.com"'
+  log "Installing boot-persistent forward services (prod + staging bridges)"
+  wsl.exe -u root -- bash "$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh" install \
+    || warn "forward services install failed — run manually: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
 
   cat <<EOF
 
 $(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
 
-The cluster runs inside WSL2. Two things are needed for a Windows browser to reach
-$HOST, and the WSL node IP is NOT one of them: k3s/klipper does not expose the
-ingress LoadBalancer ports to the Windows host, so a hosts entry pointing at the
-node IP resolves the name but cannot open a connection.
-
-1) Map the host(s) to loopback in the WINDOWS hosts file
-   (C:\\Windows\\System32\\drivers\\etc\\hosts) — editing WSL's /etc/hosts does not
-   help the Windows side. From an elevated PowerShell:
-     Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"${GRAFANA_HOST_LINE}
-
-2) Install the boot-persistent forward services once (they auto-start on every boot,
-   no terminal to keep open) — this also lets grafana.fmicodes.com ride the same bridge:
-     wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install
+The forward services are now installed (auto-start on every boot, no terminal needed).
+One manual step remains — map the hostnames to loopback in the WINDOWS hosts file
+(C:\\Windows\\System32\\drivers\\etc\\hosts). Editing WSL's /etc/hosts does not help
+the Windows browser. From an elevated PowerShell:
+  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
+  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 grafana.fmicodes.com"
 
 Then browse to ${HOST_URL}
 
 $DNS_NOTE
 EOF
+
+  if [ "$ENV" = "staging" ]; then
+    cat <<EOF
+
+$(printf '\033[1;33m### Next step: bootstrap prod\033[0m')
+
+Staging is up. To bring up prod (app + Grafana), run:
+  ENV=prod bash bootstrap.sh
+
+Grafana (grafana.fmicodes.com) only becomes reachable once prod is bootstrapped —
+it rides the prod ingress bridge.
+EOF
+  fi
 fi

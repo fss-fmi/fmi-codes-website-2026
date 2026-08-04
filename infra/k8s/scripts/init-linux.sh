@@ -72,7 +72,7 @@ case "$ENV" in
     HOST="${HOST:-staging.fmicodes.com}"
     INGRESS_NAMESPACE="ingress-nginx-staging"
     INGRESS_RELEASE="ingress-nginx-staging"
-    HOST_URL="https://$HOST:8443"
+    HOST_URL="https://$HOST:9443"
     ;;
   *)       die "--env must be 'staging' or 'prod', got '$ENV'" ;;
 esac
