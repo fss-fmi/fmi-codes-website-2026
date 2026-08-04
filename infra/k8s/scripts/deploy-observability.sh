@@ -86,16 +86,16 @@ cat <<EOF
 
 Observability stack ($ENV context, scraping namespace '$APP_NAMESPACE') is up.
 
-Access Grafana via port-forward (the reliable route on a WSL2 dev box):
-  ENV=$ENV bash infra/k8s/scripts/grafana-forward.sh
-  open http://localhost:3000
+Access Grafana on a WSL2 dev box (boot-persistent, no terminal to keep open):
+  wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install
+  add '127.0.0.1 grafana.fmicodes.com' to the Windows hosts file, then open https://grafana.fmicodes.com
   log in with the admin user/password from the SOPS secret '$GRAFANA_SECRET'
   (read them with: sops --decrypt $GRAFANA_SECRET_ENC)
-  or manually: kubectl -n $MONITORING_NS port-forward svc/kps-grafana 3000:80
+  ad-hoc alternative: kubectl -n $MONITORING_NS port-forward svc/kps-grafana 3000:80
 
 Ingress host $GRAFANA_HOST works on a native Linux host with a real LoadBalancer,
-but NOT from a Windows browser against WSL2/k3s — klipper does not expose the LB
-ports to the Windows host. See infra/k8s/README.md 'Phase 7'.
+but NOT directly from a Windows browser against WSL2/k3s — klipper does not expose
+the LB ports to the Windows host. See infra/k8s/README.md 'Phase 7'.
 
 Access Prometheus (check scrape targets):
   kubectl -n $MONITORING_NS port-forward svc/kps-kube-prometheus-stack-prometheus 9090:9090

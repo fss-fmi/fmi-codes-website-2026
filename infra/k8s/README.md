@@ -13,8 +13,8 @@ native Windows (the scripts are apt + bash, k3s is Linux-native).
 ```
 infra/k8s/
   scripts/       init-linux, init-windows, install-tools, bootstrap-k3s,
-                 deploy-stateful, deploy-app, deploy-ingress, app-forward,
-                 deploy-observability, grafana-forward, apply-config, rotate-secret
+                 deploy-stateful, deploy-app, deploy-ingress, install-forward-services,
+                 deploy-observability, apply-config, rotate-secret
   base/          environment-agnostic manifests
                    base/app/     namespace, backend, frontend
                    base/ingress/ security-headers, certificate, ingress
@@ -133,8 +133,8 @@ echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts   # reach it at
 ```
 
 That line is for reaching the cluster from **inside WSL** (or a native Linux host). To reach it
-from a **Windows browser** the node IP does not work — map the host to `127.0.0.1` in the Windows
-hosts file and run `app-forward.sh` instead (see [Phase 4](#4--ingress--tls)).
+from a **Windows browser** the node IP does not work — install the boot-persistent forward services
+once (`install-forward-services.sh`) and use `127.0.0.1` hosts entries (see [Phase 4](#4--ingress--tls)).
 
 ### 5. (Optional) Set mail / webhook secrets
 
@@ -298,21 +298,35 @@ On the production server, set the `fmicodes.com` A-record in DNS instead.
 
 **From a Windows browser (WSL2 dev box):** the node IP above does **not** work — k3s/klipper does
 not expose the ingress LoadBalancer ports to the Windows host, so a hosts entry pointing at it
-resolves the name but cannot open a connection. Instead map the host to loopback and run a
-port-forward:
+resolves the name but cannot open a connection. Install the boot-persistent forward services once,
+then use `127.0.0.1` hosts entries:
 
 ```bash
-# Windows hosts file (elevated PowerShell):
-#   Add-Content -Path $env:WINDIR\System32\drivers\etc\hosts -Value "127.0.0.1 fmicodes.com"
-ENV=prod bash infra/k8s/scripts/app-forward.sh   # ENV=staging for staging
+wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install
 ```
 
-`app-forward.sh` forwards the env's ingress controller to `localhost` (prod bridges `:443` via
-`socat` if present so you can browse `https://fmicodes.com`; staging uses `:8443`). By default it
-launches **detached** and returns your terminal — the forward keeps running in the background and
-survives closing the shell; it prints the exact `pkill` line to stop it. Re-running is idempotent
-(it won't start a second forward on the same port). Pass `DETACH=0` to run it in the foreground
-instead (Ctrl-C to stop). This is the same mechanism `grafana-forward.sh` uses for Grafana.
+This writes three `systemd` services (`enabled`, `Restart=always`, so they come back on every boot
+with no terminal to keep open):
+
+- `fmi-forward-prod` — `kubectl port-forward` the prod ingress controller to `127.0.0.1:8443`.
+- `fmi-tls-prod` — `socat` `127.0.0.1:443` → `:8443`. Because the prod ingress multiplexes by host,
+  this **one** bridge serves both `fmicodes.com` **and** `grafana.fmicodes.com` on bare `:443`.
+- `fmi-forward-staging` — `kubectl port-forward` the staging ingress controller to `127.0.0.1:9443`.
+
+It also sets `net.ipv4.ip_unprivileged_port_start=443` (persisted) so the `socat` bridge can bind
+`:443` as a non-root user. Add the hosts entries (elevated PowerShell, once):
+
+```
+127.0.0.1 fmicodes.com
+127.0.0.1 grafana.fmicodes.com
+127.0.0.1 staging.fmicodes.com
+```
+
+Then browse `https://fmicodes.com`, `https://grafana.fmicodes.com`, and
+`https://staging.fmicodes.com:9443` — staging keeps a port suffix because `:443` has a single
+listener already taken by prod. Remove everything with
+`wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh uninstall`. Requires
+`systemd=true` in `/etc/wsl.conf` (the default here) and `socat` installed.
 
 ### 5 — Secrets (SOPS + age)
 
@@ -407,36 +421,26 @@ Resource requests+limits are set on every component (see `helm-values/observabil
 to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the limits are the
 guardrail on a single WSL2 box already running the app+stateful tiers.
 
-**Access Grafana** — on a WSL2 dev box, via port-forward (the reliable route):
-
-```bash
-ENV=staging bash infra/k8s/scripts/grafana-forward.sh   # ENV=prod for prod creds
-# open http://localhost:3000
-```
-
-It forwards `svc/kps-grafana` to `localhost:3000` (override with `PORT=`), verifies the stack is
-up first, and prints the SOPS command for the login. By default it launches **detached** and returns
-your terminal — the forward keeps running in the background, survives closing the shell, and prints
-the `pkill` line to stop it; re-running is idempotent. Pass `DETACH=0` to run in the foreground.
-
-There is a single shared Grafana (it holds both the **FMI Production** and **FMI Staging**
-dashboards), so one forward covers both envs. To reach it by name, add either alias to the Windows
-hosts file and browse on the forwarded port (e.g. `http://grafana.fmicodes.com:3000`):
+**Access Grafana** — on a WSL2 dev box, Grafana is reachable at `https://grafana.fmicodes.com`
+with **no extra setup** once the boot-persistent forward services are installed (see
+[Phase 4](#4--ingress--tls)). `grafana.fmicodes.com` is an ingress rule on the same prod `nginx`
+controller as `fmicodes.com`, so the single `fmi-tls-prod` `:443` bridge serves it too — the ingress
+routes by host. Add the hosts entry (once):
 
 ```
 127.0.0.1 grafana.fmicodes.com
-127.0.0.1 grafana.staging.fmicodes.com
-```
-
-Manual equivalent:
-
-```bash
-kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
 ```
 
 Log in with the admin user/password from the SOPS secret (`sops --decrypt
 infra/k8s/secrets/grafana-secret.enc.yaml`). Anonymous access and sign-up are **disabled** in
 the chart values, so there is no `admin/admin` and no open registration.
+
+Ad-hoc alternative (no services, no `:443`) — a one-off port-forward straight to the Grafana
+service:
+
+```bash
+kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
+```
 
 **Why not the ingress host?** The chart provisions a Grafana ingress (prod: `grafana.fmicodes.com`,
 staging: `grafana.staging.fmicodes.com`), and that works on a **native Linux host** with a real
@@ -494,10 +498,12 @@ verify with `kubectl -n monitoring get deploy` if you change it.
 **Recorded decisions** (restated so this section is self-contained): a single shared
 `monitoring` stack scrapes both envs (separation by namespace selector, not separate stacks);
 persistence is PVC-backed (the multi-day window is the entire point); on a WSL2 dev box Grafana is
-reached via `grafana-forward.sh` (port-forward to `localhost:3000`) because klipper does not expose
-the LoadBalancer ports to the Windows host — the chart's Grafana ingress
+reached at `https://grafana.fmicodes.com` because klipper does not expose the LoadBalancer ports to
+the Windows host, so the boot-persistent `fmi-tls-prod` `socat` bridge on `:443` fronts the prod
+ingress — and since `grafana.fmicodes.com` is a rule on that same prod `nginx` controller, it rides
+the one bridge for free (no Grafana-specific forward). The chart's Grafana ingress
 (`grafana.fmicodes.com` / `grafana.staging.fmicodes.com`, env's nginx class, TLS omitted since both
-are local-only) stays in place and is the access path only on a native Linux host with a real
+are local-only) stays in place and is the direct access path only on a native Linux host with a real
 LoadBalancer. Two provisioned dashboards ("FMI Production", "FMI Staging") ship with every install
 via `grafana.dashboards` in the Helm values — no manual import needed.
 

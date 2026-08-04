@@ -50,8 +50,9 @@ node IP resolves the name but cannot open a connection.
    help the Windows side. From an elevated PowerShell:
      Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
 
-2) Run the forward that bridges the ingress to loopback (leave it running):
-     ENV=$ENV bash infra/k8s/scripts/app-forward.sh
+2) Install the boot-persistent forward services once (they auto-start on every boot,
+   no terminal to keep open) — this also lets grafana.fmicodes.com ride the same bridge:
+     wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install
 
 Then browse to ${HOST_URL}
 
