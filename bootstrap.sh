@@ -132,4 +132,42 @@ fi
 log "Handing off to init-linux.sh"
 
 export ENV
-exec bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
+bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
+
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  case "$ENV" in
+    prod)    HOST="fmicodes.com";         HOST_URL="https://$HOST" ;;
+    staging) HOST="staging.fmicodes.com"; HOST_URL="https://$HOST:8443" ;;
+  esac
+
+  if [ "$ENV" = "prod" ]; then
+    DNS_NOTE="Note: adding $HOST to your hosts file overrides public DNS on this machine.
+Remove this line when you want your browser to reach the production server instead."
+  else
+    DNS_NOTE="Note: this maps $HOST only on this machine, for reaching the staging
+cluster in WSL2. Remove the line when you no longer need it."
+  fi
+
+  cat <<EOF
+
+$(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
+
+The cluster runs inside WSL2. Two things are needed for a Windows browser to reach
+$HOST, and the WSL node IP is NOT one of them: k3s/klipper does not expose the
+ingress LoadBalancer ports to the Windows host, so a hosts entry pointing at the
+node IP resolves the name but cannot open a connection.
+
+1) Map the host to loopback in the WINDOWS hosts file
+   (C:\\Windows\\System32\\drivers\\etc\\hosts) — editing WSL's /etc/hosts does not
+   help the Windows side. From an elevated PowerShell:
+     Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
+
+2) Install the boot-persistent forward services once (they auto-start on every boot,
+   no terminal to keep open) — this also lets grafana.fmicodes.com ride the same bridge:
+     wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install
+
+Then browse to ${HOST_URL}
+
+$DNS_NOTE
+EOF
+fi
