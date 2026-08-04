@@ -96,21 +96,3 @@ spec:
   wait: true
   dependsOn:
     - name: fmi-codes-ingress
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: fmi-codes-observability-staging
-  namespace: flux-system
-spec:
-  interval: 5m
-  retryInterval: 2m
-  timeout: 15m
-  sourceRef:
-    kind: GitRepository
-    name: fmi-codes
-  path: ./infra/k8s/overlays/staging/observability
-  prune: true
-  wait: true
-  dependsOn:
-    - name: fmi-codes-staging-ingress
