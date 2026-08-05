@@ -50,6 +50,11 @@ write_age_key() {
   fi
 }
 
+case "$ENV" in
+  prod)    ENV_KEY_VAR="SOPS_AGE_KEY_PROD" ;;
+  staging) ENV_KEY_VAR="SOPS_AGE_KEY_STAGING" ;;
+esac
+
 log "Pre-flight: age key (SOPS decryption)"
 
 if [ -f "$AGE_KEY_FILE" ]; then
@@ -61,34 +66,49 @@ if [ -f "$AGE_KEY_FILE" ]; then
     warn "  found:    ${EXISTING_PUB:-<could not read>}"
     warn "  expected: $AGE_PUBKEY"
     echo
-    echo "Options:"
-    echo "  1) Replace with the correct key (paste the AGE-SECRET-KEY-1... line below)"
-    echo "  2) Abort and copy the right key manually, then re-run"
-    echo
-    ask "Replace the key? (yes/no):"
-    read -r REPLACE
-    if [ "$REPLACE" = "yes" ]; then
-      ask "Paste the AGE-SECRET-KEY-1... line, then press Enter:"
-      read -r RAW_KEY
-      write_age_key "$RAW_KEY"
+    ENV_VAL="${!ENV_KEY_VAR:-}"
+    if [ -n "$ENV_VAL" ]; then
+      ok "replacing from \$$ENV_KEY_VAR"
+      write_age_key "$ENV_VAL"
     else
-      die "aborted — copy the correct age private key to $AGE_KEY_FILE and re-run"
+      echo "Options:"
+      echo "  1) Replace with the correct key (paste the AGE-SECRET-KEY-1... line below)"
+      echo "  2) Abort and copy the right key manually, then re-run"
+      echo
+      ask "Replace the key? (yes/no):"
+      read -r REPLACE
+      if [ "$REPLACE" = "yes" ]; then
+        ask "Paste the AGE-SECRET-KEY-1... line, then press Enter:"
+        read -r RAW_KEY
+        write_age_key "$RAW_KEY"
+      else
+        die "aborted — copy the correct age private key to $AGE_KEY_FILE and re-run"
+      fi
     fi
   fi
 else
-  echo "No age key found at $AGE_KEY_FILE."
-  echo
-  echo "You need the private key that corresponds to:"
-  echo "  $AGE_PUBKEY"
-  echo
-  echo "If you have it on another machine, copy the AGE-SECRET-KEY-1... line from"
-  echo "  ~/.config/sops/age/keys.txt"
-  echo "and paste it below (paste only that one line, not the comment lines)."
-  echo
-  ask "Paste the AGE-SECRET-KEY-1... line, then press Enter:"
-  read -r RAW_KEY
-  [ -n "$RAW_KEY" ] || die "no key provided — cannot decrypt secrets"
-  write_age_key "$RAW_KEY"
+  ENV_VAL="${!ENV_KEY_VAR:-}"
+  if [ -n "$ENV_VAL" ]; then
+    ok "writing age key from \$$ENV_KEY_VAR"
+    write_age_key "$ENV_VAL"
+  else
+    echo "No age key found at $AGE_KEY_FILE."
+    echo
+    echo "You need the private key that corresponds to:"
+    echo "  $AGE_PUBKEY"
+    echo
+    echo "Tip: set \$$ENV_KEY_VAR to the AGE-SECRET-KEY-1... value to skip this prompt"
+    echo "     (store it as a GitHub Actions secret, then export it before running bootstrap)."
+    echo
+    echo "If you have it on another machine, copy the AGE-SECRET-KEY-1... line from"
+    echo "  ~/.config/sops/age/keys.txt"
+    echo "and paste it below (paste only that one line, not the comment lines)."
+    echo
+    ask "Paste the AGE-SECRET-KEY-1... line, then press Enter:"
+    read -r RAW_KEY
+    [ -n "$RAW_KEY" ] || die "no key provided — cannot decrypt secrets"
+    write_age_key "$RAW_KEY"
+  fi
 fi
 
 log "Pre-flight: admin password"

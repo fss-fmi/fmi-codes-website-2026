@@ -62,9 +62,15 @@ End-to-end, bare server → running cluster. Do it for staging first, then repea
   `install-tools.sh` fetches kubectl/helm/sops/age/flux.
 - **The environment's age private key.** SOPS decrypts the committed app secrets with it.
   Two cases:
-  - **Deploying the existing project** (normal case): get the private key from a teammate
-    who already has it (the `AGE-SECRET-KEY-1…` line out of their
-    `~/.config/sops/age/keys.txt`). You'll paste it in step 3 — no files to edit.
+  - **Deploying the existing project** (normal case): get the private key from a teammate.
+    The easiest path is to store it as a GitHub Actions secret (`SOPS_AGE_KEY_STAGING` /
+    `SOPS_AGE_KEY_PROD`) and export it before running bootstrap — the script picks it up
+    automatically:
+    ```bash
+    export SOPS_AGE_KEY_STAGING="AGE-SECRET-KEY-1..."
+    ./bootstrap.sh              # no paste prompt
+    ```
+    Without the env var, the script falls back to an interactive paste prompt.
   - **Forking to your own project:** you don't have the org's key, so mint your own and take
     over the recipient — see [Forking: use your own keys](#forking-use-your-own-keys) below,
     do that once, then come back here.
@@ -103,12 +109,14 @@ Postgres/Redis → app → ingress in order.
 ./bootstrap.sh --env prod   # production
 ```
 
-The pre-flight prompts you for exactly two things on a fresh machine:
+The pre-flight handles exactly two things on a fresh machine:
 
-1. **The age private key** — it detects none at `~/.config/sops/age/keys.txt`, prints the
-   public recipient it expects, and asks you to paste the `AGE-SECRET-KEY-1…` line. It writes
-   it `chmod 600` and immediately verifies it can decrypt that env's `secrets.enc.yaml`
-   (wrong key → it aborts).
+1. **The age private key** — it checks `~/.config/sops/age/keys.txt`. If missing or wrong,
+   it looks for `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`) in the environment and writes
+   the key automatically; otherwise it falls back to an interactive paste prompt. Either way
+   the key is written `chmod 600` and immediately verified against that env's `secrets.enc.yaml`
+   (wrong key → it aborts). Store the key as a GitHub Actions secret and export it before
+   running bootstrap to skip the prompt entirely.
 2. **The admin password** — if `ADMIN_PASSWORD_HASH` is empty in the secrets file, it asks
    for a password, bcrypt-hashes it, and writes the hash back into `secrets.enc.yaml`. Commit
    and push that file afterward so other servers get the same hash. (Skip it and the backend
