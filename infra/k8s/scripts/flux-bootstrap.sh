@@ -37,7 +37,7 @@ else
   [ -f "$DEPLOY_KEY" ] \
     || die "deploy key not found at $DEPLOY_KEY. Generate one with 'ssh-keygen -t ed25519 -f $DEPLOY_KEY -N \"\"', add the .pub as a repo deploy key WITH WRITE access, then re-run (override the path with DEPLOY_KEY=)."
   log "Verifying deploy key can authenticate to GitHub"
-  if ! ssh -i "$DEPLOY_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes \
+  if ! ssh -i "$DEPLOY_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
        -o ConnectTimeout=10 git@github.com 2>&1 | grep -q "successfully authenticated"; then
     echo ""
     echo "Warning: the deploy key at $DEPLOY_KEY could not authenticate to GitHub."
