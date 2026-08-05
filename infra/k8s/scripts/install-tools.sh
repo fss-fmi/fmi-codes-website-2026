@@ -44,6 +44,7 @@ command -v curl      >/dev/null 2>&1 || missing_pkgs+=(curl)
 command -v tar       >/dev/null 2>&1 || missing_pkgs+=(tar)
 command -v sha256sum >/dev/null 2>&1 || missing_pkgs+=(coreutils)
 [ -d /etc/ssl/certs ]                || missing_pkgs+=(ca-certificates)
+command -v socat     >/dev/null 2>&1 || missing_pkgs+=(socat)
 
 if [ "${#missing_pkgs[@]}" -eq 0 ]; then
   log "All prerequisites already present — skipping apt"

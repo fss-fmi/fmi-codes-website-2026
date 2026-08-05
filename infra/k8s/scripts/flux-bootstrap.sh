@@ -36,6 +36,22 @@ if kubectl -n "$FLUX_NAMESPACE" get secret "$GIT_SECRET" >/dev/null 2>&1; then
 else
   [ -f "$DEPLOY_KEY" ] \
     || die "deploy key not found at $DEPLOY_KEY. Generate one with 'ssh-keygen -t ed25519 -f $DEPLOY_KEY -N \"\"', add the .pub as a repo deploy key WITH WRITE access, then re-run (override the path with DEPLOY_KEY=)."
+  log "Verifying deploy key can authenticate to GitHub"
+  if ! ssh -i "$DEPLOY_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+       -o ConnectTimeout=10 git@github.com 2>&1 | grep -q "successfully authenticated"; then
+    echo ""
+    echo "Warning: the deploy key at $DEPLOY_KEY could not authenticate to GitHub."
+    echo "Flux will fail to pull from the repo until the public key is registered."
+    echo ""
+    echo "Add this public key to the repo with write access:"
+    echo "  GitHub → repo → Settings → Deploy keys → Add deploy key → tick 'Allow write access'"
+    echo ""
+    cat "${DEPLOY_KEY}.pub" 2>/dev/null || echo "(public key file not found at ${DEPLOY_KEY}.pub)"
+    echo ""
+    echo "Continuing — the secret will be written, but Flux reconciliation will fail until the key is registered."
+  else
+    echo "Deploy key authenticated successfully."
+  fi
   log "Creating git auth secret '$GIT_SECRET' from $DEPLOY_KEY"
   flux create secret git "$GIT_SECRET" \
     --namespace "$FLUX_NAMESPACE" \

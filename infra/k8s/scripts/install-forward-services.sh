@@ -4,16 +4,34 @@ set -euo pipefail
 
 ACTION="${1:-install}"
 
+log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
+die() { echo "Error: $1" >&2; exit 1; }
+need_root() { [ "$(id -u)" -eq 0 ] || die "run as root: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh $ACTION"; }
+
+check_systemd() {
+  [ -d /run/systemd/private ] \
+    || die "systemd is not running — enable it in WSL2 first:
+  1. Add to /etc/wsl.conf (inside WSL):
+       [boot]
+       systemd=true
+  2. From PowerShell: wsl --shutdown
+  3. Reopen WSL, then re-run."
+}
+
 detect_user() {
   if [ -n "${SVC_USER:-}" ]; then echo "$SVC_USER"; return; fi
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then echo "$SUDO_USER"; return; fi
   local u
   u="$(getent passwd 1000 | cut -d: -f1)"
-  [ -n "$u" ] && { echo "$u"; return; }
-  id -un
+  if [ -n "$u" ]; then echo "$u"; return; fi
+  echo "root"
 }
 
 SVC_USER="$(detect_user)"
+if [ "$SVC_USER" = "root" ] && [ "$ACTION" = "install" ]; then
+  die "could not detect a non-root WSL user — set SVC_USER explicitly:
+  SVC_USER=<youruser> wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
+fi
 SVC_GROUP="${SVC_GROUP:-$(id -gn "$SVC_USER")}"
 SVC_HOME="$(getent passwd "$SVC_USER" | cut -d: -f6)"
 KUBECONFIG_PATH="${KUBECONFIG_PATH:-$SVC_HOME/.kube/config}"
@@ -31,12 +49,9 @@ STAGING_SVC_PORT="8443"
 
 UNITS="fmi-forward-prod.service fmi-tls-prod.service fmi-forward-staging.service"
 
-log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
-die() { echo "Error: $1" >&2; exit 1; }
-need_root() { [ "$(id -u)" -eq 0 ] || die "run as root: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh $ACTION"; }
-
 if [ "$ACTION" = "uninstall" ]; then
   need_root
+  check_systemd
   log "Removing FMI forward services"
   for u in $UNITS; do
     systemctl disable --now "$u" 2>/dev/null || true
@@ -52,8 +67,8 @@ fi
 
 [ "$ACTION" = "install" ] || die "unknown action '$ACTION' — use 'install' or 'uninstall'."
 need_root
+check_systemd
 
-[ "$SVC_USER" != "root" ] || die "refusing to install services as root — set SVC_USER to your normal WSL user."
 [ -x "$KUBECTL_BIN" ] || die "kubectl not found at '$KUBECTL_BIN' — run install-tools.sh first."
 [ -x "$SOCAT_BIN" ]   || die "socat not found at '$SOCAT_BIN' — install it (apt-get install -y socat)."
 [ -f "$KUBECONFIG_PATH" ] || die "kubeconfig not found at '$KUBECONFIG_PATH' — set KUBECONFIG_PATH."
