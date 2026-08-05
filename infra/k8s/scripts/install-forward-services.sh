@@ -4,6 +4,20 @@ set -euo pipefail
 
 ACTION="${1:-install}"
 
+log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
+die() { echo "Error: $1" >&2; exit 1; }
+need_root() { [ "$(id -u)" -eq 0 ] || die "run as root: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh $ACTION"; }
+
+check_systemd() {
+  [ -d /run/systemd/private ] \
+    || die "systemd is not running — enable it in WSL2 first:
+  1. Add to /etc/wsl.conf (inside WSL):
+       [boot]
+       systemd=true
+  2. From PowerShell: wsl --shutdown
+  3. Reopen WSL, then re-run."
+}
+
 detect_user() {
   if [ -n "${SVC_USER:-}" ]; then echo "$SVC_USER"; return; fi
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then echo "$SUDO_USER"; return; fi
@@ -14,7 +28,7 @@ detect_user() {
 }
 
 SVC_USER="$(detect_user)"
-if [ "$SVC_USER" = "root" ] && [ "${ACTION:-install}" = "install" ]; then
+if [ "$SVC_USER" = "root" ] && [ "$ACTION" = "install" ]; then
   die "could not detect a non-root WSL user — set SVC_USER explicitly:
   SVC_USER=<youruser> wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
 fi
@@ -34,20 +48,6 @@ STAGING_LOCAL="9443"
 STAGING_SVC_PORT="8443"
 
 UNITS="fmi-forward-prod.service fmi-tls-prod.service fmi-forward-staging.service"
-
-log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
-die() { echo "Error: $1" >&2; exit 1; }
-need_root() { [ "$(id -u)" -eq 0 ] || die "run as root: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh $ACTION"; }
-
-check_systemd() {
-  [ -d /run/systemd/private ] \
-    || die "systemd is not running — enable it in WSL2 first:
-  1. Add to /etc/wsl.conf (inside WSL):
-       [boot]
-       systemd=true
-  2. From PowerShell: wsl --shutdown
-  3. Reopen WSL, then re-run."
-}
 
 if [ "$ACTION" = "uninstall" ]; then
   need_root
