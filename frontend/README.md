@@ -8,7 +8,7 @@ Project-wide docs live at the repo root: [README](../README.md), [ARCHITECTURE](
 
 | Command           | What it does                                                                                                               |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `npm install`     | Install dependencies (there is no committed lockfile)                                                                      |
+| `npm install`     | Install dependencies from the committed `package-lock.json` (see ONBOARDING for why not to regenerate it from scratch)     |
 | `npm run dev`     | Vite dev server on http://localhost:5173, proxying `/api` and `/static` to `BACKEND_URL` (default `http://localhost:5001`) |
 | `npm run build`   | Type-check (`tsc -b`) and build to `dist/`                                                                                 |
 | `npm run preview` | Serve the production build locally                                                                                         |
