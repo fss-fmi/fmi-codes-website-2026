@@ -84,6 +84,8 @@ node_modules/
 npm-debug.log
 yarn-error.log
 package-lock.json
+# The frontend lockfile is committed so CI and image builds install a known-good tree.
+!frontend/package-lock.json
 yarn.lock
 # Local Claude Code guidelines (do not commit) — root and any nested directory
 CLAUDE.md

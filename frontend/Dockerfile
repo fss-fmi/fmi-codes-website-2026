@@ -3,10 +3,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# No committed lockfile (package-lock.json is gitignored), so install from
-# package.json rather than `npm ci`, which requires a lockfile.
-COPY package.json ./
-RUN npm install
+# Install exactly the tree CI tests against.
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 RUN npm run build
