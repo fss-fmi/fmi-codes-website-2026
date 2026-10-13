@@ -3,8 +3,7 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install from the committed lockfile. A fresh resolve of package.json crashes
-# npm 10 (see ONBOARDING.md), so never fall back to a lockfile-less install.
+# Install exactly the tree CI tests against.
 COPY package.json package-lock.json ./
 RUN npm ci
 

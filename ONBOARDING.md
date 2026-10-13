@@ -34,7 +34,7 @@ cp .env.example .env
 
 `frontend/package-lock.json` is committed, so `npm install` (or `npm ci`) in `frontend/` gets the same dependency tree CI uses, and `frontend/Dockerfile` builds the production image with `npm ci` from it. Commit lockfile changes together with any `package.json` change. The root `package-lock.json` (Husky and lint-staged only) stays gitignored.
 
-Do not delete the frontend lockfile and regenerate it from scratch: since vitest 5.0.4 was published, a fresh resolve of this `package.json` crashes npm 10 with `Cannot read properties of null (reading 'edgesOut')`. If you must regenerate, run `npm install --package-lock-only --legacy-peer-deps`, then a plain `npm install` to add the peer dependencies, and check `npm test` still passes.
+Keep vitest and its `@vitest/*` companions on the same major version. On 2026-10-12 vitest 4 left the tree mixed with the new vitest 5 packages and every fresh `npm install` crashed npm 10 with `Cannot read properties of null (reading 'edgesOut')`; moving to vitest 5 fixed it.
 
 ## Environment setup
 
