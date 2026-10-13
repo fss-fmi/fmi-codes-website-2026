@@ -3,10 +3,10 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# No committed lockfile (package-lock.json is gitignored), so install from
-# package.json rather than `npm ci`, which requires a lockfile.
-COPY package.json ./
-RUN npm install
+# Install from the committed lockfile. A fresh resolve of package.json crashes
+# npm 10 (see ONBOARDING.md), so never fall back to a lockfile-less install.
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 RUN npm run build
