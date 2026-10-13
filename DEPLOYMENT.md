@@ -40,10 +40,10 @@ graph LR
 
 ## Build artifacts
 
-| Image                       | Built from                                                       | Runs                                                                                       |
-| --------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `fssfmi/fmi-codes-backend`  | `backend/Dockerfile` (python:3.12-slim)                          | `gunicorn --bind 0.0.0.0:5001 --workers 4 --threads 8 --timeout 120 wsgi:app` as UID 10001 |
-| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, proxies `/api` and `/static` to `backend:5001`      |
+| Image                       | Built from                                                                                                            | Runs                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `fssfmi/fmi-codes-backend`  | `backend/Dockerfile` (python:3.12-slim)                                                                               | `gunicorn --bind 0.0.0.0:5001 --workers 4 --threads 8 --timeout 120 wsgi:app` as UID 10001 |
+| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build with `npm ci` from the committed `package-lock.json`, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, proxies `/api` and `/static` to `backend:5001`      |
 
 ## Configuration
 
