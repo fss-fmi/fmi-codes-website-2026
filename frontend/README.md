@@ -1,73 +1,46 @@
-# React + TypeScript + Vite
+# FMI{Codes} 2026 frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React single-page app for the FMI{Codes} platform. React 19, TypeScript, Vite, Tailwind CSS v4, React Router 7 and TanStack Query.
 
-Currently, two official plugins are available:
+Project-wide docs live at the repo root: [README](../README.md), [ARCHITECTURE](../ARCHITECTURE.md), [ONBOARDING](../ONBOARDING.md), [API reference](../docs/api.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Scripts
 
-## React Compiler
+| Command           | What it does                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `npm install`     | Install dependencies from the committed `package-lock.json`                                                                |
+| `npm run dev`     | Vite dev server on http://localhost:5173, proxying `/api` and `/static` to `BACKEND_URL` (default `http://localhost:5001`) |
+| `npm run build`   | Type-check (`tsc -b`) and build to `dist/`                                                                                 |
+| `npm run preview` | Serve the production build locally                                                                                         |
+| `npm run lint`    | ESLint                                                                                                                     |
+| `npm test`        | Vitest (jsdom + Testing Library)                                                                                           |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+From the repo root, `python dev.py` starts this dev server together with the backend.
 
-## Expanding the ESLint configuration
+## Structure
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+  App.tsx          flat route table + global providers
+  pages/           one folder per area: auth, teams, mentors, admin, rankings, regulations
+  components/      shared UI grouped by area (common, layout, teams, admin, home, mentors)
+  context/         AuthContext (current user) and ConfigContext (feature flags)
+  hooks/           useApplyToTeam, useConfirmAction, useIsMobile, useVisuals
+  lib/api.ts       the only fetch wrapper
+  lib/queryClient.ts  shared TanStack Query client
+  types/           hand-written API response types
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Conventions
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- **API calls** go through `src/lib/api.ts` (`api.get/post/put/patch/delete`). It sends cookies, throws an `Error` with the server's `error` message on non-2xx, and fires a window `auth:unauthorized` event on 401 that logs the user out.
+- **Server state** lives in TanStack Query. Defaults: 30 s stale time, no retries, no refetch on window focus.
+- **Auth** is an httpOnly cookie set by the backend; the SPA never touches the token. `AuthContext` hydrates the user from `GET /api/auth/me` on load.
+- **Role-gated pages** wrap themselves in `<RequireAuth roles={[...]}>`. The routes in `App.tsx` are not guarded, so a new protected page must add its own wrapper.
+- **Feature flags** (`REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE`) come from `useConfig()`.
+- **Types** in `src/types/` are maintained by hand to match the backend. Update them with any API change.
+- Import from `src` with the `@/` alias.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Production build
+
+`Dockerfile` builds the app with Node 22 and serves `dist/` from Nginx (`nginx.conf`) as a non-root user. Nginx falls back to `index.html` for client routes and proxies `/api/` and `/static/` to `http://backend:5001`.
