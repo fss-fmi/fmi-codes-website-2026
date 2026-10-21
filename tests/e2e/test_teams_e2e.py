@@ -32,6 +32,7 @@ pytestmark = pytest.mark.e2e
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
+
 def _create_team(client, token, team_name="Alpha Team"):
     return client.post("/api/teams", json={"team_name": team_name}, headers=bearer(token))
 
@@ -52,6 +53,7 @@ def _get_team_id(create_resp):
 # ═══════════════════════════════════════════════════════════════════════════
 # Create team
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestCreateTeam:
     def test_captain_can_create_team(self, client, seeds):
@@ -85,7 +87,7 @@ class TestCreateTeam:
     def test_requires_participant_role(self, flask_app, seeds):
         """Mentors and admins cannot create teams."""
         mentor_tok = _mentor_token(flask_app, seeds)
-        admin_tok  = admin_token(flask_app)
+        admin_tok = admin_token(flask_app)
         with flask_app.test_client() as c:
             for tok, label in [(mentor_tok, "mentor"), (admin_tok, "admin")]:
                 rv = c.post("/api/teams", json={"team_name": f"{label}Team"}, headers=bearer(tok))
@@ -99,6 +101,7 @@ class TestCreateTeam:
 # ═══════════════════════════════════════════════════════════════════════════
 # List teams — data-leakage guards
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestListTeams:
     def test_get_all_teams_is_public(self, client, seeds):
@@ -165,6 +168,7 @@ class TestListTeams:
 # Join via code
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestJoinViaCode:
     def test_valid_join_code_adds_member(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
@@ -203,12 +207,13 @@ class TestJoinViaCode:
 # Leave team
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLeaveTeam:
     def test_non_captain_member_can_leave(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
         rv_create = _create_team(client, token1)
         join_code = _get_join_code(rv_create)
-        team_id   = _get_team_id(rv_create)
+        team_id = _get_team_id(rv_create)
 
         with flask_app.test_client() as c2:
             token2 = register_and_token(c2, 2, seeds)
@@ -220,7 +225,7 @@ class TestLeaveTeam:
         """When the captain leaves, the team is auto-disbanded and the call returns 200."""
         token = register_and_token(client, 1, seeds)
         rv_create = _create_team(client, token)
-        team_id   = _get_team_id(rv_create)
+        team_id = _get_team_id(rv_create)
         rv = client.post(f"/api/teams/{team_id}/leave", headers=bearer(token))
         assert rv.status_code == 200
 
@@ -234,18 +239,19 @@ class TestLeaveTeam:
 # Disband team
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDisbandTeam:
     def test_captain_can_disband_own_team(self, client, seeds):
         token = register_and_token(client, 1, seeds)
         rv_create = _create_team(client, token)
-        team_id   = _get_team_id(rv_create)
+        team_id = _get_team_id(rv_create)
         rv = client.delete(f"/api/teams/{team_id}", headers=bearer(token))
         assert rv.status_code == 200
 
     def test_non_captain_cannot_disband(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
         rv_create = _create_team(client, token1)
-        team_id   = _get_team_id(rv_create)
+        team_id = _get_team_id(rv_create)
         join_code = _get_join_code(rv_create)
 
         with flask_app.test_client() as c2:
@@ -272,37 +278,34 @@ class TestDisbandTeam:
 # Kick member
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestKickMember:
     def test_captain_can_kick_member(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
         rv_create = _create_team(client, token1)
         join_code = _get_join_code(rv_create)
-        team_id   = _get_team_id(rv_create)
+        team_id = _get_team_id(rv_create)
 
         with flask_app.test_client() as c2:
             token2 = register_and_token(c2, 2, seeds)
             _join_team(c2, token2, join_code)
             member_id = c2.get("/api/auth/me", headers=bearer(token2)).get_json()["user"]["id"]
 
-        rv = client.delete(
-            f"/api/teams/{team_id}/members/{member_id}", headers=bearer(token1)
-        )
+        rv = client.delete(f"/api/teams/{team_id}/members/{member_id}", headers=bearer(token1))
         assert rv.status_code == 200
 
     def test_member_cannot_kick_from_team(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
         rv_create = _create_team(client, token1)
         join_code = _get_join_code(rv_create)
-        team_id   = _get_team_id(rv_create)
+        team_id = _get_team_id(rv_create)
         captain_id = client.get("/api/auth/me", headers=bearer(token1)).get_json()["user"]["id"]
 
         with flask_app.test_client() as c2:
             token2 = register_and_token(c2, 2, seeds)
             _join_team(c2, token2, join_code)
             # Member tries to kick captain
-            rv = c2.delete(
-                f"/api/teams/{team_id}/members/{captain_id}", headers=bearer(token2)
-            )
+            rv = c2.delete(f"/api/teams/{team_id}/members/{captain_id}", headers=bearer(token2))
         assert rv.status_code == 403
 
     def test_captain_of_team_a_cannot_kick_from_team_b(self, client, seeds, flask_app):
@@ -321,15 +324,14 @@ class TestKickMember:
             member3_id = c3.get("/api/auth/me", headers=bearer(token3)).get_json()["user"]["id"]
 
         # Captain of A tries to kick a member of B
-        rv = client.delete(
-            f"/api/teams/{team_b_id}/members/{member3_id}", headers=bearer(token1)
-        )
+        rv = client.delete(f"/api/teams/{team_b_id}/members/{member3_id}", headers=bearer(token1))
         assert rv.status_code == 403
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Browse & apply (join request flow)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestJoinRequestFlow:
     def test_teamless_participant_can_apply_to_team(self, client, seeds, flask_app):
@@ -365,18 +367,14 @@ class TestJoinRequestFlow:
             token2 = register_and_token(c2, 2, seeds)
             c2.post(f"/api/teams/{team_id}/apply", headers=bearer(token2))
 
-        req_id = client.get(
-            f"/api/teams/{team_id}/requests", headers=bearer(token1)
-        ).get_json()["requests"][0]["request_id"]
-        rv = client.post(
-            f"/api/teams/requests/{req_id}/accept", headers=bearer(token1)
-        )
+        req_id = client.get(f"/api/teams/{team_id}/requests", headers=bearer(token1)).get_json()[
+            "requests"
+        ][0]["request_id"]
+        rv = client.post(f"/api/teams/requests/{req_id}/accept", headers=bearer(token1))
         assert rv.status_code == 200
 
         # Verify the participant is now on the team
-        team_data = client.get(
-            f"/api/teams/{team_id}", headers=bearer(token1)
-        ).get_json()["team"]
+        team_data = client.get(f"/api/teams/{team_id}", headers=bearer(token1)).get_json()["team"]
         assert team_data["participant_count"] == 2
 
     def test_captain_declines_request(self, client, seeds, flask_app):
@@ -388,9 +386,9 @@ class TestJoinRequestFlow:
             token2 = register_and_token(c2, 2, seeds)
             c2.post(f"/api/teams/{team_id}/apply", headers=bearer(token2))
 
-        req_id = client.get(
-            f"/api/teams/{team_id}/requests", headers=bearer(token1)
-        ).get_json()["requests"][0]["request_id"]
+        req_id = client.get(f"/api/teams/{team_id}/requests", headers=bearer(token1)).get_json()[
+            "requests"
+        ][0]["request_id"]
         rv = client.post(f"/api/teams/requests/{req_id}/decline", headers=bearer(token1))
         assert rv.status_code == 200
 
@@ -452,9 +450,9 @@ class TestJoinRequestFlow:
             token2 = register_and_token(c2, 2, seeds)
             c2.post(f"/api/teams/{team_id}/apply", headers=bearer(token2))
 
-        req_id = client.get(
-            f"/api/teams/{team_id}/requests", headers=bearer(token1)
-        ).get_json()["requests"][0]["request_id"]
+        req_id = client.get(f"/api/teams/{team_id}/requests", headers=bearer(token1)).get_json()[
+            "requests"
+        ][0]["request_id"]
 
         with flask_app.test_client() as c3:
             token3 = register_and_token(c3, 3, seeds)
@@ -466,12 +464,13 @@ class TestJoinRequestFlow:
 # Team auto-activation / deactivation
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestTeamActivation:
     def test_team_activates_at_3_members(self, flask_app, seeds):
         with flask_app.test_client() as cap_client:
             token1 = register_and_token(cap_client, 100, seeds)
             rv = _create_team(cap_client, token1, "ActivationTeam")
-            team_id   = _get_team_id(rv)
+            team_id = _get_team_id(rv)
             join_code = _get_join_code(rv)
 
             # 1 member (captain) → pending
@@ -498,6 +497,7 @@ class TestTeamActivation:
 # ═══════════════════════════════════════════════════════════════════════════
 # Registered-teams public endpoint
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestRegisteredTeamsEndpoint:
     def test_public_endpoint_accessible_without_auth(self, client):
@@ -549,10 +549,33 @@ class TestRegisteredTeamsEndpoint:
         rv = client.get(f"/api/teams/{team_id}/members/public")
         assert rv.status_code == 404
 
+    def test_registered_list_reflects_mutations_after_being_cached(self, client, seeds, flask_app):
+        """Each membership change must invalidate the cached registered-teams list."""
+        captain_token = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, captain_token)
+        team_id = _get_team_id(rv_create)
+        join_code = _get_join_code(rv_create)
+        for _ in range(2):
+            with flask_app.test_client() as cx:
+                _join_team(cx, register_extra_and_token(cx, seeds), join_code)
+
+        teams = client.get("/api/teams/registered").get_json()["teams"]
+        assert [(t["team_id"], t["participant_count"]) for t in teams] == [(team_id, 3)]
+
+        with flask_app.test_client() as c4:
+            _join_team(c4, register_extra_and_token(c4, seeds), join_code)
+        teams = client.get("/api/teams/registered").get_json()["teams"]
+        assert teams[0]["participant_count"] == 4
+
+        client.delete(f"/api/teams/{team_id}", headers=bearer(captain_token))
+        assert client.get("/api/teams/registered").get_json()["teams"] == []
+
 
 # ─── Internal helpers ─────────────────────────────────────────────────────
+
 
 def _mentor_token(app, seeds):
     with app.app_context():
         from app.services.auth_service import generate_token
+
         return generate_token(seeds["mentor_ids"][0], "mentor")

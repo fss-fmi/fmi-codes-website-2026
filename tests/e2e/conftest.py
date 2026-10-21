@@ -243,6 +243,9 @@ def _reset_caches():
             "cache:rankings:legacy",
             "cache:rankings:teams",
             "cache:regulations",
+            "cache:lookups:universities",
+            "cache:lookups:specialties",
+            "cache:teams:registered",
         )
     except Exception:
         pass
