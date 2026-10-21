@@ -160,6 +160,44 @@ def test_get_team_rankings_cache_miss_populates(monkeypatch, app_ctx):
     assert ttl >= 1
 
 
+@pytest.mark.parametrize(
+    ("module", "loader_attr", "getter", "row"),
+    [
+        (
+            "app.services.mentor_service",
+            "execute_query",
+            "get_all_mentors",
+            {"mentor_id": 1, "name": "A B", "created_at": datetime(2026, 3, 1, 10, tzinfo=UTC)},
+        ),
+        (
+            "app.services.ranking_service",
+            "_load_team_rankings",
+            "get_team_rankings",
+            {
+                "team_id": 1,
+                "score": 90.5,
+                "score_updated_at": datetime(2026, 3, 14, 18, tzinfo=UTC),
+            },
+        ),
+    ],
+)
+def test_cached_timestamps_match_jsonify_format(
+    monkeypatch, app_ctx, module, loader_attr, getter, row
+):
+    """A cache miss and a cache hit must serialise datetimes the way jsonify does."""
+    import importlib
+
+    service = importlib.import_module(module)
+    fake = FakeRedis()
+    _wire(monkeypatch, module, fake)
+    monkeypatch.setattr(f"{module}.{loader_attr}", lambda *a, **k: [row])
+
+    expected = app_ctx.json.loads(app_ctx.json.dumps([row]))
+    assert getattr(service, getter)() == expected
+    assert getattr(service, getter)() == expected
+    assert len(fake.set_calls) == 1
+
+
 def test_invalidate_team_rankings_cache_deletes_key(monkeypatch, app_ctx):
     fake = FakeRedis({"cache:rankings:teams": "[]"})
     _wire(monkeypatch, "app.services.ranking_service", fake)

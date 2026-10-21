@@ -101,8 +101,10 @@ def get_all_mentors() -> list:
     except Exception as e:
         raise Exception(f"Failed to get mentors: {str(e)}") from e
 
-    redis_set(_MENTORS_CACHE_KEY, json.dumps(result, default=str), jittered_ttl(1800, 180))
-    return result
+    # The app JSON provider keeps created_at in the same format on a hit and a miss.
+    payload = current_app.json.dumps([dict(r) for r in result])
+    redis_set(_MENTORS_CACHE_KEY, payload, jittered_ttl(1800, 180))
+    return json.loads(payload)
 
 
 def _invalidate_mentor_cache():
