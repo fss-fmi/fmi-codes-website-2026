@@ -1,6 +1,6 @@
 # Onboarding
 
-Get the platform running locally, run the tests and ship a change without asking anyone. For what the pieces are, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
+Get the platform running locally, run the tests and ship a change without asking anyone. For what the pieces are, read [Architecture](architecture.md) first.
 
 ## Prerequisites
 
@@ -110,7 +110,7 @@ Run everything from the **repo root**.
 | Frontend tests                | `cd frontend && npm test`                                           |
 | One frontend file             | `cd frontend && npx vitest run src/pages/auth/ProfilePage.test.tsx` |
 
-The integration tests need an existing `fmi_hackathon_2026_test` database at `postgresql://postgres:postgres@localhost:5432/` (override with `TEST_DATABASE_URL`). The schema is applied automatically; if Postgres is unreachable the whole folder skips. See [TESTING.md](TESTING.md) for fixtures and patterns.
+The integration tests need an existing `fmi_hackathon_2026_test` database at `postgresql://postgres:postgres@localhost:5432/` (override with `TEST_DATABASE_URL`). The schema is applied automatically; if Postgres is unreachable the whole folder skips. See [Testing](testing.md) for fixtures and patterns.
 
 ## Lint and format
 
@@ -142,7 +142,8 @@ frontend/src/
   context/         AuthContext, ConfigContext
   lib/api.ts       the only fetch wrapper
 tests/             backend unit tests; tests/e2e/ = API integration tests
-infra/k8s/         cluster manifests, scripts and the operator runbook
+infra/k8s/         cluster manifests and scripts
+docs/              this documentation (published to GitHub Pages by mkdocs.yml)
 dev.py             runs backend + frontend together
 bootstrap.sh       one-shot cluster installer
 ```
@@ -152,9 +153,10 @@ bootstrap.sh       one-shot cluster installer
 1. Branch off `main`.
 2. Backend change: add or update a service function, keep the route thin, add a unit test in `tests/` and an integration test in `tests/e2e/` if it touches HTTP or SQL.
 3. Schema change: edit `backend/database/schema.sql` **and** add the next numbered file in `backend/database/migrations/` for existing databases. Running clusters need the migration applied by hand.
-4. New endpoint: update the frontend types in `frontend/src/types/` by hand and document it in [docs/api.md](docs/api.md).
+4. New endpoint: update the frontend types in `frontend/src/types/` by hand and document it in the [API reference](api.md).
 5. Commit (the pre-commit hook formats), open a PR. CI runs both test layers against real Postgres and Redis, both linters, the type check and a Flux kustomize build.
-6. Merging to `main` builds images and auto-deploys **staging**. Production needs the `Promote to production` workflow plus a merged PR. See [DEPLOYMENT.md](DEPLOYMENT.md).
+6. Merging to `main` builds images and auto-deploys **staging**. Production needs the `Promote to production` workflow plus a merged PR. See [Deployment](deployment.md).
+7. Docs change: edit the page in `docs/` and preview the site with `pip install -r docs/requirements.txt` then `mkdocs serve` (http://127.0.0.1:8000). Merging to `main` publishes it to GitHub Pages.
 
 ## Common issues
 

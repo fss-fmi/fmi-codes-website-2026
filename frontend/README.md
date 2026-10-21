@@ -2,7 +2,7 @@
 
 The React single-page app for the FMI{Codes} platform. React 19, TypeScript, Vite, Tailwind CSS v4, React Router 7 and TanStack Query.
 
-Project-wide docs live at the repo root: [README](../README.md), [ARCHITECTURE](../ARCHITECTURE.md), [ONBOARDING](../ONBOARDING.md), [API reference](../docs/api.md).
+Project-wide docs live in [`docs/`](../docs/) and at https://fss-fmi.github.io/fmi-codes-website-2026/: [Architecture](../docs/architecture.md), [Onboarding](../docs/onboarding.md), [API reference](../docs/api.md).
 
 ## Scripts
 

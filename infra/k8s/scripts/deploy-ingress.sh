@@ -154,7 +154,7 @@ For local testing, add the host to /etc/hosts:
 
 $TLS_NOTE
 
-Verify against the issue's acceptance criteria (see infra/k8s/README.md 'Phase 4'):
+Verify against the issue's acceptance criteria (see docs/runbook.md 'Phase 4'):
 
   Routing (backend vs frontend):
     curl ${HOST_URL}/api/health

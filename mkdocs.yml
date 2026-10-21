@@ -1,0 +1,90 @@
+site_name: FMI{Codes} 2026
+site_description: Documentation for the FMI{Codes} hackathon platform
+site_url: https://fss-fmi.github.io/fmi-codes-website-2026/
+repo_url: https://github.com/fss-fmi/fmi-codes-website-2026
+repo_name: fss-fmi/fmi-codes-website-2026
+edit_uri: edit/main/docs/
+
+strict: true
+
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  palette:
+    - media: '(prefers-color-scheme)'
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: '(prefers-color-scheme: light)'
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: '(prefers-color-scheme: dark)'
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+validation:
+  anchors: warn
+
+markdown_extensions:
+  - tables
+  - admonition
+  - attr_list
+  - md_in_html
+  # Prettier (pre-commit) indents nested lists by 2 spaces; Python-Markdown needs 4 without this.
+  - mdx_truly_sane_lists:
+      nested_indent: 2
+  - toc:
+      permalink: true
+      # Match GitHub's heading anchors so the same #links work on github.com and on this site.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Overview: index.md
+  - Getting Started: onboarding.md
+  - User Guide: user-guide.md
+  - Architecture:
+      - Overview: architecture.md
+      - Data Model: data.md
+      - API Reference: api.md
+      - Decision Records:
+          - ADR-001 Raw SQL, no ORM: adr/001-raw-sql-no-orm.md
+          - ADR-002 JWT cookie and revocation: adr/002-jwt-httponly-cookie-layered-revocation.md
+          - ADR-003 Optional Redis, fail open: adr/003-redis-optional-fail-open.md
+          - ADR-004 Advisory-lock queue: adr/004-advisory-lock-registration-queue.md
+          - ADR-005 Gale-Shapley + greedy fill: adr/005-gale-shapley-plus-greedy-fill.md
+          - ADR-006 k3s and pull-based GitOps: adr/006-self-hosted-k3s-pull-based-gitops.md
+  - Testing: testing.md
+  - Deployment:
+      - Release and Operations: deployment.md
+      - Cluster Runbook: runbook.md
+  - Glossary: glossary.md

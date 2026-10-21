@@ -1,6 +1,6 @@
 # Deployment
 
-How a change gets from a merged PR to `staging.fmicodes.com` and `fmicodes.com`, and how to verify, configure and roll back. This page is the operator summary. Standing up a cluster from a bare server, secrets, observability and teardown live in the full runbook: **[infra/k8s/README.md](infra/k8s/README.md)**.
+How a change gets from a merged PR to `staging.fmicodes.com` and `fmicodes.com`, and how to verify, configure and roll back. This page is the operator summary. Standing up a cluster from a bare server, secrets, observability and teardown live in the full **[cluster runbook](runbook.md)**.
 
 ## Environments
 
@@ -106,7 +106,7 @@ After any deploy also confirm the two invariants from the runbook: a push to `ma
 
 ## Monitoring
 
-Self-hosted kube-prometheus-stack in the `monitoring` namespace scrapes both app namespaces with 14-day retention. Grafana provisions "FMI Production" and "FMI Staging" dashboards (request rate, latency percentiles, error rate). Logs: `kubectl -n fmi-codes logs -f deploy/backend`. Setup and access details: [runbook section 7](infra/k8s/README.md#7--observability-prometheus--grafana).
+Self-hosted kube-prometheus-stack in the `monitoring` namespace scrapes both app namespaces with 14-day retention. Grafana provisions "FMI Production" and "FMI Staging" dashboards (request rate, latency percentiles, error rate). Logs: `kubectl -n fmi-codes logs -f deploy/backend`. Setup and access details: [runbook section 7](runbook.md#7--observability-prometheus--grafana).
 
 ## Local production-like run
 
