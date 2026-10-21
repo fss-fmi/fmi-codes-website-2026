@@ -6,6 +6,10 @@ on:
       - main
     paths-ignore:
       - 'infra/**'
+      - 'docs/**'
+      - '**.md'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
   schedule:
     - cron: '0 0 1 * *'
