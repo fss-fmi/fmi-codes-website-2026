@@ -4,18 +4,22 @@ The **FMI{Codes} hackathon platform**: one web app for participants, mentors and
 
 ## Documentation
 
-| Doc                                        | What it covers                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------ |
-| [ARCHITECTURE.md](ARCHITECTURE.md)         | Components, request flow, matching algorithm, key decisions        |
-| [ONBOARDING.md](ONBOARDING.md)             | Get it running locally, run tests, make a change                   |
-| [TESTING.md](TESTING.md)                   | Test layers, fixtures, mocking boundary, CI                        |
-| [DEPLOYMENT.md](DEPLOYMENT.md)             | How a change reaches staging and prod (summary of the k3s runbook) |
-| [GLOSSARY.md](GLOSSARY.md)                 | Domain terms: teams, queue, captain, preferences, matching         |
-| [docs/api.md](docs/api.md)                 | Every REST endpoint with auth, request and response shapes         |
-| [docs/data.md](docs/data.md)               | Database schema, ER diagram, seeds, migrations                     |
-| [docs/user-guide.md](docs/user-guide.md)   | How participants, mentors and admins use the site                  |
-| [docs/adr/](docs/adr/)                     | Architecture Decision Records                                      |
-| [infra/k8s/README.md](infra/k8s/README.md) | Full operator runbook for the cluster                              |
+The full documentation is published at **https://fss-fmi.github.io/fmi-codes-website-2026/**. The source is the Markdown in [`docs/`](docs/):
+
+| Doc                                          | What it covers                                                     |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| [docs/architecture.md](docs/architecture.md) | Components, request flow, matching algorithm, key decisions        |
+| [docs/onboarding.md](docs/onboarding.md)     | Get it running locally, run tests, make a change                   |
+| [docs/testing.md](docs/testing.md)           | Test layers, fixtures, mocking boundary, CI                        |
+| [docs/deployment.md](docs/deployment.md)     | How a change reaches staging and prod (summary of the k3s runbook) |
+| [docs/runbook.md](docs/runbook.md)           | Full operator runbook for the cluster                              |
+| [docs/glossary.md](docs/glossary.md)         | Domain terms: teams, queue, captain, preferences, matching         |
+| [docs/api.md](docs/api.md)                   | Every REST endpoint with auth, request and response shapes         |
+| [docs/data.md](docs/data.md)                 | Database schema, ER diagram, seeds, migrations                     |
+| [docs/user-guide.md](docs/user-guide.md)     | How participants, mentors and admins use the site                  |
+| [docs/adr/](docs/adr/)                       | Architecture Decision Records                                      |
+
+Preview the site locally with `pip install -r docs/requirements.txt` then `mkdocs serve`.
 
 **Stack:** Flask 3 / Python 3.12 (Gunicorn in prod) · PostgreSQL 16 · Redis (rate limiting, JWT revocation, caches) · React 19 + TypeScript + Vite + Tailwind SPA. Deployed to a self-hosted **k3s** cluster with a staging/prod split (Kustomize + SOPS + Flux GitOps).
 
@@ -28,7 +32,7 @@ backend/     Flask API — app/ (routes, services, utils), database/ (schema.sql
              config.py, run_server.py (dev), wsgi.py (gunicorn), Dockerfile
 frontend/    React + Vite SPA — src/, vite.config.ts, nginx.conf, Dockerfile
 infra/k8s/   Full cluster deployment — scripts/, base/, overlays/{prod,staging}, helm-values/, flux/
-             └── README.md  ← the operator runbook (deploy, secrets, GitOps, teardown)
+docs/        All documentation (published to GitHub Pages via mkdocs.yml), incl. runbook.md
 dev.py       One-command local dev: backend hot-reload + frontend HMR together
 docker-compose.dev.yml   Local full stack in Docker (single Redis, hot reload)
 docker-compose.yml       Prod-like stack (Redis Sentinel HA — for exercising failover locally)
@@ -112,7 +116,7 @@ Images are built and pushed to Docker Hub (`fssfmi/fmi-codes-backend`, `fssfmi/f
 
 ### Stand it up on a fresh Linux server
 
-The full step-by-step runbook — with per-phase verification, secret rotation, GitOps wiring, and teardown — is **[`infra/k8s/README.md`](infra/k8s/README.md)**. The short version:
+The full step-by-step runbook — with per-phase verification, secret rotation, GitOps wiring, and teardown — is **[`docs/runbook.md`](docs/runbook.md)**. The short version:
 
 **Prerequisites**
 
@@ -154,7 +158,7 @@ Mentors are seeded from `backend/database/seeds/mentors.json` and shown on `/men
 1. **Gale-Shapley (mentor-proposing, many-to-many).** Each team holds at most 3 mentors, each mentor at most 3 teams. Teams keep the mentors they ranked highest and bump the rest.
 2. **Greedy fill.** Any team still below 3 mentors is topped up with the least-loaded mentors that have room, even ones the team did not rank.
 
-The goal is 2-3 mentors per team and never more than 3. If there are not enough mentor slots, the run succeeds with a warning naming how many teams came up short. Results go to `team_mentors`; teams and mentors only see them after the admin confirms. Full walkthrough in [ARCHITECTURE.md](ARCHITECTURE.md#matching-algorithm).
+The goal is 2-3 mentors per team and never more than 3. If there are not enough mentor slots, the run succeeds with a warning naming how many teams came up short. Results go to `team_mentors`; teams and mentors only see them after the admin confirms. Full walkthrough in [docs/architecture.md](docs/architecture.md#matching-algorithm).
 
 ### Auth
 

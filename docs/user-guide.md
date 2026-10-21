@@ -167,7 +167,7 @@ After judging, type each team's total score (0 to 100) and click **SAVE**. The p
 
 ### Switching parts of the site on and off
 
-Opening registration, showing the mentor roster and publishing the rankings are controlled by server settings, not by buttons in Mission Control. Ask whoever runs the server to change `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED` or `RANKINGS_LIVE` (see [DEPLOYMENT.md](../DEPLOYMENT.md#feature-flags-during-the-event)).
+Opening registration, showing the mentor roster and publishing the rankings are controlled by server settings, not by buttons in Mission Control. Ask whoever runs the server to change `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED` or `RANKINGS_LIVE` (see [Deployment](deployment.md#feature-flags-during-the-event)).
 
 ### Known issues
 

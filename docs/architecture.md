@@ -41,7 +41,7 @@ In production the cluster ingress routes `/api` and `/static` straight to the ba
 - `app/utils/auth_decorators.py`: `token_required`, `participant_required`, `mentor_required`, `captain_required`, `admin_required`.
 - `app/database.py`: a `ThreadedConnectionPool` per Gunicorn worker plus small helpers (`execute_query`, `execute_insert`, `get_db_cursor`). No ORM.
 
-**PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; see [docs/data.md](docs/data.md).
+**PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; see [Data Model](data.md).
 
 **Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and short-lived caches (mentor list ~60 s, team rankings ~60 s, regulations ~300 s, per-user revocation epoch ~45 s). `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
 
@@ -108,7 +108,7 @@ The algorithm core (`_run_algorithm`) is pure and has no Flask or DB dependencie
 
 ## Observability
 
-`prometheus_flask_exporter` registers `/metrics` at the backend root. Prometheus scrapes it in-cluster through a ServiceMonitor; the public ingress deliberately does not route `/metrics`. Counters are per Gunicorn worker (not aggregated). Health probes: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready` (readiness: pooled `SELECT 1`, Redis reported but never gating). Details in [infra/k8s/README.md](infra/k8s/README.md#7--observability-prometheus--grafana).
+`prometheus_flask_exporter` registers `/metrics` at the backend root. Prometheus scrapes it in-cluster through a ServiceMonitor; the public ingress deliberately does not route `/metrics`. Counters are per Gunicorn worker (not aggregated). Health probes: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready` (readiness: pooled `SELECT 1`, Redis reported but never gating). Details in the [runbook](runbook.md#7--observability-prometheus--grafana).
 
 ## Testing approach
 
@@ -118,18 +118,18 @@ Two layers, both pytest, plus a single frontend component test file:
 - **API integration** (`tests/e2e/`): a real Flask app against a real PostgreSQL test database, driven through Flask's test client. Despite the folder name these are not browser tests.
 - **Frontend** (`frontend/src/**/*.test.tsx`): Vitest + Testing Library. Not run in CI today.
 
-No browser end-to-end tests exist. Full detail in [TESTING.md](TESTING.md).
+No browser end-to-end tests exist. Full detail in [Testing](testing.md).
 
 ## Key decisions
 
-Recorded as ADRs in [docs/adr/](docs/adr/):
+Recorded as Architecture Decision Records in `docs/adr/`:
 
-- [ADR-001](docs/adr/001-raw-sql-no-orm.md): raw SQL with an authoritative `schema.sql`, no ORM, no migration runner.
-- [ADR-002](docs/adr/002-jwt-httponly-cookie-layered-revocation.md): JWT in an httpOnly cookie with Redis + epoch revocation.
-- [ADR-003](docs/adr/003-redis-optional-fail-open.md): Redis is optional and every use fails open.
-- [ADR-004](docs/adr/004-advisory-lock-registration-queue.md): one Postgres advisory lock serialises all registration-state changes.
-- [ADR-005](docs/adr/005-gale-shapley-plus-greedy-fill.md): many-to-many Gale-Shapley plus greedy fill for mentor matching.
-- [ADR-006](docs/adr/006-self-hosted-k3s-pull-based-gitops.md): self-hosted k3s with pull-based Flux GitOps and a manual prod gate.
+- [ADR-001](adr/001-raw-sql-no-orm.md): raw SQL with an authoritative `schema.sql`, no ORM, no migration runner.
+- [ADR-002](adr/002-jwt-httponly-cookie-layered-revocation.md): JWT in an httpOnly cookie with Redis + epoch revocation.
+- [ADR-003](adr/003-redis-optional-fail-open.md): Redis is optional and every use fails open.
+- [ADR-004](adr/004-advisory-lock-registration-queue.md): one Postgres advisory lock serialises all registration-state changes.
+- [ADR-005](adr/005-gale-shapley-plus-greedy-fill.md): many-to-many Gale-Shapley plus greedy fill for mentor matching.
+- [ADR-006](adr/006-self-hosted-k3s-pull-based-gitops.md): self-hosted k3s with pull-based Flux GitOps and a manual prod gate.
 
 ## External dependencies
 

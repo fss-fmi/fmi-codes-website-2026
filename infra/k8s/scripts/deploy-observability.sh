@@ -37,7 +37,7 @@ if sops --decrypt "$GRAFANA_SECRET_ENC" >/dev/null 2>&1; then
   log "Applying Grafana admin secret '$GRAFANA_SECRET' from $GRAFANA_SECRET_ENC (SOPS-managed)"
   sops --decrypt "$GRAFANA_SECRET_ENC" | kubectl apply -f -
 else
-  die "found $GRAFANA_SECRET_ENC but could not decrypt it — is your $ENV age key at ~/.config/sops/age/keys.txt? See infra/k8s/README.md 'Phase 7'."
+  die "found $GRAFANA_SECRET_ENC but could not decrypt it — is your $ENV age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 7'."
 fi
 
 cat <<EOF

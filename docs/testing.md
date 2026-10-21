@@ -1,6 +1,6 @@
 # Testing
 
-How the test suite is built and how to extend it. For setup and single-test commands see [ONBOARDING.md](ONBOARDING.md#running-tests); for the big-picture summary see [ARCHITECTURE.md](ARCHITECTURE.md#testing-approach).
+How the test suite is built and how to extend it. For setup and single-test commands see [Onboarding](onboarding.md#running-tests); for the big-picture summary see [Architecture](architecture.md#testing-approach).
 
 ## Strategy
 

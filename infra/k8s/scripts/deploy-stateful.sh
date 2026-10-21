@@ -119,7 +119,7 @@ Stateful tier ($ENV) is up. Connection coordinates for the app tier (Phase 3):
              app env: REDIS_SENTINELS=redis.$NAMESPACE.svc.cluster.local:26379
                       REDIS_MASTER_NAME=$REDIS_MASTER_SET
 
-Verify (see infra/k8s/README.md 'Phase 2' for the full checklist):
+Verify (see docs/runbook.md 'Phase 2' for the full checklist):
   kubectl -n $NAMESPACE get pods
   kubectl -n $NAMESPACE exec -it redis-node-0 -c sentinel -- \\
     redis-cli -p 26379 sentinel master $REDIS_MASTER_SET
