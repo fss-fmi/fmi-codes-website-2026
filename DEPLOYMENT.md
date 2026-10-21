@@ -29,7 +29,7 @@ graph LR
     ProdPR -->|human merge| Prod["prod redeploys"]
 ```
 
-1. **Build.** On push to `main` (any path except `infra/**`), `.github/workflows/docker-cd.yaml` builds `backend/` and `frontend/` and pushes `fssfmi/fmi-codes-backend` and `fssfmi/fmi-codes-frontend` tagged `latest` and `<unix-timestamp>-<short-sha>`. It also runs on manual dispatch and on the 1st of every month.
+1. **Build.** On push to `main`, `.github/workflows/docker-cd.yaml` builds `backend/` and `frontend/` and pushes `fssfmi/fmi-codes-backend` and `fssfmi/fmi-codes-frontend` tagged `latest` and `<unix-timestamp>-<short-sha>`. Pushes that only touch `infra/**` or documentation (`docs/**`, any `.md`, `mkdocs.yml`, the docs workflow) skip the build. It also runs on manual dispatch and on the 1st of every month.
 2. **Staging bump.** Flux's `ImagePolicy` picks the highest timestamp tag and rewrites the `$imagepolicy`-marked tags in `infra/k8s/overlays/staging/kustomization.yaml`, pushing the commit to the `flux-image-updates` branch.
 3. **Auto-merge.** `.github/workflows/flux-auto-pr.yaml` opens (or reuses) a PR from `flux-image-updates` to `main` and enables auto-merge. The repo must have "Allow auto-merge" turned on, otherwise the bump sits unmerged with a warning.
 4. **Staging deploys.** Flux reconciles the merged overlay.
