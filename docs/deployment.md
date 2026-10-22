@@ -55,12 +55,12 @@ graph LR
 
 ### Feature flags during the event
 
-| Flag                         | Turn on when                   | Effect                                                            |
-| ---------------------------- | ------------------------------ | ----------------------------------------------------------------- |
-| `REGISTRATION_OPEN`          | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                |
-| `MENTORS_STAY_TUNED`         | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster      |
-| `RANKINGS_LIVE`              | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder |
-| `REQUIRE_EMAIL_VERIFICATION` | SMTP is confirmed to deliver   | Unverified participants get 403 on create, join and apply to team |
+| Flag                         | Turn on when                   | Effect                                                                                                        |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `REGISTRATION_OPEN`          | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                                                            |
+| `MENTORS_STAY_TUNED`         | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster                                                  |
+| `RANKINGS_LIVE`              | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder; API returns scores (admin-only until then) |
+| `REQUIRE_EMAIL_VERIFICATION` | SMTP is confirmed to deliver   | Unverified participants get 403 on create, join and apply to team                                             |
 
 ```bash
 ENV=prod bash infra/k8s/scripts/apply-config.sh RANKINGS_LIVE true
