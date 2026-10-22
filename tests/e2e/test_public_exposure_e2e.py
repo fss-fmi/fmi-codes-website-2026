@@ -16,6 +16,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
 from tests.e2e.conftest import (
+    _SPEC_NAME,
+    _UNIV_NAME,
     DEFAULT_PW,
     _extract_token,
     admin_token,
@@ -113,7 +115,7 @@ def _other_payload(tag):
 def _count(db_conn, table, name):
     with db_conn.cursor() as cur:
         # table is a fixed literal from the tests below, never user input
-        cur.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE name = %s", (name,))
+        cur.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE LOWER(name) = LOWER(%s)", (name,))
         return cur.fetchone()["n"]
 
 
@@ -140,6 +142,32 @@ class TestOtherLookupsOnRegister:
 
         assert _count(db_conn, "universities", f"Uni {tag}") == 1
         assert _count(db_conn, "specialties", f"Spec {tag}") == 1
+
+    def test_other_name_matches_case_insensitively(self, client, seeds, db_conn, flask_app):
+        tag = uuid.uuid4().hex[:8]
+        assert register(client, 1, seeds, **_other_payload(tag)).status_code == 201
+
+        shouted = _other_payload(tag)
+        shouted["university_other"]["name"] = f"UNI {tag.upper()}"
+        shouted["specialty_other"]["name"] = f"spec {tag.upper()}"
+        with flask_app.test_client() as c2:
+            rv = register(c2, 2, seeds, **shouted)
+        assert rv.status_code == 201, rv.get_json()
+        assert rv.get_json()["user"]["university"] == f"Uni {tag}"
+        assert rv.get_json()["user"]["specialty"] == f"Spec {tag}"
+        assert _count(db_conn, "universities", f"Uni {tag}") == 1
+        assert _count(db_conn, "specialties", f"Spec {tag}") == 1
+
+    def test_other_name_matching_a_seed_reuses_the_seed(self, client, seeds, db_conn):
+        payload = _other_payload("x")
+        payload["university_other"]["name"] = _UNIV_NAME.upper()
+        payload["specialty_other"]["name"] = _SPEC_NAME.lower()
+        rv = register(client, 1, seeds, **payload)
+        assert rv.status_code == 201, rv.get_json()
+        assert rv.get_json()["user"]["university"] == _UNIV_NAME
+        assert rv.get_json()["user"]["specialty"] == _SPEC_NAME
+        assert _count(db_conn, "universities", _UNIV_NAME) == 1
+        assert _count(db_conn, "specialties", _SPEC_NAME) == 1
 
     def test_missing_other_details_rejected(self, client, seeds):
         rv = register(client, 1, seeds, university_id="other")

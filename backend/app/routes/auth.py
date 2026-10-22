@@ -97,18 +97,21 @@ _OTHER_UNIVERSITY_FIELDS = (
 )
 _OTHER_SPECIALTY_FIELDS = (("name", "Specialty name", 200),)
 
-# ON CONFLICT DO NOTHING returns no row when the name already exists (seeded or
-# typed by an earlier registrant), so the SELECT picks up that existing id.
+# Names match case-insensitively so "sofia university" reuses "Sofia University"
+# (a seeded row wins over a typed one). The unique constraint is on the exact
+# name, so ON CONFLICT only covers a concurrent insert of the identical spelling.
 _UNIVERSITY_INSERT = """INSERT INTO universities (name, city, country, is_seed)
                         VALUES (%s, %s, %s, FALSE)
                         ON CONFLICT (name) DO NOTHING
                         RETURNING id"""
-_UNIVERSITY_SELECT = "SELECT id FROM universities WHERE name = %s"
+_UNIVERSITY_SELECT = """SELECT id FROM universities WHERE LOWER(name) = LOWER(%s)
+                        ORDER BY is_seed DESC, id LIMIT 1"""
 _SPECIALTY_INSERT = """INSERT INTO specialties (name, description, is_seed)
                        VALUES (%s, NULL, FALSE)
                        ON CONFLICT (name) DO NOTHING
                        RETURNING id"""
-_SPECIALTY_SELECT = "SELECT id FROM specialties WHERE name = %s"
+_SPECIALTY_SELECT = """SELECT id FROM specialties WHERE LOWER(name) = LOWER(%s)
+                       ORDER BY is_seed DESC, id LIMIT 1"""
 
 
 def _parse_lookup_choice(data, id_key, other_key, fields):
@@ -139,9 +142,13 @@ def _parse_lookup_choice(data, id_key, other_key, fields):
 
 
 def _get_or_create_lookup(cursor, insert_sql, select_sql, values):
-    cursor.execute(insert_sql, values)
+    cursor.execute(select_sql, (values[0],))
     row = cursor.fetchone()
     if row is None:
+        cursor.execute(insert_sql, values)
+        row = cursor.fetchone()
+    if row is None:
+        # Lost the race to a concurrent registration with the same spelling.
         cursor.execute(select_sql, (values[0],))
         row = cursor.fetchone()
     return row["id"]

@@ -95,7 +95,7 @@ Rules: names may not contain `< > & ; " \`; email must look like an address (sto
 }
 ```
 
-Every field is required and follows the same name rules. The entry is created with `is_seed = false` in the same transaction as the participant, so it only exists if the registration succeeds. If the name already exists, that row is reused. This is the only way to add a university or specialty.
+Every field is required and follows the same name rules. The entry is created with `is_seed = false` in the same transaction as the participant, so it only exists if the registration succeeds. If the name already exists in any letter case, that row is reused, and a curated row wins over a typed one. "Other" entries are never shown in the dropdowns (those list curated rows only). This is the only way to add a university or specialty.
 
 | Code | Meaning                                                                                 |
 | ---- | --------------------------------------------------------------------------------------- |
