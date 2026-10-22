@@ -157,17 +157,6 @@ def join_team():
     return jsonify({"success": False, "error": message}), 400
 
 
-@teams_bp.route("/api/teams", methods=["GET"])
-def get_teams():
-    """Get all teams"""
-    teams = TeamService.get_all_teams()
-    teams_list = [dict(t) for t in teams]
-    for t in teams_list:
-        t.pop("password_hash", None)
-        t.pop("join_code", None)
-    return jsonify({"success": True, "teams": teams_list}), 200
-
-
 @teams_bp.route("/api/teams/<int:team_id>", methods=["GET"])
 @token_required
 def get_team(team_id):
@@ -222,6 +211,10 @@ def get_team(team_id):
     if not is_member and user["role"] != "admin":
         team_dict.pop("join_code", None)
     team_dict.pop("password_hash", None)
+
+    if user["role"] != "admin" and not current_app.config.get("RANKINGS_LIVE"):
+        team_dict.pop("score", None)
+        team_dict.pop("score_updated_at", None)
 
     return jsonify({"success": True, "team": team_dict}), 200
 

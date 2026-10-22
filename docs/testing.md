@@ -41,12 +41,13 @@ Add a test here when the logic has branches or edge cases you can drive with in-
 
 These are not browser tests. They boot the real Flask app, point it at a real PostgreSQL database and call the API through Flask's test client.
 
-| File                | What it covers                                                                                                                                                                           |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_auth_e2e.py`  | Register, login per role, logout revocation, `/me`, password change and reset flows, session epoch invalidation                                                                          |
-| `test_teams_e2e.py` | Team create/join/leave/kick/disband, join requests, auto-activation at 3, the 18-slot queue and promotion, public endpoints                                                              |
-| `test_admin_e2e.py` | Registration console, preference status, run/confirm matching, scoring, rankings                                                                                                         |
-| `test_security.py`  | Unauthenticated access, role escalation, IDOR between captains, data leakage (join codes, hashes, emails), SQL injection and XSS inputs, validation, feature flags, business-logic abuse |
+| File                          | What it covers                                                                                                                                                                           |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_auth_e2e.py`            | Register, login per role, logout revocation, `/me`, password change and reset flows, session epoch invalidation                                                                          |
+| `test_teams_e2e.py`           | Team create/join/leave/kick/disband, join requests, auto-activation at 3, the 18-slot queue and promotion, public endpoints                                                              |
+| `test_admin_e2e.py`           | Registration console, preference status, run/confirm matching, scoring, rankings                                                                                                         |
+| `test_security.py`            | Unauthenticated access, role escalation, IDOR between captains, data leakage (join codes, hashes, emails), SQL injection and XSS inputs, validation, feature flags, business-logic abuse |
+| `test_public_exposure_e2e.py` | Scores hidden until `RANKINGS_LIVE`, "Other" university/specialty created only through registration, bug-report attribution from a valid session                                         |
 
 Add a test here for anything that touches SQL, transactions, locking, auth guards or response shapes. Every new endpoint should get at least a happy path and a wrong-role test.
 

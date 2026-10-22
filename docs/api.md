@@ -23,7 +23,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 **Rate limits.** Default 200 requests per minute per IP, shared across workers when Redis is configured. Tighter limits are listed per endpoint. Exceeding a limit returns 429.
 
-**Feature flags.** `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED` and `RANKINGS_LIVE` come from server config. Only `REGISTRATION_OPEN` is enforced by the API (registration returns 403 when closed); the other two only change what the SPA renders.
+**Feature flags.** `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED` and `RANKINGS_LIVE` come from server config. `REGISTRATION_OPEN` and `RANKINGS_LIVE` are enforced by the API: registration returns 403 when closed, and team scores stay hidden from everyone but the admin until rankings are live. `MENTORS_STAY_TUNED` only changes what the SPA renders.
 
 ---
 
@@ -83,6 +83,19 @@ Request (all fields required):
 ```
 
 Rules: names may not contain `< > & ; " \`; email must look like an address (stored lowercased); `course` must be one of `Bachelor 1st Year` to `Bachelor 4th Year` or `Masters 1st Year` to `Masters 6th Year`; password at least 12 characters; email and faculty number must be unique.
+
+**"Other" university or specialty.** Send `"university_id": "other"` with `university_other`, or `"specialty_id": "other"` with `specialty_other`:
+
+```json
+{
+  "university_id": "other",
+  "university_other": { "name": "...", "city": "...", "country": "..." },
+  "specialty_id": "other",
+  "specialty_other": { "name": "..." }
+}
+```
+
+Every field is required and follows the same name rules. The entry is created with `is_seed = false` in the same transaction as the participant, so it only exists if the registration succeeds. If the name already exists, that row is reused. This is the only way to add a university or specialty.
 
 | Code | Meaning                                                                                 |
 | ---- | --------------------------------------------------------------------------------------- |
@@ -200,23 +213,11 @@ Public. Curated (seed) universities only. Cached about 1 h; the startup seeder i
 }
 ```
 
-### POST /api/universities
-
-Public, no auth (known gap). Adds a user-submitted university for the "Other" option on the registration form. Returns the existing id if the name is taken.
-
-```json
-{ "name": "...", "city": "...", "country": "..." }
-```
-
-201 `{"success": true, "id": 42}` / 200 `{"success": true, "id": 5, "existing": true}` / 400 if any field is blank.
-
 ### GET /api/specialties
 
 Public. Curated specialties, cached like universities: `{"success": true, "specialties": [{"id": 1, "name": "..."}]}`.
 
-### POST /api/specialties
-
-Public, no auth (known gap). `{"name": "..."}`. Same responses as `POST /api/universities`.
+User-submitted "Other" entries are added only through [`POST /api/auth/register`](#post-apiauthregister).
 
 ---
 
@@ -249,13 +250,11 @@ When the caller is a participant without a team, `can_apply` is true and each te
 
 Public. First and last names of a registered team's active members (captain first). 404 for unregistered teams.
 
-### GET /api/teams
-
-Public. All teams with `participant_count` and `mentor_count`. `join_code` and `password_hash` are stripped.
-
 ### GET /api/teams/{team_id}
 
-Any role. Team detail with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails and `join_code` are only included for team members and admins.
+Any role. Team detail with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails and `join_code` are only included for team members and admins. `score` and `score_updated_at` are only included for the admin until `RANKINGS_LIVE` is on.
+
+There is no public list of all teams. The admin gets every team from `GET /api/admin/teams/registration-status`.
 
 ### POST /api/teams
 
@@ -411,7 +410,7 @@ Public. `{"success": true, "confirmed": false}`.
 
 ### GET /api/teams/rankings
 
-Public. Registered teams by score, ties share a rank (`RANK()`), unscored teams last. Cached about 60 s and invalidated on every score change. The SPA polls it every 30 s when `RANKINGS_LIVE` is on.
+Public once `RANKINGS_LIVE` is on; until then 403 `Rankings are not live yet` for every caller, so scores entered before the reveal stay hidden (the admin reviews them through `GET /api/admin/teams/scores`). Registered teams by score, ties share a rank (`RANK()`), unscored teams last. Cached about 60 s and invalidated on every score change. The SPA polls it every 30 s when `RANKINGS_LIVE` is on.
 
 ```json
 {
@@ -443,13 +442,13 @@ Public. FAQ-style rulebook from `backend/database/seeds/regulations.json`, cache
 
 ### POST /api/bug-report
 
-Public, 10/min. Queues a Discord webhook post and returns immediately.
+Public, optional auth, 10/min. Queues a Discord webhook post and returns immediately.
 
 ```json
 { "what_did": "...", "what_happened": "...", "page": "https://fmicodes.com/team" }
 ```
 
-Fields are truncated to 2000/2000/500 characters. 400 if both descriptions are empty. 202 `Bug report submitted — thank you!`. Reporter identity is looked up only from an `Authorization: Bearer` header; the SPA sends a cookie, so its reports arrive as "Anonymous" (known gap).
+Fields are truncated to 2000/2000/500 characters. 400 if both descriptions are empty. 202 `Bug report submitted — thank you!`. With a valid session (the `token` cookie, or `Authorization: Bearer`) the report carries the reporter's name, email and role. The token gets the same checks as on protected routes, so an expired, logged-out or password-changed token is treated as no token. Without one the report is still accepted as "Anonymous", for example from the registration page before an account exists.
 
 ---
 

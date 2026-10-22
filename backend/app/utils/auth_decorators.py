@@ -80,6 +80,33 @@ def token_required(f):
     return decorated
 
 
+def get_optional_user():
+    """Return the decoded payload of a valid, unrevoked token, or None.
+
+    For endpoints where auth is optional: applies every check token_required
+    does, but an absent or rejected token means "anonymous" rather than a 401,
+    so a logged-out or revoked token can never be used to act as its owner.
+    """
+    token = extract_token()
+    if not token:
+        return None
+
+    try:
+        payload = decode_token(token)
+    except jwt.InvalidTokenError:
+        return None
+
+    jti = payload.get("jti")
+    if not jti:
+        return None
+
+    from app.services.token_blocklist import is_revoked
+
+    if is_revoked(jti) or _token_predates_revocation_epoch(payload):
+        return None
+    return payload
+
+
 def _token_predates_revocation_epoch(payload):
     """Return True if the token was issued before the user's tokens_valid_from.
 

@@ -90,6 +90,63 @@ def _set_auth_cookies(response, token: str) -> None:
     )
 
 
+_OTHER_UNIVERSITY_FIELDS = (
+    ("name", "University name", 200),
+    ("city", "University city", 100),
+    ("country", "University country", 100),
+)
+_OTHER_SPECIALTY_FIELDS = (("name", "Specialty name", 200),)
+
+# ON CONFLICT DO NOTHING returns no row when the name already exists (seeded or
+# typed by an earlier registrant), so the SELECT picks up that existing id.
+_UNIVERSITY_INSERT = """INSERT INTO universities (name, city, country, is_seed)
+                        VALUES (%s, %s, %s, FALSE)
+                        ON CONFLICT (name) DO NOTHING
+                        RETURNING id"""
+_UNIVERSITY_SELECT = "SELECT id FROM universities WHERE name = %s"
+_SPECIALTY_INSERT = """INSERT INTO specialties (name, description, is_seed)
+                       VALUES (%s, NULL, FALSE)
+                       ON CONFLICT (name) DO NOTHING
+                       RETURNING id"""
+_SPECIALTY_SELECT = "SELECT id FROM specialties WHERE name = %s"
+
+
+def _parse_lookup_choice(data, id_key, other_key, fields):
+    """Resolve a dropdown choice: an existing id, or "other" with inline details.
+
+    Returns (error, lookup_id, other_values). When error is None exactly one of
+    lookup_id and other_values is set.
+    """
+    from app.utils import validate_name_field
+
+    if data[id_key] != "other":
+        try:
+            return None, int(data[id_key]), None
+        except (TypeError, ValueError):
+            return f"Invalid {id_key}", None, None
+
+    details = data.get(other_key)
+    if not isinstance(details, dict):
+        details = {}
+    values = []
+    for key, label, max_len in fields:
+        raw = details.get(key)
+        ok, result = validate_name_field(raw if isinstance(raw, str) else "", label)
+        if not ok:
+            return result, None, None
+        values.append(result[:max_len])
+    return None, None, tuple(values)
+
+
+def _get_or_create_lookup(cursor, insert_sql, select_sql, values):
+    cursor.execute(insert_sql, values)
+    row = cursor.fetchone()
+    if row is None:
+        cursor.execute(select_sql, (values[0],))
+        row = cursor.fetchone()
+    return row["id"]
+
+
 @auth_bp.route("/api/auth/register", methods=["POST"])
 @limiter.limit("10 per minute")
 def register_participant():
@@ -151,6 +208,17 @@ def register_participant():
     if len(data["password"]) < 12:
         return jsonify({"success": False, "error": "Password must be at least 12 characters"}), 400
 
+    error, university_id, new_university = _parse_lookup_choice(
+        data, "university_id", "university_other", _OTHER_UNIVERSITY_FIELDS
+    )
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    error, specialty_id, new_specialty = _parse_lookup_choice(
+        data, "specialty_id", "specialty_other", _OTHER_SPECIALTY_FIELDS
+    )
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+
     # CPU-heavy work first — no DB connection held, doesn't block the pool
     pw_hash = hash_password(data["password"])
 
@@ -170,6 +238,18 @@ def register_participant():
                     {"success": False, "error": "An account with these details already exists."}
                 ), 409
 
+            # "Other" entries are created only here, inside the account's own
+            # transaction, so a university or specialty can't exist without a
+            # successful registration behind it.
+            if new_university:
+                university_id = _get_or_create_lookup(
+                    cursor, _UNIVERSITY_INSERT, _UNIVERSITY_SELECT, new_university
+                )
+            if new_specialty:
+                specialty_id = _get_or_create_lookup(
+                    cursor, _SPECIALTY_INSERT, _SPECIALTY_SELECT, new_specialty
+                )
+
             # Insert in the same transaction — DB UNIQUE constraints guard against races
             cursor.execute(
                 """INSERT INTO participants
@@ -184,8 +264,8 @@ def register_participant():
                     data["phone_number"].strip(),
                     fac,
                     course,
-                    int(data["specialty_id"]),
-                    int(data["university_id"]),
+                    specialty_id,
+                    university_id,
                     pw_hash,
                 ),
             )
