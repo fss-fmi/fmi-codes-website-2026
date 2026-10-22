@@ -8,6 +8,7 @@ import Field from '@/components/common/Field';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
+import VerifyEmailNotice from '@/components/common/VerifyEmailNotice';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import { validateNewPassword } from '@/lib/validation';
@@ -22,7 +23,10 @@ function InfoCell({ label, value }: { label: string; value?: string | number | n
         padding: '14px 16px',
       }}
     >
-      <div className="px-label" style={{ marginBottom: '8px' }}>
+      <div
+        className="px-label"
+        style={{ marginBottom: '8px' }}
+      >
         {label}
       </div>
       <div
@@ -145,6 +149,14 @@ export function ProfileContent() {
           </div>
         </Panel>
 
+        {role === 'participant' && (
+          <VerifyEmailNotice
+            email={user.email}
+            verified={user.email_verified}
+            message="Your email address is not verified yet."
+          />
+        )}
+
         <Panel title="PROFILE INFO">
           <div
             style={{
@@ -155,31 +167,68 @@ export function ProfileContent() {
           >
             {user.email && (
               <div style={{ gridColumn: '1 / -1' }}>
-                <InfoCell label="EMAIL" value={user.email} />
+                <InfoCell
+                  label="EMAIL"
+                  value={user.email}
+                />
               </div>
             )}
             {role === 'participant' && (
               <>
-                <InfoCell label="UNIVERSITY" value={user.university} />
-                <InfoCell label="SPECIALTY" value={user.specialty} />
-                <InfoCell label="COURSE" value={user.course} />
-                <InfoCell label="FACULTY NUMBER" value={user.faculty_number} />
-                <InfoCell label="PHONE" value={user.phone_number} />
+                <InfoCell
+                  label="EMAIL STATUS"
+                  value={user.email_verified ? 'VERIFIED' : 'NOT VERIFIED'}
+                />
+                <InfoCell
+                  label="UNIVERSITY"
+                  value={user.university}
+                />
+                <InfoCell
+                  label="SPECIALTY"
+                  value={user.specialty}
+                />
+                <InfoCell
+                  label="COURSE"
+                  value={user.course}
+                />
+                <InfoCell
+                  label="FACULTY NUMBER"
+                  value={user.faculty_number}
+                />
+                <InfoCell
+                  label="PHONE"
+                  value={user.phone_number}
+                />
                 {user.team_name && (
                   <>
-                    <InfoCell label="TEAM" value={user.team_name} />
-                    <InfoCell label="JOIN CODE" value={user.join_code ?? undefined} />
+                    <InfoCell
+                      label="TEAM"
+                      value={user.team_name}
+                    />
+                    <InfoCell
+                      label="JOIN CODE"
+                      value={user.join_code ?? undefined}
+                    />
                   </>
                 )}
               </>
             )}
             {role === 'mentor' && (
               <>
-                <InfoCell label="COMPANY" value={user.company_name} />
-                <InfoCell label="PHONE" value={user.phone_number} />
+                <InfoCell
+                  label="COMPANY"
+                  value={user.company_name}
+                />
+                <InfoCell
+                  label="PHONE"
+                  value={user.phone_number}
+                />
                 {user.bio && (
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <InfoCell label="BIO" value={user.bio} />
+                    <InfoCell
+                      label="BIO"
+                      value={user.bio}
+                    />
                   </div>
                 )}
               </>
@@ -190,18 +239,31 @@ export function ProfileContent() {
         {role !== 'admin' && (
           <Panel title="CHANGE PASSWORD">
             {pwError && (
-              <FormAlert kind="error" style={{ marginBottom: '16px' }}>
+              <FormAlert
+                kind="error"
+                style={{ marginBottom: '16px' }}
+              >
                 {pwError}
               </FormAlert>
             )}
             {pwSuccess && (
-              <FormAlert kind="success" style={{ marginBottom: '16px' }}>
+              <FormAlert
+                kind="success"
+                style={{ marginBottom: '16px' }}
+              >
                 {pwSuccess}
               </FormAlert>
             )}
-            <form onSubmit={handlePasswordChange} noValidate>
+            <form
+              onSubmit={handlePasswordChange}
+              noValidate
+            >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <Field id="curPw" label="CURRENT PASSWORD" required>
+                <Field
+                  id="curPw"
+                  label="CURRENT PASSWORD"
+                  required
+                >
                   <Input
                     type="password"
                     required
@@ -226,7 +288,11 @@ export function ProfileContent() {
                     onChange={(e) => setNewPw(e.target.value)}
                   />
                 </Field>
-                <Field id="confPw" label="CONFIRM NEW PASSWORD" required>
+                <Field
+                  id="confPw"
+                  label="CONFIRM NEW PASSWORD"
+                  required
+                >
                   <Input
                     type="password"
                     required
@@ -236,7 +302,11 @@ export function ProfileContent() {
                     onChange={(e) => setConfPw(e.target.value)}
                   />
                 </Field>
-                <Button type="submit" variant="primary" disabled={pwLoading}>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={pwLoading}
+                >
                   {pwLoading ? 'UPDATING…' : 'UPDATE PASSWORD'}
                 </Button>
               </div>

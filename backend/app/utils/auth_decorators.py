@@ -185,6 +185,40 @@ def participant_required(f):
     return decorated
 
 
+def verified_email_required(f):
+    """Block unverified participants while REQUIRE_EMAIL_VERIFICATION is on.
+
+    Stack it under participant_required so the role check runs first.
+    """
+
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        from flask import current_app
+
+        if not current_app.config.get("REQUIRE_EMAIL_VERIFICATION"):
+            return f(*args, **kwargs)
+
+        from app.database import execute_query
+
+        row = execute_query(
+            current_app,
+            "SELECT email_verified FROM participants WHERE id = %s",
+            (g.current_user["user_id"],),
+            fetch_one=True,
+        )
+        if not row or not row["email_verified"]:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "Verify your email address before creating or joining a team.",
+                    "code": "email_unverified",
+                }
+            ), 403
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 def mentor_required(f):
     """Requires a valid JWT with role == 'mentor'."""
 

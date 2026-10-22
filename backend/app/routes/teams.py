@@ -13,6 +13,7 @@ from app.utils.auth_decorators import (
     extract_token,
     participant_required,
     token_required,
+    verified_email_required,
 )
 
 
@@ -119,6 +120,7 @@ def get_team_members_public(team_id):
 
 @teams_bp.route("/api/teams", methods=["POST"])
 @participant_required
+@verified_email_required
 def create_team():
     """Create a new team. The authenticated participant becomes captain."""
     data = request.get_json(silent=True) or {}
@@ -144,6 +146,7 @@ def create_team():
 
 @teams_bp.route("/api/teams/join", methods=["POST"])
 @participant_required
+@verified_email_required
 def join_team():
     """Join a team via invite code."""
     data = request.get_json(silent=True) or {}
@@ -276,6 +279,7 @@ def get_my_applications():
 
 @teams_bp.route("/api/teams/<int:team_id>/apply", methods=["POST"])
 @participant_required
+@verified_email_required
 def apply_to_team(team_id):
     """Submit a join request to a team."""
     participant_id = g.current_user["user_id"]

@@ -20,6 +20,7 @@ data:
   MENTORS_STAY_TUNED: "false"
   REGISTRATION_OPEN: "false"
   RANKINGS_LIVE: "false"
+  REQUIRE_EMAIL_VERIFICATION: "false"
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -37,6 +37,8 @@ Registration is open only during the registration window. When it is closed the 
 
 You are logged in and taken to your team page. Each email and faculty number can only be used once.
 
+We also email you a link to verify your address. Open it within 24 hours; the **VERIFY EMAIL** page confirms it worked. If the link expired or never arrived, open **PROFILE** and click **RESEND VERIFICATION EMAIL**. When the organizers require verification, you cannot create, join or apply to a team until your email is verified, and the team page reminds you.
+
 ### 2. Get onto a team
 
 Teams have 3 to 6 members. The team page offers three ways in:
@@ -95,7 +97,7 @@ After judging, the organizers publish scores. **RANKINGS** shows the top 3 on a 
 
 ### Your profile
 
-**PROFILE** shows your details, team and join code. Use **CHANGE PASSWORD** to set a new password; you stay logged in on this device and every other device is signed out.
+**PROFILE** shows your details, team and join code, and whether your email is **VERIFIED** or **NOT VERIFIED**. Use **CHANGE PASSWORD** to set a new password; you stay logged in on this device and every other device is signed out.
 
 ### Forgot your password
 
@@ -163,15 +165,14 @@ Note: although the confirm dialog says it cannot be undone, running the matching
 
 ### Scores tab
 
-After judging, type each team's total score (0 to 100) and click **SAVE**. The public leaderboard picks it up within 30 seconds. **SCORE OVERVIEW** charts the scores entered so far.
+After judging, type each team's total score (0 to 100) and click **SAVE**. Scores stay visible only to you until rankings are published (`RANKINGS_LIVE`); after that the public leaderboard picks up each change within 30 seconds. **SCORE OVERVIEW** charts the scores entered so far.
 
 ### Switching parts of the site on and off
 
-Opening registration, showing the mentor roster and publishing the rankings are controlled by server settings, not by buttons in Mission Control. Ask whoever runs the server to change `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED` or `RANKINGS_LIVE` (see [Deployment](deployment.md#feature-flags-during-the-event)).
+Opening registration, showing the mentor roster and publishing the rankings are controlled by server settings, not by buttons in Mission Control. Ask whoever runs the server to change `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE` or `REQUIRE_EMAIL_VERIFICATION` (see [Deployment](deployment.md#feature-flags-during-the-event)).
 
 ### Known issues
 
 - The **EXPORT** button on the Matching tab currently shows nothing. Use the results list on screen instead.
 - Mentor photos do not show on the team page's MENTORS panel (they do show on the public MENTORS page).
-- Bug reports always arrive as "Anonymous", even from logged-in users.
 - The admin password cannot be changed or reset from the site.

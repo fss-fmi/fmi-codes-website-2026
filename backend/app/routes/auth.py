@@ -5,6 +5,7 @@ import hmac
 import logging
 import os
 import secrets
+import threading
 from datetime import UTC, datetime, timedelta
 
 import psycopg2
@@ -15,7 +16,7 @@ from app.database import execute_query, get_db_cursor
 from app.routes import auth_bp
 from app.services.auth_service import generate_token, hash_password, verify_password
 from app.services.redis_client import redis_del
-from app.utils.auth_decorators import token_required
+from app.utils.auth_decorators import participant_required, token_required
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ _COOKIE_MAX_AGE = 3 * 24 * 60 * 60  # 3 days, matches JWT expiry
 # Bcrypt hash generated once at startup and used as a timing equaliser when
 # no account exists, so response time is indistinguishable from a wrong-password attempt.
 _DUMMY_HASH: str = hash_password("__timing_dummy__")
+_VERIFICATION_TTL = timedelta(hours=24)
 
 
 def _fetch_user_profile(app, user_id: int, role: str, strict: bool = False) -> dict | None:
@@ -42,6 +44,7 @@ def _fetch_user_profile(app, user_id: int, role: str, strict: bool = False) -> d
             app,
             """SELECT p.id, p.first_name, p.last_name, p.email, p.phone_number,
                       p.faculty_number, p.course, p.is_captain, p.team_id, p.status,
+                      p.email_verified,
                       s.name AS specialty, u.name AS university, t.team_name, t.join_code
                FROM participants p
                LEFT JOIN specialties s ON p.specialty_id = s.id
@@ -65,6 +68,27 @@ def _fetch_user_profile(app, user_id: int, role: str, strict: bool = False) -> d
     result = dict(row)
     result["role"] = role
     return result
+
+
+def _issue_verification_link(participant_id: int) -> str:
+    """Replace the participant's unused verification tokens with a fresh one.
+
+    Only the SHA-256 hash is stored; the returned link carries the raw token.
+    """
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            "DELETE FROM email_verification_tokens WHERE participant_id = %s AND used_at IS NULL",
+            (participant_id,),
+        )
+        cursor.execute(
+            """INSERT INTO email_verification_tokens (participant_id, token_hash, expires_at)
+               VALUES (%s, %s, %s)""",
+            (participant_id, token_hash, datetime.now(UTC) + _VERIFICATION_TTL),
+        )
+    frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+    return f"{frontend_origin}/verify-email?token={raw_token}"
 
 
 def _is_secure() -> bool:
@@ -286,6 +310,20 @@ def register_participant():
     except Exception as e:
         logger.error(f"Registration error: {e}")
         return jsonify({"success": False, "error": "Registration failed"}), 500
+
+    # The account exists either way; a failed send is recoverable via
+    # /api/auth/resend-verification, so it must never fail registration.
+    try:
+        from app.services.email_service import send_verification_email
+
+        verify_url = _issue_verification_link(pid)
+        threading.Thread(
+            target=send_verification_email,
+            args=(dict(current_app.config), email, verify_url),
+            daemon=True,
+        ).start()
+    except Exception as e:
+        logger.error("Could not issue verification email for participant %s: %s", pid, e)
 
     token = generate_token(pid, "participant")
     user_profile = _fetch_user_profile(current_app, pid, "participant")
@@ -658,3 +696,80 @@ def confirm_password_reset():
     return jsonify(
         {"success": True, "message": "Password has been reset. You can now log in."}
     ), 200
+
+
+@auth_bp.route("/api/auth/verify-email", methods=["POST"])
+@limiter.limit("20 per hour")
+def verify_email():
+    """Mark a participant's email verified from the emailed link's token.
+
+    No login needed, so the link works on any device. Tokens are single-use
+    and expire after 24 hours.
+    """
+    data = request.get_json(silent=True) or {}
+    raw_token = (data.get("token") or "").strip()
+    if not raw_token:
+        return jsonify({"success": False, "error": "Verification token is required"}), 400
+
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    with get_db_cursor() as cursor:
+        cursor.execute(
+            """SELECT id, participant_id, expires_at FROM email_verification_tokens
+               WHERE token_hash = %s AND used_at IS NULL
+               FOR UPDATE""",
+            (token_hash,),
+        )
+        token_row = cursor.fetchone()
+        if not token_row:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "This verification link is invalid or was already used.",
+                }
+            ), 400
+
+        expires_at = token_row["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if datetime.now(UTC) > expires_at:
+            return jsonify({"success": False, "error": "This verification link has expired."}), 400
+
+        cursor.execute(
+            "UPDATE participants SET email_verified = TRUE WHERE id = %s",
+            (token_row["participant_id"],),
+        )
+        cursor.execute(
+            "UPDATE email_verification_tokens SET used_at = NOW() WHERE id = %s",
+            (token_row["id"],),
+        )
+
+    logger.info("Email verified for participant %s", token_row["participant_id"])
+    return jsonify({"success": True, "message": "Your email address is verified."}), 200
+
+
+@auth_bp.route("/api/auth/resend-verification", methods=["POST"])
+@limiter.limit("3 per hour")
+@participant_required
+def resend_verification():
+    """Send a fresh verification link to the logged-in participant."""
+    from app.services.email_service import send_verification_email
+
+    participant_id = g.current_user["user_id"]
+    row = execute_query(
+        current_app,
+        "SELECT email, email_verified FROM participants WHERE id = %s",
+        (participant_id,),
+        fetch_one=True,
+    )
+    if not row:
+        return jsonify({"success": False, "error": "User not found"}), 404
+    if row["email_verified"]:
+        return jsonify({"success": False, "error": "Your email address is already verified."}), 400
+
+    verify_url = _issue_verification_link(participant_id)
+    if not send_verification_email(dict(current_app.config), row["email"], verify_url):
+        return jsonify(
+            {"success": False, "error": "Could not send the verification email. Try again later."}
+        ), 503
+
+    return jsonify({"success": True, "message": f"Verification link sent to {row['email']}."}), 200

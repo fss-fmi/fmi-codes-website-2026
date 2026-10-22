@@ -23,7 +23,9 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 **Rate limits.** Default 200 requests per minute per IP, shared across workers when Redis is configured. Tighter limits are listed per endpoint. Exceeding a limit returns 429.
 
-**Feature flags.** `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED` and `RANKINGS_LIVE` come from server config. `REGISTRATION_OPEN` and `RANKINGS_LIVE` are enforced by the API: registration returns 403 when closed, and team scores stay hidden from everyone but the admin until rankings are live. `MENTORS_STAY_TUNED` only changes what the SPA renders.
+**Feature flags.** `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE` and `REQUIRE_EMAIL_VERIFICATION` come from server config. Three are enforced by the API: `REGISTRATION_OPEN` (registration returns 403 when closed), `RANKINGS_LIVE` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `MENTORS_STAY_TUNED` only changes what the SPA renders.
+
+**Email verification.** While `REQUIRE_EMAIL_VERIFICATION` is on, `POST /api/teams`, `POST /api/teams/join` and `POST /api/teams/{team_id}/apply` return 403 `{"success": false, "error": "Verify your email address before creating or joining a team.", "code": "email_unverified"}` for a participant whose email is not verified.
 
 ---
 
@@ -51,7 +53,12 @@ Readiness probe. Runs a pooled `SELECT 1`; Redis is reported but never fails the
 Public. Feature flags for the SPA.
 
 ```json
-{ "REGISTRATION_OPEN": false, "MENTORS_STAY_TUNED": false, "RANKINGS_LIVE": false }
+{
+  "REGISTRATION_OPEN": false,
+  "MENTORS_STAY_TUNED": false,
+  "RANKINGS_LIVE": false,
+  "REQUIRE_EMAIL_VERIFICATION": false
+}
 ```
 
 ### GET /metrics
@@ -64,7 +71,7 @@ Prometheus exposition from `prometheus_flask_exporter`, at the backend root (not
 
 ### POST /api/auth/register
 
-Public, 10/min. Creates a participant and logs them in (sets the `token` cookie). Returns 403 `Registration is closed` when `REGISTRATION_OPEN` is false.
+Public, 10/min. Creates a participant and logs them in (sets the `token` cookie). Returns 403 `Registration is closed` when `REGISTRATION_OPEN` is false. Also emails a 24-hour verification link to `<FRONTEND_ORIGIN>/verify-email?token=...` in the background; a failed send does not fail registration.
 
 Request (all fields required):
 
@@ -151,7 +158,8 @@ Participant:
     "team_id": 3,
     "team_name": "Code Wizards",
     "join_code": "K7Q2ZP9M",
-    "status": "active"
+    "status": "active",
+    "email_verified": true
   }
 }
 ```
@@ -197,6 +205,29 @@ Public, 10/hour.
 | ---- | ----------------------------------------------------------------------------------------------- |
 | 200  | `Password has been reset. You can now log in.` (all existing sessions are invalidated)          |
 | 400  | Missing fields, password too short, `Invalid or expired reset token`, `Reset token has expired` |
+
+### POST /api/auth/verify-email
+
+Public, 20/hour. No login needed, so the link works on any device. The SPA's `/verify-email` page sends the token from the emailed link.
+
+```json
+{ "token": "<from the link>" }
+```
+
+| Code | Meaning                                                                                                                     |
+| ---- | --------------------------------------------------------------------------------------------------------------------------- |
+| 200  | `Your email address is verified.` The token is spent.                                                                       |
+| 400  | Missing token, `This verification link is invalid or was already used.`, `This verification link has expired.` (after 24 h) |
+
+### POST /api/auth/resend-verification
+
+Participant, 3/hour. Emails a fresh link and invalidates the previous unused one.
+
+| Code | Meaning                                                   |
+| ---- | --------------------------------------------------------- |
+| 200  | `Verification link sent to <email>.`                      |
+| 400  | `Your email address is already verified.`                 |
+| 503  | `Could not send the verification email. Try again later.` |
 
 ---
 
@@ -264,11 +295,11 @@ Participant. Creates a team with the caller as captain.
 { "team_name": "Code Wizards" }
 ```
 
-201 `{"success": true, "message": "Team created successfully", "team": {...}}`. 400 for a blank or taken name, HTML characters, or if the caller is already on a team.
+201 `{"success": true, "message": "Team created successfully", "team": {...}}`. 400 for a blank or taken name, HTML characters, or if the caller is already on a team. 403 `email_unverified` while email verification is required.
 
 ### POST /api/teams/join
 
-Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team. 400 for an invalid code, a full team (6), a disqualified team, or if the caller already has a team. Reaching 3 members activates the team and registers or queues it.
+Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team. 400 for an invalid code, a full team (6), a disqualified team, or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
 
 ### POST /api/teams/{team_id}/leave
 
@@ -292,7 +323,7 @@ Participant. The caller's join requests: `request_id, team_id, team_name, team_s
 
 ### POST /api/teams/{team_id}/apply
 
-Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full, or a request is already pending.
+Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full, or a request is already pending. 403 `email_unverified` while email verification is required.
 
 ### GET /api/teams/{team_id}/requests
 
