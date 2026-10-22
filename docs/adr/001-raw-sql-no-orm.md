@@ -1,6 +1,6 @@
 # ADR-001: Raw SQL with an authoritative schema file, no ORM
 
-**Status**: accepted
+**Status**: accepted. The "no migration runner" part is superseded by [ADR-007](007-recorded-migrations-runner.md).
 
 ## Context
 

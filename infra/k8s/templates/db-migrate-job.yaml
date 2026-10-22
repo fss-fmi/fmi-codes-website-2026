@@ -1,0 +1,127 @@
+# Rendered by scripts/render-migrate-job.sh into overlays/<env>/db-migrate-job.yaml.
+# Not referenced by any kustomization, so Flux never applies this file itself.
+#
+# The image is written as docker.io/fssfmi/fmi-codes-backend on purpose: the
+# overlay's `images:` transformer matches fssfmi/fmi-codes-backend and would
+# otherwise replace the tag chosen for this run with the overlay's live tag.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate-__RUN_ID__
+  labels:
+    app.kubernetes.io/name: fmi-codes-db-migrate
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  # Never retry blindly; a failure is reported to Discord and needs a human.
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fmi-codes-db-migrate
+        app.kubernetes.io/part-of: fmi-codes-website-2026
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: backup
+          image: postgres:16.4
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              file="/backups/${MIGRATION_ENV}-$(date -u +%Y%m%dT%H%M%SZ)-run__RUN_ID__.sql.gz"
+              trap 'rm -f "$file.partial"' ERR
+              pg_dump | gzip > "$file.partial"
+              mv "$file.partial" "$file"
+              echo "$file" > /backups/.last
+              ls -1t /backups/*.sql.gz | tail -n +6 | xargs -r rm --
+              echo "Backup written: $file"
+          env:
+            - name: PGHOST
+              valueFrom:
+                configMapKeyRef:
+                  name: fmi-codes-backend-config
+                  key: DB_HOST
+            - name: PGPORT
+              valueFrom:
+                configMapKeyRef:
+                  name: fmi-codes-backend-config
+                  key: DB_PORT
+            - name: PGDATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: fmi-codes-backend-config
+                  key: DB_NAME
+            - name: PGUSER
+              valueFrom:
+                configMapKeyRef:
+                  name: fmi-codes-backend-config
+                  key: DB_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-db
+                  key: password
+            - name: MIGRATION_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+      containers:
+        - name: migrate
+          image: docker.io/fssfmi/fmi-codes-backend:__IMAGE_TAG__
+          command: ["sh", "-c"]
+          args:
+            - MIGRATION_BACKUP_FILE="$(cat /backups/.last)" exec python -m database.migrate --notify always
+          envFrom:
+            - configMapRef:
+                name: fmi-codes-backend-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-db
+                  key: password
+            - name: DISCORD_BUG_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: DISCORD_BUG_WEBHOOK_URL
+            - name: MIGRATION_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: db-migration-backups

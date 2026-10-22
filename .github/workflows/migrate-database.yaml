@@ -1,0 +1,110 @@
+name: Migrate database
+
+# GitHub's runners can't reach the cluster, so this opens a PR that adds a
+# one-off Job to the chosen overlay. Merging it is the approval; Flux then runs
+# the Job in-cluster: pg_dump to the db-migration-backups PVC, then every
+# pending migration shipped in the chosen backend image. The result is posted
+# to Discord.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Database to migrate'
+        type: choice
+        options:
+          - staging
+          - prod
+        default: staging
+      image_tag:
+        description: 'Backend image whose migrations to apply (blank = whatever is live in staging)'
+        required: false
+        default: ''
+
+concurrency:
+  group: migrate-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          # Full history so the PR can list the migrations in the image's commit.
+          fetch-depth: 0
+
+      - name: Resolve image tag
+        id: tag
+        env:
+          INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          tag="$INPUT_IMAGE_TAG"
+          if [ -z "$tag" ]; then
+            tag=$(yq '.images[] | select(.name == "fssfmi/fmi-codes-backend") | .newTag' \
+              infra/k8s/overlays/staging/kustomization.yaml)
+          fi
+          if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+            echo "Failed to resolve the staging backend tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Render the migration Job
+        env:
+          ENVIRONMENT: ${{ github.event.inputs.environment }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: bash infra/k8s/scripts/render-migrate-job.sh "$ENVIRONMENT" "$GITHUB_RUN_NUMBER" "$TAG"
+
+      - name: Open migration PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENVIRONMENT: ${{ github.event.inputs.environment }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          sha="${TAG##*-}"
+          if migrations=$(git ls-tree --name-only "$sha" backend/database/migrations/ 2>/dev/null); then
+            list=$(printf '%s\n' "$migrations" | sed -n 's#^backend/database/migrations/\(.*\.sql\)$#- `\1`#p')
+          else
+            list="_Commit \`$sha\` not found on main; check the tag before merging._"
+          fi
+
+          branch="migrate-$ENVIRONMENT"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add "infra/k8s/overlays/$ENVIRONMENT"
+          git commit -m "db: migrate $ENVIRONMENT with backend $TAG (run $GITHUB_RUN_NUMBER)"
+          git push --force-with-lease origin "$branch"
+
+          body=$(cat <<EOF
+          Manual database migration for **$ENVIRONMENT**, using backend image \`$TAG\`.
+
+          On merge, Flux runs Job \`db-migrate-$GITHUB_RUN_NUMBER\`:
+          1. \`pg_dump\` into the \`db-migration-backups\` PVC (last 5 kept). Nothing is migrated if the dump fails.
+          2. \`python -m database.migrate\` applies every file below that is not yet in \`schema_migrations\`, each in its own transaction.
+          3. The result is posted to Discord.
+
+          Migrations in this image:
+          $list
+
+          Triggered by @$GITHUB_ACTOR from run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID.
+          EOF
+          )
+          title="db: migrate $ENVIRONMENT (backend $TAG)"
+
+          existing=$(gh pr list --base main --head "$branch" \
+            --repo "$GITHUB_REPOSITORY" --json number --jq '.[0].number // ""')
+          if [ -z "$existing" ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+              --title "$title" --body "$body"
+          else
+            gh pr edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            echo "Updated existing migration PR #$existing on branch $branch."
+          fi

@@ -250,8 +250,8 @@ In-cluster addresses the app tier uses: `postgres.<ns>.svc.cluster.local:5432` a
 
 **The PVC is the real source of truth.** Two things bake into the Postgres PVC at first
 boot and never change on a re-run: the schema and the DB password. So editing `schema.sql`
-and re-running does _not_ migrate a running DB (drop the PVC for a clean re-init, or add a
-real migration tool later), and **a Secret and its PVC are a matched pair** — delete one
+and re-running does _not_ migrate a running DB (schema changes reach it through the migration
+runner, see [Database migrations](deployment.md#database-migrations)), and **a Secret and its PVC are a matched pair** — delete one
 without the other and you get `password authentication failed`. Always delete them together.
 
 > Images pull from `docker.io/bitnamilegacy/*`, not `bitnami/*` — Bitnami archived the free
@@ -576,6 +576,29 @@ refused (use `rotate-secret.sh` / `deploy-stateful.sh`). A live patch drifts fro
 also edit the source and commit: env-specific keys (`FRONTEND_ORIGIN`, `DB_HOST`,
 `REDIS_SENTINELS`) live in `overlays/<env>/backend-config-patch.yaml`, the rest in
 `base/app/backend.yaml`. Pass `RESTART=false` to batch, `ENV=staging` to target staging.
+
+## Restore a migration backup
+
+The manual **Migrate database** Job writes `pg_dump` files to the `db-migration-backups` PVC
+in the target namespace (last 5 kept, named `<namespace>-<UTC time>-run<N>.sql.gz`). To
+list them and restore one, mount the PVC in a throwaway pod:
+
+```bash
+NS=fmi-codes   # or fmi-codes-staging
+kubectl -n $NS run restore --rm -it --image=postgres:16.4 \
+  --overrides='{"spec":{"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"db-migration-backups"}}],"containers":[{"name":"restore","image":"postgres:16.4","stdin":true,"tty":true,"command":["bash"],"volumeMounts":[{"name":"b","mountPath":"/backups"}]}]}}'
+# inside the pod:
+ls -l /backups
+```
+
+A dump is plain SQL for the whole database, so restore into an empty database: scale the
+backend to 0, drop and recreate the database (or restore into a new one and repoint
+`DB_NAME`), then `zcat /backups/<file>.sql.gz | psql -h postgres -U fmi_app -d <db>`.
+Rehearse on staging first.
+
+The runner and the Job connect as `fmi_app`, which works because `fmi_app` owns the tables.
+Confirm that on a live database with
+`kubectl -n $NS exec postgres-0 -- psql -U fmi_app -d <db> -c '\dt'` (the Owner column).
 
 ## Verify a running deployment
 

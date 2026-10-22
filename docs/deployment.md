@@ -38,6 +38,21 @@ graph LR
 
 `docker-cd.yaml` ignores `infra/**` so the Flux bump commits do not trigger new builds in a loop. Keep build inputs (Dockerfiles, build scripts) in `backend/` and `frontend/`.
 
+## Database migrations
+
+Pending migrations ship inside the backend image and are applied two ways ([ADR-007](adr/007-recorded-migrations-runner.md)):
+
+- **Automatically on every rollout.** The backend Deployment's `migrate` initContainer runs `python -m database.migrate` before the new pods start. It posts to Discord only when it applied something or failed. If a migration fails, the new pods stay in `Init` and the old ones keep serving.
+- **On demand, with a backup.** Run **Actions → Migrate database** with:
+  - `environment`: `staging` or `prod`.
+  - `image_tag`: the backend image whose migrations to apply. Blank means the tag live in staging, which is what the next promote would ship.
+
+  It renders `infra/k8s/templates/db-migrate-job.yaml` into `overlays/<env>/db-migrate-job.yaml` (through `infra/k8s/scripts/render-migrate-job.sh`) on a `migrate-<env>` branch and opens a PR listing the migrations in that image. Merging is the approval. Flux then runs Job `db-migrate-<run>`: `pg_dump` into the `db-migration-backups` PVC (last 5 kept, nothing is migrated if the dump fails), then the runner, then a Discord message with the result and the backup file.
+
+For a prod release that carries a migration, run **Migrate database** for `prod` with the tag you are about to promote, merge it, wait for the Discord result, then promote. The initContainer would apply it anyway, but only the manual Job takes a backup first.
+
+Like the promote PR, the migration PR is opened by `GITHUB_TOKEN`, so CI does not run on it. A failed Job leaves the app Flux Kustomization not ready until the next migration run replaces the Job; read it with `kubectl -n <namespace> logs job/db-migrate-<run> --all-containers`.
+
 ## Build artifacts
 
 | Image                       | Built from                                                                                                            | Runs                                                                                       |
@@ -105,7 +120,7 @@ After any deploy also confirm the two invariants from the runbook: a push to `ma
 
 - **Production:** `git revert` the promote PR's merge commit (or open a new promote run with the previous tags) and merge. Flux redeploys the old images.
 - **Staging:** revert the Flux bump commit on `main`. Flux will bump forward again on the next build, so fix forward if the bad commit is still the newest.
-- **Database:** image rollbacks do not touch data. Schema changes are applied by hand and have no down-migrations; reverse them manually if needed. There are no automated backups.
+- **Database:** image rollbacks do not touch data, and migrations have no down scripts. Undo a migration with a new forward migration, or restore the `pg_dump` the manual migration Job took (see [Restore a migration backup](runbook.md#restore-a-migration-backup)). There are no off-site backups.
 
 ## Monitoring
 

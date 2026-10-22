@@ -111,3 +111,23 @@ jobs:
 
       - name: Build flux kustomization
         run: kubectl kustomize infra/k8s/flux
+
+      - name: Build app overlays
+        run: |
+          for env in staging prod; do
+            kubectl kustomize "infra/k8s/overlays/$env" > /dev/null
+          done
+
+      - name: Validate the rendered db-migrate Job
+        run: |
+          tmp=$(mktemp -d)
+          cp -r infra/k8s "$tmp/"
+          for env in staging prod; do
+            bash infra/k8s/scripts/render-migrate-job.sh "$env" 1 1700000000-abc1234 "$tmp/k8s"
+            out=$(kubectl kustomize "$tmp/k8s/overlays/$env")
+            grep -q 'image: docker.io/fssfmi/fmi-codes-backend:1700000000-abc1234' <<< "$out" \
+              || { echo "Job image tag was rewritten in $env" >&2; exit 1; }
+          done
+          # The staging overlay's Flux image-policy markers must survive the render.
+          grep -c '\$imagepolicy' "$tmp/k8s/overlays/staging/kustomization.yaml" | grep -qx 2 \
+            || { echo "render-migrate-job.sh dropped the staging \$imagepolicy markers" >&2; exit 1; }

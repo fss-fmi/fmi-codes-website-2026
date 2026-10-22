@@ -153,7 +153,7 @@ bootstrap.sh       one-shot cluster installer
 
 1. Branch off `main`.
 2. Backend change: add or update a service function, keep the route thin, add a unit test in `tests/` and an integration test in `tests/e2e/` if it touches HTTP or SQL.
-3. Schema change: edit `backend/database/schema.sql` **and** add the next numbered file in `backend/database/migrations/` for existing databases. Running clusters need the migration applied by hand.
+3. Schema change: edit `backend/database/schema.sql` **and** add the next numbered file in `backend/database/migrations/` for existing databases (safe to re-run, no `BEGIN`/`COMMIT`; see [Schema management](data.md#schema-management)). Apply it locally with `cd backend && python -m database.migrate --notify never`. Clusters apply it on the next rollout.
 4. New endpoint: update the frontend types in `frontend/src/types/` by hand and document it in the [API reference](api.md).
 5. Commit (the pre-commit hook formats), open a PR. CI runs both test layers against real Postgres and Redis, both linters, the type check and a Flux kustomize build.
 6. Merging to `main` builds images and auto-deploys **staging**. Production needs the `Promote to production` workflow plus a merged PR. See [Deployment](deployment.md).
