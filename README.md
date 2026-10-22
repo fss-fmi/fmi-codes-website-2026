@@ -166,7 +166,7 @@ JWT (HS256, 3-day expiry) issued on login and set as an **httpOnly `token` cooki
 
 ### Bug reporting
 
-The bug bubble on every page posts to `/api/bug-report`, which forwards to Discord via `DISCORD_BUG_WEBHOOK_URL` (fire-and-forget on a bounded thread pool, never blocks the request). No webhook configured means the report is dropped with a logged warning. Known issue: the endpoint only reads the `Authorization` header, so reports from the cookie-authenticated SPA always arrive as "Anonymous".
+The bug bubble on every page posts to `/api/bug-report`, which forwards to Discord via `DISCORD_BUG_WEBHOOK_URL` (fire-and-forget on a bounded thread pool, never blocks the request). No webhook configured means the report is dropped with a logged warning. Reports from logged-in users carry their name and email; everyone else, including visitors on the registration page, reports anonymously.
 
 ---
 

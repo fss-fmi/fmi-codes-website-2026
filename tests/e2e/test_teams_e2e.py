@@ -104,24 +104,12 @@ class TestCreateTeam:
 
 
 class TestListTeams:
-    def test_get_all_teams_is_public(self, client, seeds):
+    def test_list_all_teams_endpoint_is_removed(self, client, seeds):
+        """GET /api/teams was deleted; POST on the same path still creates teams."""
         token = register_and_token(client, 1, seeds)
         _create_team(client, token)
         rv = client.get("/api/teams")
-        assert rv.status_code == 200
-
-    def test_join_code_never_exposed_in_list(self, client, seeds):
-        token = register_and_token(client, 1, seeds)
-        _create_team(client, token)
-        rv = client.get("/api/teams")
-        body_text = rv.get_data(as_text=True)
-        assert "join_code" not in body_text
-
-    def test_password_hash_never_in_list(self, client, seeds):
-        token = register_and_token(client, 1, seeds)
-        _create_team(client, token)
-        rv = client.get("/api/teams")
-        assert "password_hash" not in rv.get_data(as_text=True)
+        assert rv.status_code == 405
 
     def test_get_team_by_id_shows_join_code_to_member(self, client, seeds):
         token = register_and_token(client, 1, seeds)

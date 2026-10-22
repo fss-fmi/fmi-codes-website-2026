@@ -83,52 +83,33 @@ export default function RegistrationPage() {
     setLoading(true);
 
     try {
-      let universityId: number | string = form.university_id;
-      let specialtyId: number | string = form.specialty_id;
+      const isOtherUni = form.university_id === 'other';
+      const isOtherSpec = form.specialty_id === 'other';
 
-      if (universityId === 'other') {
-        if (!otherUni.name || !otherUni.city || !otherUni.country) {
-          setError('Please fill in the university name, city, and country.');
-          setLoading(false);
-          return;
-        }
-        const d = await api.post<{ success: boolean; id: number; error?: string }>(
-          '/api/universities',
-          { name: otherUni.name, city: otherUni.city, country: otherUni.country },
-        );
-        if (!d.success) {
-          setError(d.error ?? 'Failed to create university');
-          setLoading(false);
-          return;
-        }
-        universityId = d.id;
+      if (isOtherUni && (!otherUni.name || !otherUni.city || !otherUni.country)) {
+        setError('Please fill in the university name, city, and country.');
+        setLoading(false);
+        return;
+      }
+      if (isOtherSpec && !otherSpec) {
+        setError('Please fill in the specialty name.');
+        setLoading(false);
+        return;
       }
 
-      if (specialtyId === 'other') {
-        if (!otherSpec) {
-          setError('Please fill in the specialty name.');
-          setLoading(false);
-          return;
-        }
-        const d = await api.post<{ success: boolean; id: number; error?: string }>(
-          '/api/specialties',
-          { name: otherSpec },
-        );
-        if (!d.success) {
-          setError(d.error ?? 'Failed to create specialty');
-          setLoading(false);
-          return;
-        }
-        specialtyId = d.id;
-      }
-
+      // "Other" entries travel inside the register request so the backend creates
+      // them in the same transaction as the account.
       const data = await api.post<{
         success: boolean;
         role: 'participant';
         user_id: number;
         user: User;
         error?: string;
-      }>('/api/auth/register', { ...form, university_id: universityId, specialty_id: specialtyId });
+      }>('/api/auth/register', {
+        ...form,
+        ...(isOtherUni ? { university_other: otherUni } : {}),
+        ...(isOtherSpec ? { specialty_other: { name: otherSpec } } : {}),
+      });
       if (data.success) {
         login(data.role, data.user);
         setSuccess('Registration successful. Redirecting…');
@@ -159,18 +140,29 @@ export default function RegistrationPage() {
       <main style={{ padding: '60px 24px 80px', display: 'flex', justifyContent: 'center' }}>
         <div style={{ width: '100%', maxWidth: '560px' }}>
           <Panel title="REGISTER">
-            <p className="px-body-sm" style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}>
+            <p
+              className="px-body-sm"
+              style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
+            >
               Create your account to join the hackathon.
             </p>
 
             {error && <FormAlert kind="error">{error}</FormAlert>}
             {success && <FormAlert kind="success">{success}</FormAlert>}
 
-            <form onSubmit={handleSubmit} autoComplete="off" noValidate>
+            <form
+              onSubmit={handleSubmit}
+              autoComplete="off"
+              noValidate
+            >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={rowStyle}>
                   <div style={halfCol}>
-                    <Field id="reg-first" label="FIRST NAME" required>
+                    <Field
+                      id="reg-first"
+                      label="FIRST NAME"
+                      required
+                    >
                       <Input
                         type="text"
                         required
@@ -181,7 +173,11 @@ export default function RegistrationPage() {
                     </Field>
                   </div>
                   <div style={halfCol}>
-                    <Field id="reg-last" label="LAST NAME" required>
+                    <Field
+                      id="reg-last"
+                      label="LAST NAME"
+                      required
+                    >
                       <Input
                         type="text"
                         required
@@ -193,7 +189,11 @@ export default function RegistrationPage() {
                   </div>
                 </div>
 
-                <Field id="reg-email" label="EMAIL" required>
+                <Field
+                  id="reg-email"
+                  label="EMAIL"
+                  required
+                >
                   <Input
                     type="email"
                     required
@@ -219,7 +219,11 @@ export default function RegistrationPage() {
                   />
                 </Field>
 
-                <Field id="reg-phone" label="PHONE NUMBER" required>
+                <Field
+                  id="reg-phone"
+                  label="PHONE NUMBER"
+                  required
+                >
                   <Input
                     type="tel"
                     required
@@ -231,7 +235,11 @@ export default function RegistrationPage() {
 
                 <div style={rowStyle}>
                   <div style={halfCol}>
-                    <Field id="reg-faculty" label="FACULTY NUMBER" required>
+                    <Field
+                      id="reg-faculty"
+                      label="FACULTY NUMBER"
+                      required
+                    >
                       <Input
                         type="text"
                         required
@@ -242,7 +250,11 @@ export default function RegistrationPage() {
                     </Field>
                   </div>
                   <div style={halfCol}>
-                    <Field id="reg-course" label="COURSE YEAR" required>
+                    <Field
+                      id="reg-course"
+                      label="COURSE YEAR"
+                      required
+                    >
                       <Select
                         required
                         value={form.course}
@@ -250,9 +262,15 @@ export default function RegistrationPage() {
                       >
                         <option value="">Select</option>
                         {COURSES.map((g) => (
-                          <optgroup key={g.group} label={g.group}>
+                          <optgroup
+                            key={g.group}
+                            label={g.group}
+                          >
                             {g.values.map((v) => (
-                              <option key={v} value={v}>
+                              <option
+                                key={v}
+                                value={v}
+                              >
                                 {v}
                               </option>
                             ))}
@@ -263,7 +281,11 @@ export default function RegistrationPage() {
                   </div>
                 </div>
 
-                <Field id="reg-university" label="UNIVERSITY" required>
+                <Field
+                  id="reg-university"
+                  label="UNIVERSITY"
+                  required
+                >
                   <Select
                     required
                     value={form.university_id}
@@ -271,7 +293,10 @@ export default function RegistrationPage() {
                   >
                     <option value="">Select university</option>
                     {uniData?.universities?.map((u) => (
-                      <option key={u.id} value={u.id}>
+                      <option
+                        key={u.id}
+                        value={u.id}
+                      >
                         {u.name}
                       </option>
                     ))}
@@ -280,7 +305,11 @@ export default function RegistrationPage() {
                 </Field>
                 {form.university_id === 'other' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <Field id="reg-uni-name" label="UNIVERSITY NAME" required>
+                    <Field
+                      id="reg-uni-name"
+                      label="UNIVERSITY NAME"
+                      required
+                    >
                       <Input
                         type="text"
                         required
@@ -291,20 +320,26 @@ export default function RegistrationPage() {
                     </Field>
                     <div style={rowStyle}>
                       <div style={halfCol}>
-                        <Field id="reg-uni-city" label="CITY" required>
+                        <Field
+                          id="reg-uni-city"
+                          label="CITY"
+                          required
+                        >
                           <Input
                             type="text"
                             required
                             placeholder="City"
                             value={otherUni.city}
-                            onChange={(e) =>
-                              setOtherUni((p) => ({ ...p, city: e.target.value }))
-                            }
+                            onChange={(e) => setOtherUni((p) => ({ ...p, city: e.target.value }))}
                           />
                         </Field>
                       </div>
                       <div style={halfCol}>
-                        <Field id="reg-uni-country" label="COUNTRY" required>
+                        <Field
+                          id="reg-uni-country"
+                          label="COUNTRY"
+                          required
+                        >
                           <Input
                             type="text"
                             required
@@ -320,7 +355,11 @@ export default function RegistrationPage() {
                   </div>
                 )}
 
-                <Field id="reg-specialty" label="SPECIALTY" required>
+                <Field
+                  id="reg-specialty"
+                  label="SPECIALTY"
+                  required
+                >
                   <Select
                     required
                     value={form.specialty_id}
@@ -328,7 +367,10 @@ export default function RegistrationPage() {
                   >
                     <option value="">Select specialty</option>
                     {specData?.specialties?.map((s) => (
-                      <option key={s.id} value={s.id}>
+                      <option
+                        key={s.id}
+                        value={s.id}
+                      >
                         {s.name}
                       </option>
                     ))}
@@ -336,7 +378,11 @@ export default function RegistrationPage() {
                   </Select>
                 </Field>
                 {form.specialty_id === 'other' && (
-                  <Field id="reg-spec-name" label="SPECIALTY NAME" required>
+                  <Field
+                    id="reg-spec-name"
+                    label="SPECIALTY NAME"
+                    required
+                  >
                     <Input
                       type="text"
                       required

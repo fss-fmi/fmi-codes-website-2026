@@ -103,7 +103,7 @@ The algorithm core (`_run_algorithm`) is pure and has no Flask or DB dependencie
 - Three roles in the JWT payload: `participant`, `mentor`, `admin`. Login takes the role explicitly; participants and mentors are separate tables (separate credential spaces). The admin is a single credential from config (`ADMIN_EMAIL` + bcrypt `ADMIN_PASSWORD_HASH`), with `user_id` 0 in the token.
 - Token transport: httpOnly `token` cookie, `SameSite=Lax`, `Secure` when `FLASK_ENV=production`. `Authorization: Bearer` is accepted as a fallback.
 - Revocation is layered. Logout and password change put the `jti` in Redis with a TTL equal to the token's remaining life. Password change and reset also set `tokens_valid_from`, rejecting every older token for that user. Both checks fail open if Redis is down.
-- Hardening present in code: bcrypt (12 rounds), timing-equalised login (a dummy hash runs when the account is missing), generic "already exists" registration errors, reset and email-verification tokens stored only as SHA-256 hashes (one-hour and 24-hour expiry), optional email-verification gate on team create/join/apply (`REQUIRE_EMAIL_VERIFICATION`), 12-character password minimum, HTML-injection characters rejected in name fields, 64 KB request body cap, per-route rate limits (register 10/min, login 15/min, reset request 5/h, default 200/min), production refuses to boot with weak or missing secrets.
+- Hardening present in code: bcrypt (12 rounds), timing-equalised login (a dummy hash runs when the account is missing), generic "already exists" registration errors, reset and email-verification tokens stored only as SHA-256 hashes (one-hour and 24-hour expiry), optional email-verification gate on team create/join/apply (`REQUIRE_EMAIL_VERIFICATION`), 12-character password minimum, HTML-injection characters rejected in name fields, 64 KB request body cap, per-route rate limits (register 10/min, login 15/min, reset request 5/h, default 200/min), production refuses to boot with weak or missing secrets, team scores withheld from the API until `RANKINGS_LIVE` is on.
 - Security headers are added at the ingress layer (`security-headers` ConfigMap), not by Flask.
 
 ## Observability
@@ -145,9 +145,7 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 
 - No automated database backups; the Postgres PVC is the source of truth.
 - The API contract is hand maintained on both sides; nothing generates or checks it.
-- `/api/bug-report` ignores the auth cookie, so SPA reports are always anonymous.
 - `GET /api/mentors/<id>/picture` raises on the string paths the seeder stores, so mentor photos on the team page never load.
 - Admin MATCHING → EXPORT reads a field (`export`) the backend never returns, so the button does nothing.
-- `POST /api/universities` and `POST /api/specialties` are unauthenticated.
 - `hackathon_events` exists in the schema but nothing links teams to an event.
 - `GET /api/ranking` (file-based legacy rankings) is not used by the frontend.

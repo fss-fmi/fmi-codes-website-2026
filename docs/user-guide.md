@@ -165,7 +165,7 @@ Note: although the confirm dialog says it cannot be undone, running the matching
 
 ### Scores tab
 
-After judging, type each team's total score (0 to 100) and click **SAVE**. The public leaderboard picks it up within 30 seconds. **SCORE OVERVIEW** charts the scores entered so far.
+After judging, type each team's total score (0 to 100) and click **SAVE**. Scores stay visible only to you until rankings are published (`RANKINGS_LIVE`); after that the public leaderboard picks up each change within 30 seconds. **SCORE OVERVIEW** charts the scores entered so far.
 
 ### Switching parts of the site on and off
 
@@ -175,5 +175,4 @@ Opening registration, showing the mentor roster and publishing the rankings are 
 
 - The **EXPORT** button on the Matching tab currently shows nothing. Use the results list on screen instead.
 - Mentor photos do not show on the team page's MENTORS panel (they do show on the public MENTORS page).
-- Bug reports always arrive as "Anonymous", even from logged-in users.
 - The admin password cannot be changed or reset from the site.

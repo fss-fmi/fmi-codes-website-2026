@@ -54,7 +54,7 @@ Four booleans set in server config, not in an admin screen:
 | ---------------------------- | ------------------------------------------------------------------------- |
 | `REGISTRATION_OPEN`          | Participants can register                                                 |
 | `MENTORS_STAY_TUNED`         | The mentors page shows a "coming soon" placeholder                        |
-| `RANKINGS_LIVE`              | The rankings page shows the live leaderboard                              |
+| `RANKINGS_LIVE`              | Scores are public: the live leaderboard and API                           |
 | `REQUIRE_EMAIL_VERIFICATION` | Unverified participants cannot create, join or apply to teams (see below) |
 
 ## G

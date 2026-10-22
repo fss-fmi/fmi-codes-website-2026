@@ -93,7 +93,6 @@ class TestUnauthenticatedAccess:
 
     def test_public_endpoints_accessible_without_token(self, client):
         public = [
-            ("GET", "/api/teams"),
             ("GET", "/api/mentors"),
             ("GET", "/api/teams/registered"),
             ("GET", "/api/config"),
@@ -284,11 +283,17 @@ class TestIDOR:
 
 
 class TestDataLeakage:
-    def test_join_code_absent_from_public_team_list(self, client, seeds):
-        token = register_and_token(client, 1, seeds)
-        client.post("/api/teams", json={"team_name": "Leakage Team"}, headers=bearer(token))
-        rv = client.get("/api/teams")
-        assert "join_code" not in rv.get_data(as_text=True)
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("GET", "/api/teams"),
+            ("POST", "/api/universities"),
+            ("POST", "/api/specialties"),
+        ],
+    )
+    def test_removed_endpoints_stay_removed(self, client, method, path):
+        rv = getattr(client, method.lower())(path, json={"name": "X", "city": "Y", "country": "Z"})
+        assert rv.status_code == 405, f"{method} {path} returned {rv.status_code}"
 
     def test_join_code_absent_from_non_member_team_detail(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
@@ -300,17 +305,13 @@ class TestDataLeakage:
             rv = c2.get(f"/api/teams/{team_id}", headers=bearer(tok2))
         assert "join_code" not in rv.get_json()["team"]
 
-    def test_password_hash_absent_from_all_team_endpoints(self, client, seeds):
+    def test_password_hash_absent_from_team_detail(self, client, seeds):
         token = register_and_token(client, 1, seeds)
         rv_c = client.post("/api/teams", json={"team_name": "Hash Team"}, headers=bearer(token))
         team_id = rv_c.get_json()["team"]["id"]
 
-        for path in ["/api/teams", f"/api/teams/{team_id}"]:
-            kwargs = {} if path == "/api/teams" else {"headers": bearer(token)}
-            rv = client.get(path, **kwargs)
-            assert "password_hash" not in rv.get_data(as_text=True), (
-                f"password_hash leaked via {path}"
-            )
+        rv = client.get(f"/api/teams/{team_id}", headers=bearer(token))
+        assert "password_hash" not in rv.get_data(as_text=True)
 
     def test_password_hash_absent_from_auth_endpoints(self, client, seeds):
         register(client, 1, seeds)

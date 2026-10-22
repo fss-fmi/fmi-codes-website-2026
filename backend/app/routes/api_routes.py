@@ -6,7 +6,7 @@ from datetime import UTC
 from flask import current_app, jsonify, request
 
 from app import limiter
-from app.database import execute_insert, execute_query
+from app.database import execute_query
 from app.routes import api_bp
 from app.services import (
     matching_service,
@@ -17,7 +17,7 @@ from app.services import (
 )
 from app.services.redis_client import get_redis_client
 from app.services.team_service import TeamService
-from app.utils.auth_decorators import admin_required
+from app.utils.auth_decorators import admin_required, get_optional_user
 
 logger = logging.getLogger(__name__)
 
@@ -110,72 +110,6 @@ def get_specialties():
     except Exception as e:
         logger.error(f"Error fetching specialties: {e}")
         return jsonify({"success": False, "error": "Failed to fetch specialties"}), 500
-
-
-@api_bp.route("/universities", methods=["POST"])
-def create_university():
-    """Create a user-submitted university (is_seed = FALSE). Returns existing ID if name already taken."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()[:200]
-    city = (data.get("city") or "").strip()[:100]
-    country = (data.get("country") or "").strip()[:100]
-
-    if not name or not city or not country:
-        return jsonify({"success": False, "error": "Name, city, and country are required"}), 400
-
-    from flask import current_app
-
-    existing = execute_query(
-        current_app,
-        "SELECT id FROM universities WHERE name = %s",
-        (name,),
-        fetch_one=True,
-    )
-    if existing:
-        return jsonify({"success": True, "id": existing["id"], "existing": True}), 200
-
-    try:
-        uid = execute_insert(
-            current_app,
-            "INSERT INTO universities (name, city, country, is_seed) VALUES (%s, %s, %s, FALSE) RETURNING id",
-            (name, city, country),
-        )
-        return jsonify({"success": True, "id": uid}), 201
-    except Exception as e:
-        logger.error(f"Error creating university: {e}")
-        return jsonify({"success": False, "error": "Failed to create university"}), 500
-
-
-@api_bp.route("/specialties", methods=["POST"])
-def create_specialty():
-    """Create a user-submitted specialty (is_seed = FALSE). Returns existing ID if name already taken."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()[:200]
-
-    if not name:
-        return jsonify({"success": False, "error": "Name is required"}), 400
-
-    from flask import current_app
-
-    existing = execute_query(
-        current_app,
-        "SELECT id FROM specialties WHERE name = %s",
-        (name,),
-        fetch_one=True,
-    )
-    if existing:
-        return jsonify({"success": True, "id": existing["id"], "existing": True}), 200
-
-    try:
-        sid = execute_insert(
-            current_app,
-            "INSERT INTO specialties (name, description, is_seed) VALUES (%s, NULL, FALSE) RETURNING id",
-            (name,),
-        )
-        return jsonify({"success": True, "id": sid}), 201
-    except Exception as e:
-        logger.error(f"Error creating specialty: {e}")
-        return jsonify({"success": False, "error": "Failed to create specialty"}), 500
 
 
 # ── Rankings & Regulations ─────────────────────────────────────────
@@ -392,9 +326,10 @@ def admin_unregister_team(team_id):
 def submit_bug_report():
     """Accept a bug report and post it to the Discord bug-report channel.
 
-    Auth is optional — if a valid JWT is present the reporter's name/email are
-    looked up from the DB and included in the Discord embed.  Anonymous
-    submissions are accepted too.
+    Auth is optional — if a valid session cookie or Bearer token is present the
+    reporter's name/email are looked up from the DB and included in the Discord
+    embed.  Anonymous submissions are accepted too (e.g. from the registration
+    page, before an account exists).
 
     Returns 202 immediately; the webhook POST runs asynchronously from a
     bounded thread pool so the endpoint never blocks on the Discord call and
@@ -416,13 +351,9 @@ def submit_bug_report():
     reporter_email = "(not provided)"
     reporter_role = "unknown"
 
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
+    payload = get_optional_user()
+    if payload:
         try:
-            from app.services.auth_service import decode_token
-
-            payload = decode_token(token)
             user_id = payload.get("user_id")
             role = payload.get("role", "unknown")
             reporter_role = role
@@ -474,7 +405,13 @@ def submit_bug_report():
 
 @api_bp.route("/teams/rankings", methods=["GET"])
 def get_team_rankings():
-    """Public: get DB-backed team rankings sorted by score descending."""
+    """Public once RANKINGS_LIVE is on: DB-backed team rankings sorted by score descending.
+
+    The flag is enforced here and not only in the SPA, so scores entered before
+    the reveal can't be read by calling the API directly.
+    """
+    if not current_app.config.get("RANKINGS_LIVE"):
+        return jsonify({"success": False, "error": "Rankings are not live yet"}), 403
     try:
         rankings = ranking_service.get_team_rankings()
         return jsonify({"success": True, "rankings": rankings}), 200
