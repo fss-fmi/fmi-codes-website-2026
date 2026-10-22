@@ -48,13 +48,14 @@ The university-issued student ID entered at registration (for example `1MI070012
 
 ### Feature flags
 
-Three booleans set in server config, not in an admin screen:
+Four booleans set in server config, not in an admin screen:
 
-| Flag                 | When true                                          |
-| -------------------- | -------------------------------------------------- |
-| `REGISTRATION_OPEN`  | Participants can register                          |
-| `MENTORS_STAY_TUNED` | The mentors page shows a "coming soon" placeholder |
-| `RANKINGS_LIVE`      | The rankings page shows the live leaderboard       |
+| Flag                         | When true                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `REGISTRATION_OPEN`          | Participants can register                                                 |
+| `MENTORS_STAY_TUNED`         | The mentors page shows a "coming soon" placeholder                        |
+| `RANKINGS_LIVE`              | The rankings page shows the live leaderboard                              |
+| `REQUIRE_EMAIL_VERIFICATION` | Unverified participants cannot create, join or apply to teams (see below) |
 
 ## G
 
@@ -164,6 +165,12 @@ A mentor's ranking of exactly 3 distinct registered teams, ranks 1 to 3 (`mentor
 `pending` (under 3 members) ↔ `active` (3 to 6 members)
 
 The schema also allows `completed` and `disqualified`; nothing in the app sets them, but a `disqualified` team cannot be joined.
+
+## V
+
+### Verified email
+
+`participants.email_verified`. Set when the participant opens the 24-hour link emailed at registration (or a resent one from **PROFILE**). Participants who registered before verification existed count as verified. Only enforced while `REQUIRE_EMAIL_VERIFICATION` is on, and only for creating, joining or applying to a team. Mentors are not verified; organizers create their accounts.
 
 ## Synonyms
 

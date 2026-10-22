@@ -16,10 +16,10 @@ function makeAuthValue(role: Role, overrides: Partial<User> = {}) {
   };
 }
 
-function renderAs(role: Role) {
+function renderAs(role: Role, overrides: Partial<User> = {}) {
   render(
     <MemoryRouter>
-      <AuthContext.Provider value={makeAuthValue(role)}>
+      <AuthContext.Provider value={makeAuthValue(role, overrides)}>
         <ProfileContent />
       </AuthContext.Provider>
     </MemoryRouter>,
@@ -44,4 +44,22 @@ test('mentor sees CHANGE PASSWORD panel', () => {
   renderAs('mentor');
   expect(screen.getByText('CHANGE PASSWORD')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /update password/i })).toBeInTheDocument();
+});
+
+test('unverified participant sees NOT VERIFIED and a resend button', () => {
+  renderAs('participant', { email_verified: false });
+  expect(screen.getByText('NOT VERIFIED')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /resend verification email/i })).toBeInTheDocument();
+});
+
+test('verified participant sees VERIFIED and no resend button', () => {
+  renderAs('participant', { email_verified: true });
+  expect(screen.getByText('VERIFIED')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /resend verification email/i })).toBeNull();
+});
+
+test('mentor sees no email verification status', () => {
+  renderAs('mentor');
+  expect(screen.queryByText('EMAIL STATUS')).toBeNull();
+  expect(screen.queryByRole('button', { name: /resend verification email/i })).toBeNull();
 });

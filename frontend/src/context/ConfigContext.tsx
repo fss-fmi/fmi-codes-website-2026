@@ -5,6 +5,7 @@ interface ConfigState {
   REGISTRATION_OPEN: boolean;
   MENTORS_STAY_TUNED: boolean;
   RANKINGS_LIVE: boolean;
+  REQUIRE_EMAIL_VERIFICATION: boolean;
   isLoading: boolean;
 }
 
@@ -12,6 +13,7 @@ const ConfigContext = createContext<ConfigState>({
   REGISTRATION_OPEN: false,
   MENTORS_STAY_TUNED: false,
   RANKINGS_LIVE: false,
+  REQUIRE_EMAIL_VERIFICATION: false,
   isLoading: true,
 });
 
@@ -20,19 +22,24 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     REGISTRATION_OPEN: false,
     MENTORS_STAY_TUNED: false,
     RANKINGS_LIVE: false,
+    REQUIRE_EMAIL_VERIFICATION: false,
     isLoading: true,
   });
 
   useEffect(() => {
     api
-      .get<{ REGISTRATION_OPEN: boolean; MENTORS_STAY_TUNED: boolean; RANKINGS_LIVE: boolean }>(
-        '/api/config',
-      )
+      .get<{
+        REGISTRATION_OPEN: boolean;
+        MENTORS_STAY_TUNED: boolean;
+        RANKINGS_LIVE: boolean;
+        REQUIRE_EMAIL_VERIFICATION: boolean;
+      }>('/api/config')
       .then((data) => {
         setConfig({
           REGISTRATION_OPEN: data.REGISTRATION_OPEN,
           MENTORS_STAY_TUNED: data.MENTORS_STAY_TUNED,
           RANKINGS_LIVE: data.RANKINGS_LIVE,
+          REQUIRE_EMAIL_VERIFICATION: data.REQUIRE_EMAIL_VERIFICATION,
           isLoading: false,
         });
       })

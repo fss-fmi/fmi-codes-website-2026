@@ -206,3 +206,87 @@ def send_join_request_notification(
     except Exception as e:
         logger.error("Failed to send join request notification: %s", e)
         return False
+
+
+def _smtp_send(app_config: dict, to_email: str, subject: str, plain: str, html: str) -> bool:
+    """Send one multipart email. Returns True on success, False on any failure."""
+    host = app_config.get("MAIL_HOST", "smtp.gmail.com")
+    port = app_config.get("MAIL_PORT", 587)
+    username = app_config.get("MAIL_USERNAME", "")
+    password = app_config.get("MAIL_PASSWORD", "")
+    use_tls = app_config.get("MAIL_USE_TLS", True)
+    from_addr = app_config.get("ADMIN_EMAIL", username)
+
+    if not username or not password:
+        logger.warning("SMTP credentials not configured — cannot send %r", subject)
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = to_email
+    msg.attach(MIMEText(plain, "plain"))
+    msg.attach(MIMEText(html, "html"))
+
+    try:
+        with smtplib.SMTP(host, port, timeout=10) as server:
+            if use_tls:
+                server.starttls()
+            server.login(username, password)
+            server.sendmail(from_addr, [to_email], msg.as_string())
+        return True
+    except Exception as e:
+        logger.error("Failed to send %r: %s", subject, e)
+        return False
+
+
+def send_verification_email(app_config: dict, to_email: str, verify_url: str) -> bool:
+    """Send the email-verification link (valid for 24 hours). Never raises."""
+    subject = "FMI Codes 2026 — Verify your email"
+
+    plain_body = (
+        f"Hi,\n\n"
+        f"Thanks for registering for FMI Codes 2026.\n\n"
+        f"Click the link below to verify your email address (valid for 24 hours):\n\n"
+        f"  {verify_url}\n\n"
+        f"If you did not create this account, you can safely ignore this email.\n\n"
+        f"— FMI Codes Team"
+    )
+
+    html_body = f"""\
+<div style="font-family:'Inter',system-ui,sans-serif;max-width:540px;margin:0 auto;padding:36px 40px;
+            background:#0b1021;color:#e2e8f0;border-radius:14px;border:1px solid rgba(255,255,255,0.07);">
+  <div style="margin-bottom:28px;">
+    <h1 style="margin:0 0 4px;font-size:22px;font-weight:700;color:#60a5fa;">FMI Codes 2026</h1>
+    <p style="margin:0;font-size:13px;color:#475569;text-transform:uppercase;letter-spacing:0.8px;">
+      Verify your email
+    </p>
+  </div>
+  <p style="margin:0 0 20px;line-height:1.6;">
+    Thanks for registering. Click the button below to verify your email address.
+    The link is valid for <strong>24 hours</strong>.
+  </p>
+  <div style="text-align:center;margin:0 0 28px;">
+    <a href="{verify_url}"
+       style="display:inline-block;padding:14px 32px;background:#3b82f6;color:#fff;
+              font-weight:600;font-size:15px;border-radius:8px;text-decoration:none;">
+      Verify my email
+    </a>
+  </div>
+  <p style="margin:0 0 28px;font-size:13px;color:#64748b;text-align:center;">
+    Or copy and paste this URL into your browser:<br>
+    <span style="color:#93c5fd;word-break:break-all;">{verify_url}</span>
+  </p>
+  <div style="padding:14px 18px;background:rgba(245,158,11,0.08);
+              border:1px solid rgba(245,158,11,0.28);border-radius:10px;
+              color:#fcd34d;font-size:13px;line-height:1.6;margin-bottom:20px;">
+    If you did not create this account, you can safely ignore this email.
+  </div>
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px;">
+  <p style="margin:0;font-size:13px;color:#475569;">— FMI Codes Team 💻</p>
+</div>"""
+
+    sent = _smtp_send(app_config, to_email, subject, plain_body, html_body)
+    if sent:
+        logger.info("Verification email sent")
+    return sent

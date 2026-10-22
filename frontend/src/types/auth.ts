@@ -16,6 +16,7 @@ export interface User {
   join_code?: string | null;
   is_captain?: boolean;
   status?: string;
+  email_verified?: boolean;
   // mentor fields
   company_name?: string;
   bio?: string;
