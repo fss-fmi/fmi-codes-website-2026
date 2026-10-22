@@ -22,16 +22,18 @@ Counts are `def test_` occurrences, so parametrised tests run more cases than li
 
 ### Backend unit tests (`tests/`)
 
-| File                       | What it covers                                                                                                                        |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_matching.py`         | `_run_algorithm`: mutual matches, capacity limits (`TEAM_CAPACITY`, `MENTOR_CAPACITY`), displacement, greedy fill, underfill warnings |
-| `test_auth_service.py`     | bcrypt hashing, JWT generation and decoding, expiry                                                                                   |
-| `test_redis_client.py`     | Sentinel parsing, limiter storage URI, jittered TTLs, fail-open helpers                                                               |
-| `test_cache_services.py`   | Cache hit/miss/corrupt paths for mentors, rankings, regulations; fallback when Redis is down                                          |
-| `test_health_endpoints.py` | `/api/health` and `/api/health/ready` across DB/Redis states                                                                          |
-| `test_limiter_storage.py`  | Rate-limiter storage wiring                                                                                                           |
-| `test_metrics_endpoint.py` | `/metrics` is exposed                                                                                                                 |
-| `test_team_service.py`     | Join code format and the 6 / 18 / 3 business constants                                                                                |
+| File                         | What it covers                                                                                                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_matching.py`           | `_run_algorithm`: mutual matches, capacity limits (`TEAM_CAPACITY`, `MENTOR_CAPACITY`), displacement, greedy fill, underfill warnings    |
+| `test_auth_service.py`       | bcrypt hashing, JWT generation and decoding, expiry                                                                                      |
+| `test_redis_client.py`       | Sentinel parsing, limiter storage URI, jittered TTLs, fail-open helpers                                                                  |
+| `test_cache_services.py`     | Cache hit/miss/corrupt paths for mentors, rankings, regulations; fallback when Redis is down                                             |
+| `test_health_endpoints.py`   | `/api/health` and `/api/health/ready` across DB/Redis states                                                                             |
+| `test_limiter_storage.py`    | Rate-limiter storage wiring                                                                                                              |
+| `test_metrics_endpoint.py`   | `/metrics` is exposed                                                                                                                    |
+| `test_team_service.py`       | Join code format and the 6 / 18 / 3 business constants                                                                                   |
+| `test_email_verification.py` | Verification email contents and SMTP failure handling; the `REQUIRE_EMAIL_VERIFICATION` gate decorator                                   |
+| `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Discord reporting modes, connection settings |
 
 Scope: a single function or a single route with dependencies replaced. No database. Runs in seconds.
 
@@ -41,13 +43,15 @@ Add a test here when the logic has branches or edge cases you can drive with in-
 
 These are not browser tests. They boot the real Flask app, point it at a real PostgreSQL database and call the API through Flask's test client.
 
-| File                          | What it covers                                                                                                                                                                           |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_auth_e2e.py`            | Register, login per role, logout revocation, `/me`, password change and reset flows, session epoch invalidation                                                                          |
-| `test_teams_e2e.py`           | Team create/join/leave/kick/disband, join requests, auto-activation at 3, the 18-slot queue and promotion, public endpoints                                                              |
-| `test_admin_e2e.py`           | Registration console, preference status, run/confirm matching, scoring, rankings                                                                                                         |
-| `test_security.py`            | Unauthenticated access, role escalation, IDOR between captains, data leakage (join codes, hashes, emails), SQL injection and XSS inputs, validation, feature flags, business-logic abuse |
-| `test_public_exposure_e2e.py` | Scores hidden until `RANKINGS_LIVE`, "Other" university/specialty created only through registration, bug-report attribution from a valid session                                         |
+| File                             | What it covers                                                                                                                                                                           |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_auth_e2e.py`               | Register, login per role, logout revocation, `/me`, password change and reset flows, session epoch invalidation                                                                          |
+| `test_teams_e2e.py`              | Team create/join/leave/kick/disband, join requests, auto-activation at 3, the 18-slot queue and promotion, public endpoints                                                              |
+| `test_admin_e2e.py`              | Registration console, preference status, run/confirm matching, scoring, rankings                                                                                                         |
+| `test_security.py`               | Unauthenticated access, role escalation, IDOR between captains, data leakage (join codes, hashes, emails), SQL injection and XSS inputs, validation, feature flags, business-logic abuse |
+| `test_email_verification_e2e.py` | Verification tokens (single use, expiry, hash-only storage), resend, the team-action gate with the flag on and off, migration 016 grandfathering                                         |
+| `test_migrate_e2e.py`            | Every committed migration applies on a `schema.sql` database and re-runs as a no-op; a failing file rolls back and stops; the advisory lock serialises runners                           |
+| `test_public_exposure_e2e.py`    | Scores hidden until `RANKINGS_LIVE`, "Other" university/specialty created only through registration, bug-report attribution from a valid session                                         |
 
 Add a test here for anything that touches SQL, transactions, locking, auth guards or response shapes. Every new endpoint should get at least a happy path and a wrong-role test.
 

@@ -1,0 +1,17 @@
+# pg_dump output from the manual db-migrate Job (last 5 kept). Same node as the
+# database, so it covers a bad migration, not a lost disk.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-migration-backups
+  namespace: fmi-codes
+  labels:
+    app.kubernetes.io/name: fmi-codes-db-migrate
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

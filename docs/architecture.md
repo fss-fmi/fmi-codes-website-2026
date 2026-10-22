@@ -41,7 +41,7 @@ In production the cluster ingress routes `/api` and `/static` straight to the ba
 - `app/utils/auth_decorators.py`: `token_required`, `participant_required`, `mentor_required`, `captain_required`, `admin_required`.
 - `app/database.py`: a `ThreadedConnectionPool` per Gunicorn worker plus small helpers (`execute_query`, `execute_insert`, `get_db_cursor`). No ORM.
 
-**PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; see [Data Model](data.md).
+**PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; numbered migrations bring existing databases up to date and are recorded in `schema_migrations`. See [Data Model](data.md).
 
 **Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and caches for hot public reads: seed universities and specialties (~1 h), mentor list (~30 min), team rankings (~60 s), registered teams (~30 s), regulations (~300 s) and the per-user revocation epoch (~45 s). Every cache that has a write path is invalidated by it after commit (seed loaders, mentor writes, score updates, and every team membership or registration change); the TTL is a safety net for missed or racing invalidations. `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
 
@@ -124,12 +124,13 @@ No browser end-to-end tests exist. Full detail in [Testing](testing.md).
 
 Recorded as Architecture Decision Records in `docs/adr/`:
 
-- [ADR-001](adr/001-raw-sql-no-orm.md): raw SQL with an authoritative `schema.sql`, no ORM, no migration runner.
+- [ADR-001](adr/001-raw-sql-no-orm.md): raw SQL with an authoritative `schema.sql`, no ORM.
 - [ADR-002](adr/002-jwt-httponly-cookie-layered-revocation.md): JWT in an httpOnly cookie with Redis + epoch revocation.
 - [ADR-003](adr/003-redis-optional-fail-open.md): Redis is optional and every use fails open.
 - [ADR-004](adr/004-advisory-lock-registration-queue.md): one Postgres advisory lock serialises all registration-state changes.
 - [ADR-005](adr/005-gale-shapley-plus-greedy-fill.md): many-to-many Gale-Shapley plus greedy fill for mentor matching.
 - [ADR-006](adr/006-self-hosted-k3s-pull-based-gitops.md): self-hosted k3s with pull-based Flux GitOps and a manual prod gate.
+- [ADR-007](adr/007-recorded-migrations-runner.md): recorded migrations, applied by a backend initContainer on every rollout and on demand by a backed-up Job.
 
 ## External dependencies
 
