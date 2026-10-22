@@ -24,18 +24,7 @@ def get_registered_teams():
     each team entry includes an `already_applied` flag and `can_apply` is True
     in the response so the UI can show Apply buttons.
     """
-    query = """
-        SELECT t.id          AS team_id,
-               t.team_name,
-               t.status,
-               t.participant_count,
-               t.registered_at
-        FROM teams t
-        WHERE t.is_registered = TRUE
-        ORDER BY t.registered_at ASC
-    """
-    teams = execute_query(current_app, query, fetch_all=True) or []
-    teams_list = [dict(t) for t in teams]
+    teams_list = TeamService.get_registered_teams()
 
     can_apply = False
     participant_id = None

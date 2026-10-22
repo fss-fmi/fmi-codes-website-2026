@@ -4,6 +4,8 @@ All mutating operations run inside a single transaction with row-level locks
 (SELECT ... FOR UPDATE) to prevent race conditions under concurrent access.
 """
 
+import functools
+import json
 import logging
 import secrets
 import string
@@ -12,12 +14,39 @@ import psycopg2
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
+from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
 
 logger = logging.getLogger(__name__)
 
 MAX_TEAM_MEMBERS = 6
 MAX_REGISTERED_TEAMS = 18
 ACTIVE_THRESHOLD = 3  # members required to activate a team
+
+_REGISTERED_TEAMS_CACHE_KEY = "cache:teams:registered"
+
+
+def invalidate_registered_teams_cache():
+    """Force the public registered-teams list to reload on next read."""
+    redis_del(_REGISTERED_TEAMS_CACHE_KEY)
+
+
+def _invalidates_registered_teams(func):
+    """Drop the registered-teams cache after a successful mutation.
+
+    Runs once the wrapped call has returned, i.e. after get_db_cursor() has
+    committed. Deleting inside the transaction would let a concurrent read
+    re-cache the pre-commit state; the remaining read/delete race is bounded
+    by the short TTL.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        if result[0]:
+            invalidate_registered_teams_cache()
+        return result
+
+    return wrapper
 
 
 class TeamService:
@@ -85,6 +114,35 @@ class TeamService:
         return execute_query(current_app, query, fetch_all=True) or []
 
     @staticmethod
+    def get_registered_teams():
+        """Registered teams for the public list, cached in Redis for ~30s.
+
+        Serialised with the app's JSON provider so a cache hit returns the same
+        registered_at format as a fresh read.
+        """
+        cached = redis_get(_REGISTERED_TEAMS_CACHE_KEY)
+        if cached is not None:
+            try:
+                return json.loads(cached)
+            except (ValueError, TypeError):
+                pass  # corrupt cache entry — fall through to reload
+
+        query = """
+            SELECT t.id          AS team_id,
+                   t.team_name,
+                   t.status,
+                   t.participant_count,
+                   t.registered_at
+            FROM teams t
+            WHERE t.is_registered = TRUE
+            ORDER BY t.registered_at ASC
+        """
+        teams = [dict(t) for t in execute_query(current_app, query, fetch_all=True) or []]
+        payload = current_app.json.dumps(teams)
+        redis_set(_REGISTERED_TEAMS_CACHE_KEY, payload, jittered_ttl(30, 5))
+        return json.loads(payload)
+
+    @staticmethod
     def get_team_count(active_only=True):
         """Get total number of teams"""
         query = "SELECT COUNT(*) as count FROM teams"
@@ -111,7 +169,9 @@ class TeamService:
                 "queue_position = NULL WHERE id = %s",
                 (team_id,),
             )
-            logger.info(f"Team {team_id} registered (slot {registered_count + 1}/{MAX_REGISTERED_TEAMS})")
+            logger.info(
+                f"Team {team_id} registered (slot {registered_count + 1}/{MAX_REGISTERED_TEAMS})"
+            )
         else:
             cursor.execute(
                 "SELECT COALESCE(MAX(queue_position), 0) + 1 AS next_pos "
@@ -175,8 +235,7 @@ class TeamService:
                 (team_id,),
             )
             cursor.execute(
-                "UPDATE teams SET queue_position = queue_position - 1 "
-                "WHERE queue_position > %s",
+                "UPDATE teams SET queue_position = queue_position - 1 WHERE queue_position > %s",
                 (old_pos,),
             )
             logger.info(f"Team {team_id} removed from queue position {old_pos}")
@@ -260,6 +319,7 @@ class TeamService:
             return False, str(e), None
 
     @staticmethod
+    @_invalidates_registered_teams
     def join_team(participant_id, join_code):
         """Join a team via invite code.
 
@@ -330,6 +390,7 @@ class TeamService:
             return False, str(e), None
 
     @staticmethod
+    @_invalidates_registered_teams
     def leave_team(participant_id):
         """Participant leaves their team.  If captain leaves, team is disbanded.
 
@@ -385,6 +446,7 @@ class TeamService:
             return False, str(e)
 
     @staticmethod
+    @_invalidates_registered_teams
     def remove_member(team_id, member_id, captain_id):
         """Captain removes a member. Single transaction with advisory lock + row locks."""
         try:
@@ -437,6 +499,7 @@ class TeamService:
             return False, str(e)
 
     @staticmethod
+    @_invalidates_registered_teams
     def disband_team(team_id):
         """Disband a team — clear members and delete. Single transaction."""
         try:
@@ -487,6 +550,7 @@ class TeamService:
     # ── Admin registration management ──────────────────────────────
 
     @staticmethod
+    @_invalidates_registered_teams
     def admin_register_team(team_id):
         """Admin manually registers a team. Atomic with advisory lock."""
         try:
@@ -505,9 +569,7 @@ class TeamService:
                 if team["is_registered"]:
                     return False, "Team is already registered"
 
-                cursor.execute(
-                    "SELECT COUNT(*) AS cnt FROM teams WHERE is_registered = TRUE"
-                )
+                cursor.execute("SELECT COUNT(*) AS cnt FROM teams WHERE is_registered = TRUE")
                 if cursor.fetchone()["cnt"] >= MAX_REGISTERED_TEAMS:
                     return False, f"All {MAX_REGISTERED_TEAMS} registration slots are full"
 
@@ -534,6 +596,7 @@ class TeamService:
             return False, str(e)
 
     @staticmethod
+    @_invalidates_registered_teams
     def admin_unregister_team(team_id):
         """Admin manually unregisters a team. Does NOT auto-promote from queue.
 
@@ -554,8 +617,7 @@ class TeamService:
                     return False, "Team is not registered"
 
                 cursor.execute(
-                    "UPDATE teams SET is_registered = FALSE, registered_at = NULL "
-                    "WHERE id = %s",
+                    "UPDATE teams SET is_registered = FALSE, registered_at = NULL WHERE id = %s",
                     (team_id,),
                 )
 
@@ -606,9 +668,7 @@ class TeamService:
             ORDER BY t.team_name
         """
         return (
-            execute_query(
-                current_app, query, (participant_id, MAX_TEAM_MEMBERS), fetch_all=True
-            )
+            execute_query(current_app, query, (participant_id, MAX_TEAM_MEMBERS), fetch_all=True)
             or []
         )
 
@@ -655,8 +715,7 @@ class TeamService:
                     # Allow re-application for any terminal status (declined,
                     # cancelled, invalidated, or accepted-then-left)
                     cursor.execute(
-                        "UPDATE team_join_requests SET status = 'pending' "
-                        "WHERE id = %s",
+                        "UPDATE team_join_requests SET status = 'pending' WHERE id = %s",
                         (existing["id"],),
                     )
                     return True, "Application submitted"
@@ -715,6 +774,7 @@ class TeamService:
         return execute_query(current_app, query, (participant_id,), fetch_all=True) or []
 
     @staticmethod
+    @_invalidates_registered_teams
     def accept_join_request(request_id, captain_id):
         """Captain accepts a join request. Atomic with advisory lock.
 

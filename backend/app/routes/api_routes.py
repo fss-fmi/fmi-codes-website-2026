@@ -11,6 +11,7 @@ from app.routes import api_bp
 from app.services import (
     matching_service,
     mentor_selection_service,
+    mentor_service,
     ranking_service,
     regulations_service,
 )
@@ -74,11 +75,13 @@ def get_config():
     No auth required — flags are read by the Navbar, Hero, Rankings routing, etc.
     SameSite=Lax cookies mean this endpoint is safe to call without CSRF tokens.
     """
-    return jsonify({
-        "REGISTRATION_OPEN": bool(current_app.config.get("REGISTRATION_OPEN")),
-        "MENTORS_STAY_TUNED": bool(current_app.config.get("MENTORS_STAY_TUNED")),
-        "RANKINGS_LIVE": bool(current_app.config.get("RANKINGS_LIVE")),
-    }), 200
+    return jsonify(
+        {
+            "REGISTRATION_OPEN": bool(current_app.config.get("REGISTRATION_OPEN")),
+            "MENTORS_STAY_TUNED": bool(current_app.config.get("MENTORS_STAY_TUNED")),
+            "RANKINGS_LIVE": bool(current_app.config.get("RANKINGS_LIVE")),
+        }
+    ), 200
 
 
 # ── Lookup-data endpoints (universities & specialties) ─────────────
@@ -87,15 +90,9 @@ def get_config():
 @api_bp.route("/universities", methods=["GET"])
 def get_universities():
     """Return seed universities only (curated list)"""
-    from flask import current_app
-
     try:
-        rows = execute_query(
-            current_app,
-            "SELECT id, name, city, country FROM universities WHERE is_seed = TRUE ORDER BY id",
-            fetch_all=True,
-        )
-        return jsonify({"success": True, "universities": [dict(r) for r in rows]}), 200
+        rows = mentor_service.get_seed_universities()
+        return jsonify({"success": True, "universities": rows}), 200
     except Exception as e:
         logger.error(f"Error fetching universities: {e}")
         return jsonify({"success": False, "error": "Failed to fetch universities"}), 500
@@ -104,15 +101,9 @@ def get_universities():
 @api_bp.route("/specialties", methods=["GET"])
 def get_specialties():
     """Return seed specialties only (curated list)"""
-    from flask import current_app
-
     try:
-        rows = execute_query(
-            current_app,
-            "SELECT id, name FROM specialties WHERE is_seed = TRUE ORDER BY id",
-            fetch_all=True,
-        )
-        return jsonify({"success": True, "specialties": [dict(r) for r in rows]}), 200
+        rows = mentor_service.get_seed_specialties()
+        return jsonify({"success": True, "specialties": rows}), 200
     except Exception as e:
         logger.error(f"Error fetching specialties: {e}")
         return jsonify({"success": False, "error": "Failed to fetch specialties"}), 500
@@ -305,17 +296,13 @@ def matching_export():
                 "company_name": r.get("company_name") or "",
             }
         )
-        entry = mentor_teams.setdefault(
-            mid, {"mentor_name": r["mentor_name"], "teams": []}
-        )
+        entry = mentor_teams.setdefault(mid, {"mentor_name": r["mentor_name"], "teams": []})
         entry["teams"].append(r["team_name"])
 
     violations = []
     for t in teams.values():
         if len(t["mentors"]) > 3:
-            violations.append(
-                f"Team '{t['team_name']}' has {len(t['mentors'])} mentors (max 3)"
-            )
+            violations.append(f"Team '{t['team_name']}' has {len(t['mentors'])} mentors (max 3)")
     for m in mentor_teams.values():
         if len(m["teams"]) > 3:
             violations.append(

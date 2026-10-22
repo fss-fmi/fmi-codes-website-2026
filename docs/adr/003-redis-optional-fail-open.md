@@ -4,7 +4,7 @@
 
 ## Context
 
-Redis gives the app three things: shared rate-limit counters across Gunicorn workers and pods, the JWT revocation blocklist, and short-lived caches for hot public reads (mentor list, rankings, regulations). None of these is the source of truth. A hackathon platform sees sharp spikes (registration opening, results going live) where a cache outage turning into a site outage would be the worst possible failure.
+Redis gives the app three things: shared rate-limit counters across Gunicorn workers and pods, the JWT revocation blocklist, and caches for hot public reads (seed lookups, mentor list, registered teams, rankings, regulations). None of these is the source of truth. A hackathon platform sees sharp spikes (registration opening, results going live) where a cache outage turning into a site outage would be the worst possible failure.
 
 ## Decision
 

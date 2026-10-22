@@ -88,9 +88,10 @@ def get_team_rankings() -> list:
         except (ValueError, TypeError):
             pass  # corrupt cache entry — fall through to reload
 
-    result = _load_team_rankings()
-    redis_set(_TEAM_RANKINGS_CACHE_KEY, json.dumps(result, default=str), jittered_ttl(60, 10))
-    return result
+    # The app JSON provider keeps score_updated_at in the same format on a hit and a miss.
+    payload = current_app.json.dumps(_load_team_rankings())
+    redis_set(_TEAM_RANKINGS_CACHE_KEY, payload, jittered_ttl(60, 10))
+    return json.loads(payload)
 
 
 def _load_team_rankings() -> list:

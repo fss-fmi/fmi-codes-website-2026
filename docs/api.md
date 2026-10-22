@@ -191,7 +191,7 @@ Public, 10/hour.
 
 ### GET /api/universities
 
-Public. Curated (seed) universities only.
+Public. Curated (seed) universities only. Cached about 1 h; the startup seeder invalidates it when it inserts rows.
 
 ```json
 {
@@ -212,7 +212,7 @@ Public, no auth (known gap). Adds a user-submitted university for the "Other" op
 
 ### GET /api/specialties
 
-Public. Curated specialties: `{"success": true, "specialties": [{"id": 1, "name": "..."}]}`.
+Public. Curated specialties, cached like universities: `{"success": true, "specialties": [{"id": 1, "name": "..."}]}`.
 
 ### POST /api/specialties
 
@@ -224,7 +224,7 @@ Public, no auth (known gap). `{"name": "..."}`. Same responses as `POST /api/uni
 
 ### GET /api/teams/registered
 
-Public, optional auth. Registered teams in registration order.
+Public, optional auth. Registered teams in registration order. The team list is cached about 30 s and invalidated by every join, leave, kick, disband, accepted request and admin register/unregister; the per-caller flags below are computed on every request.
 
 ```json
 {
@@ -235,7 +235,7 @@ Public, optional auth. Registered teams in registration order.
       "team_name": "Code Wizards",
       "status": "active",
       "participant_count": 4,
-      "registered_at": "2026-03-01T10:00:00+00:00"
+      "registered_at": "Sun, 01 Mar 2026 10:00:00 GMT"
     }
   ],
   "can_apply": false,
@@ -317,7 +317,7 @@ Participant who owns the request. Marks it `cancelled`.
 
 ### GET /api/mentors
 
-Public. Active mentors, cached about 60 s.
+Public. Active mentors, cached about 30 min and invalidated when mentors are added or removed (including by the startup seeder).
 
 ```json
 {

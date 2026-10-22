@@ -14,6 +14,8 @@ from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_
 logger = logging.getLogger(__name__)
 
 _MENTORS_CACHE_KEY = "cache:mentors:all"
+_UNIVERSITIES_CACHE_KEY = "cache:lookups:universities"
+_SPECIALTIES_CACHE_KEY = "cache:lookups:specialties"
 
 
 def mentor_exists(first_name: str, last_name: str, company_name: str, email: str = None) -> bool:
@@ -76,7 +78,7 @@ def register_mentor(
 
 
 def get_all_mentors() -> list:
-    """Get all registered mentors (cached in Redis for ~60s to handle high concurrency)"""
+    """Get all registered mentors (cached in Redis for ~30 min, invalidated on every write)"""
     cached = redis_get(_MENTORS_CACHE_KEY)
     if cached is not None:
         try:
@@ -99,13 +101,49 @@ def get_all_mentors() -> list:
     except Exception as e:
         raise Exception(f"Failed to get mentors: {str(e)}") from e
 
-    redis_set(_MENTORS_CACHE_KEY, json.dumps(result, default=str), jittered_ttl(60, 10))
-    return result
+    # The app JSON provider keeps created_at in the same format on a hit and a miss.
+    payload = current_app.json.dumps([dict(r) for r in result])
+    redis_set(_MENTORS_CACHE_KEY, payload, jittered_ttl(1800, 180))
+    return json.loads(payload)
 
 
 def _invalidate_mentor_cache():
     """Clear cached mentor list so the next read fetches fresh data."""
     redis_del(_MENTORS_CACHE_KEY)
+
+
+def _get_cached_lookup(cache_key: str, query: str) -> list:
+    """Return seed lookup rows, cached in Redis for ~1h.
+
+    Seed rows only change when the startup loaders insert, and those drop the
+    key, so the TTL is just a safety net.
+    """
+    cached = redis_get(cache_key)
+    if cached is not None:
+        try:
+            return json.loads(cached)
+        except (ValueError, TypeError):
+            pass  # corrupt cache entry — fall through to reload
+
+    rows = [dict(r) for r in execute_query(current_app, query, fetch_all=True) or []]
+    redis_set(cache_key, json.dumps(rows, default=str), jittered_ttl(3600, 300))
+    return rows
+
+
+def get_seed_universities() -> list:
+    """Curated universities shown in the registration dropdown."""
+    return _get_cached_lookup(
+        _UNIVERSITIES_CACHE_KEY,
+        "SELECT id, name, city, country FROM universities WHERE is_seed = TRUE ORDER BY id",
+    )
+
+
+def get_seed_specialties() -> list:
+    """Curated specialties shown in the registration dropdown."""
+    return _get_cached_lookup(
+        _SPECIALTIES_CACHE_KEY,
+        "SELECT id, name FROM specialties WHERE is_seed = TRUE ORDER BY id",
+    )
 
 
 def get_mentor_picture(mentor_id: int) -> tuple:
@@ -232,6 +270,8 @@ def load_mentors_from_file(json_path: Path) -> int:
             logger.error(f"Error inserting mentor {first_name} {last_name}: {e}")
             continue
 
+    if inserted:
+        _invalidate_mentor_cache()
     logger.info(f"✓ Loaded {inserted} mentors from {json_path}")
     return inserted
 
@@ -273,6 +313,8 @@ def load_specialties_from_file(json_path: Path) -> int:
             logger.error(f"Error inserting specialty '{name}': {e}")
             continue
 
+    if inserted:
+        redis_del(_SPECIALTIES_CACHE_KEY)
     logger.info(f"✓ Loaded {inserted} specialties from {json_path}")
     return inserted
 
@@ -315,6 +357,8 @@ def load_universities_from_file(json_path: Path) -> int:
             logger.error(f"Error inserting university '{name}': {e}")
             continue
 
+    if inserted:
+        redis_del(_UNIVERSITIES_CACHE_KEY)
     logger.info(f"✓ Loaded {inserted} universities from {json_path}")
     return inserted
 

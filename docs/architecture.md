@@ -43,7 +43,7 @@ In production the cluster ingress routes `/api` and `/static` straight to the ba
 
 **PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; see [Data Model](data.md).
 
-**Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and short-lived caches (mentor list ~60 s, team rankings ~60 s, regulations ~300 s, per-user revocation epoch ~45 s). `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
+**Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and caches for hot public reads: seed universities and specialties (~1 h), mentor list (~30 min), team rankings (~60 s), registered teams (~30 s), regulations (~300 s) and the per-user revocation epoch (~45 s). Every cache that has a write path is invalidated by it after commit (seed loaders, mentor writes, score updates, and every team membership or registration change); the TTL is a safety net for missed or racing invalidations. `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
 
 **Startup seeding**. Both `run_server.py` (dev) and `wsgi.py` (Gunicorn) load `universities.json`, `specialties.json` and `mentors.json` from `backend/database/seeds/` on every start. The loaders insert with `ON CONFLICT DO NOTHING`, so reruns are safe.
 
