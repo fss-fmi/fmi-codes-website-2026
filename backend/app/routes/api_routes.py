@@ -80,6 +80,9 @@ def get_config():
             "REGISTRATION_OPEN": bool(current_app.config.get("REGISTRATION_OPEN")),
             "MENTORS_STAY_TUNED": bool(current_app.config.get("MENTORS_STAY_TUNED")),
             "RANKINGS_LIVE": bool(current_app.config.get("RANKINGS_LIVE")),
+            "REQUIRE_EMAIL_VERIFICATION": bool(
+                current_app.config.get("REQUIRE_EMAIL_VERIFICATION")
+            ),
         }
     ), 200
 

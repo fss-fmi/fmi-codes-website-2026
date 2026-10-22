@@ -19,6 +19,7 @@ import RegistrationPage from '@/pages/auth/RegistrationPage';
 import RegistrationClosedPage from '@/pages/auth/RegistrationClosedPage';
 import ProfilePage from '@/pages/auth/ProfilePage';
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage';
+import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
 
 import MentorsPage from '@/pages/mentors/MentorsPage';
 import ChooseMentorPage from '@/pages/mentors/ChooseMentorPage';
@@ -64,97 +65,101 @@ export default function App() {
             <BrowserRouter>
               <ScrollToTop />
               <RouteErrorBoundary>
-              <Routes>
-                {/* Public */}
-                <Route
-                  path="/"
-                  element={<HomePage />}
-                />
-                <Route
-                  path="/regulations"
-                  element={<RegulationsPage />}
-                />
-                <Route
-                  path="/schedule"
-                  element={<SchedulePage />}
-                />
-                <Route
-                  path="/partners"
-                  element={<PartnersPage />}
-                />
-                <Route
-                  path="/mentors"
-                  element={<MentorsPage />}
-                />
-                <Route
-                  path="/registeredTeams"
-                  element={<RegisteredTeamsPage />}
-                />
-                <Route
-                  path="/rankings"
-                  element={<RankingsPage />}
-                />
+                <Routes>
+                  {/* Public */}
+                  <Route
+                    path="/"
+                    element={<HomePage />}
+                  />
+                  <Route
+                    path="/regulations"
+                    element={<RegulationsPage />}
+                  />
+                  <Route
+                    path="/schedule"
+                    element={<SchedulePage />}
+                  />
+                  <Route
+                    path="/partners"
+                    element={<PartnersPage />}
+                  />
+                  <Route
+                    path="/mentors"
+                    element={<MentorsPage />}
+                  />
+                  <Route
+                    path="/registeredTeams"
+                    element={<RegisteredTeamsPage />}
+                  />
+                  <Route
+                    path="/rankings"
+                    element={<RankingsPage />}
+                  />
 
-                {/* Auth */}
-                <Route
-                  path="/login"
-                  element={<LoginPage />}
-                />
-                <Route
-                  path="/reset-password"
-                  element={<ResetPasswordPage />}
-                />
-                <Route
-                  path="/registration"
-                  element={<RegistrationGate />}
-                />
-                <Route
-                  path="/profile"
-                  element={<ProfilePage />}
-                />
+                  {/* Auth */}
+                  <Route
+                    path="/login"
+                    element={<LoginPage />}
+                  />
+                  <Route
+                    path="/reset-password"
+                    element={<ResetPasswordPage />}
+                  />
+                  <Route
+                    path="/verify-email"
+                    element={<VerifyEmailPage />}
+                  />
+                  <Route
+                    path="/registration"
+                    element={<RegistrationGate />}
+                  />
+                  <Route
+                    path="/profile"
+                    element={<ProfilePage />}
+                  />
 
-                {/* Participant */}
-                <Route
-                  path="/team"
-                  element={<TeamPage />}
-                />
-                <Route
-                  path="/createTeam"
-                  element={<CreateTeamPage />}
-                />
-                <Route
-                  path="/joinTeam"
-                  element={<JoinTeamPage />}
-                />
-                <Route
-                  path="/browseTeams"
-                  element={<BrowseTeamsPage />}
-                />
-                <Route
-                  path="/chooseMentor"
-                  element={<ChooseMentorPage />}
-                />
+                  {/* Participant */}
+                  <Route
+                    path="/team"
+                    element={<TeamPage />}
+                  />
+                  <Route
+                    path="/createTeam"
+                    element={<CreateTeamPage />}
+                  />
+                  <Route
+                    path="/joinTeam"
+                    element={<JoinTeamPage />}
+                  />
+                  <Route
+                    path="/browseTeams"
+                    element={<BrowseTeamsPage />}
+                  />
+                  <Route
+                    path="/chooseMentor"
+                    element={<ChooseMentorPage />}
+                  />
 
-                {/* Mentor */}
-                <Route
-                  path="/mentorDashboard"
-                  element={<MentorDashboardPage />}
-                />
+                  {/* Mentor */}
+                  <Route
+                    path="/mentorDashboard"
+                    element={<MentorDashboardPage />}
+                  />
 
-                {/* Admin */}
-                <Route
-                  path="/admin/matching"
-                  element={<MatchingPage />}
-                />
+                  {/* Admin */}
+                  <Route
+                    path="/admin/matching"
+                    element={<MatchingPage />}
+                  />
 
-                {/* Fallback */}
-                <Route
-                  path="*"
-                  element={<NotFoundPage />}
-                />
-              </Routes>
-            </RouteErrorBoundary>
-          </BrowserRouter>
+                  {/* Fallback */}
+                  <Route
+                    path="*"
+                    element={<NotFoundPage />}
+                  />
+                </Routes>
+              </RouteErrorBoundary>
+            </BrowserRouter>
           </ToastProvider>
         </ConfigProvider>
       </AuthProvider>

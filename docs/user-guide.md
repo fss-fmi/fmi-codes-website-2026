@@ -37,6 +37,8 @@ Registration is open only during the registration window. When it is closed the 
 
 You are logged in and taken to your team page. Each email and faculty number can only be used once.
 
+We also email you a link to verify your address. Open it within 24 hours; the **VERIFY EMAIL** page confirms it worked. If the link expired or never arrived, open **PROFILE** and click **RESEND VERIFICATION EMAIL**. When the organizers require verification, you cannot create, join or apply to a team until your email is verified, and the team page reminds you.
+
 ### 2. Get onto a team
 
 Teams have 3 to 6 members. The team page offers three ways in:
@@ -95,7 +97,7 @@ After judging, the organizers publish scores. **RANKINGS** shows the top 3 on a 
 
 ### Your profile
 
-**PROFILE** shows your details, team and join code. Use **CHANGE PASSWORD** to set a new password; you stay logged in on this device and every other device is signed out.
+**PROFILE** shows your details, team and join code, and whether your email is **VERIFIED** or **NOT VERIFIED**. Use **CHANGE PASSWORD** to set a new password; you stay logged in on this device and every other device is signed out.
 
 ### Forgot your password
 
@@ -167,7 +169,7 @@ After judging, type each team's total score (0 to 100) and click **SAVE**. The p
 
 ### Switching parts of the site on and off
 
-Opening registration, showing the mentor roster and publishing the rankings are controlled by server settings, not by buttons in Mission Control. Ask whoever runs the server to change `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED` or `RANKINGS_LIVE` (see [Deployment](deployment.md#feature-flags-during-the-event)).
+Opening registration, showing the mentor roster and publishing the rankings are controlled by server settings, not by buttons in Mission Control. Ask whoever runs the server to change `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE` or `REQUIRE_EMAIL_VERIFICATION` (see [Deployment](deployment.md#feature-flags-during-the-event)).
 
 ### Known issues
 

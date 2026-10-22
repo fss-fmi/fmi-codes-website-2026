@@ -15,6 +15,9 @@ import MembersPanel from '@/components/teams/MembersPanel';
 import MentorsPanel from '@/components/teams/MentorsPanel';
 import JoinRequestsPanel from '@/components/teams/JoinRequestsPanel';
 import DangerZone from '@/components/teams/DangerZone';
+import VerifyEmailNotice from '@/components/common/VerifyEmailNotice';
+import { useAuth } from '@/context/AuthContext';
+import { useConfig } from '@/context/ConfigContext';
 import type { User } from '@/types/auth';
 import api from '@/lib/api';
 import type { Team, JoinRequest, Application } from '@/types/team';
@@ -27,6 +30,8 @@ interface MentorPref {
 
 function NoTeamView() {
   const { confirm, dialogProps } = useConfirmAction();
+  const { user } = useAuth();
+  const { REQUIRE_EMAIL_VERIFICATION } = useConfig();
 
   const { data: appsData, refetch } = useQuery<{ applications: Application[] }>({
     queryKey: ['my-applications'],
@@ -49,18 +54,40 @@ function NoTeamView() {
 
   return (
     <div style={{ padding: '100px 24px', maxWidth: 640, margin: '0 auto' }}>
-      <Panel title="NO TEAM YET" style={{ marginBottom: '24px' }}>
-        <p className="px-body" style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}>
-          Assemble a team of up to 6 to compete in FMI Codes 2026. Create your own, join a team with an invite code, or browse open teams.
+      {REQUIRE_EMAIL_VERIFICATION && (
+        <VerifyEmailNotice
+          email={user?.email}
+          verified={user?.email_verified}
+        />
+      )}
+      <Panel
+        title="NO TEAM YET"
+        style={{ marginBottom: '24px' }}
+      >
+        <p
+          className="px-body"
+          style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
+        >
+          Assemble a team of up to 6 to compete in FMI Codes 2026. Create your own, join a team with
+          an invite code, or browse open teams.
         </p>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Button variant="primary" href="/createTeam">
+          <Button
+            variant="primary"
+            href="/createTeam"
+          >
             CREATE TEAM
           </Button>
-          <Button variant="secondary" href="/joinTeam">
+          <Button
+            variant="secondary"
+            href="/joinTeam"
+          >
             JOIN WITH CODE
           </Button>
-          <Button variant="secondary" href="/browseTeams">
+          <Button
+            variant="secondary"
+            href="/browseTeams"
+          >
             BROWSE TEAMS
           </Button>
         </div>
@@ -82,13 +109,23 @@ function NoTeamView() {
                 }}
               >
                 <div style={{ flex: 1, minWidth: '200px' }}>
-                  <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--px-mono)',
+                      fontWeight: 700,
+                      color: 'var(--px-white)',
+                    }}
+                  >
                     {a.team_name}
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
                     <StatusBadge variant={a.status} />
                     <span
-                      style={{ color: 'var(--px-muted-strong)', fontFamily: 'var(--px-mono)', fontSize: '0.8rem' }}
+                      style={{
+                        color: 'var(--px-muted-strong)',
+                        fontFamily: 'var(--px-mono)',
+                        fontSize: '0.8rem',
+                      }}
                     >
                       {a.participant_count}/6 members
                     </span>
@@ -208,12 +245,19 @@ function TeamDashboardView({
 
   return (
     <div style={{ padding: '80px 24px 80px', maxWidth: 820, margin: '0 auto' }}>
-      <TeamStatusHeader team={team} memberCount={memberCount} />
+      <TeamStatusHeader
+        team={team}
+        memberCount={memberCount}
+      />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {isCaptain && team.join_code && <JoinCodePanel joinCode={team.join_code} />}
 
-        <MembersPanel members={team.members ?? []} isCaptain={isCaptain} onRemove={askRemoveMember} />
+        <MembersPanel
+          members={team.members ?? []}
+          isCaptain={isCaptain}
+          onRemove={askRemoveMember}
+        />
 
         {team.status === 'active' && (
           <MentorsPanel
@@ -232,7 +276,11 @@ function TeamDashboardView({
           />
         )}
 
-        <DangerZone isCaptain={isCaptain} onLeave={askLeave} onDisband={askDisband} />
+        <DangerZone
+          isCaptain={isCaptain}
+          onLeave={askLeave}
+          onDisband={askDisband}
+        />
       </div>
 
       <ConfirmDialog {...dialogProps} />
@@ -252,7 +300,11 @@ function TeamPageContent() {
 
   const teamId = meData?.user?.team_id;
 
-  const { data: teamData, isError: teamIsError, refetch: refetchTeam } = useQuery<{ team: Team }>({
+  const {
+    data: teamData,
+    isError: teamIsError,
+    refetch: refetchTeam,
+  } = useQuery<{ team: Team }>({
     queryKey: ['team', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}`),
     enabled: !!teamId,
@@ -270,10 +322,16 @@ function TeamPageContent() {
     return (
       <div style={{ padding: '100px 24px', maxWidth: 640, margin: '0 auto' }}>
         <Panel title="COULD NOT LOAD TEAM">
-          <p className="px-body" style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}>
+          <p
+            className="px-body"
+            style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
+          >
             &gt; Failed to load your team. Check your connection and try again.
           </p>
-          <Button variant="secondary" onClick={() => refetchTeam()}>
+          <Button
+            variant="secondary"
+            onClick={() => refetchTeam()}
+          >
             RETRY
           </Button>
         </Panel>

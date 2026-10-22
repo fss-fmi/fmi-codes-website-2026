@@ -165,6 +165,8 @@ def flask_app(db_url, seeds):
         ADMIN_EMAIL=ADMIN_EMAIL,
         ADMIN_PASSWORD_HASH=_hash_pw(ADMIN_PW),
         REGISTRATION_OPEN=True,
+        # Every registration sends a verification email; never let tests reach real SMTP.
+        MAIL_PASSWORD="",
         # RATELIMIT_ENABLED already False via TestingConfig — set again to be safe
         RATELIMIT_ENABLED=False,
         DB_POOL_MIN=1,
@@ -214,6 +216,7 @@ def _wipe_entities(conn):
         cur.execute(
             "TRUNCATE TABLE "
             "  password_reset_tokens, "
+            "  email_verification_tokens, "
             "  team_join_requests, "
             "  team_mentor_preferences, "
             "  mentor_team_preferences, "

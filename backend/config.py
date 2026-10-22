@@ -70,6 +70,9 @@ class Config:
     MENTORS_STAY_TUNED = os.environ.get("MENTORS_STAY_TUNED", "false").lower() == "true"
     REGISTRATION_OPEN = os.environ.get("REGISTRATION_OPEN", "false").lower() == "true"
     RANKINGS_LIVE = os.environ.get("RANKINGS_LIVE", "false").lower() == "true"
+    REQUIRE_EMAIL_VERIFICATION = (
+        os.environ.get("REQUIRE_EMAIL_VERIFICATION", "false").lower() == "true"
+    )
     DEBUG = False
     TESTING = False
 

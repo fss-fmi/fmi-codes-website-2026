@@ -10,7 +10,7 @@ Domains:
 - **Teams**: `teams`, `team_join_requests`.
 - **Matching**: `team_mentor_preferences`, `mentor_team_preferences`, `team_mentors`, `matching_state`.
 - **Lookups**: `universities`, `specialties`.
-- **Auth support**: `password_reset_tokens`.
+- **Auth support**: `password_reset_tokens`, `email_verification_tokens`.
 - **Unused**: `hackathon_events` (seeded with one row, nothing references it from code).
 
 ## ER diagram
@@ -48,6 +48,7 @@ erDiagram
         varchar faculty_number UK
         varchar course
         bool is_captain
+        bool email_verified
         timestamptz tokens_valid_from
     }
     MENTORS {
@@ -103,6 +104,7 @@ Trigger `trig_prevent_team_deletion` blocks deleting a team that still has activ
 | `is_captain`                    | bool                |                                                                                             |
 | `status`                        | varchar(20)         | `active`, `inactive`, `removed`. Only active participants can log in or count toward teams  |
 | `tokens_valid_from`             | timestamptz         | Session revocation epoch; any JWT with an earlier `iat` is rejected                         |
+| `email_verified`                | bool                | Default false for new rows. Rows that existed before migration 016 were set to true         |
 | `password_reset_requested_at`   | timestamptz         | Unused by current code                                                                      |
 
 ### mentors
@@ -140,6 +142,10 @@ A single row (`id = 1`, enforced by CHECK). `is_confirmed` flips to true when th
 ### password_reset_tokens
 
 `user_id` + `role` (`participant` or `mentor`), `token_hash` (SHA-256 hex of the emailed token; the raw token is never stored), `expires_at` (one hour), `used_at`. Requesting a new link deletes the user's unused tokens. Nothing prunes expired rows yet.
+
+### email_verification_tokens
+
+`participant_id` (FK participants, `ON DELETE CASCADE`), `token_hash` (SHA-256 hex, unique; the raw token is never stored), `expires_at` (24 hours), `used_at`. Registration and every resend delete the participant's unused tokens before inserting a new one. Nothing prunes expired rows yet.
 
 ### universities / specialties
 
@@ -179,7 +185,8 @@ Read at request time (not stored in the DB):
 ## Schema management
 
 - `backend/database/schema.sql` is the authoritative, current schema. Fresh environments apply it directly: Postgres `initdb` runs it in Docker Compose and k3s (mounted as `01_schema.sql` / the `postgres-initdb` ConfigMap), and the e2e test fixture applies it once per session.
-- `backend/database/migrations/012` to `015` are deltas for databases created before those changes. They are applied by hand; there is no migration runner and no record of which have run.
+- `backend/database/migrations/012` to `016` are deltas for databases created before those changes. They are applied by hand; there is no migration runner and no record of which have run.
+- `016_email_verification.sql` adds `participants.email_verified` with `DEFAULT TRUE` (so existing participants are grandfathered as verified) and then switches the default to false for new rows. It is safe to re-run, and `schema.sql` uses the same two statements.
 - Most statements use `IF NOT EXISTS`, but the `CREATE TRIGGER` statements do not, so running `schema.sql` a second time against an existing database fails partway. Treat it as a create-once script.
 - On k3s the schema and DB password are baked into the Postgres PVC at first boot. Editing `schema.sql` does not migrate a running database.
 

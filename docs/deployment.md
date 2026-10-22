@@ -55,15 +55,18 @@ graph LR
 
 ### Feature flags during the event
 
-| Flag                 | Turn on when                   | Effect                                                            |
-| -------------------- | ------------------------------ | ----------------------------------------------------------------- |
-| `REGISTRATION_OPEN`  | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                |
-| `MENTORS_STAY_TUNED` | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster      |
-| `RANKINGS_LIVE`      | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder |
+| Flag                         | Turn on when                   | Effect                                                            |
+| ---------------------------- | ------------------------------ | ----------------------------------------------------------------- |
+| `REGISTRATION_OPEN`          | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                |
+| `MENTORS_STAY_TUNED`         | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster      |
+| `RANKINGS_LIVE`              | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder |
+| `REQUIRE_EMAIL_VERIFICATION` | SMTP is confirmed to deliver   | Unverified participants get 403 on create, join and apply to team |
 
 ```bash
 ENV=prod bash infra/k8s/scripts/apply-config.sh RANKINGS_LIVE true
 ```
+
+Before turning on `REQUIRE_EMAIL_VERIFICATION`, register a test account and confirm the verification email arrives. With SMTP broken nobody could verify, and so nobody could form a team. On an existing database, apply `backend/database/migrations/016_email_verification.sql` first.
 
 The script patches the ConfigMap and restarts the backend. Commit the matching change to the base or overlay YAML so Git and the cluster agree. Staging and prod are flipped independently (`ENV=staging` is the default).
 
@@ -77,8 +80,8 @@ The complete list with defaults is `.env.example` (local) plus the ConfigMap and
 | `JWT_SECRET_KEY`                                      | yes         | Same check                                                           |
 | `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                  |
 | `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                        |
-| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset links                     |
-| `MAIL_PASSWORD`                                       | no          | Without it reset emails and join-request emails are skipped          |
+| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links    |
+| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped   |
 | `DISCORD_BUG_WEBHOOK_URL`                             | no          | Without it bug reports are dropped                                   |
 | `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off |
 
