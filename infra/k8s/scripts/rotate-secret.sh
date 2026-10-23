@@ -28,7 +28,7 @@ cluster, and restart the backend so pods pick up the new value.
 
   KEY     One of the stringData keys in secrets.enc.yaml
           (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH,
-           MAIL_PASSWORD, DISCORD_BUG_WEBHOOK_URL).
+           MAIL_PASSWORD, DISCORD_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL).
   VALUE   The new value. If omitted, a strong random 64-char value is
           generated (use for SECRET_KEY / JWT_SECRET_KEY).
 

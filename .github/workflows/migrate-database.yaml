@@ -4,7 +4,7 @@ name: Migrate database
 # one-off Job to the chosen overlay. Merging it is the approval; Flux then runs
 # the Job in-cluster: pg_dump to the db-migration-backups PVC, then every
 # pending migration shipped in the chosen backend image. The result is posted
-# to Discord.
+# to Slack.
 
 on:
   workflow_dispatch:
@@ -89,7 +89,7 @@ jobs:
           On merge, Flux runs Job \`db-migrate-$GITHUB_RUN_NUMBER\`:
           1. \`pg_dump\` into the \`db-migration-backups\` PVC (last 5 kept). Nothing is migrated if the dump fails.
           2. \`python -m database.migrate\` applies every file below that is not yet in \`schema_migrations\`, each in its own transaction.
-          3. The result is posted to Discord.
+          3. The result is posted to Slack.
 
           Migrations in this image:
           $list

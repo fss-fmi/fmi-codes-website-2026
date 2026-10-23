@@ -11,7 +11,7 @@
 - `backend/database/migrate.py` applies every file in `backend/database/migrations/` that is not yet recorded in a `schema_migrations` table, in number order. Each file runs in its own transaction together with its record, and a session-level advisory lock serialises concurrent runners. It connects with the backend's own credentials (`fmi_app` owns the tables).
 - The backend Deployment runs it as an **initContainer** before every rollout, so neither environment's code can get ahead of its schema. A failed migration keeps the new pods from starting while the old ones keep serving.
 - **Actions → Migrate database** opens a PR that adds a one-off Job to the chosen overlay, with an explicit backend image. Merging is the approval; Flux runs the Job in-cluster, which first `pg_dump`s into the `db-migration-backups` PVC (last 5 kept). Use it to migrate deliberately (for example prod before a promote) with a backup.
-- Results go to Discord. Migration files must be safe to re-run and must not contain transaction control; the first run on an existing database re-applies 012 to 016 as no-ops and records them.
+- Results go to a dedicated Slack channel through an incoming webhook (`SLACK_MIGRATIONS_WEBHOOK_URL`), separate from the Discord bug-report webhook. Migration files must be safe to re-run and must not contain transaction control; the first run on an existing database re-applies 012 to 016 as no-ops and records them.
 - Still plain SQL, still no ORM, and `schema.sql` is still the authoritative full schema for fresh databases.
 
 ## Consequences

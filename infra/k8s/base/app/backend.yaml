@@ -76,11 +76,13 @@ spec:
                 secretKeyRef:
                   name: fmi-codes-db
                   key: password
-            - name: DISCORD_BUG_WEBHOOK_URL
+            # Optional so a missing key can never block a rollout; unset just skips the message.
+            - name: SLACK_MIGRATIONS_WEBHOOK_URL
               valueFrom:
                 secretKeyRef:
                   name: fmi-codes-app
-                  key: DISCORD_BUG_WEBHOOK_URL
+                  key: SLACK_MIGRATIONS_WEBHOOK_URL
+                  optional: true
             - name: MIGRATION_ENV
               valueFrom:
                 fieldRef:

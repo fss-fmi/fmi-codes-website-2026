@@ -10,8 +10,8 @@ initContainer). Migration files must be safe to re-run and must not contain
 their own BEGIN/COMMIT.
 
 Connection: DATABASE_URL if set, otherwise DB_HOST/DB_PORT/DB_NAME/DB_USER/
-DB_PASSWORD (the backend's own variables). Results go to DISCORD_BUG_WEBHOOK_URL
-when set, labelled with MIGRATION_ENV.
+DB_PASSWORD (the backend's own variables). Results go to the Slack incoming
+webhook in SLACK_MIGRATIONS_WEBHOOK_URL when set, labelled with MIGRATION_ENV.
 """
 
 import argparse
@@ -109,26 +109,28 @@ def apply_pending(params: str | dict, directory: Path = MIGRATIONS_DIR) -> list[
     return applied
 
 
+def _slack_escape(text: str) -> str:
+    # Slack reads <...> as links/mentions; Postgres errors can contain all three.
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def notify(text: str) -> None:
-    """Post *text* to Discord. Never raises; a missing webhook is a no-op."""
-    url = os.environ.get("DISCORD_BUG_WEBHOOK_URL", "")
+    """Post *text* (Slack mrkdwn) to Slack. Never raises; a missing webhook is a no-op."""
+    url = os.environ.get("SLACK_MIGRATIONS_WEBHOOK_URL", "")
     if not url:
         return
     req = urllib.request.Request(
         url,
-        data=json.dumps({"content": text[:1900]}).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            # Discord/Cloudflare rejects Python-urllib's default UA (CF error 1010).
-            "User-Agent": "DiscordBot (https://fmicodes.bg, 1.0)",
-        },
+        # Truncate before escaping so an entity is never cut in half.
+        data=json.dumps({"text": _slack_escape(text[:3000])}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=10):
             pass
     except Exception as e:
-        logger.error("Could not post migration result to Discord: %s", e)
+        logger.error("Could not post migration result to Slack: %s", e)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -137,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         "--notify",
         choices=("always", "changes", "never"),
         default="changes",
-        help="When to post to Discord: every run, only when something applied or failed, or never",
+        help="When to post to Slack: every run, only when something applied or failed, or never",
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -153,14 +155,14 @@ def main(argv: list[str] | None = None) -> int:
         done = ", ".join(e.applied) or "none"
         if args.notify != "never":
             notify(
-                f"❌ **DB migration failed** on `{env}` at `{e.filename}` (rolled back).\n"
+                f"❌ *DB migration failed* on `{env}` at `{e.filename}` (rolled back).\n"
                 f"Applied before the failure: {done}.\nError: {e.__cause__}{backup_note}"
             )
         return 1
     except Exception as e:
         logger.error("Migration run failed: %s", e)
         if args.notify != "never":
-            notify(f"❌ **DB migration run failed** on `{env}` before applying anything: {e}")
+            notify(f"❌ *DB migration run failed* on `{env}` before applying anything: {e}")
         return 1
 
     if applied:
@@ -170,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.notify == "always" or (args.notify == "changes" and applied):
         summary = ", ".join(f"`{name}`" for name in applied) or "nothing pending"
-        notify(f"✅ **DB migration** on `{env}`: {summary}.{backup_note}")
+        notify(f"✅ *DB migration* on `{env}`: {summary}.{backup_note}")
     return 0
 
 

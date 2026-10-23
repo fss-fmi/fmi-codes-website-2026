@@ -89,15 +89,15 @@ cd fmi-codes-website-2026
 
 Nothing to create by hand — the passwords split three ways and every one is handled for you:
 
-| Secret                            | Keys                                                                                              | How it's set                                                                                                                                                                           |
-| --------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
-| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                              | **generated in-cluster** by `deploy-stateful.sh` on first run — you never touch these                                                                                                  |
+| Secret                            | Keys                                                                                                                              | How it's set                                                                                                                                                                           |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
+| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                              | **generated in-cluster** by `deploy-stateful.sh` on first run — you never touch these                                                                                                  |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
-bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` are
-optional; set them later with `rotate-secret.sh` (step 5) if you want password-reset mail or
-bug-report webhooks.
+bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
+`SLACK_MIGRATIONS_WEBHOOK_URL` are optional; set them later with `rotate-secret.sh` (step 5)
+if you want password-reset mail, bug-report webhooks or migration results in Slack.
 
 ### 3. Run the bootstrap
 
@@ -149,6 +149,7 @@ once (`install-forward-services.sh`) and use `127.0.0.1` hosts entries (see [Pha
 ```bash
 bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD 'gmail-app-password'
 bash infra/k8s/scripts/rotate-secret.sh DISCORD_BUG_WEBHOOK_URL 'https://discord.com/api/webhooks/…'
+bash infra/k8s/scripts/rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL 'https://hooks.slack.com/services/…'
 ```
 
 Each re-encrypts the one key, re-applies the secret, and restarts the backend. `ENV=staging`
@@ -274,7 +275,8 @@ the `app` service carries a `backend` alias) and k8s with no rebuild.
 Config split: non-secret env comes from the `fmi-codes-backend-config` ConfigMap via
 `envFrom`; passwords via `secretKeyRef` (`DB_PASSWORD`, `REDIS_PASSWORD` from Phase 2, and
 `SECRET_KEY`/`JWT_SECRET_KEY`/`ADMIN_PASSWORD_HASH`/`MAIL_PASSWORD`/`DISCORD_BUG_WEBHOOK_URL`
-from `fmi-codes-app`). `DATABASE_URL` is intentionally unset — the backend composes it from
+from `fmi-codes-app`; the `migrate` initContainer reads `SLACK_MIGRATIONS_WEBHOOK_URL` from it,
+optionally). `DATABASE_URL` is intentionally unset — the backend composes it from
 the `DB_*` pieces.
 
 Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready`
