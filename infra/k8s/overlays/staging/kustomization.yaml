@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: fmi-codes-staging
 resources:
   - ../../base/app
+  - db-migrate-job.yaml
 patches:
   - path: backend-config-patch.yaml
     target:
