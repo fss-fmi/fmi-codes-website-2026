@@ -22,18 +22,18 @@ Counts are `def test_` occurrences, so parametrised tests run more cases than li
 
 ### Backend unit tests (`tests/`)
 
-| File                         | What it covers                                                                                                                           |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_matching.py`           | `_run_algorithm`: mutual matches, capacity limits (`TEAM_CAPACITY`, `MENTOR_CAPACITY`), displacement, greedy fill, underfill warnings    |
-| `test_auth_service.py`       | bcrypt hashing, JWT generation and decoding, expiry                                                                                      |
-| `test_redis_client.py`       | Sentinel parsing, limiter storage URI, jittered TTLs, fail-open helpers                                                                  |
-| `test_cache_services.py`     | Cache hit/miss/corrupt paths for mentors, rankings, regulations; fallback when Redis is down                                             |
-| `test_health_endpoints.py`   | `/api/health` and `/api/health/ready` across DB/Redis states                                                                             |
-| `test_limiter_storage.py`    | Rate-limiter storage wiring                                                                                                              |
-| `test_metrics_endpoint.py`   | `/metrics` is exposed                                                                                                                    |
-| `test_team_service.py`       | Join code format and the 6 / 18 / 3 business constants                                                                                   |
-| `test_email_verification.py` | Verification email contents and SMTP failure handling; the `REQUIRE_EMAIL_VERIFICATION` gate decorator                                   |
-| `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Discord reporting modes, connection settings |
+| File                         | What it covers                                                                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_matching.py`           | `_run_algorithm`: mutual matches, capacity limits (`TEAM_CAPACITY`, `MENTOR_CAPACITY`), displacement, greedy fill, underfill warnings                                   |
+| `test_auth_service.py`       | bcrypt hashing, JWT generation and decoding, expiry                                                                                                                     |
+| `test_redis_client.py`       | Sentinel parsing, limiter storage URI, jittered TTLs, fail-open helpers                                                                                                 |
+| `test_cache_services.py`     | Cache hit/miss/corrupt paths for mentors, rankings, regulations; fallback when Redis is down                                                                            |
+| `test_health_endpoints.py`   | `/api/health` and `/api/health/ready` across DB/Redis states                                                                                                            |
+| `test_limiter_storage.py`    | Rate-limiter storage wiring                                                                                                                                             |
+| `test_metrics_endpoint.py`   | `/metrics` is exposed                                                                                                                                                   |
+| `test_team_service.py`       | Join code format and the 6 / 18 / 3 business constants                                                                                                                  |
+| `test_email_verification.py` | Verification email contents and SMTP failure handling; the `REQUIRE_EMAIL_VERIFICATION` gate decorator                                                                  |
+| `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Slack reporting modes, message escaping and truncation, connection settings |
 
 Scope: a single function or a single route with dependencies replaced. No database. Runs in seconds.
 
@@ -155,10 +155,10 @@ Tests send tokens through the `Authorization` header so several users can share 
 
 ## Mocking
 
-| Layer       | Real                                        | Replaced                                                                          |
-| ----------- | ------------------------------------------- | --------------------------------------------------------------------------------- |
-| Unit        | Flask app, route wiring, pure functions     | DB helpers (MagicMock), Redis (a `FakeRedis` class or `monkeypatch`), env vars    |
-| Integration | Flask app, PostgreSQL, SQL, locks, triggers | Rate limiting (disabled), SMTP and Discord (not configured, so sends are skipped) |
+| Layer       | Real                                        | Replaced                                                                                 |
+| ----------- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Unit        | Flask app, route wiring, pure functions     | DB helpers (MagicMock), Redis (a `FakeRedis` class or `monkeypatch`), env vars           |
+| Integration | Flask app, PostgreSQL, SQL, locks, triggers | Rate limiting (disabled), SMTP, Discord and Slack (not configured, so sends are skipped) |
 
 The boundary sits at the database: anything whose correctness depends on SQL semantics, transactions or constraints must be tested against real Postgres, because the mocks cannot reproduce locking or uniqueness races.
 

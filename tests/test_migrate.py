@@ -125,15 +125,9 @@ class TestConnectionParams:
 
 
 class TestNotify:
-    def test_no_webhook_is_a_noop(self, monkeypatch):
-        monkeypatch.delenv("DISCORD_BUG_WEBHOOK_URL", raising=False)
-        monkeypatch.setattr(
-            migrate.urllib.request, "urlopen", lambda *a, **k: pytest.fail("must not post")
-        )
-        migrate.notify("hello")
-
-    def test_posts_content_with_discord_user_agent(self, monkeypatch):
-        sent = {}
+    @pytest.fixture()
+    def sent(self, monkeypatch):
+        bodies = []
 
         class Response:
             def __enter__(self):
@@ -143,20 +137,36 @@ class TestNotify:
                 return False
 
         def fake_urlopen(req, timeout):
-            sent["body"] = json.loads(req.data)
-            sent["ua"] = req.get_header("User-agent")
+            bodies.append(json.loads(req.data))
             return Response()
 
-        monkeypatch.setenv("DISCORD_BUG_WEBHOOK_URL", "https://discord.test/hook")
+        monkeypatch.setenv("SLACK_MIGRATIONS_WEBHOOK_URL", "https://hooks.slack.test/hook")
         monkeypatch.setattr(migrate.urllib.request, "urlopen", fake_urlopen)
+        return bodies
+
+    def test_no_webhook_is_a_noop(self, monkeypatch):
+        monkeypatch.delenv("SLACK_MIGRATIONS_WEBHOOK_URL", raising=False)
+        monkeypatch.setattr(
+            migrate.urllib.request, "urlopen", lambda *a, **k: pytest.fail("must not post")
+        )
+        migrate.notify("hello")
+
+    def test_posts_truncated_text(self, sent):
         migrate.notify("x" * 5000)
-        assert len(sent["body"]["content"]) == 1900
-        assert sent["ua"].startswith("DiscordBot")
+        assert sent[0] == {"text": "x" * 3000}
+
+    def test_escapes_slack_control_characters(self, sent):
+        migrate.notify('syntax error at or near "<" & ">"')
+        assert sent[0]["text"] == 'syntax error at or near "&lt;" &amp; "&gt;"'
+
+    def test_truncation_never_splits_an_entity(self, sent):
+        migrate.notify("x" * 2999 + "<<<")
+        assert sent[0]["text"] == "x" * 2999 + "&lt;"
 
     def test_post_failure_never_raises(self, monkeypatch):
         def broken(*args, **kwargs):
             raise OSError("network down")
 
-        monkeypatch.setenv("DISCORD_BUG_WEBHOOK_URL", "https://discord.test/hook")
+        monkeypatch.setenv("SLACK_MIGRATIONS_WEBHOOK_URL", "https://hooks.slack.test/hook")
         monkeypatch.setattr(migrate.urllib.request, "urlopen", broken)
         migrate.notify("hello")

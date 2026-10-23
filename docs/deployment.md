@@ -42,14 +42,14 @@ graph LR
 
 Pending migrations ship inside the backend image and are applied two ways ([ADR-007](adr/007-recorded-migrations-runner.md)):
 
-- **Automatically on every rollout.** The backend Deployment's `migrate` initContainer runs `python -m database.migrate` before the new pods start. It posts to Discord only when it applied something or failed. If a migration fails, the new pods stay in `Init` and the old ones keep serving.
+- **Automatically on every rollout.** The backend Deployment's `migrate` initContainer runs `python -m database.migrate` before the new pods start. It posts to Slack only when it applied something or failed. If a migration fails, the new pods stay in `Init` and the old ones keep serving.
 - **On demand, with a backup.** Run **Actions → Migrate database** with:
   - `environment`: `staging` or `prod`.
   - `image_tag`: the backend image whose migrations to apply. Blank means the tag live in staging, which is what the next promote would ship.
 
-  It renders `infra/k8s/templates/db-migrate-job.yaml` into `overlays/<env>/db-migrate-job.yaml` (through `infra/k8s/scripts/render-migrate-job.sh`) on a `migrate-<env>` branch and opens a PR listing the migrations in that image. Merging is the approval. Flux then runs Job `db-migrate-<run>`: `pg_dump` into the `db-migration-backups` PVC (last 5 kept, nothing is migrated if the dump fails), then the runner, then a Discord message with the result and the backup file.
+  It renders `infra/k8s/templates/db-migrate-job.yaml` into `overlays/<env>/db-migrate-job.yaml` (through `infra/k8s/scripts/render-migrate-job.sh`) on a `migrate-<env>` branch and opens a PR listing the migrations in that image. Merging is the approval. Flux then runs Job `db-migrate-<run>`: `pg_dump` into the `db-migration-backups` PVC (last 5 kept, nothing is migrated if the dump fails), then the runner, then a Slack message with the result and the backup file.
 
-For a prod release that carries a migration, run **Migrate database** for `prod` with the tag you are about to promote, merge it, wait for the Discord result, then promote. The initContainer would apply it anyway, but only the manual Job takes a backup first.
+For a prod release that carries a migration, run **Migrate database** for `prod` with the tag you are about to promote, merge it, wait for the Slack result, then promote. The initContainer would apply it anyway, but only the manual Job takes a backup first.
 
 Like the promote PR, the migration PR is opened by `GITHUB_TOKEN`, so CI does not run on it. A failed Job leaves the app Flux Kustomization not ready until the next migration run replaces the Job; read it with `kubectl -n <namespace> logs job/db-migrate-<run> --all-containers`.
 
@@ -62,11 +62,11 @@ Like the promote PR, the migration PR is opened by `GITHUB_TOKEN`, so CI does no
 
 ## Configuration
 
-| Kind                                                                                                              | Where                                                                                                                             | Change it with                                                                       |
-| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, feature flags) | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>`, then commit the YAML too     |
-| App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`)   | SOPS-encrypted `infra/k8s/secrets/secrets.enc.yaml` (prod) and `infra/k8s/overlays/staging/secrets/secrets.enc.yaml`              | `bash infra/k8s/scripts/rotate-secret.sh <KEY> [VALUE]`, then commit the `.enc.yaml` |
-| DB and Redis passwords                                                                                            | Generated in-cluster by `deploy-stateful.sh`, tied to the PVC                                                                     | Never by hand; delete Secret and PVC together if you must reset                      |
+| Kind                                                                                                                                            | Where                                                                                                                             | Change it with                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, feature flags)                               | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>`, then commit the YAML too     |
+| App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`) | SOPS-encrypted `infra/k8s/secrets/secrets.enc.yaml` (prod) and `infra/k8s/overlays/staging/secrets/secrets.enc.yaml`              | `bash infra/k8s/scripts/rotate-secret.sh <KEY> [VALUE]`, then commit the `.enc.yaml` |
+| DB and Redis passwords                                                                                                                          | Generated in-cluster by `deploy-stateful.sh`, tied to the PVC                                                                     | Never by hand; delete Secret and PVC together if you must reset                      |
 
 ### Feature flags during the event
 
@@ -89,16 +89,17 @@ The script patches the ConfigMap and restarts the backend. Commit the matching c
 
 The complete list with defaults is `.env.example` (local) plus the ConfigMap and Secret above (cluster). Variables with no safe default:
 
-| Variable                                              | Required    | Notes                                                                |
-| ----------------------------------------------------- | ----------- | -------------------------------------------------------------------- |
-| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value          |
-| `JWT_SECRET_KEY`                                      | yes         | Same check                                                           |
-| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                  |
-| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                        |
-| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links    |
-| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped   |
-| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Without it bug reports are dropped                                   |
-| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off |
+| Variable                                              | Required    | Notes                                                                         |
+| ----------------------------------------------------- | ----------- | ----------------------------------------------------------------------------- |
+| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value                   |
+| `JWT_SECRET_KEY`                                      | yes         | Same check                                                                    |
+| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                           |
+| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                                 |
+| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links             |
+| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped            |
+| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Without it bug reports are dropped                                            |
+| `SLACK_MIGRATIONS_WEBHOOK_URL`                        | no          | Slack incoming webhook for migration results; without it they are only logged |
+| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off          |
 
 ## Health checks
 
