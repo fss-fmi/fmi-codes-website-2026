@@ -46,14 +46,31 @@ FAILED_FILE=""
 
 # The check is "can this key file decrypt every file", not a comparison of comment lines,
 # so key order, missing "# public key:" comments and forked recipients all just work.
-# SOPS_AGE_KEY(_CMD) are unset so a key that only lives in the shell can't pass for one on disk.
+# Only $1 (plus candidate keys in $2) may count: shell keys are unset, and the empty
+# XDG_CONFIG_HOME stops sops also reading the default keys.txt when $1 is a custom path.
+# Candidate keys go through the environment, never argv (visible in ps) or a temp file.
 decrypts_all() {
   local f
   for f in "${ENC_FILES[@]}"; do
-    env -u SOPS_AGE_KEY -u SOPS_AGE_KEY_CMD SOPS_AGE_KEY_FILE="$1" \
-      sops --decrypt "$f" >/dev/null 2>"$PREFLIGHT_TMP/sops.err" \
-      || { FAILED_FILE="$f"; return 1; }
+    if ! (
+      unset SOPS_AGE_KEY SOPS_AGE_KEY_CMD
+      export XDG_CONFIG_HOME="$PREFLIGHT_TMP/no-config" SOPS_AGE_KEY_FILE="$1"
+      if [ -n "${2:-}" ]; then export SOPS_AGE_KEY="$2"; fi
+      sops --decrypt "$f" >/dev/null 2>"$PREFLIGHT_TMP/sops.err"
+    ); then
+      FAILED_FILE="$f"
+      return 1
+    fi
   done
+}
+
+key_in_file() {
+  local line
+  [ -f "$AGE_KEY_FILE" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ "${line%$'\r'}" = "$1" ] && return 0
+  done < "$AGE_KEY_FILE"
+  return 1
 }
 
 recipients() {
@@ -63,7 +80,7 @@ recipients() {
 # Verifies the new key(s) against the files before touching keys.txt, then appends.
 # Never overwrites: the other environment's key may live in the same file.
 import_age_keys() {
-  local raw="$1" keys key pub candidate="$PREFLIGHT_TMP/candidate.txt"
+  local raw="$1" keys key pub
   keys="$(printf '%s\n' "$raw" | grep -oE 'AGE-SECRET-KEY-1[0-9A-Z]+' | sort -u || true)"
   [ -n "$keys" ] || die "input does not contain an age private key (expected AGE-SECRET-KEY-1...)"
   while IFS= read -r key; do
@@ -71,13 +88,7 @@ import_age_keys() {
       || die "input contains a malformed age private key (checksum failed); copy it again"
   done <<<"$keys"
 
-  : > "$candidate"
-  if [ -s "$AGE_KEY_FILE" ]; then
-    cat "$AGE_KEY_FILE" >> "$candidate"
-    echo >> "$candidate"
-  fi
-  printf '%s\n' "$keys" >> "$candidate"
-  if ! decrypts_all "$candidate"; then
+  if ! decrypts_all "$AGE_KEY_FILE" "$keys"; then
     warn "the provided key cannot decrypt $FAILED_FILE"
     echo "  provided key(s) have public key:"
     while IFS= read -r key; do
@@ -90,20 +101,20 @@ import_age_keys() {
     die "nothing was written to $AGE_KEY_FILE"
   fi
 
-  (umask 077 && mkdir -p "$(dirname "$AGE_KEY_FILE")")
+  # Lock the file down before any key lands in it: a fresh file would otherwise be created
+  # with the caller's umask (often 644) and stay world-readable if the script dies mid-append.
+  (umask 077 && mkdir -p "$(dirname "$AGE_KEY_FILE")" && : >> "$AGE_KEY_FILE")
+  chmod 600 "$AGE_KEY_FILE"
   if [ -s "$AGE_KEY_FILE" ] && [ -n "$(tail -c1 "$AGE_KEY_FILE")" ]; then
     echo >> "$AGE_KEY_FILE"
   fi
   while IFS= read -r key; do
-    if [ -f "$AGE_KEY_FILE" ] && grep -qxF -- "$key" <(tr -d '\r' < "$AGE_KEY_FILE"); then
-      continue
-    fi
+    key_in_file "$key" && continue
     pub="$(printf '%s\n' "$key" | age-keygen -y)"
     printf '# added by bootstrap.sh (%s) on %s\n# public key: %s\n%s\n' \
       "$ENV" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pub" "$key" >> "$AGE_KEY_FILE"
     ok "added key $pub to $AGE_KEY_FILE"
   done <<<"$keys"
-  chmod 600 "$AGE_KEY_FILE"
   decrypts_all "$AGE_KEY_FILE" \
     || die "$AGE_KEY_FILE still cannot decrypt $FAILED_FILE: $(cat "$PREFLIGHT_TMP/sops.err")"
   ok "verified: $AGE_KEY_FILE decrypts every $ENV secrets file"
@@ -164,6 +175,8 @@ else
     fi
   fi
 fi
+# The key is on disk now; installers, helm and kubectl run below never need it in their env.
+unset SOPS_AGE_KEY_STAGING SOPS_AGE_KEY_PROD ENV_VAL RAW_KEY
 
 log "Pre-flight: admin password"
 
