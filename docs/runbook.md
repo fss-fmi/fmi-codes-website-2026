@@ -70,7 +70,9 @@ End-to-end, bare server → running cluster. Do it for staging first, then repea
     export SOPS_AGE_KEY_STAGING="AGE-SECRET-KEY-1..."
     ./bootstrap.sh              # no paste prompt
     ```
-    Without the env var, the script falls back to an interactive paste prompt.
+    Without the env var, the script falls back to an interactive paste prompt (input hidden).
+    If you run both environments from one machine, both keys live in the same `keys.txt`, in
+    any order; there is nothing to comment out when switching.
   - **Forking to your own project:** you don't have the org's key, so mint your own and take
     over the recipient — see [Forking: use your own keys](#forking-use-your-own-keys) below,
     do that once, then come back here.
@@ -109,21 +111,25 @@ Postgres/Redis → app → ingress in order.
 ./bootstrap.sh --env prod   # production
 ```
 
-The pre-flight handles exactly two things on a fresh machine:
+The pre-flight first installs `sops` and `age` if they're missing (so it can verify keys on a
+bare box), then handles two things:
 
-1. **The age private key** — it checks `~/.config/sops/age/keys.txt`. If missing or wrong,
-   it looks for `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`) in the environment and writes
-   the key automatically; otherwise it falls back to an interactive paste prompt. Either way
-   the key is written `chmod 600` and immediately verified against that env's `secrets.enc.yaml`
-   (wrong key → it aborts). Store the key as a GitHub Actions secret and export it before
-   running bootstrap to skip the prompt entirely.
+1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`
+   and `grafana-secret.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
+   if set). If that works it does nothing, whatever else is in the file and in whatever order.
+   Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`), falling
+   back to a hidden paste prompt, verifies the key decrypts those files **before** writing
+   anything, then **appends** it to `keys.txt` with a `# public key:` comment (`chmod 600`).
+   Existing keys are never replaced or removed. A wrong key aborts with its public key next
+   to the one the files are encrypted to, and leaves `keys.txt` untouched. Store the key as a
+   GitHub Actions secret and export it before running bootstrap to skip the prompt entirely.
 2. **The admin password** — if `ADMIN_PASSWORD_HASH` is empty in the secrets file, it asks
    for a password, bcrypt-hashes it, and writes the hash back into `secrets.enc.yaml`. Commit
    and push that file afterward so other servers get the same hash. (Skip it and the backend
    CrashLoops until you set one — fix later with `rotate-secret.sh ADMIN_PASSWORD_HASH`.)
 
 It's idempotent and resumable — if a step fails, fix the cause and re-run with `--from N`
-(N = 1–6). Steps 1–2 need interactive sudo, so run it in a real terminal.
+(N = 1–7). Steps 1–2 need interactive sudo, so run it in a real terminal.
 
 > **WSL2 dev box:** `./bootstrap.sh` works identically — after the Linux bring-up it detects
 > WSL2 and prints the Windows hosts-file and forward-services steps automatically.
@@ -187,19 +193,28 @@ curl -k https://staging.fmicodes.com:8443/api/health/ready   # {"db":"ok","redis
 ### Forking: use your own keys
 
 Only if you're standing up your _own_ project rather than deploying this one. The repo ships
-two committed age recipients (staging + prod) in `.sops.yaml`; to take ownership, replace the
-recipient for the env you control and re-encrypt:
+two committed age recipients (staging + prod) in `.sops.yaml`. Without the org's private keys
+you can't decrypt the committed files, so `sops updatekeys` won't work for you: mint your own
+key, point `.sops.yaml` at it and replace that env's encrypted files with your own values.
 
 ```bash
-# 1. Generate your key pair:
+# 1. Generate a key pair. Appends, so an existing keys.txt is kept (age-keygen -o refuses
+#    to write to an existing file). Prints "Public key: age1…" on stderr.
 mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt && chmod 600 ~/.config/sops/age/keys.txt
-age-keygen -y ~/.config/sops/age/keys.txt      # prints your age1… public recipient
+(umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)
 
-# 2. In .sops.yaml, swap the `age:` recipient for your env's rule to that age1… value.
-# 3. Re-encrypt the existing secrets file to your key:
-sops updatekeys infra/k8s/overlays/staging/secrets/secrets.enc.yaml   # (prod: infra/k8s/secrets/secrets.enc.yaml)
-# 4. Commit .sops.yaml + the re-encrypted file. Now bootstrap accepts YOUR key.
+# 2. In .sops.yaml, set the `age:` recipient of BOTH rules for your env (secrets.enc.yaml and
+#    grafana-secret.enc.yaml) to that age1… value.
+
+# 3. Overwrite each of that env's .enc.yaml files with a plaintext Secret holding your values
+#    (same metadata and stringData keys as the committed file; those stay readable), then
+#    encrypt it in place. .sops.yaml picks the recipient by path:
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
+# (prod: infra/k8s/secrets/secrets.enc.yaml and infra/k8s/secrets/grafana-secret.enc.yaml)
+
+# 4. Commit .sops.yaml + the encrypted files. Bootstrap checks keys by decrypting the files,
+#    so it accepts YOUR key with no script changes.
 ```
 
 You'll also want your own Docker Hub images and hostnames — see
@@ -353,8 +368,10 @@ the key up — lose every recipient's key and the committed secrets are permanen
 undecryptable. Staging and prod use **separate** age keys, so a leak of one never exposes the
 other; `.sops.yaml` routes each file to its recipient by path (staging rule first, more
 specific). An operator managing both keeps both private keys in `~/.config/sops/age/keys.txt`
-(one per line). The deploy/rotate scripts assert the decrypted manifest's namespace matches
-`ENV` and refuse to apply across environments.
+(one per line, any order): sops tries every key in the file, and `bootstrap.sh` only ever
+appends a missing key, so nothing needs commenting out when switching environments. The
+deploy/rotate scripts assert the decrypted manifest's namespace matches `ENV` and refuse to
+apply across environments.
 
 **Edit / rotate:**
 
