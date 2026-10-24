@@ -85,9 +85,8 @@ admin_hash="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \
 if [ -z "$admin_hash" ]; then
   log "ADMIN_PASSWORD_HASH is empty — the backend will CrashLoop until it is set"
   echo "The backend runs production config, which refuses to start without a real"
-  echo "admin password hash. Set one before expecting the backend to go Ready:"
-  echo "  HASH=\$(python -c \"import bcrypt;print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())\")"
-  echo "  bash $SCRIPT_DIR/rotate-secret.sh ADMIN_PASSWORD_HASH \"\$HASH\""
+  echo "admin password hash. Set one (it prompts for the password and hashes it):"
+  echo "  ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh ADMIN_PASSWORD_HASH"
 fi
 
 if flux_owns_app; then
@@ -138,8 +137,8 @@ App tier is up. Verify against the issue's acceptance criteria:
       python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:5001/api/health/ready').read())"
 
 To rotate a secret (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH, MAIL_PASSWORD,
-DISCORD_BUG_WEBHOOK_URL) in one command:
-    bash infra/k8s/scripts/rotate-secret.sh <KEY> [VALUE]
+DISCORD_BUG_WEBHOOK_URL) in one command (prompts for the value; --generate for a random one):
+    ENV=$ENV bash infra/k8s/scripts/rotate-secret.sh <KEY>
 
 See docs/runbook.md 'Phase 3' and 'Phase 5' for the full checklists.
 EOF

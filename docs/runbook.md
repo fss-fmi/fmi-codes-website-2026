@@ -70,7 +70,9 @@ End-to-end, bare server → running cluster. Do it for staging first, then repea
     export SOPS_AGE_KEY_STAGING="AGE-SECRET-KEY-1..."
     ./bootstrap.sh              # no paste prompt
     ```
-    Without the env var, the script falls back to an interactive paste prompt.
+    Without the env var, the script falls back to an interactive paste prompt (input hidden).
+    If you run both environments from one machine, both keys live in the same `keys.txt`, in
+    any order; there is nothing to comment out when switching.
   - **Forking to your own project:** you don't have the org's key, so mint your own and take
     over the recipient — see [Forking: use your own keys](#forking-use-your-own-keys) below,
     do that once, then come back here.
@@ -109,21 +111,26 @@ Postgres/Redis → app → ingress in order.
 ./bootstrap.sh --env prod   # production
 ```
 
-The pre-flight handles exactly two things on a fresh machine:
+The pre-flight first installs `sops` and `age` if they're missing (so it can verify keys on a
+bare box), then handles two things:
 
-1. **The age private key** — it checks `~/.config/sops/age/keys.txt`. If missing or wrong,
-   it looks for `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`) in the environment and writes
-   the key automatically; otherwise it falls back to an interactive paste prompt. Either way
-   the key is written `chmod 600` and immediately verified against that env's `secrets.enc.yaml`
-   (wrong key → it aborts). Store the key as a GitHub Actions secret and export it before
-   running bootstrap to skip the prompt entirely.
+1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`
+   and `grafana-secret.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
+   if set). If that works it does nothing, whatever else is in the file and in whatever order.
+   Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`), falling
+   back to a hidden paste prompt, verifies the key decrypts those files **before** writing
+   anything, then **appends** it to `keys.txt` with a `# public key:` comment (`chmod 600`).
+   Existing keys are never replaced or removed. A wrong key aborts with its public key next
+   to the one the files are encrypted to, and leaves `keys.txt` untouched. Store the key as a
+   GitHub Actions secret and export it before running bootstrap to skip the prompt entirely.
 2. **The admin password** — if `ADMIN_PASSWORD_HASH` is empty in the secrets file, it asks
-   for a password, bcrypt-hashes it, and writes the hash back into `secrets.enc.yaml`. Commit
+   for a password (hidden, typed twice, at least 12 characters), bcrypt-hashes it, and writes
+   the hash back into `secrets.enc.yaml` through stdin, so neither shows up in `ps`. Commit
    and push that file afterward so other servers get the same hash. (Skip it and the backend
    CrashLoops until you set one — fix later with `rotate-secret.sh ADMIN_PASSWORD_HASH`.)
 
 It's idempotent and resumable — if a step fails, fix the cause and re-run with `--from N`
-(N = 1–6). Steps 1–2 need interactive sudo, so run it in a real terminal.
+(N = 1–7). Steps 1–2 need interactive sudo, so run it in a real terminal.
 
 > **WSL2 dev box:** `./bootstrap.sh` works identically — after the Linux bring-up it detects
 > WSL2 and prints the Windows hosts-file and forward-services steps automatically.
@@ -147,12 +154,13 @@ once (`install-forward-services.sh`) and use `127.0.0.1` hosts entries (see [Pha
 ### 5. (Optional) Set mail / webhook secrets
 
 ```bash
-bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD 'gmail-app-password'
-bash infra/k8s/scripts/rotate-secret.sh DISCORD_BUG_WEBHOOK_URL 'https://discord.com/api/webhooks/…'
+bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD             # prompts (hidden, twice)
+bash infra/k8s/scripts/rotate-secret.sh DISCORD_BUG_WEBHOOK_URL
 ```
 
-Each re-encrypts the one key, re-applies the secret, and restarts the backend. `ENV=staging`
-(default) or `ENV=prod`. Commit the `.enc.yaml` afterward.
+Each prompts for the value, re-encrypts the one key, re-applies the secret, and restarts the
+backend. `ENV=staging` (default) or `ENV=prod`. Commit the `.enc.yaml` afterward. Every secret
+and how to rotate it: [Rotate a secret](#rotate-a-secret).
 
 ### 6. (Optional) Enable GitOps auto-deploy — the Flux deploy key
 
@@ -187,19 +195,28 @@ curl -k https://staging.fmicodes.com:8443/api/health/ready   # {"db":"ok","redis
 ### Forking: use your own keys
 
 Only if you're standing up your _own_ project rather than deploying this one. The repo ships
-two committed age recipients (staging + prod) in `.sops.yaml`; to take ownership, replace the
-recipient for the env you control and re-encrypt:
+two committed age recipients (staging + prod) in `.sops.yaml`. Without the org's private keys
+you can't decrypt the committed files, so `sops updatekeys` won't work for you: mint your own
+key, point `.sops.yaml` at it and replace that env's encrypted files with your own values.
 
 ```bash
-# 1. Generate your key pair:
+# 1. Generate a key pair. Appends, so an existing keys.txt is kept (age-keygen -o refuses
+#    to write to an existing file). Prints "Public key: age1…" on stderr.
 mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt && chmod 600 ~/.config/sops/age/keys.txt
-age-keygen -y ~/.config/sops/age/keys.txt      # prints your age1… public recipient
+(umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)
 
-# 2. In .sops.yaml, swap the `age:` recipient for your env's rule to that age1… value.
-# 3. Re-encrypt the existing secrets file to your key:
-sops updatekeys infra/k8s/overlays/staging/secrets/secrets.enc.yaml   # (prod: infra/k8s/secrets/secrets.enc.yaml)
-# 4. Commit .sops.yaml + the re-encrypted file. Now bootstrap accepts YOUR key.
+# 2. In .sops.yaml, set the `age:` recipient of BOTH rules for your env (secrets.enc.yaml and
+#    grafana-secret.enc.yaml) to that age1… value.
+
+# 3. Overwrite each of that env's .enc.yaml files with a plaintext Secret holding your values
+#    (same metadata and stringData keys as the committed file; those stay readable), then
+#    encrypt it in place. .sops.yaml picks the recipient by path:
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
+# (prod: infra/k8s/secrets/secrets.enc.yaml and infra/k8s/secrets/grafana-secret.enc.yaml)
+
+# 4. Commit .sops.yaml + the encrypted files. Bootstrap checks keys by decrypting the files,
+#    so it accepts YOUR key with no script changes.
 ```
 
 You'll also want your own Docker Hub images and hostnames — see
@@ -353,16 +370,15 @@ the key up — lose every recipient's key and the committed secrets are permanen
 undecryptable. Staging and prod use **separate** age keys, so a leak of one never exposes the
 other; `.sops.yaml` routes each file to its recipient by path (staging rule first, more
 specific). An operator managing both keeps both private keys in `~/.config/sops/age/keys.txt`
-(one per line). The deploy/rotate scripts assert the decrypted manifest's namespace matches
-`ENV` and refuse to apply across environments.
+(one per line, any order): sops tries every key in the file, and `bootstrap.sh` only ever
+appends a missing key, so nothing needs commenting out when switching environments. The
+deploy/rotate scripts assert the decrypted manifest's namespace matches `ENV` and refuse to
+apply across environments.
 
-**Edit / rotate:**
-
-```bash
-sops infra/k8s/secrets/secrets.enc.yaml                    # prod (staging: overlays/staging/secrets/…)
-bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY     # re-encrypt one key, re-apply, restart backend
-bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD 'value'
-```
+**Edit / rotate:** use `rotate-secret.sh`, covered per secret in
+[Rotate a secret](#rotate-a-secret). A manual `sops infra/k8s/secrets/secrets.enc.yaml` edit
+(staging: `overlays/staging/secrets/…`) only changes git; apply it with
+`sops -d <file> | kubectl apply -f -` and restart the backend yourself.
 
 `deploy-app.sh` decrypts-and-applies automatically when your key can read the file. On a
 fresh clone with no age key it falls back to a throwaway in-cluster secret — but that has an
@@ -373,8 +389,10 @@ empty `ADMIN_PASSWORD_HASH`, so the prod backend CrashLoops until you set one. C
 > (encrypted in git, but known). **Rotate it before any non-local use.**
 
 **Add / remove a recipient:** edit the `age:` list in `.sops.yaml`, then
-`sops updatekeys <file>` (re-wraps the data key, no value change, no rollout). On **removal**
-also rotate every value — the departing dev still has the old ciphertext in git history.
+`sops updatekeys -y <file>` for each of the env's files (re-wraps the data key, no value
+change, no rollout). On **removal** also rotate every value — the departing dev still has the
+old ciphertext in git history. Replacing a key end to end:
+[Rotate an age key](#rotate-an-age-key).
 
 ### 6 — GitOps continuous deploy (Flux, opt-in)
 
@@ -523,17 +541,13 @@ app counters later, switch to `GunicornPrometheusMetrics`, set `PROMETHEUS_MULTI
 tmpfs volume, and add a `child_exit` hook in the Gunicorn config — real complexity for marginal
 value on a hobby cluster.
 
-**Rotate the Grafana admin password** (the generalized `rotate-secret.sh`):
-
-```bash
-ENV=staging NAMESPACE=monitoring \
-  SECRETS_ENC=infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml \
-  RESTART_TARGET=deployment/kps-grafana \
-  bash infra/k8s/scripts/rotate-secret.sh admin-password 'newpass'
-```
+**Rotate the Grafana admin password:** `bash infra/k8s/scripts/rotate-secret.sh --grafana
+admin-password` (details and why it also resets Grafana's database in
+[Grafana admin password](#grafana-admin-password)).
 
 The Grafana deployment name is `kps-grafana` because the values set `fullnameOverride: kps` —
-verify with `kubectl -n monitoring get deploy` if you change it.
+verify with `kubectl -n monitoring get deploy` if you change it (then pass
+`RESTART_TARGET=deployment/<name>` to `rotate-secret.sh --grafana`).
 
 **Recorded decisions** (restated so this section is self-contained): a single shared
 `monitoring` stack scrapes both envs (separation by namespace selector, not separate stacks);
@@ -561,6 +575,114 @@ To deploy this under your own project — your Docker Hub, your domain, your key
 - **Flux git URL / deploy key** — `flux-bootstrap.sh` defaults to
   `ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git`; override with
   `GIT_URL=… bash …` and add your own deploy key (step 6).
+
+## Rotate a secret
+
+`infra/k8s/scripts/rotate-secret.sh` rotates one key of an env's SOPS file: it re-encrypts the
+value in git, applies the Secret to the cluster and restarts the workload that reads it. Run
+it once per environment (`ENV=staging` is the default, `ENV=prod` for production) and commit
+the changed `.enc.yaml` afterward. Use a different value per environment.
+
+The value is **never** a command-line argument, because arguments land in shell history and
+are readable by every local user through `ps`. It comes from one of:
+
+```bash
+bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY --generate           # strong random value
+ENV=prod bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD             # hidden prompt, typed twice
+bash infra/k8s/scripts/rotate-secret.sh DISCORD_BUG_WEBHOOK_URL < hook.txt  # piped (one trailing newline is dropped)
+```
+
+Passing the value as a second argument is refused with an explanation. Under the hood the
+script hands the value to `sops set --value-stdin`; a `sops` too old for that flag is refused
+with the fix (reinstall the version `install-tools.sh` pins).
+
+| Secret                    | Rotate with                                    | What users notice                                                                                                                        | Rotate when                                                                                                        |
+| ------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `SECRET_KEY`              | `rotate-secret.sh SECRET_KEY --generate`       | Nothing. Flask's key; nothing in the app signs with it today (reset and verification links are random tokens stored as hashes).          | It may have leaked                                                                                                 |
+| `JWT_SECRET_KEY`          | `rotate-secret.sh JWT_SECRET_KEY --generate`   | **Everyone is logged out**: participants, mentors and the admin.                                                                         | It may have leaked; after an admin password leak (see next row)                                                    |
+| `ADMIN_PASSWORD_HASH`     | `rotate-secret.sh ADMIN_PASSWORD_HASH`         | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); on a leak; when an organizer with the password leaves |
+| `MAIL_PASSWORD`           | `rotate-secret.sh MAIL_PASSWORD`               | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                     |
+| `DISCORD_BUG_WEBHOOK_URL` | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`     | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                            |
+| Grafana `admin-password`  | `rotate-secret.sh --grafana admin-password`    | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                              |
+| age private keys          | [manual, below](#rotate-an-age-key)            | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                         |
+| DB / Redis passwords      | [not scripted, below](#db-and-redis-passwords) |                                                                                                                                          |                                                                                                                    |
+
+Notes per secret:
+
+- **`ADMIN_PASSWORD_HASH`**: give the script the **password**, not a hash. It needs at least
+  12 characters (the app's own minimum), is bcrypt-hashed locally (cost 12, needs
+  `python3-bcrypt`) and only the hash is stored. Piped input that already is a bcrypt hash is
+  stored as-is. The admin has no database row, so unlike participants and mentors, changing
+  the password does not revoke existing admin sessions. If the old password may have leaked,
+  also run `rotate-secret.sh JWT_SECRET_KEY --generate`; the script reminds you.
+- **`MAIL_PASSWORD`** is a Gmail app password of the account in `MAIL_USERNAME`. Create the new
+  app password in that Google account, rotate, check that a password-reset mail arrives, then
+  revoke the old app password.
+- **`DISCORD_BUG_WEBHOOK_URL`**: create a new webhook in the Discord channel settings, rotate,
+  send a test bug report, then delete the old webhook.
+- `--generate` is refused for `ADMIN_PASSWORD_HASH` (nobody would know the password), and an
+  empty value is always refused. To clear an optional secret, edit the file with `sops`.
+
+Other options: `RESTART=false` skips the restart (restart yourself later), and `NAMESPACE`,
+`SECRETS_ENC`, `SECRET_NAME`, `RESTART_TARGET` override the defaults. The script still
+refuses to write a file whose manifest namespace doesn't match `ENV`.
+
+### Grafana admin password
+
+```bash
+ENV=prod bash infra/k8s/scripts/rotate-secret.sh --grafana admin-password
+```
+
+`--grafana` targets the env's `grafana-secret.enc.yaml` (namespace `monitoring`, restarts
+`deployment/kps-grafana`). Updating the Secret alone is **not enough**: Grafana reads
+`GF_SECURITY_ADMIN_PASSWORD` only on its very first start, when it creates its database on
+the PVC, and ignores it after that. (Verified against `grafana/grafana:12.0.0`: after an env
+change and restart the new password is rejected and the old one still works.) So the script
+also runs `grafana cli admin reset-admin-password --password-from-stdin` in the pod, which
+changes the password stored in the database. Log in with the new password to confirm. If
+that last step fails, the Secret is already rotated but the old password still works: re-run
+the same command.
+
+`admin-user` has the same first-start-only behaviour and the CLI can't rename the account, so
+rotating it only changes the Secret; rename the account in Grafana's UI to match.
+
+### Rotate an age key
+
+Each environment's SOPS files are encrypted to one age key (`.sops.yaml`). Replace it when the
+private key may have leaked or when someone who holds it leaves. Example for staging; for
+prod use the `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
+
+```bash
+# 1. New key pair, appended next to the old one (keep the old one until step 5).
+(umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)   # prints "Public key: age1…"
+
+# 2. In .sops.yaml, replace the old age1… recipient in BOTH staging rules
+#    (secrets.enc.yaml and grafana-secret.enc.yaml) with the new one.
+
+# 3. Re-wrap both files to the new key (needs the old key, still in keys.txt):
+sops updatekeys -y infra/k8s/overlays/staging/secrets/secrets.enc.yaml
+sops updatekeys -y infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
+grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new age1… is listed
+
+# 4. Commit and push .sops.yaml and both files.
+
+# 5. Hand out the new private key and retire the old one:
+gh secret set SOPS_AGE_KEY_STAGING   # prompts; paste the new AGE-SECRET-KEY-1… line
+#    On every machine that deploys staging, add the new line to keys.txt (bootstrap.sh does
+#    it when SOPS_AGE_KEY_STAGING is exported) and delete the old key's lines.
+```
+
+`updatekeys` changes who can decrypt, not the values. Anyone holding the **old** key can still
+decrypt every old version of these files from git history, so if the old key leaked, also
+rotate every secret of that environment from the table above, including Grafana's.
+
+### DB and Redis passwords
+
+These are generated in-cluster by `deploy-stateful.sh` (`fmi-codes-db`, `fmi-codes-redis`) and
+the Postgres password is baked into the data volume at first boot. Changing the Secret alone
+breaks authentication, and deleting the Secret together with its PVC (the documented reset in
+[Phase 2](#2--stateful-tier-postgres--redis-sentinel)) **wipes the data**. There is no scripted
+rotation that keeps the data yet, so don't reset the PVC just to rotate a password.
 
 ## Change a config value
 
