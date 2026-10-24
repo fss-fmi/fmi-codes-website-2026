@@ -16,7 +16,7 @@ class Config:
 
     # Admin credentials — store bcrypt hash, never plaintext
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fmicodes.bg")
-    # Generate with: python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())"
+    # Generate with: python -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass().encode(), bcrypt.gensalt(12)).decode())"
     ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH")  # Must be set in .env
 
     # Request size guard — large bodies are fully parsed before any truncation otherwise
@@ -144,7 +144,8 @@ def validate_production_secrets():
     if not os.environ.get("ADMIN_PASSWORD_HASH"):
         raise RuntimeError(
             "CRITICAL: ADMIN_PASSWORD_HASH is not set. "
-            "Generate with: python -c \"import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())\""
+            'Generate with: python -c "import bcrypt, getpass; '
+            'print(bcrypt.hashpw(getpass.getpass().encode(), bcrypt.gensalt(12)).decode())"'
         )
 
 

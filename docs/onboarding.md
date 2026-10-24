@@ -40,11 +40,11 @@ Keep vitest and its `@vitest/*` companions on the same major version. On 2026-10
 
 `.env.example` documents every variable inline. For local development you must fill in:
 
-| Variable                       | How to get a value                                                                              |
-| ------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `SECRET_KEY`, `JWT_SECRET_KEY` | `python -c "import secrets; print(secrets.token_hex(32))"` (run twice)                          |
-| `ADMIN_PASSWORD_HASH`          | `python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt(12)).decode())"` |
-| `DB_PASSWORD`                  | Password of the Postgres role in `DB_USER`                                                      |
+| Variable                       | How to get a value                                                                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`, `JWT_SECRET_KEY` | `python -c "import secrets; print(secrets.token_hex(32))"` (run twice)                                                                                                    |
+| `ADMIN_PASSWORD_HASH`          | `python -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass().encode(), bcrypt.gensalt(12)).decode())"` (prompts, so the password stays out of shell history) |
+| `DB_PASSWORD`                  | Password of the Postgres role in `DB_USER`                                                                                                                                |
 
 Also check:
 

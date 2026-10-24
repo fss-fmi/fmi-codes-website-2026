@@ -190,11 +190,20 @@ if [ -f "$SECRETS_ENC" ]; then
     warn "ADMIN_PASSWORD_HASH is empty in secrets.enc.yaml"
     warn "The backend will CrashLoop until a valid bcrypt hash is written into the secrets file"
     echo
-    ask "Enter the admin password to hash and write into secrets.enc.yaml, or press Enter to skip:"
+    ask "Enter the admin password (min 12 chars) to hash and write into secrets.enc.yaml, or press Enter to skip:"
     ADMIN_PASS=""
     read -rs ADMIN_PASS || true
     echo
     if [ -n "$ADMIN_PASS" ]; then
+      [ "${#ADMIN_PASS}" -ge 12 ] || die "admin password must be at least 12 characters; nothing written"
+      ask "Repeat it:"
+      ADMIN_PASS_CONFIRM=""
+      read -rs ADMIN_PASS_CONFIRM || true
+      echo
+      [ "$ADMIN_PASS" = "$ADMIN_PASS_CONFIRM" ] || die "the two entries differ; nothing written"
+      unset ADMIN_PASS_CONFIRM
+      [[ "$(sops set --help 2>&1 || true)" == *--value-stdin* ]] \
+        || die "this sops has no 'set --value-stdin'; replace it with the version install-tools.sh pins (sudo rm \"$(command -v sops)\" && bash $INSTALL_TOOLS)"
       if ! command -v python3 >/dev/null 2>&1; then
         die "python3 not found — install it first: sudo apt-get install -y python3"
       fi
@@ -205,12 +214,14 @@ if [ -f "$SECRETS_ENC" ]; then
       fi
       ADMIN_HASH="$(ADMIN_PASS="$ADMIN_PASS" python3 -c \
         "import bcrypt, os; print(bcrypt.hashpw(os.environ['ADMIN_PASS'].encode(), bcrypt.gensalt(12)).decode())")"
-      sops set "$SECRETS_ENC" \
-        '["stringData"]["ADMIN_PASSWORD_HASH"]' "\"$ADMIN_HASH\""
+      unset ADMIN_PASS
+      # Through stdin: an argument would show the hash to every local user via ps.
+      printf '"%s"' "$ADMIN_HASH" | sops set --value-stdin "$SECRETS_ENC" '["stringData"]["ADMIN_PASSWORD_HASH"]'
+      unset ADMIN_HASH
       ok "hash written into secrets.enc.yaml — commit and push this file before deploying to other servers"
     else
       warn "Skipping — backend will CrashLoop. Fix later with:"
-      echo "  bash infra/k8s/scripts/rotate-secret.sh ADMIN_PASSWORD_HASH"
+      echo "  ENV=$ENV bash infra/k8s/scripts/rotate-secret.sh ADMIN_PASSWORD_HASH"
     fi
   fi
 else
