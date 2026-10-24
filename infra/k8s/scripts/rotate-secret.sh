@@ -155,7 +155,8 @@ case "$KEY" in
     echo "Every login token is now invalid: all participants, mentors and the admin must log in again." ;;
   ADMIN_PASSWORD_HASH)
     echo "Admin sessions issued before this stay valid until they expire (JWT_EXPIRY_DAYS)."
-    echo "If the old password may have leaked, also run: ENV=$ENV $(basename "$0") JWT_SECRET_KEY --generate" ;;
+    echo "If the old password leaked, you MUST also run (logs everyone out):"
+    echo "  ENV=$ENV bash $0 JWT_SECRET_KEY --generate" ;;
 esac
 
 log "Done. Commit the updated $SECRETS_ENC so the change is the new source of truth."

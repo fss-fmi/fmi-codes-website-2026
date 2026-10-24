@@ -596,25 +596,40 @@ Passing the value as a second argument is refused with an explanation. Under the
 script hands the value to `sops set --value-stdin`; a `sops` too old for that flag is refused
 with the fix (reinstall the version `install-tools.sh` pins).
 
-| Secret                    | Rotate with                                    | What users notice                                                                                                                        | Rotate when                                                                                                        |
-| ------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `SECRET_KEY`              | `rotate-secret.sh SECRET_KEY --generate`       | Nothing. Flask's key; nothing in the app signs with it today (reset and verification links are random tokens stored as hashes).          | It may have leaked                                                                                                 |
-| `JWT_SECRET_KEY`          | `rotate-secret.sh JWT_SECRET_KEY --generate`   | **Everyone is logged out**: participants, mentors and the admin.                                                                         | It may have leaked; after an admin password leak (see next row)                                                    |
-| `ADMIN_PASSWORD_HASH`     | `rotate-secret.sh ADMIN_PASSWORD_HASH`         | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); on a leak; when an organizer with the password leaves |
-| `MAIL_PASSWORD`           | `rotate-secret.sh MAIL_PASSWORD`               | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                     |
-| `DISCORD_BUG_WEBHOOK_URL` | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`     | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                            |
-| Grafana `admin-password`  | `rotate-secret.sh --grafana admin-password`    | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                              |
-| age private keys          | [manual, below](#rotate-an-age-key)            | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                         |
-| DB / Redis passwords      | [not scripted, below](#db-and-redis-passwords) |                                                                                                                                          |                                                                                                                    |
+| Secret                    | Rotate with                                    | What users notice                                                                                                                        | Rotate when                                                                                                                                                                    |
+| ------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SECRET_KEY`              | `rotate-secret.sh SECRET_KEY --generate`       | Nothing. Flask's key; nothing in the app signs with it today (reset and verification links are random tokens stored as hashes).          | It may have leaked                                                                                                                                                             |
+| `JWT_SECRET_KEY`          | `rotate-secret.sh JWT_SECRET_KEY --generate`   | **Everyone is logged out**: participants, mentors and the admin.                                                                         | It may have leaked; after an admin password leak (see next row)                                                                                                                |
+| `ADMIN_PASSWORD_HASH`     | `rotate-secret.sh ADMIN_PASSWORD_HASH`         | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); when an organizer with the password leaves; on a leak, **together with `JWT_SECRET_KEY`** (see the warning below) |
+| `MAIL_PASSWORD`           | `rotate-secret.sh MAIL_PASSWORD`               | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                                                                                 |
+| `DISCORD_BUG_WEBHOOK_URL` | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`     | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| Grafana `admin-password`  | `rotate-secret.sh --grafana admin-password`    | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
+| age private keys          | [manual, below](#rotate-an-age-key)            | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
+| DB / Redis passwords      | [not scripted, below](#db-and-redis-passwords) |                                                                                                                                          |                                                                                                                                                                                |
+
+!!! warning "If the admin password leaks, rotate `JWT_SECRET_KEY` too"
+
+    Changing `ADMIN_PASSWORD_HASH` alone does **not** lock out whoever has the old password.
+    The admin has no database row, so there is no per-user revocation like participants and
+    mentors have: any admin session opened with the leaked password stays valid until it
+    expires (`JWT_EXPIRY_DAYS`, 3 days by default). The only way to end those sessions is to
+    rotate `JWT_SECRET_KEY`, which invalidates **every** login token, so **everyone is logged
+    out**: all participants, all mentors and the admin. Do both, in this order, per environment:
+
+    ```bash
+    ENV=prod bash infra/k8s/scripts/rotate-secret.sh ADMIN_PASSWORD_HASH
+    ENV=prod bash infra/k8s/scripts/rotate-secret.sh JWT_SECRET_KEY --generate
+    ```
+
+    During the event, warn participants and mentors first; they only need to log in again.
+    Nothing else is lost (teams, applications and preferences live in the database).
 
 Notes per secret:
 
 - **`ADMIN_PASSWORD_HASH`**: give the script the **password**, not a hash. It needs at least
   12 characters (the app's own minimum), is bcrypt-hashed locally (cost 12, needs
   `python3-bcrypt`) and only the hash is stored. Piped input that already is a bcrypt hash is
-  stored as-is. The admin has no database row, so unlike participants and mentors, changing
-  the password does not revoke existing admin sessions. If the old password may have leaked,
-  also run `rotate-secret.sh JWT_SECRET_KEY --generate`; the script reminds you.
+  stored as-is. On a leak, also rotate `JWT_SECRET_KEY` (warning above); the script reminds you.
 - **`MAIL_PASSWORD`** is a Gmail app password of the account in `MAIL_USERNAME`. Create the new
   app password in that Google account, rotate, check that a password-reset mail arrives, then
   revoke the old app password.
