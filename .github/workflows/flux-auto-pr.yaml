@@ -1,5 +1,10 @@
 name: Open PR for Flux image bump
 
+# Runs as the fmi-codes-bot GitHub App, not GITHUB_TOKEN: CI on a PR opened with
+# GITHUB_TOKEN waits for a manual "Approve workflows to run", and GITHUB_TOKEN can't
+# enable auto-merge here. With the app token CI starts by itself and the bump
+# squash-merges as soon as the required checks pass.
+
 on:
   push:
     branches:
@@ -8,30 +13,32 @@ on:
 jobs:
   open-pr:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
+    permissions: {}
 
     steps:
-      - name: Open pull request
+      - name: Get a fmi-codes-bot token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
+      - name: Open pull request and enable auto-merge
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          existing_state=$(gh pr list --base main --head flux-image-updates \
-            --repo "$GITHUB_REPOSITORY" --json number,state --jq '.[0].state // "NONE"')
-          if [ "$existing_state" = "NONE" ]; then
+          pr_url=$(gh pr list --base main --head flux-image-updates \
+            --repo "$GITHUB_REPOSITORY" --json url --jq '.[0].url // ""')
+          if [ -z "$pr_url" ]; then
             commit_msg=$(gh api "repos/$GITHUB_REPOSITORY/commits/flux-image-updates" --jq '.commit.message | split("\n")[0]')
             pr_url=$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --base main \
               --head flux-image-updates \
               --title "$commit_msg" \
-              --body "Automated tag bump by Flux image-automation. Review and merge to roll the updated image(s) to the cluster.")
-            gh pr merge "$pr_url" --auto --squash \
-              || echo "::warning::Auto-merge failed for $pr_url — ensure 'Allow auto-merge' is enabled in repo settings; the staging bump is unmerged"
-          elif [ "$existing_state" = "OPEN" ]; then
-            pr_url=$(gh pr list --base main --head flux-image-updates \
-              --repo "$GITHUB_REPOSITORY" --json url --jq '.[0].url')
-            gh pr merge "$pr_url" --auto --squash \
-              || echo "::warning::Auto-merge failed for $pr_url — ensure 'Allow auto-merge' is enabled in repo settings; the staging bump is unmerged"
+              --body "Automated tag bump by Flux image-automation. Merges itself once the required checks pass; staging then redeploys.")
+          fi
+          if ! gh pr merge "$pr_url" --auto --squash; then
+            echo "::error::Could not enable auto-merge on $pr_url, so this staging bump will not merge by itself. Check that 'Allow auto-merge' is on in the repo settings and that fmi-codes-bot has Contents and Pull requests write access."
+            exit 1
           fi
