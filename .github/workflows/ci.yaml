@@ -118,6 +118,15 @@ jobs:
             kubectl kustomize "infra/k8s/overlays/$env" > /dev/null
           done
 
+      - name: Build every path a Flux Kustomization reconciles
+        run: |
+          paths=$(grep -E '^\s+path: \./' infra/k8s/flux/source.yaml | awk '{print $2}')
+          [ -n "$paths" ] || { echo "no Kustomization paths found in source.yaml" >&2; exit 1; }
+          for p in $paths; do
+            echo "kustomize $p"
+            kubectl kustomize "$p" > /dev/null
+          done
+
       - name: Validate the rendered db-migrate Job
         run: |
           tmp=$(mktemp -d)

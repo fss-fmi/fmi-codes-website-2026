@@ -126,7 +126,7 @@ After any deploy also confirm the two invariants from the runbook: a push to `ma
 
 ## Monitoring
 
-Self-hosted kube-prometheus-stack in the `monitoring` namespace scrapes both app namespaces with 14-day retention. Grafana provisions "FMI Production" and "FMI Staging" dashboards (request rate, latency percentiles, error rate). Logs: `kubectl -n fmi-codes logs -f deploy/backend`. Setup and access details: [runbook section 7](runbook.md#7--observability-prometheus--grafana).
+Self-hosted kube-prometheus-stack in the `monitoring` namespace scrapes both app namespaces with 14-day retention. Grafana provisions "FMI Production" and "FMI Staging" dashboards (request rate, latency percentiles, error rate) and is reachable only over the `fss-fmi` Tailscale tailnet (`kubectl -n monitoring get ingress grafana` shows its address). Logs: `kubectl -n fmi-codes logs -f deploy/backend`. Setup and access details: [runbook section 7](runbook.md#7--observability-prometheus--grafana).
 
 ## Local production-like run
 

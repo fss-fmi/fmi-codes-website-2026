@@ -1,0 +1,21 @@
+# Tailnet-only: the Tailscale operator serves this as https://grafana.<tailnet>.ts.net with its
+# own certificate. It never touches ingress-nginx, so Grafana stays reachable when either app
+# env's ingress is down or not bootstrapped.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+spec:
+  ingressClassName: tailscale
+  defaultBackend:
+    service:
+      name: kps-grafana
+      port:
+        number: 80
+  tls:
+    - hosts:
+        - grafana

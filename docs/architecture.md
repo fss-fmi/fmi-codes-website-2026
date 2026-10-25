@@ -18,6 +18,9 @@ graph TD
     Discord["Discord webhook"]
     Slack["Slack webhook"]
     Prom["Prometheus"]
+    Grafana["Grafana"]
+    TS["Tailscale proxy<br/>(operator-managed)"]
+    Dev["Developer device<br/>(Tailscale app)"]
 
     Browser -->|HTTPS| Ingress
     Ingress -->|"/ (static)"| Nginx
@@ -28,6 +31,9 @@ graph TD
     API -->|bug reports| Discord
     API -->|"bug reports, migration results (initContainer, Job)"| Slack
     Prom -->|"scrape /metrics (in-cluster)"| API
+    Dev -->|"HTTPS over the tailnet"| TS
+    TS --> Grafana
+    Grafana --> Prom
 ```
 
 In production the cluster ingress routes `/api` and `/static` straight to the backend Service and everything else to the frontend. The frontend image's own `nginx.conf` also proxies `/api` and `/static` to `http://backend:5001`, which is how the Docker Compose stack works with the same image.
@@ -110,7 +116,7 @@ The algorithm core (`_run_algorithm`) is pure and has no Flask or DB dependencie
 
 ## Observability
 
-`prometheus_flask_exporter` registers `/metrics` at the backend root. Prometheus scrapes it in-cluster through a ServiceMonitor; the public ingress deliberately does not route `/metrics`. Counters are per Gunicorn worker (not aggregated). Health probes: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready` (readiness: pooled `SELECT 1`, Redis reported but never gating). Details in the [runbook](runbook.md#7--observability-prometheus--grafana).
+`prometheus_flask_exporter` registers `/metrics` at the backend root. Prometheus scrapes it in-cluster through a ServiceMonitor; the public ingress deliberately does not route `/metrics`. Counters are per Gunicorn worker (not aggregated). Health probes: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready` (readiness: pooled `SELECT 1`, Redis reported but never gating). One kube-prometheus-stack serves both environments and depends on neither. Grafana is reachable only over the `fss-fmi` Tailscale tailnet: the Tailscale operator serves its Ingress as `https://grafana.<tailnet>.ts.net`, bypassing ingress-nginx ([ADR-008](adr/008-grafana-over-tailscale.md)). Details in the [runbook](runbook.md#7--observability-prometheus--grafana).
 
 ## Testing approach
 
@@ -133,17 +139,19 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 - [ADR-005](adr/005-gale-shapley-plus-greedy-fill.md): many-to-many Gale-Shapley plus greedy fill for mentor matching.
 - [ADR-006](adr/006-self-hosted-k3s-pull-based-gitops.md): self-hosted k3s with pull-based Flux GitOps and a manual prod gate.
 - [ADR-007](adr/007-recorded-migrations-runner.md): recorded migrations, applied by a backend initContainer on every rollout and on demand by a backed-up Job.
+- [ADR-008](adr/008-grafana-over-tailscale.md): one shared Grafana, reached only over a Tailscale tailnet.
 
 ## External dependencies
 
-| Dependency                 | Used for                                              | Required                    |
-| -------------------------- | ----------------------------------------------------- | --------------------------- |
-| PostgreSQL 16              | All durable state                                     | Yes                         |
-| Redis 7 (Sentinel in prod) | Rate-limit storage, JWT blocklist, caches             | No (degrades)               |
-| SMTP (Gmail by default)    | Password reset links, join-request emails to captains | No (features silently fail) |
-| Discord webhook            | Bug reports                                           | No                          |
-| Slack incoming webhooks    | Bug reports, database migration results               | No                          |
-| Docker Hub (`fssfmi/*`)    | Image registry                                        | For deploys                 |
+| Dependency                    | Used for                                              | Required                                     |
+| ----------------------------- | ----------------------------------------------------- | -------------------------------------------- |
+| PostgreSQL 16                 | All durable state                                     | Yes                                          |
+| Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches             | No (degrades)                                |
+| SMTP (Gmail by default)       | Password reset links, join-request emails to captains | No (features silently fail)                  |
+| Discord webhook               | Bug reports                                           | No                                           |
+| Slack incoming webhooks       | Bug reports, database migration results               | No                                           |
+| Docker Hub (`fssfmi/*`)       | Image registry                                        | For deploys                                  |
+| Tailscale (`fss-fmi` tailnet) | Developer access to Grafana                           | No (Grafana only via `kubectl port-forward`) |
 
 ## Known gaps
 

@@ -5,6 +5,12 @@ creation_rules:
   - path_regex: infra/k8s/secrets/grafana-secret\.enc\.yaml$
     encrypted_regex: "^(data|stringData)$"
     age: age18h3rtu53ysz3pgf9qphcceewy04qp5049trpclav5es7mw86lensqwk9lf
+  - path_regex: infra/k8s/overlays/staging/secrets/tailscale-oauth\.enc\.yaml$
+    encrypted_regex: "^(data|stringData)$"
+    age: age1u6a3nspvhhdm960l0vsq8se88f0wdpgttypxhn6untksvnkafufqv95dhh
+  - path_regex: infra/k8s/secrets/tailscale-oauth\.enc\.yaml$
+    encrypted_regex: "^(data|stringData)$"
+    age: age18h3rtu53ysz3pgf9qphcceewy04qp5049trpclav5es7mw86lensqwk9lf
   - path_regex: infra/k8s/overlays/staging/secrets/secrets\.enc\.yaml$
     encrypted_regex: "^(data|stringData)$"
     age: age1u6a3nspvhhdm960l0vsq8se88f0wdpgttypxhn6untksvnkafufqv95dhh

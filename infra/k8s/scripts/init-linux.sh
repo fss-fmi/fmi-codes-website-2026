@@ -24,7 +24,8 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
   5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
-  7. deploy-observability.sh  Grafana admin secret (Flux installs kube-prometheus-stack; only with --with-observability)
+  7. deploy-observability.sh  Grafana admin + Tailscale OAuth secrets (Flux installs kube-prometheus-stack
+                              and the Tailscale operator; only with --with-observability)
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
@@ -34,8 +35,8 @@ fix the cause and resume without redoing earlier steps:
   --from N                start at step N (1-7). Default 1.
   --with-flux             also run step 6 (Flux GitOps). Off by default because it needs an
                           SSH deploy key present — see README 'Phase 6' before enabling.
-  --with-observability    also run step 7 (Grafana admin secret; Flux then reconciles the
-                          kube-prometheus-stack chart automatically). Requires --with-flux
+  --with-observability    also run step 7 (Grafana admin + Tailscale OAuth secrets; Flux then
+                          reconciles kube-prometheus-stack and the Tailscale operator). Requires --with-flux
                           and the env's age key at ~/.config/sops/age/keys.txt — see
                           README 'Phase 7' before enabling.
 

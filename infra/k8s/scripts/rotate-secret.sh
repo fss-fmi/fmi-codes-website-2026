@@ -4,6 +4,7 @@ set -euo pipefail
 
 ENV="${ENV:-staging}"
 GRAFANA=false
+TAILSCALE=false
 GENERATE=false
 KEY=""
 
@@ -12,7 +13,7 @@ log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--grafana] KEY [--generate]
+Usage: $(basename "$0") [--grafana|--tailscale] KEY [--generate]
 
 Rotate a single key in a SOPS-encrypted secret, re-apply it to the cluster,
 and restart the workload so pods pick up the new value.
@@ -21,12 +22,19 @@ and restart the workload so pods pick up the new value.
               (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH,
               MAIL_PASSWORD, DISCORD_BUG_WEBHOOK_URL,
               SLACK_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL),
-              or with --grafana: admin-password.
+              with --grafana: admin-password,
+              with --tailscale: client_id or client_secret.
   --generate  Use a strong random value (SECRET_KEY, JWT_SECRET_KEY).
   --grafana   Rotate the env's grafana-secret.enc.yaml (namespace monitoring,
               restarts deployment/kps-grafana). For admin-password it also
               resets the password stored in Grafana's database, because
               Grafana only reads the secret on its very first start.
+  --tailscale Rotate the env's tailscale-oauth.enc.yaml, the operator's OAuth
+              client (namespace tailscale, restarts deployment/operator).
+
+The Grafana and Tailscale Secrets are cluster-wide, so the script refuses to
+overwrite one that holds the other env's credentials (ALLOW_ENV_SWITCH=true
+switches on purpose).
 
 The value is never taken as an argument (that leaks it into shell history and
 ps). Without --generate it is read from:
@@ -45,6 +53,7 @@ Examples:
   ENV=prod $(basename "$0") ADMIN_PASSWORD_HASH
   $(basename "$0") DISCORD_BUG_WEBHOOK_URL < webhook.txt
   ENV=prod $(basename "$0") --grafana admin-password
+  ENV=prod $(basename "$0") --tailscale client_secret
 EOF
 }
 
@@ -53,6 +62,7 @@ while [ $# -gt 0 ]; do
     -h|--help) usage; exit 0 ;;
     --generate) GENERATE=true; shift ;;
     --grafana) GRAFANA=true; shift ;;
+    --tailscale) TAILSCALE=true; shift ;;
     -*) die "unknown option '$1' (see --help)" ;;
     *)
       [ -z "$KEY" ] || die "unexpected argument after $KEY. Values are no longer accepted as arguments (they leak into shell history and ps); run without it to be prompted, or pipe it on stdin. See --help."
@@ -60,6 +70,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$KEY" ] || { usage; exit 1; }
+[ "$GRAFANA" = "false" ] || [ "$TAILSCALE" = "false" ] || die "--grafana and --tailscale target different secrets; pick one."
 
 case "$ENV" in
   prod)    DEFAULT_NAMESPACE="fmi-codes"; SECRETS_REL="secrets" ;;
@@ -73,6 +84,11 @@ if [ "$GRAFANA" = "true" ]; then
   SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/grafana-secret.enc.yaml}"
   SECRET_NAME="${SECRET_NAME:-grafana-admin}"
   RESTART_TARGET="${RESTART_TARGET:-deployment/kps-grafana}"
+elif [ "$TAILSCALE" = "true" ]; then
+  NAMESPACE="${NAMESPACE:-tailscale}"
+  SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/tailscale-oauth.enc.yaml}"
+  SECRET_NAME="${SECRET_NAME:-operator-oauth}"
+  RESTART_TARGET="${RESTART_TARGET:-deployment/operator}"
 else
   NAMESPACE="${NAMESPACE:-$DEFAULT_NAMESPACE}"
   SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/secrets.enc.yaml}"
@@ -98,6 +114,19 @@ secret_ns="$(sops --decrypt "$SECRETS_ENC" | grep -E '^[[:space:]]+namespace:' |
 sops --decrypt "$SECRETS_ENC" \
   | grep -qE "^[[:space:]]+$(printf '%s' "$KEY" | sed 's/[.[\*^$/]/\\&/g'):" \
   || die "key '$KEY' not found in $SECRETS_ENC stringData."
+
+# Same label and rule as deploy-observability.sh.
+ENV_LABEL="fmi-codes/secrets-env"
+CLUSTER_WIDE=false
+if [ "$GRAFANA" = "true" ] || [ "$TAILSCALE" = "true" ]; then
+  CLUSTER_WIDE=true
+  live_env="$(kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" --ignore-not-found \
+    -o go-template="{{index .metadata.labels \"$ENV_LABEL\"}}" 2>/dev/null || true)"
+  live_env="${live_env#<no value>}"
+  if [ -n "$live_env" ] && [ "$live_env" != "$ENV" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ]; then
+    die "$NAMESPACE/$SECRET_NAME holds the $live_env credentials; refusing to replace them with $ENV's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose."
+  fi
+fi
 
 if [ "$GENERATE" = "true" ]; then
   [ "$KEY" != "ADMIN_PASSWORD_HASH" ] || die "--generate makes no sense for ADMIN_PASSWORD_HASH; you need to know the password."
@@ -131,6 +160,9 @@ VALUE="$VALUE" python3 -c 'import json,os;print(json.dumps(os.environ["VALUE"]))
 
 log "Applying updated secret from $SECRETS_ENC"
 sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
+if [ "$CLUSTER_WIDE" = "true" ]; then
+  kubectl -n "$NAMESPACE" label secret "$SECRET_NAME" "$ENV_LABEL=$ENV" --overwrite >/dev/null
+fi
 
 if [ "$RESTART" = "true" ]; then
   log "Restarting $RESTART_TARGET so pods pick up the rotated value"

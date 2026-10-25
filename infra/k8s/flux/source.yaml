@@ -91,11 +91,11 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fmi-codes
-  path: ./infra/k8s/overlays/prod/observability
+  # Shared by both envs and tied to neither: it must come up on a staging-only cluster and
+  # stay up when an app env's ingress is broken.
+  path: ./infra/k8s/base/observability
   prune: true
   wait: true
-  dependsOn:
-    - name: fmi-codes-ingress
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -109,7 +109,8 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fmi-codes
-  path: ./infra/k8s/overlays/prod/monitors
+  # One ServiceMonitor scrapes both app namespaces; it needs the CRDs the kps chart installs.
+  path: ./infra/k8s/base/observability/monitors
   prune: true
   wait: true
   dependsOn:
@@ -118,19 +119,15 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: fmi-codes-staging-monitors
+  name: fmi-codes-tailscale
   namespace: flux-system
 spec:
   interval: 5m
-  retryInterval: 30s
-  timeout: 5m
+  retryInterval: 2m
+  timeout: 10m
   sourceRef:
     kind: GitRepository
     name: fmi-codes
-  path: ./infra/k8s/overlays/staging/monitors
+  path: ./infra/k8s/base/tailscale
   prune: true
   wait: true
-  dependsOn:
-    # kube-prometheus-stack is a single shared install deployed via fmi-codes-observability.
-    # Both prod and staging ServiceMonitors depend on it — there is no separate staging kps.
-    - name: fmi-codes-observability
