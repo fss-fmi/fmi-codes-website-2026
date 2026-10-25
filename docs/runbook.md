@@ -592,11 +592,13 @@ two steps touch the repo.
    prompts are hidden; the values never touch argv, history or a temp file:
 
    ```bash
-   ENV=prod RESTART=false bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
    ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
    ```
 
-   Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
+   While one half is still empty the script only stores the value and says which key to set
+   next; the second command applies the complete pair, so the operator never starts with half
+   of it. Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
    `overlays/staging/secrets/tailscale-oauth.enc.yaml`).
 
 7. **Verify.** `kubectl -n tailscale get pods` shows the operator Running, the admin console's
@@ -818,8 +820,9 @@ ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
 
 An OAuth client's ID and secret come as a pair, so a rotation always replaces both: create a
 new client in the admin console with the same scopes and tag as the old one
-([Tailscale setup](#tailscale-setup-once-per-tailnet), step 5), run the two commands (the first
-skips the restart so the operator never starts with a half-updated pair), confirm
+([Tailscale setup](#tailscale-setup-once-per-tailnet), step 5), run the two commands back to back
+(the first skips the restart so the running operator isn't restarted onto a half-updated
+pair), confirm
 `kubectl -n tailscale get pods` shows the operator Running again, then revoke the old client.
 `--tailscale` targets the env's `tailscale-oauth.enc.yaml` (namespace `tailscale`, restarts
 `deployment/operator`). Like `--grafana`, it refuses to overwrite a Secret that holds the other

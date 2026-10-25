@@ -158,6 +158,17 @@ log "Rotating '$KEY' in $SECRETS_ENC"
 VALUE="$VALUE" python3 -c 'import json,os;print(json.dumps(os.environ["VALUE"]))' \
   | sops set --value-stdin "$SECRETS_ENC" "[\"stringData\"][\"$KEY\"]"
 
+# The OAuth client is a pair. Applying it half-filled would let the waiting operator pod start
+# with credentials that can't authenticate.
+if [ "$TAILSCALE" = "true" ] && sops --decrypt "$SECRETS_ENC" \
+    | grep -qE "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$"; then
+  unset VALUE
+  if [ "$KEY" = "client_id" ]; then OTHER_KEY="client_secret"; else OTHER_KEY="client_id"; fi
+  log "Stored '$KEY' in $SECRETS_ENC. Not applied yet: '$OTHER_KEY' is still empty. Set it next:"
+  echo "  ENV=$ENV bash $0 --tailscale $OTHER_KEY"
+  exit 0
+fi
+
 log "Applying updated secret from $SECRETS_ENC"
 sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
 if [ "$CLUSTER_WIDE" = "true" ]; then

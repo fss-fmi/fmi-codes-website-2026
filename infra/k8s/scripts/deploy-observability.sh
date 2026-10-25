@@ -71,7 +71,7 @@ if sops --decrypt "$TAILSCALE_SECRET_ENC" 2>/dev/null \
   TAILSCALE_STATUS="skipped"
   warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana has no tailnet address.
   Create the OAuth client (docs/runbook.md 'Phase 7'), then:
-    ENV=$ENV RESTART=false bash $SCRIPT_DIR/rotate-secret.sh --tailscale client_id
+    ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --tailscale client_id
     ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --tailscale client_secret"
 else
   apply_secret "$TAILSCALE_SECRET_ENC" "$TAILSCALE_NS"
