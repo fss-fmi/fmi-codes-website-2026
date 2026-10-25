@@ -279,6 +279,21 @@ Both are idempotent. Versions are pinned via `*_VERSION` env vars at the top of 
 override to upgrade (e.g. `K3S_VERSION=v1.37.0+k3s1 bash …`). `install-tools.sh` downloads
 each binary pinned and SHA256-verified — nothing is piped into a shell.
 
+**Old images are removed after 7 days unused.** The kubelet's default image cleanup only starts
+at 85% disk. On WSL2 that is 85% of a 1 TB virtual disk, so the Windows drive fills first and every
+deployed version piles up. `bootstrap-k3s.sh` therefore writes a kubelet drop-in,
+`/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/50-image-gc.conf`, with
+`imageMaximumGCAge: 168h` (override with `IMAGE_MAX_GC_AGE`). On an existing node a re-run
+restarts k3s only when that file changed; pods keep running through it. Images used in the last
+7 days stay on the node, so a rollback within that window starts without a pull; older ones are
+pulled from Docker Hub again, which keeps every tag. The running image is never removed, and the
+85% backstop stays in place. Check what the kubelet loaded:
+
+```bash
+NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+kubectl get --raw "/api/v1/nodes/$NODE/proxy/configz" | grep -o '"imageMaximumGCAge":"[^"]*"'
+```
+
 **k3s installs as a systemd service, so it survives reboot** — on a real Linux host. Default
 WSL2 has systemd off, so either enable it once (`/etc/wsl.conf` → `[boot]\nsystemd=true`,
 then `wsl --shutdown`) or just re-run `bootstrap-k3s.sh` after each WSL relaunch (idempotent,
