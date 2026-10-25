@@ -124,6 +124,61 @@ class TestConnectionParams:
         assert params["password"] == "has spaces ' and quotes"
 
 
+class TestConnect:
+    @pytest.fixture()
+    def clock(self, monkeypatch):
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        monkeypatch.setattr(migrate.time, "monotonic", lambda: now[0])
+        monkeypatch.setattr(migrate.time, "sleep", sleep)
+        return now
+
+    def _refuse(self, monkeypatch, refusals):
+        calls = []
+
+        def connect(*args, **kwargs):
+            calls.append((args, kwargs))
+            if len(calls) <= refusals:
+                raise migrate.psycopg2.OperationalError("connection refused")
+            return "conn"
+
+        monkeypatch.setattr(migrate.psycopg2, "connect", connect)
+        return calls
+
+    def test_connects_once_postgres_is_up(self, monkeypatch, clock):
+        calls = self._refuse(monkeypatch, refusals=3)
+        assert migrate._connect({"host": "postgres"}) == "conn"
+        assert len(calls) == 4
+        assert clock[0] == 3 * migrate.CONNECT_RETRY_SECONDS
+
+    def test_gives_up_after_the_wait_window(self, monkeypatch, clock):
+        self._refuse(monkeypatch, refusals=10_000)
+        with pytest.raises(migrate.psycopg2.OperationalError):
+            migrate._connect({"host": "postgres"})
+        assert clock[0] <= migrate.CONNECT_WAIT_SECONDS
+
+    def test_non_connection_errors_are_not_retried(self, monkeypatch, clock):
+        calls = []
+
+        def connect(*args, **kwargs):
+            calls.append(args)
+            raise migrate.psycopg2.ProgrammingError("invalid dsn")
+
+        monkeypatch.setattr(migrate.psycopg2, "connect", connect)
+        with pytest.raises(migrate.psycopg2.ProgrammingError):
+            migrate._connect("bogus")
+        assert len(calls) == 1
+
+    def test_every_attempt_has_a_timeout(self, monkeypatch, clock):
+        calls = self._refuse(monkeypatch, refusals=1)
+        migrate._connect("postgresql://u:p@h/db")
+        migrate._connect({"host": "postgres"})
+        assert all(kw["connect_timeout"] == migrate.CONNECT_ATTEMPT_TIMEOUT for _, kw in calls)
+
+
 class TestNotify:
     @pytest.fixture()
     def sent(self, monkeypatch):

@@ -22,19 +22,19 @@ Counts are `def test_` occurrences, so parametrised tests run more cases than li
 
 ### Backend unit tests (`tests/`)
 
-| File                         | What it covers                                                                                                                                                          |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_matching.py`           | `_run_algorithm`: mutual matches, capacity limits (`TEAM_CAPACITY`, `MENTOR_CAPACITY`), displacement, greedy fill, underfill warnings                                   |
-| `test_auth_service.py`       | bcrypt hashing, JWT generation and decoding, expiry                                                                                                                     |
-| `test_redis_client.py`       | Sentinel parsing, limiter storage URI, jittered TTLs, fail-open helpers                                                                                                 |
-| `test_cache_services.py`     | Cache hit/miss/corrupt paths for mentors, rankings, regulations; fallback when Redis is down                                                                            |
-| `test_health_endpoints.py`   | `/api/health` and `/api/health/ready` across DB/Redis states                                                                                                            |
-| `test_limiter_storage.py`    | Rate-limiter storage wiring                                                                                                                                             |
-| `test_metrics_endpoint.py`   | `/metrics` is exposed                                                                                                                                                   |
-| `test_team_service.py`       | Join code format and the 6 / 18 / 3 business constants                                                                                                                  |
-| `test_email_verification.py` | Verification email contents and SMTP failure handling; the `REQUIRE_EMAIL_VERIFICATION` gate decorator                                                                  |
-| `test_bug_report_service.py` | Slack and Discord bug-report payloads, Slack escaping (no `<!channel>` pings) and length limits, which webhooks get a report, send failures never raise                 |
-| `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Slack reporting modes, message escaping and truncation, connection settings |
+| File                         | What it covers                                                                                                                                                                                           |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_matching.py`           | `_run_algorithm`: mutual matches, capacity limits (`TEAM_CAPACITY`, `MENTOR_CAPACITY`), displacement, greedy fill, underfill warnings                                                                    |
+| `test_auth_service.py`       | bcrypt hashing, JWT generation and decoding, expiry                                                                                                                                                      |
+| `test_redis_client.py`       | Sentinel parsing, limiter storage URI, jittered TTLs, fail-open helpers                                                                                                                                  |
+| `test_cache_services.py`     | Cache hit/miss/corrupt paths for mentors, rankings, regulations; fallback when Redis is down                                                                                                             |
+| `test_health_endpoints.py`   | `/api/health` and `/api/health/ready` across DB/Redis states                                                                                                                                             |
+| `test_limiter_storage.py`    | Rate-limiter storage wiring                                                                                                                                                                              |
+| `test_metrics_endpoint.py`   | `/metrics` is exposed                                                                                                                                                                                    |
+| `test_team_service.py`       | Join code format and the 6 / 18 / 3 business constants                                                                                                                                                   |
+| `test_email_verification.py` | Verification email contents and SMTP failure handling; the `REQUIRE_EMAIL_VERIFICATION` gate decorator                                                                                                   |
+| `test_bug_report_service.py` | Slack and Discord bug-report payloads, Slack escaping (no `<!channel>` pings) and length limits, which webhooks get a report, send failures never raise                                                  |
+| `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Slack reporting modes, message escaping and truncation, connection settings, waiting for Postgres on startup |
 
 Scope: a single function or a single route with dependencies replaced. No database. Runs in seconds.
 
