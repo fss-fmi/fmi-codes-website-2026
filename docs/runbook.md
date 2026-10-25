@@ -193,6 +193,33 @@ The private key never leaves the server and is never committed. Override the pat
 `DEPLOY_KEY=/path/to/key` if you keep it elsewhere. `init-linux.sh --with-flux` runs this as
 step 6 automatically once the key file exists.
 
+#### GitHub bot app for automated PRs
+
+The bump, migrate and promote workflows open their PRs as a GitHub App (`fmi-codes-bot`)
+instead of the built-in `GITHUB_TOKEN`. GitHub holds CI on a PR opened with `GITHUB_TOKEN`
+until someone clicks **Approve workflows to run**, and that token can't enable auto-merge,
+so without the app every staging bump stalls. One-time setup, by an org admin:
+
+1. **Create it:** org **Settings → Developer settings → GitHub Apps → New GitHub App**. Name it,
+   set the homepage to the repo URL, untick **Webhook → Active**. Repository permissions:
+   **Contents: Read and write** and **Pull requests: Read and write** (Metadata read-only is
+   added automatically), nothing else. No events. Installable **only on this account**.
+2. **Credentials:** copy the **Client ID** from the app page, then **Generate a private key**
+   (a `.pem` downloads).
+3. **Install it:** **Install App → Only select repositories →** this repo.
+4. **Store them in the repo** (the key goes in through stdin, never as an argument):
+
+   ```bash
+   gh variable set BOT_APP_CLIENT_ID --repo fss-fmi/fmi-codes-website-2026 --body "Iv23li..."
+   gh secret set BOT_APP_PRIVATE_KEY --repo fss-fmi/fmi-codes-website-2026 < ~/Downloads/<app>.<date>.private-key.pem
+   ```
+
+   Keep the `.pem` in a password manager and delete the download. To rotate, generate a new
+   key on the app page, set the secret again and delete the old key there.
+
+Also turn on **Settings → General → Allow auto-merge**. The repo's required checks (Lint, Unit
+& E2E tests) still gate every merge; the app gets no bypass.
+
 ### 7. Verify
 
 ```bash
@@ -586,6 +613,8 @@ To deploy this under your own project — your Docker Hub, your domain, your key
 - **Flux git URL / deploy key** — `flux-bootstrap.sh` defaults to
   `ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git`; override with
   `GIT_URL=… bash …` and add your own deploy key (step 6).
+- **Bot app** — create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
+  [GitHub bot app for automated PRs](#github-bot-app-for-automated-prs).
 
 ## Rotate a secret
 

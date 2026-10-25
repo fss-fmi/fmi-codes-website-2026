@@ -1,5 +1,8 @@
 name: Promote to production
 
+# Pushes and opens the PR as the fmi-codes-bot GitHub App, not GITHUB_TOKEN, so CI on
+# the PR starts by itself instead of waiting for "Approve workflows to run".
+
 on:
   workflow_dispatch:
     inputs:
@@ -20,14 +23,31 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
 
     steps:
+      - name: Get a fmi-codes-bot token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.BOT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
+      - name: Resolve the bot's git identity
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${user_id}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Resolve tags to promote
         id: tags
@@ -73,7 +93,9 @@ jobs:
 
       - name: Open promotion PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BOT_NAME: ${{ steps.bot.outputs.name }}
+          BOT_EMAIL: ${{ steps.bot.outputs.email }}
           BACKEND_TAG: ${{ steps.tags.outputs.backend }}
           FRONTEND_TAG: ${{ steps.tags.outputs.frontend }}
         run: |
@@ -82,8 +104,8 @@ jobs:
             exit 0
           fi
           branch="promote-to-prod"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
           git checkout -B "$branch"
           git add infra/k8s/overlays/prod/kustomization.yaml
           git commit -m "deploy: promote backend $BACKEND_TAG, frontend $FRONTEND_TAG to prod"

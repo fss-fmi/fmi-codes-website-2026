@@ -31,7 +31,7 @@ graph LR
 
 1. **Build.** On push to `main`, `.github/workflows/docker-cd.yaml` builds `backend/` and `frontend/` and pushes `fssfmi/fmi-codes-backend` and `fssfmi/fmi-codes-frontend` tagged `latest` and `<unix-timestamp>-<short-sha>`. Pushes that only touch `infra/**` or documentation (`docs/**`, any `.md`, `mkdocs.yml`, the docs workflow) skip the build. It also runs on manual dispatch and on the 1st of every month.
 2. **Staging bump.** Flux's `ImagePolicy` picks the highest timestamp tag and rewrites the `$imagepolicy`-marked tags in `infra/k8s/overlays/staging/kustomization.yaml`, pushing the commit to the `flux-image-updates` branch.
-3. **Auto-merge.** `.github/workflows/flux-auto-pr.yaml` opens (or reuses) a PR from `flux-image-updates` to `main` and enables auto-merge. The repo must have "Allow auto-merge" turned on, otherwise the bump sits unmerged with a warning.
+3. **Auto-merge.** `.github/workflows/flux-auto-pr.yaml` opens (or reuses) a PR from `flux-image-updates` to `main` as the `fmi-codes-bot` GitHub App and enables auto-merge, so the bump squash-merges by itself once Lint and the E2E tests pass. The repo must have "Allow auto-merge" turned on; if auto-merge can't be enabled the workflow fails instead of leaving the bump unmerged. Setup of the app: [runbook](runbook.md#github-bot-app-for-automated-prs).
 4. **Staging deploys.** Flux reconciles the merged overlay.
 5. **Promote to prod.** Run **Actions → Promote to production**. Leave the inputs blank to promote whatever tags staging runs now, or pass specific tags (must match `<ts>-<sha>`). The workflow writes the tags into `infra/k8s/overlays/prod/kustomization.yaml` on a `promote-to-prod` branch and opens a PR.
 6. **Human gate.** Merging that PR is the only way prod changes. The prod overlay has no `$imagepolicy` markers, so Flux can never move it on its own.
@@ -51,7 +51,7 @@ Pending migrations ship inside the backend image and are applied two ways ([ADR-
 
 For a prod release that carries a migration, run **Migrate database** for `prod` with the tag you are about to promote, merge it, wait for the Slack result, then promote. The initContainer would apply it anyway, but only the manual Job takes a backup first.
 
-Like the promote PR, the migration PR is opened by `GITHUB_TOKEN`, so CI does not run on it. A failed Job leaves the app Flux Kustomization not ready until the next migration run replaces the Job; read it with `kubectl -n <namespace> logs job/db-migrate-<run> --all-containers`.
+Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub App, so CI runs on it normally; merging stays a human decision. A failed Job leaves the app Flux Kustomization not ready until the next migration run replaces the Job; read it with `kubectl -n <namespace> logs job/db-migrate-<run> --all-containers`.
 
 ## Build artifacts
 
