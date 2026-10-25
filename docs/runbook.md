@@ -94,7 +94,7 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | Secret                            | Keys                                                                                              | How it's set                                                                                                                                                                           |
 | --------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
-| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                              | **generated in-cluster** by `deploy-stateful.sh` on first run — you never touch these                                                                                                  |
+| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                              | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                               |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` are
@@ -270,6 +270,8 @@ boot and never change on a re-run: the schema and the DB password. So editing `s
 and re-running does _not_ migrate a running DB (schema changes reach it through the migration
 runner, see [Database migrations](deployment.md#database-migrations)), and **a Secret and its PVC are a matched pair** — delete one
 without the other and you get `password authentication failed`. Always delete them together.
+To change a password without wiping data, use
+[`rotate-datastore-password.sh`](#db-and-redis-passwords).
 
 > Images pull from `docker.io/bitnamilegacy/*`, not `bitnami/*` — Bitnami archived the free
 > tier in Aug 2025. Don't "correct" them back; the `bitnami/*` tags no longer resolve and
@@ -596,16 +598,16 @@ Passing the value as a second argument is refused with an explanation. Under the
 script hands the value to `sops set --value-stdin`; a `sops` too old for that flag is refused
 with the fix (reinstall the version `install-tools.sh` pins).
 
-| Secret                    | Rotate with                                    | What users notice                                                                                                                        | Rotate when                                                                                                                                                                    |
-| ------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SECRET_KEY`              | `rotate-secret.sh SECRET_KEY --generate`       | Nothing. Flask's key; nothing in the app signs with it today (reset and verification links are random tokens stored as hashes).          | It may have leaked                                                                                                                                                             |
-| `JWT_SECRET_KEY`          | `rotate-secret.sh JWT_SECRET_KEY --generate`   | **Everyone is logged out**: participants, mentors and the admin.                                                                         | It may have leaked; after an admin password leak (see next row)                                                                                                                |
-| `ADMIN_PASSWORD_HASH`     | `rotate-secret.sh ADMIN_PASSWORD_HASH`         | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); when an organizer with the password leaves; on a leak, **together with `JWT_SECRET_KEY`** (see the warning below) |
-| `MAIL_PASSWORD`           | `rotate-secret.sh MAIL_PASSWORD`               | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                                                                                 |
-| `DISCORD_BUG_WEBHOOK_URL` | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`     | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
-| Grafana `admin-password`  | `rotate-secret.sh --grafana admin-password`    | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
-| age private keys          | [manual, below](#rotate-an-age-key)            | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
-| DB / Redis passwords      | [not scripted, below](#db-and-redis-passwords) |                                                                                                                                          |                                                                                                                                                                                |
+| Secret                    | Rotate with                                                                                 | What users notice                                                                                                                        | Rotate when                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SECRET_KEY`              | `rotate-secret.sh SECRET_KEY --generate`                                                    | Nothing. Flask's key; nothing in the app signs with it today (reset and verification links are random tokens stored as hashes).          | It may have leaked                                                                                                                                                             |
+| `JWT_SECRET_KEY`          | `rotate-secret.sh JWT_SECRET_KEY --generate`                                                | **Everyone is logged out**: participants, mentors and the admin.                                                                         | It may have leaked; after an admin password leak (see next row)                                                                                                                |
+| `ADMIN_PASSWORD_HASH`     | `rotate-secret.sh ADMIN_PASSWORD_HASH`                                                      | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); when an organizer with the password leaves; on a leak, **together with `JWT_SECRET_KEY`** (see the warning below) |
+| `MAIL_PASSWORD`           | `rotate-secret.sh MAIL_PASSWORD`                                                            | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                                                                                 |
+| `DISCORD_BUG_WEBHOOK_URL` | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`                                                  | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| Grafana `admin-password`  | `rotate-secret.sh --grafana admin-password`                                                 | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
+| age private keys          | [manual, below](#rotate-an-age-key)                                                         | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
+| DB / Redis passwords      | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords)) |                                                                                                                                          |                                                                                                                                                                                |
 
 !!! warning "If the admin password leaks, rotate `JWT_SECRET_KEY` too"
 
@@ -693,11 +695,48 @@ rotate every secret of that environment from the table above, including Grafana'
 
 ### DB and Redis passwords
 
-These are generated in-cluster by `deploy-stateful.sh` (`fmi-codes-db`, `fmi-codes-redis`) and
-the Postgres password is baked into the data volume at first boot. Changing the Secret alone
-breaks authentication, and deleting the Secret together with its PVC (the documented reset in
-[Phase 2](#2--stateful-tier-postgres--redis-sentinel)) **wipes the data**. There is no scripted
-rotation that keeps the data yet, so don't reset the PVC just to rotate a password.
+These live only in the cluster (Secrets `fmi-codes-db` and `fmi-codes-redis`, generated by
+`deploy-stateful.sh`), never in git. Rotate them without losing data:
+
+```bash
+ENV=prod bash infra/k8s/scripts/rotate-datastore-password.sh db         # Postgres app role (fmi_app)
+ENV=prod bash infra/k8s/scripts/rotate-datastore-password.sh db-admin   # Postgres superuser
+ENV=prod bash infra/k8s/scripts/rotate-datastore-password.sh redis      # Redis + Sentinel
+```
+
+The script generates the new password itself; nobody sees it, it never appears in an argument
+or the output, and there is nothing to commit. **Never** delete the Secret together with its
+PVC to "rotate" (the reset in [Phase 2](#2--stateful-tier-postgres--redis-sentinel)): that
+wipes the data.
+
+| Target     | What the script does                                                                                                                                                                                                                                                                                                                 | What users notice                                                                                                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `db`       | Parks the new password in the Secret as `password-next`, runs `ALTER ROLE` as the superuser with a SCRAM hash computed locally (the plaintext never reaches Postgres or its logs), checks that the new password logs in and the old one is rejected, makes it live, restarts the backend.                                            | Nothing. For a few seconds old backend pods can't open _new_ connections; their pooled ones keep working. The migration initContainer and the manual migrate Job read the Secret when they start.                                                        |
+| `db-admin` | The same for the `postgres` superuser (`postgres-password`). Nothing in the app uses it, so nothing restarts.                                                                                                                                                                                                                        | Nothing.                                                                                                                                                                                                                                                 |
+| `redis`    | Scales the StatefulSet to 0 and deletes its pods, waits until **none** is left, updates the Secret, scales back to `replica.replicaCount` from the Helm values, checks that every node takes only the new password, there is exactly one master, the replicas are linked and every Sentinel names that master, restarts the backend. | **Redis is unavailable for about 25 to 30 s** (the run takes about 100 s). The app keeps working without it ([ADR-003](adr/003-redis-optional-fail-open.md)): rate limits fall back to per-process, the logout blocklist is not checked and caches miss. |
+
+Why the Postgres password needs `ALTER ROLE`: it is stored in the database on the volume, so
+changing only the Secret breaks every new connection. Why Redis is stopped completely instead
+of restarted pod by pod: every Redis and Sentinel process has to switch at the same moment. If a
+new pod starts while an old one is still running or terminating, the new Sentinel asks the old
+one for the master, gets `WRONGPASS`, records a master literally named `NOAUTH`, and the
+StatefulSet deadlocks in `CrashLoopBackOff`. That happened in testing, which is why the script
+waits for zero pods before touching the Secret. Redis data survives on its volume (AOF); after
+the restart `redis-node-0` is the master, so writes that had not reached it before the stop
+(caches, rate-limit counters, recent logouts) can be lost.
+
+**If a run dies halfway, run the same command again.** `db` and `db-admin` resume with the
+password parked in `<key>-next` (including when the `ALTER ROLE` already happened); `redis`
+reads the replica count from the values file, so it also repairs a Redis left at 0 replicas
+or stuck in `CrashLoopBackOff`.
+
+When to rotate: someone with cluster access leaves, a kubeconfig or machine is lost, or a
+password was exposed (pasted while debugging, in a screenshot). During the event prefer a quiet
+moment for `redis` because of the short degraded window; `db` and `db-admin` have no visible
+effect. Verified on a local k3s `v1.36.2` with the repo's chart versions and staging values:
+repeated rotations; resume before and after `ALTER ROLE`, from Redis at 0 replicas and from
+Redis in `CrashLoopBackOff`; a frozen unhealthy replica; failover afterward; data intact
+throughout.
 
 ## Change a config value
 

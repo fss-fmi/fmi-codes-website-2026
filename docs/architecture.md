@@ -145,7 +145,6 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 ## Known gaps
 
 - No automated database backups; the Postgres PVC is the source of truth.
-- DB and Redis passwords have no scripted rotation that keeps the data; see [Rotate a secret](runbook.md#db-and-redis-passwords).
 - The API contract is hand maintained on both sides; nothing generates or checks it.
 - `GET /api/mentors/<id>/picture` raises on the string paths the seeder stores, so mentor photos on the team page never load.
 - Admin MATCHING → EXPORT reads a field (`export`) the backend never returns, so the button does nothing.
