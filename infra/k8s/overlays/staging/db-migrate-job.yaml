@@ -7,13 +7,13 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-1
+  name: db-migrate-2
   labels:
     app.kubernetes.io/name: fmi-codes-db-migrate
     app.kubernetes.io/part-of: fmi-codes-website-2026
     app.kubernetes.io/managed-by: kubectl
 spec:
-  # Never retry blindly; a failure is reported to Discord and needs a human.
+  # Never retry blindly; a failure is reported to Slack and needs a human.
   backoffLimit: 0
   activeDeadlineSeconds: 900
   template:
@@ -37,7 +37,7 @@ spec:
           args:
             - |
               set -euo pipefail
-              file="/backups/${MIGRATION_ENV}-$(date -u +%Y%m%dT%H%M%SZ)-run1.sql.gz"
+              file="/backups/${MIGRATION_ENV}-$(date -u +%Y%m%dT%H%M%SZ)-run2.sql.gz"
               trap 'rm -f "$file.partial"' ERR
               pg_dump | gzip > "$file.partial"
               mv "$file.partial" "$file"
@@ -84,7 +84,7 @@ spec:
               mountPath: /backups
       containers:
         - name: migrate
-          image: docker.io/fssfmi/fmi-codes-backend:1785847916-fe89c45
+          image: docker.io/fssfmi/fmi-codes-backend:1792944515-ac5a740
           command: ["sh", "-c"]
           args:
             - MIGRATION_BACKUP_FILE="$(cat /backups/.last)" exec python -m database.migrate --notify always
@@ -97,11 +97,12 @@ spec:
                 secretKeyRef:
                   name: fmi-codes-db
                   key: password
-            - name: DISCORD_BUG_WEBHOOK_URL
+            - name: SLACK_MIGRATIONS_WEBHOOK_URL
               valueFrom:
                 secretKeyRef:
                   name: fmi-codes-app
-                  key: DISCORD_BUG_WEBHOOK_URL
+                  key: SLACK_MIGRATIONS_WEBHOOK_URL
+                  optional: true
             - name: MIGRATION_ENV
               valueFrom:
                 fieldRef:
