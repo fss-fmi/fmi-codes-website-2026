@@ -138,7 +138,7 @@ It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: 
 Runtime config is split in two — this is what you edit to point the deployment at your infrastructure:
 
 - **Non-secret config → the `fmi-codes-backend-config` ConfigMap.** Keys: `FLASK_ENV`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `REDIS_URL`, `FRONTEND_ORIGIN`, `MENTORS_STAY_TUNED`, `REGISTRATION_OPEN`, `RANKINGS_LIVE`. Global values live in `infra/k8s/base/app/backend.yaml`; per-env overrides in `infra/k8s/overlays/<env>/backend-config-patch.yaml`. Change one live with `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>` (then commit the source YAML too).
-- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`. Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; never pass it as an argument). Per-secret rotation guide: [docs/runbook.md](docs/runbook.md#rotate-a-secret).
+- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`. Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; never pass it as an argument). Per-secret rotation guide: [docs/runbook.md](docs/runbook.md#rotate-a-secret).
 - **DB / Redis passwords** are generated in-cluster by `deploy-stateful.sh` and never committed (they're coupled to the datastore PVC). Rotate them without data loss with `bash infra/k8s/scripts/rotate-datastore-password.sh db|db-admin|redis`.
 
 Forking this to a different domain or registry means updating the hostnames (`base/ingress/ingress.yaml`, `overlays/*/ingress/*`, and `FRONTEND_ORIGIN`), the image names (`base/app/*.yaml`, `overlays/*/kustomization.yaml`, `docker-cd.yaml`, `flux/image-automation.yaml`), the age recipients in `.sops.yaml`, and the Flux git URL/deploy key. Details in the runbook.
@@ -166,7 +166,7 @@ JWT (HS256, 3-day expiry) issued on login and set as an **httpOnly `token` cooki
 
 ### Bug reporting
 
-The bug bubble on every page posts to `/api/bug-report`, which forwards to Discord via `DISCORD_BUG_WEBHOOK_URL` (fire-and-forget on a bounded thread pool, never blocks the request). No webhook configured means the report is dropped with a logged warning. Reports from logged-in users carry their name and email; everyone else, including visitors on the registration page, reports anonymously.
+The bug bubble on every page posts to `/api/bug-report`, which forwards to Discord via `DISCORD_BUG_WEBHOOK_URL` and to Slack via `SLACK_BUG_WEBHOOK_URL`, to each one that is set (fire-and-forget on a bounded thread pool, never blocks the request; one failing doesn't affect the other). Neither configured means the report is dropped with a logged warning. Reports from logged-in users carry their name and email; everyone else, including visitors on the registration page, reports anonymously.
 
 ---
 

@@ -33,6 +33,7 @@ Counts are `def test_` occurrences, so parametrised tests run more cases than li
 | `test_metrics_endpoint.py`   | `/metrics` is exposed                                                                                                                                                   |
 | `test_team_service.py`       | Join code format and the 6 / 18 / 3 business constants                                                                                                                  |
 | `test_email_verification.py` | Verification email contents and SMTP failure handling; the `REQUIRE_EMAIL_VERIFICATION` gate decorator                                                                  |
+| `test_bug_report_service.py` | Slack and Discord bug-report payloads, Slack escaping (no `<!channel>` pings) and length limits, which webhooks get a report, send failures never raise                 |
 | `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Slack reporting modes, message escaping and truncation, connection settings |
 
 Scope: a single function or a single route with dependencies replaced. No database. Runs in seconds.
@@ -51,7 +52,7 @@ These are not browser tests. They boot the real Flask app, point it at a real Po
 | `test_security.py`               | Unauthenticated access, role escalation, IDOR between captains, data leakage (join codes, hashes, emails), SQL injection and XSS inputs, validation, feature flags, business-logic abuse |
 | `test_email_verification_e2e.py` | Verification tokens (single use, expiry, hash-only storage), resend, the team-action gate with the flag on and off, migration 016 grandfathering                                         |
 | `test_migrate_e2e.py`            | Every committed migration applies on a `schema.sql` database and re-runs as a no-op; a failing file rolls back and stops; the advisory lock serialises runners                           |
-| `test_public_exposure_e2e.py`    | Scores hidden until `RANKINGS_LIVE`, "Other" university/specialty created only through registration, bug-report attribution from a valid session                                         |
+| `test_public_exposure_e2e.py`    | Scores hidden until `RANKINGS_LIVE`, "Other" university/specialty created only through registration, bug-report attribution from a valid session and both configured webhooks used       |
 
 Add a test here for anything that touches SQL, transactions, locking, auth guards or response shapes. Every new endpoint should get at least a happy path and a wrong-role test.
 
@@ -179,5 +180,5 @@ The jobs run in parallel. CI does not run on pushes to `main`, and it does not r
 - Frontend tests are not part of CI; add `cd frontend && npm test` to the Lint job (or a new job) to gate them.
 - No coverage measurement.
 - `test_team_service.py` only checks constants and join codes; all queue logic is tested only at the integration layer.
-- No tests for the email or Discord senders.
+- No tests for the email sender.
 - No browser end-to-end tests, so bugs that live purely in the SPA (for example the admin EXPORT button reading a field the API never returns) are not caught.

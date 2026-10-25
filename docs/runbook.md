@@ -91,15 +91,16 @@ cd fmi-codes-website-2026
 
 Nothing to create by hand — the passwords split three ways and every one is handled for you:
 
-| Secret                            | Keys                                                                                                                              | How it's set                                                                                                                                                                           |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
-| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                              | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                               |
+| Secret                            | Keys                                                                                                                                                       | How it's set                                                                                                                                                                           |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
+| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                               |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
-`SLACK_MIGRATIONS_WEBHOOK_URL` are optional; set them later with `rotate-secret.sh` (step 5)
-if you want password-reset mail, bug-report webhooks or migration results in Slack.
+`SLACK_BUG_WEBHOOK_URL` / `SLACK_MIGRATIONS_WEBHOOK_URL` are optional; set them later with
+`rotate-secret.sh` (step 5) if you want password-reset mail, bug reports in Discord or Slack,
+or migration results in Slack.
 
 ### 3. Run the bootstrap
 
@@ -156,6 +157,7 @@ once (`install-forward-services.sh`) and use `127.0.0.1` hosts entries (see [Pha
 ```bash
 bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD             # prompts (hidden, twice)
 bash infra/k8s/scripts/rotate-secret.sh DISCORD_BUG_WEBHOOK_URL
+bash infra/k8s/scripts/rotate-secret.sh SLACK_BUG_WEBHOOK_URL
 bash infra/k8s/scripts/rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL
 ```
 
@@ -163,8 +165,9 @@ Each prompts for the value, re-encrypts the one key, re-applies the secret, and 
 backend. `ENV=staging` (default) or `ENV=prod`. Commit the `.enc.yaml` afterward. Every secret
 and how to rotate it: [Rotate a secret](#rotate-a-secret).
 
-The script only changes keys already in the file. If `SLACK_MIGRATIONS_WEBHOOK_URL` is missing
-(files encrypted before it was added), add it once with `sops <file>` first.
+The script only changes keys already in the file. If `SLACK_BUG_WEBHOOK_URL` or
+`SLACK_MIGRATIONS_WEBHOOK_URL` is missing (files encrypted before they were added), add it once
+with `sops <file>` first.
 
 ### 6. (Optional) Enable GitOps auto-deploy — the Flux deploy key
 
@@ -297,9 +300,9 @@ the `app` service carries a `backend` alias) and k8s with no rebuild.
 Config split: non-secret env comes from the `fmi-codes-backend-config` ConfigMap via
 `envFrom`; passwords via `secretKeyRef` (`DB_PASSWORD`, `REDIS_PASSWORD` from Phase 2, and
 `SECRET_KEY`/`JWT_SECRET_KEY`/`ADMIN_PASSWORD_HASH`/`MAIL_PASSWORD`/`DISCORD_BUG_WEBHOOK_URL`
-from `fmi-codes-app`; the `migrate` initContainer reads `SLACK_MIGRATIONS_WEBHOOK_URL` from it,
-optionally). `DATABASE_URL` is intentionally unset — the backend composes it from
-the `DB_*` pieces.
+and, optionally, `SLACK_BUG_WEBHOOK_URL` from `fmi-codes-app`; the `migrate` initContainer
+reads `SLACK_MIGRATIONS_WEBHOOK_URL` from it, optionally). `DATABASE_URL` is intentionally
+unset — the backend composes it from the `DB_*` pieces.
 
 Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready`
 (readiness — pooled `SELECT 1` + Redis ping; Postgres gates readiness, Redis is fail-open).
@@ -610,6 +613,7 @@ with the fix (reinstall the version `install-tools.sh` pins).
 | `ADMIN_PASSWORD_HASH`          | `rotate-secret.sh ADMIN_PASSWORD_HASH`                                                      | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); when an organizer with the password leaves; on a leak, **together with `JWT_SECRET_KEY`** (see the warning below) |
 | `MAIL_PASSWORD`                | `rotate-secret.sh MAIL_PASSWORD`                                                            | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                                                                                 |
 | `DISCORD_BUG_WEBHOOK_URL`      | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`                                                  | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| `SLACK_BUG_WEBHOOK_URL`        | `rotate-secret.sh SLACK_BUG_WEBHOOK_URL`                                                    | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | `SLACK_MIGRATIONS_WEBHOOK_URL` | `rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL`                                             | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                 | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
 | age private keys               | [manual, below](#rotate-an-age-key)                                                         | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
@@ -643,9 +647,9 @@ Notes per secret:
   revoke the old app password.
 - **`DISCORD_BUG_WEBHOOK_URL`**: create a new webhook in the Discord channel settings, rotate,
   send a test bug report, then delete the old webhook.
-- **`SLACK_MIGRATIONS_WEBHOOK_URL`**: add a new webhook for the same channel under the Slack
-  app's Incoming Webhooks, rotate, then remove the old one there. The next migration run
-  confirms it.
+- **`SLACK_BUG_WEBHOOK_URL`** and **`SLACK_MIGRATIONS_WEBHOOK_URL`**: add a new webhook for
+  the same channel under the Slack app's Incoming Webhooks, rotate, then remove the old one
+  there. A test bug report (or the next migration run) confirms it.
 - `--generate` is refused for `ADMIN_PASSWORD_HASH` (nobody would know the password), and an
   empty value is always refused. To clear an optional secret, edit the file with `sops`.
 

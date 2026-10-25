@@ -473,7 +473,7 @@ Public. FAQ-style rulebook from `backend/database/seeds/regulations.json`, cache
 
 ### POST /api/bug-report
 
-Public, optional auth, 10/min. Queues a Discord webhook post and returns immediately.
+Public, optional auth, 10/min. Queues a post to each configured bug-report webhook (Discord `DISCORD_BUG_WEBHOOK_URL`, Slack `SLACK_BUG_WEBHOOK_URL`) and returns immediately.
 
 ```json
 { "what_did": "...", "what_happened": "...", "page": "https://fmicodes.com/team" }

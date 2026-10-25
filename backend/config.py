@@ -58,6 +58,8 @@ class Config:
 
     # Discord webhook for bug reports — set DISCORD_BUG_WEBHOOK_URL in .env
     DISCORD_BUG_WEBHOOK_URL = os.environ.get("DISCORD_BUG_WEBHOOK_URL", "")
+    # Slack incoming webhook for the same reports; both are used when both are set
+    SLACK_BUG_WEBHOOK_URL = os.environ.get("SLACK_BUG_WEBHOOK_URL", "")
 
     # Social media / contact links
     DISCORD_URL = os.environ.get("DISCORD_URL", "")

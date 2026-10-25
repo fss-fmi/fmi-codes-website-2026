@@ -50,7 +50,7 @@ Also check:
 
 - `DB_USER` defaults to `fmi_app` in `.env.example`. Either create that role or change it to `postgres`.
 - `REGISTRATION_OPEN=false` in `.env.example`. Set it to `true` or participant registration returns 403 and the register page shows "REGISTRATION CLOSED".
-- `MAIL_*` and `DISCORD_BUG_WEBHOOK_URL` are optional. Without them password-reset and verification mail and bug reports are dropped with a logged warning.
+- `MAIL_*`, `DISCORD_BUG_WEBHOOK_URL` and `SLACK_BUG_WEBHOOK_URL` are optional. Without them password-reset and verification mail and bug reports are dropped with a logged warning.
 - `REQUIRE_EMAIL_VERIFICATION=false` in `.env.example`. Leave it off locally unless `MAIL_*` works, or no participant can create or join a team.
 - Leave every `REDIS_*` blank to run without Redis (in-memory rate limiting, no token revocation).
 
