@@ -28,7 +28,7 @@ case "$ENV" in
 esac
 SECRETS_ENC="$SECRETS_DIR/secrets.enc.yaml"
 ENC_FILES=()
-for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml"; do
+for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/tailscale-oauth.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
 done
 
@@ -270,12 +270,6 @@ the Windows browser. From an elevated PowerShell:
   Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
 EOF
 
-  if [ "$ENV" = "prod" ]; then
-    cat <<EOF
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 grafana.fmicodes.com"
-EOF
-  fi
-
   cat <<EOF
 
 Then browse to ${HOST_URL}
@@ -288,12 +282,15 @@ EOF
 
 $(printf '\033[1;33m### Next step: bootstrap prod\033[0m')
 
-Staging is up. To bring up prod (app + Grafana), run:
+Staging is up. To bring up prod, run:
   ENV=prod bash bootstrap.sh
-
-Grafana (grafana.fmicodes.com) only becomes reachable once prod is bootstrapped —
-it rides the prod ingress bridge. When you do, also add to the Windows hosts file:
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 grafana.fmicodes.com"
 EOF
   fi
 fi
+
+cat <<EOF
+
+Grafana (Flux plus --with-observability) needs no hosts entry: it is reachable only over
+Tailscale, at the address \`kubectl -n monitoring get ingress grafana\` shows.
+Setup: docs/runbook.md 'Phase 7'.
+EOF

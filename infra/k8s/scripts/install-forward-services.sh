@@ -126,7 +126,7 @@ EOF
   log "Writing $UNIT_DIR/fmi-tls-prod.service"
   cat > "$UNIT_DIR/fmi-tls-prod.service" <<EOF
 [Unit]
-Description=socat 127.0.0.1:443 to prod forward ${PROD_LOCAL} (serves fmicodes.com + grafana.fmicodes.com)
+Description=socat 127.0.0.1:443 to prod forward ${PROD_LOCAL} (serves fmicodes.com)
 After=network-online.target fmi-forward-prod.service
 Wants=network-online.target
 Requires=fmi-forward-prod.service
@@ -184,10 +184,8 @@ HOSTS_LINES=""
 BROWSE_LINES=""
 if [ "$WITH_PROD" = 1 ]; then
   HOSTS_LINES="${HOSTS_LINES}  127.0.0.1 fmicodes.com
-  127.0.0.1 grafana.fmicodes.com
 "
   BROWSE_LINES="${BROWSE_LINES}  https://fmicodes.com           prod app
-  https://grafana.fmicodes.com   Grafana (rides the prod ingress bridge)
 "
 fi
 if [ "$WITH_STAGING" = 1 ]; then

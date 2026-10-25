@@ -84,6 +84,7 @@ nav:
           - ADR-005 Gale-Shapley + greedy fill: adr/005-gale-shapley-plus-greedy-fill.md
           - ADR-006 k3s and pull-based GitOps: adr/006-self-hosted-k3s-pull-based-gitops.md
           - ADR-007 Recorded migrations: adr/007-recorded-migrations-runner.md
+          - ADR-008 Grafana over Tailscale: adr/008-grafana-over-tailscale.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

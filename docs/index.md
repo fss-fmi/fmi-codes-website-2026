@@ -42,7 +42,7 @@ graph LR
 | Data           | PostgreSQL 16 (all durable state), Redis with Sentinel (optional, fails open)         |
 | Infrastructure | Self-hosted single-node k3s, Kustomize overlays for staging and prod, SOPS secrets    |
 | Delivery       | GitHub Actions builds images, Flux GitOps deploys staging, prod via a human-merged PR |
-| Observability  | Prometheus and Grafana (kube-prometheus-stack), self-hosted                           |
+| Observability  | Prometheus and Grafana (kube-prometheus-stack), self-hosted; Grafana over Tailscale   |
 
 ## Where to go next
 

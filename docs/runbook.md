@@ -18,11 +18,14 @@ infra/k8s/
   base/          environment-agnostic manifests
                    base/app/     namespace, backend, frontend
                    base/ingress/ security-headers, certificate, ingress
+                   base/observability/ kube-prometheus-stack, Grafana tailnet Ingress, ServiceMonitor (shared)
+                   base/tailscale/     Tailscale operator (shared)
   overlays/      per-env overlays layered on base
                    overlays/prod/     namespace fmi-codes, host fmicodes.com, Let's Encrypt
                    overlays/staging/  namespace fmi-codes-staging, host staging.fmicodes.com, self-signed
   helm-values/   Bitnami postgresql + redis values (prod)
-  secrets/       prod secrets.enc.yaml (SOPS); staging's lives in overlays/staging/secrets/
+  secrets/       prod secrets, grafana-secret, tailscale-oauth .enc.yaml (SOPS); staging's live in
+                 overlays/staging/secrets/
   flux/          Flux GitOps — source, image-automation, self
 ```
 
@@ -96,6 +99,8 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
 | `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                               |
+| `grafana-admin` (SOPS, in git)    | `admin-user`, `admin-password`                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                           |
+| `operator-oauth` (SOPS, in git)   | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                      | committed **empty**; you set it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                              |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -116,8 +121,8 @@ Postgres/Redis → app → ingress in order.
 The pre-flight first installs `sops` and `age` if they're missing (so it can verify keys on a
 bare box), then handles two things:
 
-1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`
-   and `grafana-secret.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
+1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`,
+   `grafana-secret.enc.yaml` and `tailscale-oauth.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
    if set). If that works it does nothing, whatever else is in the file and in whatever order.
    Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`), falling
    back to a hidden paste prompt, verifies the key decrypts those files **before** writing
@@ -242,15 +247,17 @@ key, point `.sops.yaml` at it and replace that env's encrypted files with your o
 mkdir -p ~/.config/sops/age
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)
 
-# 2. In .sops.yaml, set the `age:` recipient of BOTH rules for your env (secrets.enc.yaml and
-#    grafana-secret.enc.yaml) to that age1… value.
+# 2. In .sops.yaml, set the `age:` recipient of ALL THREE rules for your env (secrets.enc.yaml,
+#    grafana-secret.enc.yaml and tailscale-oauth.enc.yaml) to that age1… value.
 
 # 3. Overwrite each of that env's .enc.yaml files with a plaintext Secret holding your values
 #    (same metadata and stringData keys as the committed file; those stay readable), then
 #    encrypt it in place. .sops.yaml picks the recipient by path:
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
-# (prod: infra/k8s/secrets/secrets.enc.yaml and infra/k8s/secrets/grafana-secret.enc.yaml)
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
+# (prod: the same three files under infra/k8s/secrets/). tailscale-oauth can stay empty until
+# your tailnet exists (Phase 7).
 
 # 4. Commit .sops.yaml + the encrypted files. Bootstrap checks keys by decrypting the files,
 #    so it accepts YOUR key with no script changes.
@@ -395,8 +402,7 @@ env to add that env's services. It writes up to three `systemd` services (`enabl
 `Restart=always`, so they come back on every boot with no terminal to keep open):
 
 - `fmi-forward-prod` — `kubectl port-forward` the prod ingress controller to `127.0.0.1:8443`.
-- `fmi-tls-prod` — `socat` `127.0.0.1:443` → `:8443`. Because the prod ingress multiplexes by host,
-  this **one** bridge serves both `fmicodes.com` **and** `grafana.fmicodes.com` on bare `:443`.
+- `fmi-tls-prod` — `socat` `127.0.0.1:443` → `:8443`, so `fmicodes.com` works on bare `:443`.
 - `fmi-forward-staging` — `kubectl port-forward` the staging ingress controller to `127.0.0.1:9443`.
 
 It also sets `net.ipv4.ip_unprivileged_port_start=443` (persisted) so the `socat` bridge can bind
@@ -404,13 +410,12 @@ It also sets `net.ipv4.ip_unprivileged_port_start=443` (persisted) so the `socat
 
 ```
 127.0.0.1 fmicodes.com
-127.0.0.1 grafana.fmicodes.com
 127.0.0.1 staging.fmicodes.com
 ```
 
-Then browse `https://fmicodes.com`, `https://grafana.fmicodes.com`, and
-`https://staging.fmicodes.com:9443` — staging keeps a port suffix because `:443` has a single
-listener already taken by prod. Remove everything with
+Then browse `https://fmicodes.com` and `https://staging.fmicodes.com:9443` — staging keeps a port
+suffix because `:443` has a single listener already taken by prod. Grafana needs none of this:
+it is reached over Tailscale ([Access Grafana](#access-grafana)). Remove everything with
 `wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash infra/k8s/scripts/install-forward-services.sh uninstall`. Requires
 `systemd=true` in `/etc/wsl.conf` (the default here) and `socat` installed.
 
@@ -423,7 +428,8 @@ as the backend — each dev holds an age key pair, SOPS encrypts to every public
 is base64, not encryption, and `base64 -d` reveals it instantly.
 
 DB/Redis passwords are deliberately **not** in SOPS — they're PVC-coupled and generated
-in-cluster (see Phase 2). SOPS owns only the five `fmi-codes-app` values.
+in-cluster (see Phase 2). SOPS owns the `fmi-codes-app` values plus the cluster-wide Grafana
+admin and Tailscale OAuth secrets ([Phase 7](#7--observability-prometheus--grafana)).
 
 Getting the age key onto a machine is covered in the setup guide (paste it when bootstrap
 prompts) and [Forking: use your own keys](#forking-use-your-own-keys) (mint your own). Back
@@ -479,100 +485,185 @@ itself GitOps-managed — edits to `source.yaml`/`image-automation.yaml` self-re
 ### 7 — Observability (Prometheus + Grafana)
 
 Answers "is the backend leaking memory?" with a memory-per-pod graph over **days**, instead
-of a manual `kubectl top` marathon. **Fully self-hosted — no external accounts, no SaaS, no
-cost, nothing phones home.** The `kube-prometheus-stack` Helm chart (Prometheus operator +
-Grafana + node-exporter + kube-state-metrics) runs in its own `monitoring` namespace; a Flask
-`/metrics` endpoint feeds app-level series alongside the cluster resource metrics.
+of a manual `kubectl top` marathon. Metrics are fully self-hosted: the `kube-prometheus-stack`
+Helm chart (Prometheus operator + Grafana + node-exporter + kube-state-metrics) runs in its own
+`monitoring` namespace, and a Flask `/metrics` endpoint feeds app-level series alongside the
+cluster resource metrics. The one outside service is [Tailscale](https://tailscale.com), which
+is how people reach Grafana (see [Access Grafana](#access-grafana)). The reasoning is in
+[ADR-008](adr/008-grafana-over-tailscale.md).
 
-**The observability stack is GitOps-managed by Flux.** The chart install, upgrades, and the
-backend `ServiceMonitor` are all reconciled from `infra/k8s/` — a values change merged to
-`main` rolls out automatically with no script run. The Flux wiring lives in `flux/source.yaml`
-(`fmi-codes-observability` and `fmi-codes-observability-staging` Kustomizations); each pulls in
-the backend `ServiceMonitor` from `base/observability/monitors` as part of its own overlay, so
-the monitor reconciles with whichever env is live.
+**GitOps-managed by Flux, independent of the app envs.** Three Kustomizations in
+`flux/source.yaml`, none of which depends on an app env, so a cluster with only staging
+bootstrapped gets the whole stack:
 
-**One-time bootstrap — Grafana admin secret only.** The only manual step is decrypting and
-applying the SOPS-encrypted Grafana secret before Flux's first reconcile (so the chart can
-mount it):
+| Kustomization             | Path                          | What it installs                                           |
+| ------------------------- | ----------------------------- | ---------------------------------------------------------- |
+| `fmi-codes-observability` | `base/observability`          | the `kps` HelmRelease and Grafana's tailnet Ingress        |
+| `fmi-codes-monitors`      | `base/observability/monitors` | the backend ServiceMonitor (waits for the chart's CRDs)    |
+| `fmi-codes-tailscale`     | `base/tailscale`              | the Tailscale operator HelmRelease (namespace `tailscale`) |
 
-```bash
-ENV=staging bash infra/k8s/scripts/deploy-observability.sh   # ENV=prod for production creds
-```
+A values change merged to `main` rolls out with no script run.
 
-The script creates the `monitoring` namespace (if needed) and applies the Grafana admin secret.
-Flux then installs the chart and applies the ServiceMonitor. If `flux-bootstrap.sh` has not been
-run yet, apply the Flux objects manually once first:
+**One-time bootstrap: the two secrets.** Flux never decrypts SOPS, so one script applies the
+Grafana admin secret and the Tailscale OAuth secret:
 
 ```bash
-kubectl apply -f infra/k8s/flux/source.yaml
+ENV=staging bash infra/k8s/scripts/deploy-observability.sh   # ENV=prod on a cluster that runs prod
 ```
 
-One stack scrapes **both** app namespaces. The `ENV` flag only selects which SOPS-encrypted
-Grafana secret to decrypt (staging and prod are encrypted with different age keys). Monitoring
-is independent of the app tier, but the app must be running for the ServiceMonitor to have a
-scrape target.
+Both Secrets are cluster-wide (one monitoring stack, one operator), but each env keeps its own
+encrypted copy (`grafana-secret.enc.yaml`, `tailscale-oauth.enc.yaml`) under its age key. Pick
+the env the cluster belongs to: `prod` on the server, `staging` on a staging-only dev box. The
+script labels each Secret with that env and refuses to overwrite it with the other env's copy
+later (`ALLOW_ENV_SWITCH=true` switches on purpose). While `tailscale-oauth.enc.yaml` still
+holds empty values the script skips it with a warning and the operator sits idle; fill it in
+once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet), step 6). If
+`flux-bootstrap.sh` has not been run yet, apply the Flux objects once first:
+`kubectl apply -f infra/k8s/flux/source.yaml`.
 
-|                                    | value                                   | why                                                                                                                   |
-| ---------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| namespace                          | `monitoring`                            | kube-prometheus-stack convention; single shared stack                                                                 |
-| scrapes                            | `fmi-codes` **and** `fmi-codes-staging` | one ServiceMonitor, `namespaceSelector.matchNames` lists both                                                         |
-| retention                          | `14d`                                   | the leak window is multi-day; 10d default is too short                                                                |
-| Prometheus PVC                     | 5Gi (prod) / 3Gi (staging)              | TSDB survives `wsl --shutdown`; in-memory would reset and defeat the investigation                                    |
-| Grafana PVC                        | 1Gi (both envs)                         | dashboards + admin session survive restarts; `local-path` StorageClass doesn't support resize so both envs must match |
-| alertmanager                       | **off**                                 | no paging on a hobby cluster                                                                                          |
-| node-exporter + kube-state-metrics | **on**                                  | they produce the node/pod resource series — the whole point                                                           |
+One stack scrapes **both** app namespaces. Monitoring is independent of the app tier, but an
+app must be running for the ServiceMonitor to have a scrape target.
+
+|                                    | value                                   | why                                                                                |
+| ---------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| namespace                          | `monitoring`                            | kube-prometheus-stack convention; single shared stack                              |
+| scrapes                            | `fmi-codes` **and** `fmi-codes-staging` | one ServiceMonitor, `namespaceSelector.matchNames` lists both                      |
+| retention                          | `14d`                                   | the leak window is multi-day; 10d default is too short                             |
+| Prometheus PVC                     | 5Gi                                     | TSDB survives `wsl --shutdown`; in-memory would reset and defeat the investigation |
+| Grafana PVC                        | 1Gi                                     | dashboards, users and sessions survive restarts                                    |
+| alertmanager                       | **off**                                 | no paging on a hobby cluster                                                       |
+| node-exporter + kube-state-metrics | **on**                                  | they produce the node/pod resource series — the whole point                        |
 
 Resource requests+limits are set on every component (see `base/observability/helmrelease.yaml`
-`spec.values`, with per-env overrides in the overlay patches)
-to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the limits are the
-guardrail on a single WSL2 box already running the app+stateful tiers.
+`spec.values`) to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the
+limits are the guardrail on a single box already running the app+stateful tiers.
 
-**Access Grafana** — on a WSL2 dev box, Grafana is reachable at `https://grafana.fmicodes.com`
-with **no extra setup** once the boot-persistent forward services are installed (see
-[Phase 4](#4--ingress--tls)). `grafana.fmicodes.com` is an ingress rule on the same prod `nginx`
-controller as `fmicodes.com`, so the single `fmi-tls-prod` `:443` bridge serves it too — the ingress
-routes by host. Add the hosts entry (once):
+#### Access Grafana
 
-```
-127.0.0.1 grafana.fmicodes.com
+Grafana is reachable **only over the `fss-fmi` tailnet**, at
+`https://grafana.<tailnet>.ts.net`. The exact address is the Ingress's ADDRESS:
+
+```bash
+kubectl -n monitoring get ingress grafana
 ```
 
-Log in with the admin user/password from the SOPS secret (`sops --decrypt
-infra/k8s/secrets/grafana-secret.enc.yaml`). Anonymous access and sign-up are **disabled** in
-the chart values, so there is no `admin/admin` and no open registration.
+The Tailscale operator serves that Ingress through a proxy pod that joins the tailnet as a
+`tag:k8s` device and gets its own certificate. Traffic goes from the viewer's device to that
+pod and on to the `kps-grafana` Service; it never touches ingress-nginx, so Grafana stays up
+when an app env's ingress is broken or not bootstrapped, and nothing about it is reachable from
+the internet. No hosts entry and no port forward is needed.
 
-Ad-hoc alternative (no services, no `:443`) — a one-off port-forward straight to the Grafana
-service:
+To open it: have the Tailscale app running and signed in to the `fss-fmi` tailnet, then browse
+to the address. With the app off the name doesn't resolve. Log in with your own Grafana account
+([Add a developer](#add-or-remove-a-developer)) or, for administration, the admin user and
+password from the env's SOPS secret (`sops --decrypt infra/k8s/secrets/grafana-secret.enc.yaml`).
+Anonymous access and sign-up are **disabled** in the chart values.
+
+Operators with cluster access can skip Tailscale with a one-off port-forward:
 
 ```bash
 kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
 ```
 
-**Why not the ingress host?** The chart provisions a Grafana ingress (prod: `grafana.fmicodes.com`,
-staging: `grafana.staging.fmicodes.com`), and that works on a **native Linux host** with a real
-LoadBalancer. On **WSL2/k3s a Windows hosts entry to it is fragile**: the ingress controller's
-LoadBalancer ports are reachable at the WSL node IP, but that NAT address can change after
-`wsl --shutdown` or a reboot, so the entry silently goes stale. The `127.0.0.1` bridge above stays
-put, the same way the app tier is reached in local testing. On a native Linux host, add the host to
-`/etc/hosts` → the controller IP and browse `http://<grafana-host>` directly (plain HTTP, no TLS — both hosts are local-only).
+Grafana is no longer behind ingress-nginx, so the app's strict `security-headers` CSP never
+reaches it, and Grafana's own CSP is left at its default (off).
 
-**Grafana CSP vs the shared app CSP.** The ingress controller injects the app's strict
-`security-headers` Content-Security-Policy (`script-src 'self'`) on _every_ response via
-`controller.config.add-headers` — including the Grafana vhost. Grafana boots from an inline
-`<script>`, which `script-src 'self'` blocks, so the Grafana SPA dies on a blank `/login` unless
-its CSP is handled. Rather than weaken the app CSP, Grafana emits its **own** nonce-based CSP
-(`grafana.ini` `[security] content_security_policy = true`, which stamps a per-response `$NONCE`
-on both the header and the inline boot script), and the Grafana ingress carries a
-`configuration-snippet` that overwrites the injected app CSP with Grafana's upstream one
-(`more_set_headers "Content-Security-Policy: $upstream_http_content_security_policy"`). The app's
-own hosts keep the strict CSP untouched. This needs `allow-snippet-annotations=true` and
-`annotations-risk-level=Critical` on the controller (both set by `deploy-ingress.sh`), because
-ingress-nginx gates `configuration-snippet` behind them by default.
+#### Tailscale setup (once per tailnet)
+
+Done by an **owner of the `fss-fmi` GitHub org**, in the Tailscale admin console. Only the last
+two steps touch the repo.
+
+1. **Create the tailnet.** At tailscale.com choose **Sign up with GitHub**, authorize Tailscale
+   for the org and pick `fss-fmi` on the "Select a tailnet" page. The creator becomes the
+   tailnet's Owner. A GitHub org gets exactly one tailnet, and its identity provider can never be
+   changed later.
+2. **DNS page:** turn on **MagicDNS** and **HTTPS Certificates**. Without them the Ingress gets
+   no name or certificate.
+3. **Users → User management:** make sure **user approval** is on (the default for new
+   tailnets). Any member of the GitHub org can ask to join; nobody reaches a device until an
+   admin approves them.
+4. **Access controls:** replace the default policy, which lets every device reach every other
+   device, with the [policy file](#tailnet-policy-file) below.
+5. **Create an OAuth client** for the operator with the scopes **General → Services** (read and
+   write), **Devices → Core** (read and write) and **Keys → Auth Keys** (read and write), and the
+   tag **`tag:k8s-operator`**. Make one client per cluster (dev box, server) so each can be
+   revoked on its own. Save the client ID and secret in the password manager only.
+6. **Store it in the env's SOPS file** on the machine that holds that env's age key. Both
+   prompts are hidden; the values never touch argv, history or a temp file:
+
+   ```bash
+   ENV=prod RESTART=false bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
+   ```
+
+   Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
+   `overlays/staging/secrets/tailscale-oauth.enc.yaml`).
+
+7. **Verify.** `kubectl -n tailscale get pods` shows the operator Running, the admin console's
+   Machines page lists `fmi-codes-operator` and a `grafana` proxy (both tagged), and
+   `kubectl -n monitoring get ingress grafana` shows the `ts.net` address. Open it from a tailnet
+   device, then confirm the same address does **not** load with the Tailscale app off.
+
+The person hosting the server needs no Tailscale or GitHub account: the cluster joins through
+the OAuth client, not as a person.
+
+#### Tailnet policy file
+
+The reference copy. The live one is edited in the admin console (Access controls); keep this
+block in sync when it changes.
+
+```js
+{
+  // Who may open Grafana. Copy each login exactly as the Users page shows it
+  // (GitHub logins look like name@github).
+  "groups": {
+    "group:devs": ["<github-login>@github"],
+  },
+  "tagOwners": {
+    "tag:k8s-operator": ["autogroup:admin"],
+    "tag:k8s": ["tag:k8s-operator"],
+  },
+  // Devs reach the cluster's proxies on HTTPS only. No rule has a tag:k8s source, so the
+  // cluster (or anyone with root on its host) can't open a connection to any other device.
+  "grants": [{ "src": ["group:devs"], "dst": ["tag:k8s"], "ip": ["tcp:443"] }],
+}
+```
+
+Root on the host can read the operator's OAuth secret and act as `tag:k8s`. With this policy
+that buys nothing: it can add more `tag:k8s` devices, and those can't reach anyone either.
+
+#### Add or remove a developer
+
+**Add:** the developer installs the Tailscale app and signs in with GitHub, choosing the
+`fss-fmi` tailnet (someone outside the org needs an invite link from Users → Invite external
+users). An admin approves them on the Users page, adds their login to `group:devs` in the
+policy file, and creates them a Grafana account with the **Viewer** role (Grafana →
+Administration → Users).
+
+**Remove:** remove them on the Users page (their devices go with them), take them out of
+`group:devs` and delete their Grafana account. Do it by hand when someone leaves the GitHub org;
+Tailscale doesn't document that leaving the org removes tailnet access.
+
+#### Tear down the tailnet
+
+Only the Owner can, under **Settings → General → Delete tailnet**. That permanently deletes its
+users and devices (logs and backups can linger up to 60 days). Then also:
+
+- remove `fmi-codes-tailscale` and the Grafana Ingress from git, or the operator keeps retrying
+  with a dead client and its Kustomization stays red;
+- revoke Tailscale's access on GitHub (org settings → Third-party access, and each user's
+  Settings → Applications → Authorized OAuth Apps), because deleting the tailnet doesn't.
+
+Tailscale doesn't document whether the org can create a new tailnet after deleting one; ask
+their support first if you plan to start over.
+
+#### Dashboards and checks
 
 **App-only dashboards:** Grafana → Dashboards → **FMI Codes** folder → **FMI Production** or
 **FMI Staging**. Each shows request rate, request duration (p50/p95/p99), and error rate for
-its namespace, hardcoded so there is no shared dropdown or data mixing between envs. These
-dashboards provision automatically on every `deploy-observability.sh` run — no manual import.
+its namespace, hardcoded so there is no shared dropdown or data mixing between envs. They are
+provisioned from `grafana.dashboards` in the Helm values on every chart reconcile, so there is
+nothing to import. On a staging-only cluster **FMI Production** is simply empty.
 
 **The memory-per-pod leak graph:** Grafana → Dashboards → **"Kubernetes / Compute Resources /
 Pod"**, filter `namespace=fmi-codes-staging`, `pod=~backend.*`, the memory panel, set the range
@@ -602,23 +693,13 @@ value on a hobby cluster.
 
 **Rotate the Grafana admin password:** `bash infra/k8s/scripts/rotate-secret.sh --grafana
 admin-password` (details and why it also resets Grafana's database in
-[Grafana admin password](#grafana-admin-password)).
+[Grafana admin password](#grafana-admin-password)). The Tailscale OAuth client:
+[Tailscale OAuth client](#tailscale-oauth-client).
 
 The Grafana deployment name is `kps-grafana` because the values set `fullnameOverride: kps` —
 verify with `kubectl -n monitoring get deploy` if you change it (then pass
-`RESTART_TARGET=deployment/<name>` to `rotate-secret.sh --grafana`).
-
-**Recorded decisions** (restated so this section is self-contained): a single shared
-`monitoring` stack scrapes both envs (separation by namespace selector, not separate stacks);
-persistence is PVC-backed (the multi-day window is the entire point); on a WSL2 dev box Grafana is
-reached at `https://grafana.fmicodes.com` because the WSL node IP is not stable across restarts, so
-the boot-persistent `fmi-tls-prod` `socat` bridge on `:443` fronts the prod
-ingress — and since `grafana.fmicodes.com` is a rule on that same prod `nginx` controller, it rides
-the one bridge for free (no Grafana-specific forward). The chart's Grafana ingress
-(`grafana.fmicodes.com` / `grafana.staging.fmicodes.com`, env's nginx class, TLS omitted since both
-are local-only) stays in place and is the direct access path only on a native Linux host with a real
-LoadBalancer. Two provisioned dashboards ("FMI Production", "FMI Staging") ship with every install
-via `grafana.dashboards` in the Helm values — no manual import needed.
+`RESTART_TARGET=deployment/<name>` to `rotate-secret.sh --grafana`, and update the Service name
+in `base/observability/grafana-ingress.yaml`).
 
 ## Forking to your own infra
 
@@ -657,18 +738,19 @@ Passing the value as a second argument is refused with an explanation. Under the
 script hands the value to `sops set --value-stdin`; a `sops` too old for that flag is refused
 with the fix (reinstall the version `install-tools.sh` pins).
 
-| Secret                         | Rotate with                                                                                 | What users notice                                                                                                                        | Rotate when                                                                                                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SECRET_KEY`                   | `rotate-secret.sh SECRET_KEY --generate`                                                    | Nothing. Flask's key; nothing in the app signs with it today (reset and verification links are random tokens stored as hashes).          | It may have leaked                                                                                                                                                             |
-| `JWT_SECRET_KEY`               | `rotate-secret.sh JWT_SECRET_KEY --generate`                                                | **Everyone is logged out**: participants, mentors and the admin.                                                                         | It may have leaked; after an admin password leak (see next row)                                                                                                                |
-| `ADMIN_PASSWORD_HASH`          | `rotate-secret.sh ADMIN_PASSWORD_HASH`                                                      | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); when an organizer with the password leaves; on a leak, **together with `JWT_SECRET_KEY`** (see the warning below) |
-| `MAIL_PASSWORD`                | `rotate-secret.sh MAIL_PASSWORD`                                                            | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                                                                                 |
-| `DISCORD_BUG_WEBHOOK_URL`      | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`                                                  | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
-| `SLACK_BUG_WEBHOOK_URL`        | `rotate-secret.sh SLACK_BUG_WEBHOOK_URL`                                                    | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
-| `SLACK_MIGRATIONS_WEBHOOK_URL` | `rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL`                                             | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
-| Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                 | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
-| age private keys               | [manual, below](#rotate-an-age-key)                                                         | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
-| DB / Redis passwords           | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords)) |                                                                                                                                          |                                                                                                                                                                                |
+| Secret                         | Rotate with                                                                                       | What users notice                                                                                                                        | Rotate when                                                                                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SECRET_KEY`                   | `rotate-secret.sh SECRET_KEY --generate`                                                          | Nothing. Flask's key; nothing in the app signs with it today (reset and verification links are random tokens stored as hashes).          | It may have leaked                                                                                                                                                             |
+| `JWT_SECRET_KEY`               | `rotate-secret.sh JWT_SECRET_KEY --generate`                                                      | **Everyone is logged out**: participants, mentors and the admin.                                                                         | It may have leaked; after an admin password leak (see next row)                                                                                                                |
+| `ADMIN_PASSWORD_HASH`          | `rotate-secret.sh ADMIN_PASSWORD_HASH`                                                            | The admin logs in with the new password. Admin sessions already open **stay valid** until they expire (`JWT_EXPIRY_DAYS`, 3 by default). | Before first real use (the committed default is known-weak); when an organizer with the password leaves; on a leak, **together with `JWT_SECRET_KEY`** (see the warning below) |
+| `MAIL_PASSWORD`                | `rotate-secret.sh MAIL_PASSWORD`                                                                  | Nothing; mail keeps working after the restart.                                                                                           | Google revoked it or it leaked                                                                                                                                                 |
+| `DISCORD_BUG_WEBHOOK_URL`      | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`                                                        | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| `SLACK_BUG_WEBHOOK_URL`        | `rotate-secret.sh SLACK_BUG_WEBHOOK_URL`                                                          | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| `SLACK_MIGRATIONS_WEBHOOK_URL` | `rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL`                                                   | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                       | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
+| Tailscale OAuth client         | `rotate-secret.sh --tailscale client_id`, then `client_secret` ([below](#tailscale-oauth-client)) | Nothing; the operator restarts and Grafana keeps its tailnet address.                                                                    | It leaked; someone with cluster or admin-console access leaves                                                                                                                 |
+| age private keys               | [manual, below](#rotate-an-age-key)                                                               | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
+| DB / Redis passwords           | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords))       |                                                                                                                                          |                                                                                                                                                                                |
 
 !!! warning "If the admin password leaks, rotate `JWT_SECRET_KEY` too"
 
@@ -727,6 +809,22 @@ the same command.
 `admin-user` has the same first-start-only behaviour and the CLI can't rename the account, so
 rotating it only changes the Secret; rename the account in Grafana's UI to match.
 
+### Tailscale OAuth client
+
+```bash
+ENV=prod RESTART=false bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
+ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
+```
+
+An OAuth client's ID and secret come as a pair, so a rotation always replaces both: create a
+new client in the admin console with the same scopes and tag as the old one
+([Tailscale setup](#tailscale-setup-once-per-tailnet), step 5), run the two commands (the first
+skips the restart so the operator never starts with a half-updated pair), confirm
+`kubectl -n tailscale get pods` shows the operator Running again, then revoke the old client.
+`--tailscale` targets the env's `tailscale-oauth.enc.yaml` (namespace `tailscale`, restarts
+`deployment/operator`). Like `--grafana`, it refuses to overwrite a Secret that holds the other
+env's credentials.
+
 ### Rotate an age key
 
 Each environment's SOPS files are encrypted to one age key (`.sops.yaml`). Replace it when the
@@ -737,15 +835,16 @@ prod use the `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
 # 1. New key pair, appended next to the old one (keep the old one until step 5).
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)   # prints "Public key: age1…"
 
-# 2. In .sops.yaml, replace the old age1… recipient in BOTH staging rules
-#    (secrets.enc.yaml and grafana-secret.enc.yaml) with the new one.
+# 2. In .sops.yaml, replace the old age1… recipient in ALL THREE staging rules
+#    (secrets.enc.yaml, grafana-secret.enc.yaml, tailscale-oauth.enc.yaml) with the new one.
 
-# 3. Re-wrap both files to the new key (needs the old key, still in keys.txt):
+# 3. Re-wrap the three files to the new key (needs the old key, still in keys.txt):
 sops updatekeys -y infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
+sops updatekeys -y infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new age1… is listed
 
-# 4. Commit and push .sops.yaml and both files.
+# 4. Commit and push .sops.yaml and the three files.
 
 # 5. Hand out the new private key and retire the old one:
 #    Replace the old AGE-SECRET-KEY-1… line in the password manager with the new one. On every
@@ -755,7 +854,8 @@ grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new ag
 
 `updatekeys` changes who can decrypt, not the values. Anyone holding the **old** key can still
 decrypt every old version of these files from git history, so if the old key leaked, also
-rotate every secret of that environment from the table above, including Grafana's.
+rotate every secret of that environment from the table above, including Grafana's and the
+Tailscale OAuth client.
 
 ### DB and Redis passwords
 
@@ -886,11 +986,16 @@ kubectl -n flux-system delete -f flux/image-automation.yaml -f flux/source.yaml
 flux uninstall --namespace flux-system --silent
 
 # Phase 7 — observability (suspend the Flux kustomizations first so Flux stops
-# reconciling, then let Helm uninstall clean up; deleting the ns cascades the PVCs):
+# reconciling, then let Helm uninstall clean up; deleting the ns cascades the PVCs).
+# Delete the Grafana Ingress while the operator still runs, so it removes the proxy's
+# tailnet device; anything left over goes from the admin console's Machines page.
+flux suspend kustomization fmi-codes-monitors -n flux-system
 flux suspend kustomization fmi-codes-observability -n flux-system
-flux suspend kustomization fmi-codes-observability-staging -n flux-system
+flux suspend kustomization fmi-codes-tailscale -n flux-system
+kubectl -n monitoring delete ingress grafana --wait
 helm -n monitoring uninstall kps
-kubectl delete namespace monitoring
+helm -n tailscale uninstall tailscale-operator
+kubectl delete namespace monitoring tailscale
 
 # Phase 4 — networking:
 kubectl delete -k overlays/prod/ingress; kubectl delete -k overlays/staging/ingress
