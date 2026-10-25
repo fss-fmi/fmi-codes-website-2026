@@ -7,7 +7,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-2
+  name: db-migrate-3
   labels:
     app.kubernetes.io/name: fmi-codes-db-migrate
     app.kubernetes.io/part-of: fmi-codes-website-2026
@@ -37,7 +37,7 @@ spec:
           args:
             - |
               set -euo pipefail
-              file="/backups/${MIGRATION_ENV}-$(date -u +%Y%m%dT%H%M%SZ)-run2.sql.gz"
+              file="/backups/${MIGRATION_ENV}-$(date -u +%Y%m%dT%H%M%SZ)-run3.sql.gz"
               trap 'rm -f "$file.partial"' ERR
               pg_dump | gzip > "$file.partial"
               mv "$file.partial" "$file"
