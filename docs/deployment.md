@@ -47,11 +47,11 @@ Pending migrations ship inside the backend image and are applied two ways ([ADR-
   - `environment`: `staging` or `prod`.
   - `image_tag`: the backend image whose migrations to apply. Blank means the tag live in staging, which is what the next promote would ship.
 
-  It renders `infra/k8s/templates/db-migrate-job.yaml` into `overlays/<env>/db-migrate-job.yaml` (through `infra/k8s/scripts/render-migrate-job.sh`) on a `migrate-<env>` branch and opens a PR listing the migrations in that image. Merging is the approval. Flux then runs Job `db-migrate-<run>`: `pg_dump` into the `db-migration-backups` PVC (last 5 kept, nothing is migrated if the dump fails), then the runner, then a Slack message with the result and the backup file.
+  It renders `infra/k8s/templates/db-migrate-job.yaml` into `overlays/<env>/db-migrate-job.yaml` (through `infra/k8s/scripts/render-migrate-job.sh`) on a `migrate-<env>` branch and opens a PR listing the migrations in that image. A staging PR merges itself once the required checks pass, since dispatching the run is the approval; a prod PR waits for you to merge it. Flux then runs Job `db-migrate-<run>`: `pg_dump` into the `db-migration-backups` PVC (last 5 kept, nothing is migrated if the dump fails), then the runner, then a Slack message with the result and the backup file.
 
 For a prod release that carries a migration, run **Migrate database** for `prod` with the tag you are about to promote, merge it, wait for the Slack result, then promote. The initContainer would apply it anyway, but only the manual Job takes a backup first.
 
-Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub App, so CI runs on it normally; merging stays a human decision. A failed Job leaves the app Flux Kustomization not ready until the next migration run replaces the Job; read it with `kubectl -n <namespace> logs job/db-migrate-<run> --all-containers`.
+Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub App, so CI runs on it normally; merging a prod one stays a human decision. Each run replaces the previous `db-migrate-<run>` Job in the overlay, and Flux prunes the old Job and its pod, so at most one finished migration Job per environment stays in the cluster with nothing to clean up by hand. A failed Job leaves the app Flux Kustomization not ready until the next migration run replaces the Job; read it with `kubectl -n <namespace> logs job/db-migrate-<run> --all-containers`.
 
 ## Build artifacts
 
