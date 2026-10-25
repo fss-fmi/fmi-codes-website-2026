@@ -14,10 +14,19 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  # Without it Flux names the release monitoring-kps, and the subcharts (Grafana,
+  # kube-state-metrics, node-exporter) take their names from the release, not fullnameOverride.
+  # The Grafana Ingress, rotate-secret.sh and the runbook all expect kps-grafana.
+  releaseName: kps
   targetNamespace: monitoring
   storageNamespace: monitoring
   install:
     crds: CreateReplace
+    # Grafana can't start until deploy-observability.sh applies grafana-admin, which on a fresh
+    # cluster usually happens after Flux's first install attempt. Keep retrying instead of
+    # stalling for good on that first timeout.
+    remediation:
+      retries: -1
   upgrade:
     crds: CreateReplace
   chart:

@@ -674,7 +674,7 @@ to 7d. A steadily climbing line that never plateaus is the leak signature.
 **Check scrape targets** (confirm the backend is actually being scraped):
 
 ```bash
-kubectl -n monitoring port-forward svc/kps-kube-prometheus-stack-prometheus 9090:9090
+kubectl -n monitoring port-forward svc/kps-prometheus 9090:9090
 # http://localhost:9090 -> Status -> Targets -> the fmi-codes-backend target is UP
 ```
 
@@ -698,10 +698,18 @@ admin-password` (details and why it also resets Grafana's database in
 [Grafana admin password](#grafana-admin-password)). The Tailscale OAuth client:
 [Tailscale OAuth client](#tailscale-oauth-client).
 
-The Grafana deployment name is `kps-grafana` because the values set `fullnameOverride: kps` —
-verify with `kubectl -n monitoring get deploy` if you change it (then pass
-`RESTART_TARGET=deployment/<name>` to `rotate-secret.sh --grafana`, and update the Service name
-in `base/observability/grafana-ingress.yaml`).
+Object names start with `kps`: `fullnameOverride: kps` names the chart's own objects
+(`kps-operator`, `kps-prometheus`), and the HelmRelease's `releaseName: kps` names the
+subcharts' (`kps-grafana`, `kps-kube-state-metrics`). Without `releaseName`, Flux would call the
+release `monitoring-kps` and Grafana would become `monitoring-kps-grafana`. If you change
+either, check `kubectl -n monitoring get deploy,svc`, then pass
+`RESTART_TARGET=deployment/<name>` to `rotate-secret.sh --grafana` and update the Service name in
+`base/observability/grafana-ingress.yaml`.
+
+`install.remediation.retries: -1` keeps Flux retrying a failed first install. On a fresh cluster
+Flux usually installs the chart before `deploy-observability.sh` has applied `grafana-admin`, so
+the first attempt times out waiting for Grafana; it succeeds on a later retry once the Secret
+exists.
 
 ## Forking to your own infra
 
