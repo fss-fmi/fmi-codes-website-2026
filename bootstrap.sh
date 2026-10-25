@@ -247,17 +247,24 @@ Remove this line when you want your browser to reach the production server inste
 cluster in WSL2. Remove the line when you no longer need it."
   fi
 
-  log "Installing boot-persistent forward services (prod + staging bridges)"
+  log "Installing boot-persistent forward services (one bridge per bootstrapped env)"
   INSTALL_SVC_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh"
-  wsl.exe -u root -- bash -c "bash '${INSTALL_SVC_SCRIPT}' install" \
-    || warn "forward services install failed — run manually: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
+  # A bare wsl.exe targets the Windows default distro (docker-desktop when Docker Desktop is installed), not this one.
+  if [ -n "${WSL_DISTRO_NAME:-}" ] \
+    && wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash -c "bash '${INSTALL_SVC_SCRIPT}' install"; then
+    FWD_STATUS="The forward services are now installed (auto-start on every boot, no terminal needed).
+One manual step remains — map"
+  else
+    warn "forward services install failed — run manually: wsl.exe -d \"\$WSL_DISTRO_NAME\" -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
+    FWD_STATUS="The forward services did NOT install: run the command from the warning above first.
+Then map"
+  fi
 
   cat <<EOF
 
 $(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
 
-The forward services are now installed (auto-start on every boot, no terminal needed).
-One manual step remains — map the hostnames to loopback in the WINDOWS hosts file
+${FWD_STATUS} the hostnames to loopback in the WINDOWS hosts file
 (C:\\Windows\\System32\\drivers\\etc\\hosts). Editing WSL's /etc/hosts does not help
 the Windows browser. From an elevated PowerShell:
   Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
