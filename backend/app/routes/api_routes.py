@@ -324,15 +324,16 @@ def admin_unregister_team(team_id):
 @api_bp.route("/bug-report", methods=["POST"])
 @limiter.limit("10 per minute")
 def submit_bug_report():
-    """Accept a bug report and post it to the Discord bug-report channel.
+    """Accept a bug report and post it to the Discord and Slack bug-report channels.
 
+    Each webhook (DISCORD_BUG_WEBHOOK_URL, SLACK_BUG_WEBHOOK_URL) is used when set.
     Auth is optional — if a valid session cookie or Bearer token is present the
-    reporter's name/email are looked up from the DB and included in the Discord
-    embed.  Anonymous submissions are accepted too (e.g. from the registration
+    reporter's name/email are looked up from the DB and included in the
+    message.  Anonymous submissions are accepted too (e.g. from the registration
     page, before an account exists).
 
     Returns 202 immediately; the webhook POST runs asynchronously from a
-    bounded thread pool so the endpoint never blocks on the Discord call and
+    bounded thread pool so the endpoint never blocks on the webhook calls and
     can handle 500+ concurrent submissions without issue.
     """
     from app.services.bug_report_service import submit_bug_report_async
@@ -384,10 +385,9 @@ def submit_bug_report():
         except Exception:
             pass  # Non-fatal — fall back to anonymous
 
-    webhook_url = current_app.config.get("DISCORD_BUG_WEBHOOK_URL", "")
-
     submit_bug_report_async(
-        webhook_url,
+        current_app.config.get("DISCORD_BUG_WEBHOOK_URL", ""),
+        current_app.config.get("SLACK_BUG_WEBHOOK_URL", ""),
         reporter_name=reporter_name,
         reporter_email=reporter_email,
         reporter_role=reporter_role,

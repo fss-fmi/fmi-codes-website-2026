@@ -62,11 +62,11 @@ Like the promote PR, the migration PR is opened by `GITHUB_TOKEN`, so CI does no
 
 ## Configuration
 
-| Kind                                                                                                                                            | Where                                                                                                                             | Change it with                                                                                                                                                                                             |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, feature flags)                               | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>`, then commit the YAML too                                                                                                                           |
-| App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`) | SOPS-encrypted `infra/k8s/secrets/secrets.enc.yaml` (prod) and `infra/k8s/overlays/staging/secrets/secrets.enc.yaml`              | `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; see [Rotate a secret](runbook.md#rotate-a-secret)), then commit the `.enc.yaml`                                                    |
-| DB and Redis passwords                                                                                                                          | Generated in-cluster by `deploy-stateful.sh`, tied to the PVC                                                                     | `bash infra/k8s/scripts/rotate-datastore-password.sh <target>` with `db`, `db-admin` or `redis` ([how](runbook.md#db-and-redis-passwords)); never delete the Secret and PVC to rotate, that wipes the data |
+| Kind                                                                                                                                                                     | Where                                                                                                                             | Change it with                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, feature flags)                                                        | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>`, then commit the YAML too                                                                                                                           |
+| App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`) | SOPS-encrypted `infra/k8s/secrets/secrets.enc.yaml` (prod) and `infra/k8s/overlays/staging/secrets/secrets.enc.yaml`              | `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; see [Rotate a secret](runbook.md#rotate-a-secret)), then commit the `.enc.yaml`                                                    |
+| DB and Redis passwords                                                                                                                                                   | Generated in-cluster by `deploy-stateful.sh`, tied to the PVC                                                                     | `bash infra/k8s/scripts/rotate-datastore-password.sh <target>` with `db`, `db-admin` or `redis` ([how](runbook.md#db-and-redis-passwords)); never delete the Secret and PVC to rotate, that wipes the data |
 
 ### Feature flags during the event
 
@@ -89,17 +89,18 @@ The script patches the ConfigMap and restarts the backend. Commit the matching c
 
 The complete list with defaults is `.env.example` (local) plus the ConfigMap and Secret above (cluster). Variables with no safe default:
 
-| Variable                                              | Required    | Notes                                                                         |
-| ----------------------------------------------------- | ----------- | ----------------------------------------------------------------------------- |
-| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value                   |
-| `JWT_SECRET_KEY`                                      | yes         | Same check                                                                    |
-| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                           |
-| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                                 |
-| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links             |
-| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped            |
-| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Without it bug reports are dropped                                            |
-| `SLACK_MIGRATIONS_WEBHOOK_URL`                        | no          | Slack incoming webhook for migration results; without it they are only logged |
-| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off          |
+| Variable                                              | Required    | Notes                                                                                                    |
+| ----------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value                                              |
+| `JWT_SECRET_KEY`                                      | yes         | Same check                                                                                               |
+| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                                                      |
+| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                                                            |
+| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links                                        |
+| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped                                       |
+| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Discord webhook for bug reports                                                                          |
+| `SLACK_BUG_WEBHOOK_URL`                               | no          | Slack incoming webhook for bug reports, used alongside Discord; with neither set bug reports are dropped |
+| `SLACK_MIGRATIONS_WEBHOOK_URL`                        | no          | Slack incoming webhook for migration results; without it they are only logged                            |
+| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off                                     |
 
 ## Health checks
 

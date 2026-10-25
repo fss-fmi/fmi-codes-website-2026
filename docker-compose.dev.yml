@@ -60,6 +60,7 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_USE_TLS: ${MAIL_USE_TLS}
       DISCORD_BUG_WEBHOOK_URL: ${DISCORD_BUG_WEBHOOK_URL}
+      SLACK_BUG_WEBHOOK_URL: ${SLACK_BUG_WEBHOOK_URL}
       REDIS_URL: redis://redis:6379
     command: python run_server.py
     depends_on:

@@ -70,6 +70,7 @@ else
       --from-literal=ADMIN_PASSWORD_HASH="" \
       --from-literal=MAIL_PASSWORD="" \
       --from-literal=DISCORD_BUG_WEBHOOK_URL="" \
+      --from-literal=SLACK_BUG_WEBHOOK_URL="" \
       --from-literal=SLACK_MIGRATIONS_WEBHOOK_URL=""
     echo "Created $APP_SECRET with generated SECRET_KEY/JWT_SECRET_KEY and empty placeholders."
     echo "Set a real ADMIN_PASSWORD_HASH before the backend will start in production mode:"
@@ -138,8 +139,8 @@ App tier is up. Verify against the issue's acceptance criteria:
       python -c "import urllib.request;print(urllib.request.urlopen('http://localhost:5001/api/health/ready').read())"
 
 To rotate a secret (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH, MAIL_PASSWORD,
-DISCORD_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL) in one command (prompts for
-the value; --generate for a random one):
+DISCORD_BUG_WEBHOOK_URL, SLACK_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL) in one
+command (prompts for the value; --generate for a random one):
     ENV=$ENV bash infra/k8s/scripts/rotate-secret.sh <KEY>
 
 See docs/runbook.md 'Phase 3' and 'Phase 5' for the full checklists.

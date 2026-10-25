@@ -139,6 +139,7 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_USE_TLS: ${MAIL_USE_TLS}
       DISCORD_BUG_WEBHOOK_URL: ${DISCORD_BUG_WEBHOOK_URL}
+      SLACK_BUG_WEBHOOK_URL: ${SLACK_BUG_WEBHOOK_URL}
       REDIS_SENTINELS: sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
       REDIS_MASTER_NAME: mymaster
       # REDIS_URL: redis://redis-master:6379  # optional single-instance override; unset REDIS_SENTINELS/REDIS_MASTER_NAME to use it

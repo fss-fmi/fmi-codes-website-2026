@@ -144,6 +144,13 @@ spec:
                 secretKeyRef:
                   name: fmi-codes-app
                   key: DISCORD_BUG_WEBHOOK_URL
+            # Optional so a missing key can never block a rollout; unset just skips Slack.
+            - name: SLACK_BUG_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: SLACK_BUG_WEBHOOK_URL
+                  optional: true
           startupProbe:
             httpGet:
               path: /api/health

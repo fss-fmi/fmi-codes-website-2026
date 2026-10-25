@@ -206,7 +206,9 @@ def captured_reports(monkeypatch):
     reports = []
     monkeypatch.setattr(
         "app.services.bug_report_service.submit_bug_report_async",
-        lambda webhook_url, **kwargs: reports.append(kwargs),
+        lambda discord_webhook_url, slack_webhook_url, **kwargs: reports.append(
+            {**kwargs, "webhooks": (discord_webhook_url, slack_webhook_url)}
+        ),
     )
     return reports
 
@@ -215,6 +217,18 @@ BUG = {"what_did": "clicked", "what_happened": "broke", "page": "/register"}
 
 
 class TestBugReportAttribution:
+    def test_both_configured_webhooks_are_used(
+        self, client, flask_app, monkeypatch, captured_reports
+    ):
+        monkeypatch.setitem(flask_app.config, "DISCORD_BUG_WEBHOOK_URL", "https://discord.test/h")
+        monkeypatch.setitem(flask_app.config, "SLACK_BUG_WEBHOOK_URL", "https://hooks.slack.test/h")
+        rv = client.post("/api/bug-report", json=BUG)
+        assert rv.status_code == 202
+        assert captured_reports[0]["webhooks"] == (
+            "https://discord.test/h",
+            "https://hooks.slack.test/h",
+        )
+
     def test_anonymous_report_accepted(self, client, captured_reports):
         rv = client.post("/api/bug-report", json=BUG)
         assert rv.status_code == 202

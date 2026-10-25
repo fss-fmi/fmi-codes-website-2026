@@ -26,7 +26,7 @@ graph TD
     API -->|rate limits, JWT blocklist, caches| Redis
     API -->|password reset, join-request mail| SMTP
     API -->|bug reports| Discord
-    API -->|"migration results (initContainer, Job)"| Slack
+    API -->|"bug reports, migration results (initContainer, Job)"| Slack
     Prom -->|"scrape /metrics (in-cluster)"| API
 ```
 
@@ -142,7 +142,7 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 | Redis 7 (Sentinel in prod) | Rate-limit storage, JWT blocklist, caches             | No (degrades)               |
 | SMTP (Gmail by default)    | Password reset links, join-request emails to captains | No (features silently fail) |
 | Discord webhook            | Bug reports                                           | No                          |
-| Slack incoming webhook     | Database migration results                            | No                          |
+| Slack incoming webhooks    | Bug reports, database migration results               | No                          |
 | Docker Hub (`fssfmi/*`)    | Image registry                                        | For deploys                 |
 
 ## Known gaps
