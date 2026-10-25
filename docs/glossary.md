@@ -10,7 +10,7 @@ A team with at least 3 members (`ACTIVE_THRESHOLD`). Only active teams can be re
 
 ### Admin
 
-The organizer account. A single credential defined in config (`ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH`), with no database row and `user_id` 0 in its token. Runs everything from **Mission Control**. Its password cannot be changed or reset through the app.
+The organizer account. A single credential defined in config (`ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH`), with no database row and `user_id` 0 in its token. Runs everything from **Mission Control**. Its password cannot be changed or reset through the app. Rotating it (`rotate-secret.sh ADMIN_PASSWORD_HASH`) does not end admin sessions already open, so after a leak `JWT_SECRET_KEY` must be rotated too, which logs everyone out (see [Rotate a secret](runbook.md#rotate-a-secret)).
 
 ### Application
 
