@@ -1,10 +1,11 @@
 name: Migrate database
 
 # GitHub's runners can't reach the cluster, so this opens a PR that adds a
-# one-off Job to the chosen overlay. Merging it is the approval; Flux then runs
-# the Job in-cluster: pg_dump to the db-migration-backups PVC, then every
-# pending migration shipped in the chosen backend image. The result is posted
-# to Slack.
+# one-off Job to the chosen overlay. A staging PR merges itself once the
+# required checks pass (dispatching the run is the approval); a prod PR waits
+# for a human merge. Flux then runs the Job in-cluster: pg_dump to the
+# db-migration-backups PVC, then every pending migration shipped in the chosen
+# backend image. The result is posted to Slack.
 #
 # Pushes and opens the PR as the fmi-codes-bot GitHub App, not GITHUB_TOKEN, so CI on
 # the PR starts by itself instead of waiting for "Approve workflows to run".
@@ -105,8 +106,14 @@ jobs:
           git commit -m "db: migrate $ENVIRONMENT with backend $TAG (run $GITHUB_RUN_NUMBER)"
           git push --force-with-lease origin "$branch"
 
+          if [ "$ENVIRONMENT" = "staging" ]; then
+            merge_note="Merges itself once the required checks pass."
+          else
+            merge_note="Merging it is the approval."
+          fi
+
           body=$(cat <<EOF
-          Manual database migration for **$ENVIRONMENT**, using backend image \`$TAG\`.
+          Manual database migration for **$ENVIRONMENT**, using backend image \`$TAG\`. $merge_note
 
           On merge, Flux runs Job \`db-migrate-$GITHUB_RUN_NUMBER\`:
           1. \`pg_dump\` into the \`db-migration-backups\` PVC (last 5 kept). Nothing is migrated if the dump fails.
@@ -129,4 +136,11 @@ jobs:
           else
             gh pr edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
             echo "Updated existing migration PR #$existing on branch $branch."
+          fi
+
+          if [ "$ENVIRONMENT" = "staging" ]; then
+            if ! gh pr merge "$branch" --repo "$GITHUB_REPOSITORY" --auto --squash; then
+              echo "::error::Could not enable auto-merge on the $branch PR, so this staging migration will not merge by itself. Check that 'Allow auto-merge' is on in the repo settings and that fmi-codes-bot has Contents and Pull requests write access."
+              exit 1
+            fi
           fi
