@@ -592,11 +592,13 @@ two steps touch the repo.
    prompts are hidden; the values never touch argv, history or a temp file:
 
    ```bash
-   ENV=prod RESTART=false bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
    ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
    ```
 
-   Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
+   While one half is still empty the script only stores the value and says which key to set
+   next; the second command applies the complete pair, so the operator never starts with half
+   of it. Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
    `overlays/staging/secrets/tailscale-oauth.enc.yaml`).
 
 7. **Verify.** `kubectl -n tailscale get pods` shows the operator Running, the admin console's
@@ -672,7 +674,7 @@ to 7d. A steadily climbing line that never plateaus is the leak signature.
 **Check scrape targets** (confirm the backend is actually being scraped):
 
 ```bash
-kubectl -n monitoring port-forward svc/kps-kube-prometheus-stack-prometheus 9090:9090
+kubectl -n monitoring port-forward svc/kps-prometheus 9090:9090
 # http://localhost:9090 -> Status -> Targets -> the fmi-codes-backend target is UP
 ```
 
@@ -696,10 +698,18 @@ admin-password` (details and why it also resets Grafana's database in
 [Grafana admin password](#grafana-admin-password)). The Tailscale OAuth client:
 [Tailscale OAuth client](#tailscale-oauth-client).
 
-The Grafana deployment name is `kps-grafana` because the values set `fullnameOverride: kps` —
-verify with `kubectl -n monitoring get deploy` if you change it (then pass
-`RESTART_TARGET=deployment/<name>` to `rotate-secret.sh --grafana`, and update the Service name
-in `base/observability/grafana-ingress.yaml`).
+Object names start with `kps`: `fullnameOverride: kps` names the chart's own objects
+(`kps-operator`, `kps-prometheus`), and the HelmRelease's `releaseName: kps` names the
+subcharts' (`kps-grafana`, `kps-kube-state-metrics`). Without `releaseName`, Flux would call the
+release `monitoring-kps` and Grafana would become `monitoring-kps-grafana`. If you change
+either, check `kubectl -n monitoring get deploy,svc`, then pass
+`RESTART_TARGET=deployment/<name>` to `rotate-secret.sh --grafana` and update the Service name in
+`base/observability/grafana-ingress.yaml`.
+
+`install.remediation.retries: -1` keeps Flux retrying a failed first install. On a fresh cluster
+Flux usually installs the chart before `deploy-observability.sh` has applied `grafana-admin`, so
+the first attempt times out waiting for Grafana; it succeeds on a later retry once the Secret
+exists.
 
 ## Forking to your own infra
 
@@ -818,8 +828,9 @@ ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
 
 An OAuth client's ID and secret come as a pair, so a rotation always replaces both: create a
 new client in the admin console with the same scopes and tag as the old one
-([Tailscale setup](#tailscale-setup-once-per-tailnet), step 5), run the two commands (the first
-skips the restart so the operator never starts with a half-updated pair), confirm
+([Tailscale setup](#tailscale-setup-once-per-tailnet), step 5), run the two commands back to back
+(the first skips the restart so the running operator isn't restarted onto a half-updated
+pair), confirm
 `kubectl -n tailscale get pods` shows the operator Running again, then revoke the old client.
 `--tailscale` targets the env's `tailscale-oauth.enc.yaml` (namespace `tailscale`, restarts
 `deployment/operator`). Like `--grafana`, it refuses to overwrite a Secret that holds the other
