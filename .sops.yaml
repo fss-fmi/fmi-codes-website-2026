@@ -1,13 +1,13 @@
 creation_rules:
   - path_regex: infra/k8s/overlays/staging/secrets/grafana-secret\.enc\.yaml$
     encrypted_regex: "^(data|stringData)$"
-    age: age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5
+    age: age1u6a3nspvhhdm960l0vsq8se88f0wdpgttypxhn6untksvnkafufqv95dhh
   - path_regex: infra/k8s/secrets/grafana-secret\.enc\.yaml$
     encrypted_regex: "^(data|stringData)$"
-    age: age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh
+    age: age18h3rtu53ysz3pgf9qphcceewy04qp5049trpclav5es7mw86lensqwk9lf
   - path_regex: infra/k8s/overlays/staging/secrets/secrets\.enc\.yaml$
     encrypted_regex: "^(data|stringData)$"
-    age: age15zg0ymdvkt87hdvsj4xg582h0zsdgdrnkkk6msc76xtcrcyxyvcsljz0w5
+    age: age1u6a3nspvhhdm960l0vsq8se88f0wdpgttypxhn6untksvnkafufqv95dhh
   - path_regex: infra/k8s/secrets/secrets\.enc\.yaml$
     encrypted_regex: "^(data|stringData)$"
-    age: age1txhwhk6d5nph0sqf68e7yw5a0er572847jc4f60gmen5rfrx65xs0feuhh
+    age: age18h3rtu53ysz3pgf9qphcceewy04qp5049trpclav5es7mw86lensqwk9lf

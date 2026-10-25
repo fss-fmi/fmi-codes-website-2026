@@ -62,15 +62,16 @@ End-to-end, bare server → running cluster. Do it for staging first, then repea
   `install-tools.sh` fetches kubectl/helm/sops/age/flux.
 - **The environment's age private key.** SOPS decrypts the committed app secrets with it.
   Two cases:
-  - **Deploying the existing project** (normal case): get the private key from a teammate.
-    The easiest path is to store it as a GitHub Actions secret (`SOPS_AGE_KEY_STAGING` /
-    `SOPS_AGE_KEY_PROD`) and export it before running bootstrap — the script picks it up
-    automatically:
+  - **Deploying the existing project** (normal case): get the private key from a teammate
+    through a password manager, never chat or email. `./bootstrap.sh` asks for it at a hidden
+    paste prompt. To skip the prompt, export `SOPS_AGE_KEY_STAGING` / `SOPS_AGE_KEY_PROD`
+    first, without typing the key on the command line, so it stays out of shell history:
     ```bash
-    export SOPS_AGE_KEY_STAGING="AGE-SECRET-KEY-1..."
+    read -rs SOPS_AGE_KEY_STAGING && export SOPS_AGE_KEY_STAGING   # paste the key, press Enter
     ./bootstrap.sh              # no paste prompt
     ```
-    Without the env var, the script falls back to an interactive paste prompt (input hidden).
+    Don't keep the key in GitHub Actions secrets: no workflow reads it, and GitHub never
+    shows a secret's value again, so it only adds a place for the key to leak from.
     If you run both environments from one machine, both keys live in the same `keys.txt`, in
     any order; there is nothing to comment out when switching.
   - **Forking to your own project:** you don't have the org's key, so mint your own and take
@@ -122,8 +123,8 @@ bare box), then handles two things:
    back to a hidden paste prompt, verifies the key decrypts those files **before** writing
    anything, then **appends** it to `keys.txt` with a `# public key:` comment (`chmod 600`).
    Existing keys are never replaced or removed. A wrong key aborts with its public key next
-   to the one the files are encrypted to, and leaves `keys.txt` untouched. Store the key as a
-   GitHub Actions secret and export it before running bootstrap to skip the prompt entirely.
+   to the one the files are encrypted to, and leaves `keys.txt` untouched. To skip the prompt,
+   export the key first as shown in [step 0](#0-prerequisites).
 2. **The admin password** — if `ADMIN_PASSWORD_HASH` is empty in the secrets file, it asks
    for a password (hidden, typed twice, at least 12 characters), bcrypt-hashes it, and writes
    the hash back into `secrets.enc.yaml` through stdin, so neither shows up in `ps`. Commit
@@ -697,9 +698,9 @@ grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new ag
 # 4. Commit and push .sops.yaml and both files.
 
 # 5. Hand out the new private key and retire the old one:
-gh secret set SOPS_AGE_KEY_STAGING   # prompts; paste the new AGE-SECRET-KEY-1… line
-#    On every machine that deploys staging, add the new line to keys.txt (bootstrap.sh does
-#    it when SOPS_AGE_KEY_STAGING is exported) and delete the old key's lines.
+#    Replace the old AGE-SECRET-KEY-1… line in the password manager with the new one. On every
+#    machine that deploys staging, add the new line to keys.txt (bootstrap.sh does it from its
+#    prompt or SOPS_AGE_KEY_STAGING) and delete the old key's lines.
 ```
 
 `updatekeys` changes who can decrypt, not the values. Anyone holding the **old** key can still
