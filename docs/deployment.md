@@ -42,7 +42,7 @@ graph LR
 
 Pending migrations ship inside the backend image and are applied two ways ([ADR-007](adr/007-recorded-migrations-runner.md)):
 
-- **Automatically on every rollout.** The backend Deployment's `migrate` initContainer runs `python -m database.migrate` before the new pods start. It posts to Slack only when it applied something or failed. If a migration fails, the new pods stay in `Init` and the old ones keep serving.
+- **Automatically on every rollout.** The backend Deployment's `migrate` initContainer runs `python -m database.migrate` before the new pods start. It posts to Slack only when it applied something or failed. If a migration fails, the new pods stay in `Init` and the old ones keep serving. It also runs whenever a backend pod restarts (node reboot, k3s restart), so it waits up to 60 s for Postgres to accept connections before reporting a failure; a "migration run failed" message therefore means Postgres stayed unreachable for a full minute or a real error occurred.
 - **On demand, with a backup.** Run **Actions → Migrate database** with:
   - `environment`: `staging` or `prod`.
   - `image_tag`: the backend image whose migrations to apply. Blank means the tag live in staging, which is what the next promote would ship.

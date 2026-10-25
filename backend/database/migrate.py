@@ -10,7 +10,9 @@ initContainer). Migration files must be safe to re-run and must not contain
 their own BEGIN/COMMIT.
 
 Connection: DATABASE_URL if set, otherwise DB_HOST/DB_PORT/DB_NAME/DB_USER/
-DB_PASSWORD (the backend's own variables). Results go to the Slack incoming
+DB_PASSWORD (the backend's own variables). The first connection is retried for
+up to CONNECT_WAIT_SECONDS, because after a node or k3s restart the backend's
+initContainer starts alongside Postgres. Results go to the Slack incoming
 webhook in SLACK_MIGRATIONS_WEBHOOK_URL when set, labelled with MIGRATION_ENV.
 """
 
@@ -20,6 +22,7 @@ import logging
 import os
 import re
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -31,6 +34,10 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 FILENAME_RE = re.compile(r"^(\d{3})_[a-z0-9_]+\.sql$")
 # Session-level lock; distinct from the transaction-level locks 1 and 2 the app takes.
 LOCK_ID = 727_001
+CONNECT_WAIT_SECONDS = 60
+CONNECT_RETRY_SECONDS = 2
+# Per attempt; without it a dropped SYN hangs on the OS TCP timeout and blows the wait window.
+CONNECT_ATTEMPT_TIMEOUT = 5
 
 _CREATE_TABLE = """
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -73,6 +80,21 @@ def _connection_params() -> str | dict:
     }
 
 
+def _connect(params: str | dict):
+    """Connect, retrying OperationalError until CONNECT_WAIT_SECONDS have passed."""
+    deadline = time.monotonic() + CONNECT_WAIT_SECONDS
+    while True:
+        try:
+            if isinstance(params, str):
+                return psycopg2.connect(params, connect_timeout=CONNECT_ATTEMPT_TIMEOUT)
+            return psycopg2.connect(**params, connect_timeout=CONNECT_ATTEMPT_TIMEOUT)
+        except psycopg2.OperationalError as e:
+            if time.monotonic() + CONNECT_RETRY_SECONDS > deadline:
+                raise
+            logger.info("Database not reachable yet, retrying: %s", " ".join(str(e).split()))
+            time.sleep(CONNECT_RETRY_SECONDS)
+
+
 def apply_pending(params: str | dict, directory: Path = MIGRATIONS_DIR) -> list[str]:
     """Apply every unrecorded migration and return the filenames applied.
 
@@ -80,7 +102,7 @@ def apply_pending(params: str | dict, directory: Path = MIGRATIONS_DIR) -> list[
     """
     files = migration_files(directory)
     applied: list[str] = []
-    conn = psycopg2.connect(params) if isinstance(params, str) else psycopg2.connect(**params)
+    conn = _connect(params)
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s)", (LOCK_ID,))
