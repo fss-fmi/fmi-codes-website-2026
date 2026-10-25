@@ -10,6 +10,7 @@ case "$ENV" in
 esac
 K3S_VERSION="${K3S_VERSION:-v1.36.2+k3s1}"
 HELM_VERSION="${HELM_VERSION:-v3.21.3}"
+IMAGE_MAX_GC_AGE="${IMAGE_MAX_GC_AGE:-168h}"
 
 API_TIMEOUT="${API_TIMEOUT:-300}"
 NODE_TIMEOUT="${NODE_TIMEOUT:-180}"
@@ -49,9 +50,29 @@ log "Installing prerequisites"
 sudo apt-get update -y
 sudo apt-get install -y curl ca-certificates apt-transport-https gnupg tar coreutils
 
+# Size-based image GC only starts at 85% disk; on WSL2's 1 TB virtual disk the Windows drive fills
+# first, so every deployed version piles up. Modes match what k3s creates.
+log "Removing images unused for $IMAGE_MAX_GC_AGE (kubelet drop-in)"
+KUBELET_DROPIN_DIR=/var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+KUBELET_DROPIN="$KUBELET_DROPIN_DIR/50-image-gc.conf"
+KUBELET_DROPIN_CONTENT="apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+imageMaximumGCAge: ${IMAGE_MAX_GC_AGE}"
+# The installer skips its restart when k3s itself is unchanged, so a changed drop-in has to force it.
+K3S_FORCE_RESTART=false
+sudo install -d -m 755 /var/lib/rancher/k3s
+sudo install -d -m 700 /var/lib/rancher/k3s/agent /var/lib/rancher/k3s/agent/etc "$KUBELET_DROPIN_DIR"
+if [ "$(sudo cat "$KUBELET_DROPIN" 2>/dev/null)" != "$KUBELET_DROPIN_CONTENT" ]; then
+  # Not `install /dev/stdin`: uutils install (Ubuntu 26.04) fails reading stdin onto an existing file.
+  printf '%s\n' "$KUBELET_DROPIN_CONTENT" | sudo tee "$KUBELET_DROPIN" >/dev/null
+  sudo chmod 600 "$KUBELET_DROPIN"
+  K3S_FORCE_RESTART=true
+fi
+
 log "Installing k3s $K3S_VERSION (Traefik disabled, Phase 4 brings its own ingress controller)"
 curl -sfL https://get.k3s.io \
-  | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - --disable traefik --write-kubeconfig-mode 600
+  | INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_FORCE_RESTART="$K3S_FORCE_RESTART" \
+    sh -s - --disable traefik --write-kubeconfig-mode 600
 
 log "Waiting for the k3s API server to accept connections (up to ${API_TIMEOUT}s)"
 api_ready=false
