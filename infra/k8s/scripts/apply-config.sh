@@ -34,7 +34,7 @@ Apply a non-secret backend config change and roll the backend so pods pick it up
 Secrets do NOT belong here. To rotate SECRET_KEY / JWT_SECRET_KEY /
 ADMIN_PASSWORD_HASH / MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL /
 SLACK_MIGRATIONS_WEBHOOK_URL use:
-    bash $SCRIPT_DIR/rotate-secret.sh <KEY> [VALUE]
+    bash $SCRIPT_DIR/rotate-secret.sh <KEY>      (prompts; --generate for a random one)
 DB / Redis passwords are PVC-coupled and managed by deploy-stateful.sh.
 
 Env overrides: ENV (prod|staging — selects the overlay and namespace),
