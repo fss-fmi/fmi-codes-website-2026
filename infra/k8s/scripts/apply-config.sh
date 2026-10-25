@@ -18,7 +18,7 @@ APP_OVERLAY="${APP_OVERLAY:-$K8S_DIR/overlays/$ENV}"
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
 
-SECRET_KEYS="SECRET_KEY JWT_SECRET_KEY ADMIN_PASSWORD_HASH MAIL_PASSWORD DISCORD_BUG_WEBHOOK_URL DB_PASSWORD REDIS_PASSWORD"
+SECRET_KEYS="SECRET_KEY JWT_SECRET_KEY ADMIN_PASSWORD_HASH MAIL_PASSWORD DISCORD_BUG_WEBHOOK_URL SLACK_MIGRATIONS_WEBHOOK_URL DB_PASSWORD REDIS_PASSWORD"
 
 usage() {
   cat <<EOF
@@ -32,7 +32,8 @@ Apply a non-secret backend config change and roll the backend so pods pick it up
                    source of truth) and restart the backend.
 
 Secrets do NOT belong here. To rotate SECRET_KEY / JWT_SECRET_KEY /
-ADMIN_PASSWORD_HASH / MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL use:
+ADMIN_PASSWORD_HASH / MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL /
+SLACK_MIGRATIONS_WEBHOOK_URL use:
     bash $SCRIPT_DIR/rotate-secret.sh <KEY>      (prompts; --generate for a random one)
 DB / Redis passwords are PVC-coupled and managed by deploy-stateful.sh.
 
