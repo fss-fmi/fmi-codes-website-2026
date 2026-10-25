@@ -149,9 +149,11 @@ INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-cont
 echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts   # reach it at :8443
 ```
 
-That line is for reaching the cluster from **inside WSL** (or a native Linux host). To reach it
-from a **Windows browser** the node IP does not work — install the boot-persistent forward services
-once (`install-forward-services.sh`) and use `127.0.0.1` hosts entries (see [Phase 4](#4--ingress--tls)).
+That line is for reaching the cluster from **inside WSL** (or a native Linux host). A **Windows
+browser** can reach the node IP too, but WSL2's NAT address can change after `wsl --shutdown` or a
+reboot, so a Windows hosts entry pointing at it goes stale. Install the boot-persistent forward
+services once (`install-forward-services.sh`) and use `127.0.0.1` hosts entries instead (see
+[Phase 4](#4--ingress--tls)).
 
 ### 5. (Optional) Set mail / webhook secrets
 
@@ -359,17 +361,23 @@ echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
 
 On the production server, set the `fmicodes.com` A-record in DNS instead.
 
-**From a Windows browser (WSL2 dev box):** the node IP above does **not** work — k3s/klipper does
-not expose the ingress LoadBalancer ports to the Windows host, so a hosts entry pointing at it
-resolves the name but cannot open a connection. Install the boot-persistent forward services once,
-then use `127.0.0.1` hosts entries:
+**From a Windows browser (WSL2 dev box):** Windows can reach the node IP above, but WSL2 gives the
+VM a NAT address that can change after `wsl --shutdown` or a Windows reboot, so a hosts entry
+pointing at it breaks without warning. Install the boot-persistent forward services once, then use
+`127.0.0.1` hosts entries, which never change. From the repo root inside WSL:
 
 ```bash
-wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install
+wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash infra/k8s/scripts/install-forward-services.sh install
 ```
 
-This writes three `systemd` services (`enabled`, `Restart=always`, so they come back on every boot
-with no terminal to keep open):
+Keep the `-d "$WSL_DISTRO_NAME"`: a bare `wsl.exe` runs in the Windows default distro, which is
+`docker-desktop` when Docker Desktop is installed, and fails there with `bash: not found`.
+`sudo bash infra/k8s/scripts/install-forward-services.sh install` works too.
+
+The script only installs the services for an env whose ingress controller Service exists, so a
+port-forward never crash-loops against a missing controller. Re-run it after bootstrapping the other
+env to add that env's services. It writes up to three `systemd` services (`enabled`,
+`Restart=always`, so they come back on every boot with no terminal to keep open):
 
 - `fmi-forward-prod` — `kubectl port-forward` the prod ingress controller to `127.0.0.1:8443`.
 - `fmi-tls-prod` — `socat` `127.0.0.1:443` → `:8443`. Because the prod ingress multiplexes by host,
@@ -388,7 +396,7 @@ It also sets `net.ipv4.ip_unprivileged_port_start=443` (persisted) so the `socat
 Then browse `https://fmicodes.com`, `https://grafana.fmicodes.com`, and
 `https://staging.fmicodes.com:9443` — staging keeps a port suffix because `:443` has a single
 listener already taken by prod. Remove everything with
-`wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh uninstall`. Requires
+`wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash infra/k8s/scripts/install-forward-services.sh uninstall`. Requires
 `systemd=true` in `/etc/wsl.conf` (the default here) and `socat` installed.
 
 ### 5 — Secrets (SOPS + age)
@@ -527,13 +535,11 @@ kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost
 
 **Why not the ingress host?** The chart provisions a Grafana ingress (prod: `grafana.fmicodes.com`,
 staging: `grafana.staging.fmicodes.com`), and that works on a **native Linux host** with a real
-LoadBalancer. But on **WSL2/k3s it does not reach a Windows browser**: k3s's built-in ServiceLB
-(klipper) does not expose the ingress controller's LoadBalancer ports to the Windows host, so no
-Windows hosts-file entry — node IP or `127.0.0.1` — can open a TCP connection to them. Pointing the
-hosts file at the WSL node IP resolves the name but the port is dead. The port-forward above is what
-actually bridges the cluster to Windows-visible localhost, the same way the app tier is reached in
-local testing. On a native Linux host, add the host to `/etc/hosts` → the controller IP and browse
-`http://<grafana-host>` directly (plain HTTP, no TLS — both hosts are local-only).
+LoadBalancer. On **WSL2/k3s a Windows hosts entry to it is fragile**: the ingress controller's
+LoadBalancer ports are reachable at the WSL node IP, but that NAT address can change after
+`wsl --shutdown` or a reboot, so the entry silently goes stale. The `127.0.0.1` bridge above stays
+put, the same way the app tier is reached in local testing. On a native Linux host, add the host to
+`/etc/hosts` → the controller IP and browse `http://<grafana-host>` directly (plain HTTP, no TLS — both hosts are local-only).
 
 **Grafana CSP vs the shared app CSP.** The ingress controller injects the app's strict
 `security-headers` Content-Security-Policy (`script-src 'self'`) on _every_ response via
@@ -590,8 +596,8 @@ verify with `kubectl -n monitoring get deploy` if you change it (then pass
 **Recorded decisions** (restated so this section is self-contained): a single shared
 `monitoring` stack scrapes both envs (separation by namespace selector, not separate stacks);
 persistence is PVC-backed (the multi-day window is the entire point); on a WSL2 dev box Grafana is
-reached at `https://grafana.fmicodes.com` because klipper does not expose the LoadBalancer ports to
-the Windows host, so the boot-persistent `fmi-tls-prod` `socat` bridge on `:443` fronts the prod
+reached at `https://grafana.fmicodes.com` because the WSL node IP is not stable across restarts, so
+the boot-persistent `fmi-tls-prod` `socat` bridge on `:443` fronts the prod
 ingress — and since `grafana.fmicodes.com` is a rule on that same prod `nginx` controller, it rides
 the one bridge for free (no Grafana-specific forward). The chart's Grafana ingress
 (`grafana.fmicodes.com` / `grafana.staging.fmicodes.com`, env's nginx class, TLS omitted since both

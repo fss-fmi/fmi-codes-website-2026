@@ -247,10 +247,12 @@ Remove this line when you want your browser to reach the production server inste
 cluster in WSL2. Remove the line when you no longer need it."
   fi
 
-  log "Installing boot-persistent forward services (prod + staging bridges)"
+  log "Installing boot-persistent forward services (one bridge per bootstrapped env)"
   INSTALL_SVC_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh"
-  wsl.exe -u root -- bash -c "bash '${INSTALL_SVC_SCRIPT}' install" \
-    || warn "forward services install failed — run manually: wsl.exe -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
+  # A bare wsl.exe targets the Windows default distro (docker-desktop when Docker Desktop is installed), not this one.
+  [ -n "${WSL_DISTRO_NAME:-}" ] \
+    && wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash -c "bash '${INSTALL_SVC_SCRIPT}' install" \
+    || warn "forward services install failed — run manually: wsl.exe -d \"\$WSL_DISTRO_NAME\" -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
 
   cat <<EOF
 
