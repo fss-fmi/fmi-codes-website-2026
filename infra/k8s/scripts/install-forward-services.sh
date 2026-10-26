@@ -43,14 +43,11 @@ UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
 PROD_SVC="ingress-nginx-controller"
 PROD_NS="ingress-nginx"
 PROD_LOCAL="8443"
-STAGING_SVC="ingress-nginx-staging-controller"
-STAGING_NS="ingress-nginx-staging"
-STAGING_LOCAL="9443"
-STAGING_SVC_PORT="8443"
 
 PROD_UNITS="fmi-forward-prod.service fmi-tls-prod.service"
-STAGING_UNITS="fmi-forward-staging.service"
-UNITS="$PROD_UNITS $STAGING_UNITS"
+# Staging is served over the tailnet now; this unit only exists on machines set up before that.
+LEGACY_UNITS="fmi-forward-staging.service"
+UNITS="$PROD_UNITS $LEGACY_UNITS"
 
 remove_units() {
   for u in "$@"; do
@@ -87,23 +84,27 @@ id "$SVC_USER" >/dev/null 2>&1 || die "user '$SVC_USER' does not exist — set S
 kctl get --raw /readyz >/dev/null 2>&1 \
   || die "cluster API unreachable with '$KUBECONFIG_PATH' — start k3s (bootstrap-k3s.sh) and re-run."
 
-# An env that isn't bootstrapped has no controller Service, and its port-forward would restart every 3s forever.
-WITH_PROD=0
-WITH_STAGING=0
-kctl -n "$PROD_NS" get svc "$PROD_SVC" >/dev/null 2>&1 && WITH_PROD=1
-kctl -n "$STAGING_NS" get svc "$STAGING_SVC" >/dev/null 2>&1 && WITH_STAGING=1
-[ "$WITH_PROD" = 1 ] || [ "$WITH_STAGING" = 1 ] \
-  || die "no ingress controller Service in '$PROD_NS' or '$STAGING_NS' — bootstrap an env first."
+if [ -e "$UNIT_DIR/fmi-forward-staging.service" ]; then
+  log "Removing fmi-forward-staging (staging is reached over the tailnet now)"
+fi
+remove_units $LEGACY_UNITS
 
-ENABLE_UNITS=""
+# Without prod there is no controller Service to forward, and the port-forward would restart every 3s forever.
+if ! kctl -n "$PROD_NS" get svc "$PROD_SVC" >/dev/null 2>&1; then
+  log "Skipping prod: no $PROD_NS/$PROD_SVC Service (re-run after bootstrapping prod)"
+  remove_units $PROD_UNITS
+  systemctl daemon-reload
+  echo "Nothing to forward. Staging needs no forward service: it is reached over the tailnet"
+  echo "(kubectl -n ingress-nginx-staging get ingress staging shows its address)."
+  exit 0
+fi
 
-if [ "$WITH_PROD" = 1 ]; then
-  log "Allowing non-root to bind port 443 (persisted)"
-  sysctl -w net.ipv4.ip_unprivileged_port_start=443 >/dev/null
-  echo "net.ipv4.ip_unprivileged_port_start=443" > /etc/sysctl.d/99-unpriv443.conf
+log "Allowing non-root to bind port 443 (persisted)"
+sysctl -w net.ipv4.ip_unprivileged_port_start=443 >/dev/null
+echo "net.ipv4.ip_unprivileged_port_start=443" > /etc/sysctl.d/99-unpriv443.conf
 
-  log "Writing $UNIT_DIR/fmi-forward-prod.service"
-  cat > "$UNIT_DIR/fmi-forward-prod.service" <<EOF
+log "Writing $UNIT_DIR/fmi-forward-prod.service"
+cat > "$UNIT_DIR/fmi-forward-prod.service" <<EOF
 [Unit]
 Description=Port-forward prod ingress-nginx to 127.0.0.1:${PROD_LOCAL} for Windows browser access
 After=network-online.target
@@ -123,8 +124,8 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
-  log "Writing $UNIT_DIR/fmi-tls-prod.service"
-  cat > "$UNIT_DIR/fmi-tls-prod.service" <<EOF
+log "Writing $UNIT_DIR/fmi-tls-prod.service"
+cat > "$UNIT_DIR/fmi-tls-prod.service" <<EOF
 [Unit]
 Description=socat 127.0.0.1:443 to prod forward ${PROD_LOCAL} (serves fmicodes.com)
 After=network-online.target fmi-forward-prod.service
@@ -143,67 +144,24 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-  ENABLE_UNITS="$ENABLE_UNITS $PROD_UNITS"
-else
-  log "Skipping prod: no $PROD_NS/$PROD_SVC Service (re-run after bootstrapping prod)"
-  remove_units $PROD_UNITS
-fi
-
-if [ "$WITH_STAGING" = 1 ]; then
-  log "Writing $UNIT_DIR/fmi-forward-staging.service"
-  cat > "$UNIT_DIR/fmi-forward-staging.service" <<EOF
-[Unit]
-Description=Port-forward staging ingress-nginx to 127.0.0.1:${STAGING_LOCAL} for Windows browser access
-After=network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=0
-
-[Service]
-Type=simple
-User=${SVC_USER}
-Group=${SVC_GROUP}
-Environment=KUBECONFIG=${KUBECONFIG_PATH}
-ExecStart=${KUBECTL_BIN} -n ${STAGING_NS} port-forward svc/${STAGING_SVC} ${STAGING_LOCAL}:${STAGING_SVC_PORT} --address 127.0.0.1
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  ENABLE_UNITS="$ENABLE_UNITS $STAGING_UNITS"
-else
-  log "Skipping staging: no $STAGING_NS/$STAGING_SVC Service (re-run after bootstrapping staging)"
-  remove_units $STAGING_UNITS
-fi
 
 log "Enabling + starting services"
 systemctl daemon-reload
-systemctl enable --now $ENABLE_UNITS
-
-HOSTS_LINES=""
-BROWSE_LINES=""
-if [ "$WITH_PROD" = 1 ]; then
-  HOSTS_LINES="${HOSTS_LINES}  127.0.0.1 fmicodes.com
-"
-  BROWSE_LINES="${BROWSE_LINES}  https://fmicodes.com           prod app
-"
-fi
-if [ "$WITH_STAGING" = 1 ]; then
-  HOSTS_LINES="${HOSTS_LINES}  127.0.0.1 staging.fmicodes.com
-"
-  BROWSE_LINES="${BROWSE_LINES}  https://staging.fmicodes.com:${STAGING_LOCAL}   staging app (self-signed cert)
-"
-fi
+systemctl enable --now $PROD_UNITS
 
 cat <<EOF
 
-FMI forward services installed and enabled (auto-start on every boot):${ENABLE_UNITS}
+FMI forward services installed and enabled (auto-start on every boot): $PROD_UNITS
 
-Add to the Windows hosts file (C:\\Windows\\System32\\drivers\\etc\\hosts):
-${HOSTS_LINES}
+Add to the Windows hosts file (C:\Windows\System32\drivers\etc\hosts):
+  127.0.0.1 fmicodes.com
+
 Then browse (no terminal needed, survives reboot):
-${BROWSE_LINES}
+  https://fmicodes.com           prod app
+
+Staging needs no forward or hosts line: it is reached over the tailnet.
+
 Manage:
-  systemctl status${ENABLE_UNITS}
+  systemctl status $PROD_UNITS
   wsl.exe -d "\$WSL_DISTRO_NAME" -u root -- bash infra/k8s/scripts/install-forward-services.sh uninstall
 EOF

@@ -23,10 +23,11 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   2. bootstrap-k3s.sh    k3s cluster + target namespace
   3. deploy-stateful.sh  Postgres + Redis Sentinel (Helm)
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
-  5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
+  5. deploy-ingress.sh   ingress-nginx (+ cert-manager and TLS for prod; staging's tailnet Ingress)
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
   7. deploy-observability.sh  Grafana admin + Tailscale OAuth secrets (Flux installs kube-prometheus-stack
-                              and the Tailscale operator; runs whenever step 6 does)
+                              and the Tailscale operator; runs whenever step 6 does). Staging is
+                              reached only over the tailnet, so it needs steps 6 and 7.
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
@@ -38,7 +39,8 @@ fix the cause and resume without redoing earlier steps:
                           SSH deploy key present — see README 'Phase 6' before enabling.
   --without-observability skip step 7 even with Flux (Grafana admin + Tailscale OAuth secrets;
                           Flux reconciles kube-prometheus-stack and the Tailscale operator
-                          either way). --with-observability is still accepted and is the
+                          either way). Without the OAuth secret staging gets no tailnet
+                          address. --with-observability is still accepted and is the
                           default with --with-flux. See docs/runbook.md 'Phase 7'.
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
@@ -46,7 +48,7 @@ this in a terminal, not a headless context.
 
 Runs on native Debian/Ubuntu Linux and on WSL2 (Ubuntu). On WSL2, run
 bootstrap.sh from the repo root instead — it handles the age key pre-flight,
-runs this script, and auto-installs the boot-persistent port-forward services.
+runs this script, and auto-installs the boot-persistent port-forward services (prod).
 EOF
 }
 
@@ -72,10 +74,7 @@ case "$ENV" in
     ;;
   staging)
     NAMESPACE="${NAMESPACE:-fmi-codes-staging}"
-    HOST="${HOST:-staging.fmicodes.com}"
     INGRESS_NAMESPACE="ingress-nginx-staging"
-    INGRESS_RELEASE="ingress-nginx-staging"
-    HOST_URL="https://$HOST:9443"
     ;;
   *)       die "--env must be 'staging' or 'prod', got '$ENV'" ;;
 esac
@@ -128,17 +127,35 @@ else
   log "Step 7 (observability) — skipped (it runs with --with-flux unless --without-observability; see docs/runbook.md 'Phase 7')"
 fi
 
+if [ "$ENV" = "staging" ]; then
+  TAILNET_HOST="$(kubectl -n "$INGRESS_NAMESPACE" get ingress staging \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+  if [ -n "$TAILNET_HOST" ]; then
+    ACCESS_NOTE="Open https://$TAILNET_HOST from a device on the tailnet (no hosts entry)."
+  else
+    ACCESS_NOTE="Staging has no tailnet address yet. It gets one once Flux runs the Tailscale
+operator and step 7 applies its OAuth client (docs/runbook.md 'Phase 7'); then:
+  kubectl -n $INGRESS_NAMESPACE get ingress staging    # ADDRESS = staging's URL"
+  fi
+  cat <<EOF
+
+$(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
+
+Staging is reachable only over the tailnet. $ACCESS_NOTE
+
+Verify the stack:
+  kubectl -n $NAMESPACE get pods
+  curl https://${TAILNET_HOST:-staging.<tailnet>.ts.net}/api/health
+EOF
+  exit 0
+fi
+
 INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-external-ip>"
 
-if [ "$ENV" = "prod" ]; then
-  TLS_NOTE="For production, point the $HOST A record at $INGRESS_IP in DNS.
+TLS_NOTE="For production, point the $HOST A record at $INGRESS_IP in DNS.
 Let's Encrypt issues the cert automatically once DNS resolves."
-else
-  TLS_NOTE="For staging, the /etc/hosts entry above is enough — TLS is a self-signed
-certificate from a namespaced Issuer, so expect a browser warning."
-fi
 
 cat <<EOF
 

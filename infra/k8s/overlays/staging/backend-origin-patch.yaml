@@ -1,0 +1,19 @@
+# Staging's origin is its tailnet URL, kept in the SOPS app secret so the tailnet name never sits
+# in the repo in plain text. Optional so a cluster whose secret lacks it still rolls out; the
+# backend then falls back to its localhost default and deploy-app.sh warns.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: FRONTEND_ORIGIN
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: FRONTEND_ORIGIN
+                  optional: true

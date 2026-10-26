@@ -10,7 +10,7 @@ The FMI{Codes} platform runs the operations layer of a 48-hour hackathon: partic
 graph TD
     Browser["Browser<br/>(React SPA)"]
     Nginx["Nginx<br/>(frontend image)"]
-    Ingress["ingress-nginx<br/>(k3s)"]
+    Ingress["ingress-nginx<br/>(k3s, one controller per env)"]
     API["Flask API<br/>(Gunicorn, 4 workers x 8 threads)"]
     PG[("PostgreSQL 16")]
     Redis[("Redis + Sentinel<br/>(optional)")]
@@ -19,10 +19,10 @@ graph TD
     Slack["Slack webhook"]
     Prom["Prometheus"]
     Grafana["Grafana"]
-    TS["Tailscale proxy<br/>(operator-managed)"]
+    TS["Tailscale proxies<br/>(operator-managed)"]
     Dev["Developer device<br/>(Tailscale app)"]
 
-    Browser -->|HTTPS| Ingress
+    Browser -->|"HTTPS (prod)"| Ingress
     Ingress -->|"/ (static)"| Nginx
     Ingress -->|"/api, /static"| API
     API -->|psycopg2 pool, raw SQL| PG
@@ -33,10 +33,11 @@ graph TD
     Prom -->|"scrape /metrics (in-cluster)"| API
     Dev -->|"HTTPS over the tailnet"| TS
     TS --> Grafana
+    TS -->|"staging (HTTP)"| Ingress
     Grafana --> Prom
 ```
 
-In production the cluster ingress routes `/api` and `/static` straight to the backend Service and everything else to the frontend. The frontend image's own `nginx.conf` also proxies `/api` and `/static` to `http://backend:5001`, which is how the Docker Compose stack works with the same image.
+In production the cluster ingress routes `/api` and `/static` straight to the backend Service and everything else to the frontend. Staging has its own ingress-nginx controller with the same routing and security headers, but no public entry: it is reached only over the `fss-fmi` tailnet, where a Tailscale proxy terminates TLS for `https://staging.<tailnet>.ts.net` and forwards to that controller ([ADR-009](adr/009-staging-over-tailscale.md)). The frontend image's own `nginx.conf` also proxies `/api` and `/static` to `http://backend:5001`, which is how the Docker Compose stack works with the same image.
 
 ## Components
 
@@ -140,18 +141,19 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 - [ADR-006](adr/006-self-hosted-k3s-pull-based-gitops.md): self-hosted k3s with pull-based Flux GitOps and a manual prod gate.
 - [ADR-007](adr/007-recorded-migrations-runner.md): recorded migrations, applied by a backend initContainer on every rollout and on demand by a backed-up Job.
 - [ADR-008](adr/008-grafana-over-tailscale.md): one shared Grafana, reached only over a Tailscale tailnet.
+- [ADR-009](adr/009-staging-over-tailscale.md): staging reached only over the tailnet, in front of its own ingress-nginx.
 
 ## External dependencies
 
-| Dependency                    | Used for                                              | Required                                     |
-| ----------------------------- | ----------------------------------------------------- | -------------------------------------------- |
-| PostgreSQL 16                 | All durable state                                     | Yes                                          |
-| Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches             | No (degrades)                                |
-| SMTP (Gmail by default)       | Password reset links, join-request emails to captains | No (features silently fail)                  |
-| Discord webhook               | Bug reports                                           | No                                           |
-| Slack incoming webhooks       | Bug reports, database migration results               | No                                           |
-| Docker Hub (`fssfmi/*`)       | Image registry                                        | For deploys                                  |
-| Tailscale (`fss-fmi` tailnet) | Developer access to Grafana                           | No (Grafana only via `kubectl port-forward`) |
+| Dependency                    | Used for                                              | Required                                  |
+| ----------------------------- | ----------------------------------------------------- | ----------------------------------------- |
+| PostgreSQL 16                 | All durable state                                     | Yes                                       |
+| Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches             | No (degrades)                             |
+| SMTP (Gmail by default)       | Password reset links, join-request emails to captains | No (features silently fail)               |
+| Discord webhook               | Bug reports                                           | No                                        |
+| Slack incoming webhooks       | Bug reports, database migration results               | No                                        |
+| Docker Hub (`fssfmi/*`)       | Image registry                                        | For deploys                               |
+| Tailscale (`fss-fmi` tailnet) | Developer access to Grafana and staging               | No (both only via `kubectl port-forward`) |
 
 ## Known gaps
 

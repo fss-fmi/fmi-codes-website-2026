@@ -85,6 +85,7 @@ nav:
           - ADR-006 k3s and pull-based GitOps: adr/006-self-hosted-k3s-pull-based-gitops.md
           - ADR-007 Recorded migrations: adr/007-recorded-migrations-runner.md
           - ADR-008 Grafana over Tailscale: adr/008-grafana-over-tailscale.md
+          - ADR-009 Staging over Tailscale: adr/009-staging-over-tailscale.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

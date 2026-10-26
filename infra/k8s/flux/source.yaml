@@ -82,6 +82,25 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: fmi-codes-staging-tailnet
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fmi-codes
+  # Its own Kustomization because the Ingress must sit in ingress-nginx-staging, next to the
+  # controller Service it fronts. That namespace comes from deploy-ingress.sh, so this retries
+  # until the controller is installed.
+  path: ./infra/k8s/overlays/staging/tailnet
+  prune: true
+  wait: false
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: fmi-codes-observability
   namespace: flux-system
 spec:

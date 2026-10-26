@@ -21,7 +21,8 @@ and restart the workload so pods pick up the new value.
   KEY         A stringData key in the env's secrets.enc.yaml
               (SECRET_KEY, JWT_SECRET_KEY, ADMIN_PASSWORD_HASH,
               MAIL_PASSWORD, DISCORD_BUG_WEBHOOK_URL,
-              SLACK_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL),
+              SLACK_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL, and on
+              staging FRONTEND_ORIGIN, its tailnet URL),
               with --grafana: admin-password,
               with --tailscale: client_id or client_secret.
   --generate  Use a strong random value (SECRET_KEY, JWT_SECRET_KEY).

@@ -1,0 +1,24 @@
+# Tailnet-only: the Tailscale operator serves this as https://staging.<tailnet>.ts.net with its own
+# certificate and forwards plain HTTP to the staging ingress-nginx controller, so staging still
+# runs prod's edge (security-headers, /api and /static routing). The operator only resolves
+# backends in the Ingress's own namespace, which is why this lives in ingress-nginx-staging and
+# not in the app overlay.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: staging
+  namespace: ingress-nginx-staging
+  labels:
+    app.kubernetes.io/name: fmi-codes-ingress
+    app.kubernetes.io/part-of: fmi-codes-website-2026
+    app.kubernetes.io/managed-by: flux
+spec:
+  ingressClassName: tailscale
+  defaultBackend:
+    service:
+      name: ingress-nginx-staging-controller
+      port:
+        number: 80
+  tls:
+    - hosts:
+        - staging

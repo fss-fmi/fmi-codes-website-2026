@@ -9,6 +9,10 @@ patches:
     target:
       kind: ConfigMap
       name: fmi-codes-backend-config
+  - path: backend-origin-patch.yaml
+    target:
+      kind: Deployment
+      name: backend
 images:
   - name: fssfmi/fmi-codes-backend
     newName: fssfmi/fmi-codes-backend

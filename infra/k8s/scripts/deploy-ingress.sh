@@ -12,6 +12,7 @@ case "$ENV" in
     INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
     INGRESS_RELEASE="${INGRESS_RELEASE:-ingress-nginx}"
     HOST_URL="https://$HOST"
+    TAILNET_OVERLAY=""
     HELM_SET_ARGS=(
       --set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP"
       --set "controller.config.allow-snippet-annotations=true"
@@ -20,10 +21,11 @@ case "$ENV" in
     ;;
   staging)
     NAMESPACE="${NAMESPACE:-fmi-codes-staging}"
-    HOST="${HOST:-staging.fmicodes.com}"
     INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx-staging}"
     INGRESS_RELEASE="${INGRESS_RELEASE:-ingress-nginx-staging}"
-    HOST_URL="https://$HOST:8443"
+    # Reached only over the tailnet (overlays/staging/tailnet), so the controller binds no host
+    # ports and staging needs no cert-manager: the Tailscale proxy holds the certificate.
+    TAILNET_OVERLAY="overlays/staging/tailnet"
     HELM_SET_ARGS=(
       --set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP"
       --set "controller.config.allow-snippet-annotations=true"
@@ -32,8 +34,7 @@ case "$ENV" in
       --set "controller.ingressClassResource.controllerValue=k8s.io/ingress-nginx-staging"
       --set "controller.ingressClass=nginx-staging"
       --set "controller.electionID=ingress-nginx-staging-leader"
-      --set "controller.service.ports.http=8080"
-      --set "controller.service.ports.https=8443"
+      --set "controller.service.type=ClusterIP"
     )
     ;;
   *)
@@ -60,6 +61,8 @@ die() { echo "Error: $1" >&2; exit 1; }
 command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
 command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.sh first."
 [ -f "$INGRESS_OVERLAY/kustomization.yaml" ] || die "missing $INGRESS_OVERLAY/kustomization.yaml"
+[ -z "$TAILNET_OVERLAY" ] || [ -f "$K8S_DIR/$TAILNET_OVERLAY/kustomization.yaml" ] \
+  || die "missing $K8S_DIR/$TAILNET_OVERLAY/kustomization.yaml"
 
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
@@ -74,7 +77,7 @@ kubectl -n "$NAMESPACE" get service frontend >/dev/null 2>&1 \
 
 INGRESS_IP_PRE="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-if [ -n "$INGRESS_IP_PRE" ]; then
+if [ "$ENV" = "prod" ] && [ -n "$INGRESS_IP_PRE" ]; then
   RESOLVED_IP=""
   if command -v dig >/dev/null 2>&1; then
     RESOLVED_IP="$(dig +short "$HOST" A 2>/dev/null | tail -1 || true)"
@@ -105,42 +108,71 @@ helm upgrade --install "$INGRESS_RELEASE" ingress-nginx/ingress-nginx \
   "${HELM_SET_ARGS[@]}" \
   --wait --timeout "${READY_TIMEOUT}s"
 
-log "Deploying cert-manager (chart $CERT_MANAGER_CHART_VERSION)"
-helm upgrade --install cert-manager jetstack/cert-manager \
-  --namespace "$CERT_MANAGER_NAMESPACE" --create-namespace \
-  --version "$CERT_MANAGER_CHART_VERSION" \
-  --set crds.enabled=true \
-  --wait --timeout "${READY_TIMEOUT}s"
+if [ "$ENV" = "staging" ]; then
+  log "Applying the security-headers ConfigMap and Ingress"
+  kubectl apply -k "$INGRESS_OVERLAY"
+  log "Applying staging's tailnet Ingress (the Tailscale operator serves it)"
+  kubectl apply -k "$K8S_DIR/$TAILNET_OVERLAY"
+else
+  log "Deploying cert-manager (chart $CERT_MANAGER_CHART_VERSION)"
+  helm upgrade --install cert-manager jetstack/cert-manager \
+    --namespace "$CERT_MANAGER_NAMESPACE" --create-namespace \
+    --version "$CERT_MANAGER_CHART_VERSION" \
+    --set crds.enabled=true \
+    --wait --timeout "${READY_TIMEOUT}s"
 
-log "Applying the security-headers ConfigMap, issuer, certificate, and Ingress"
-kubectl apply -k "$INGRESS_OVERLAY"
+  log "Applying the security-headers ConfigMap, issuer, certificate, and Ingress"
+  kubectl apply -k "$INGRESS_OVERLAY"
 
-log "Waiting for the TLS certificate '$CERTIFICATE_NAME' to be issued (ACME — may take several minutes)"
-if ! kubectl -n "$NAMESPACE" wait --for=condition=Ready \
-    "certificate/$CERTIFICATE_NAME" --timeout "${READY_TIMEOUT}s"; then
-  echo "" >&2
-  echo "Certificate not ready within ${READY_TIMEOUT}s — continuing anyway." >&2
-  echo "This is normal if DNS has not yet propagated to the server." >&2
-  echo "The cert will be issued automatically once Let's Encrypt can reach the challenge endpoint." >&2
-  echo "Check progress with:" >&2
-  echo "  kubectl -n $NAMESPACE describe certificate $CERTIFICATE_NAME" >&2
-  echo "  kubectl -n $NAMESPACE get certificaterequest,order,challenge" >&2
+  log "Waiting for the TLS certificate '$CERTIFICATE_NAME' to be issued (ACME — may take several minutes)"
+  if ! kubectl -n "$NAMESPACE" wait --for=condition=Ready \
+      "certificate/$CERTIFICATE_NAME" --timeout "${READY_TIMEOUT}s"; then
+    echo "" >&2
+    echo "Certificate not ready within ${READY_TIMEOUT}s — continuing anyway." >&2
+    echo "This is normal if DNS has not yet propagated to the server." >&2
+    echo "The cert will be issued automatically once Let's Encrypt can reach the challenge endpoint." >&2
+    echo "Check progress with:" >&2
+    echo "  kubectl -n $NAMESPACE describe certificate $CERTIFICATE_NAME" >&2
+    echo "  kubectl -n $NAMESPACE get certificaterequest,order,challenge" >&2
+  fi
 fi
 
 log "Deployed. Current state:"
 kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" -o wide
 kubectl -n "$NAMESPACE" get ingress
+
+if [ "$ENV" = "staging" ]; then
+  kubectl -n "$INGRESS_NAMESPACE" get ingress staging
+  TAILNET_HOST="$(kubectl -n "$INGRESS_NAMESPACE" get ingress staging \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+  [ -n "$TAILNET_HOST" ] || TAILNET_HOST="staging.<tailnet>.ts.net"
+  cat <<EOF
+
+Networking is up (Phase 4). Staging is reachable only over the tailnet:
+  https://$TAILNET_HOST -> Tailscale proxy (TLS) -> ${INGRESS_RELEASE}-controller:80
+    /api/    -> backend:5001
+    /static/ -> backend:5001
+    /        -> frontend:80
+
+The address appears once the Tailscale operator runs with its OAuth client (Flux installs it,
+deploy-observability.sh applies the client). Until then, or without Tailscale:
+  kubectl -n $INGRESS_NAMESPACE port-forward svc/${INGRESS_RELEASE}-controller 8080:80
+  curl http://127.0.0.1:8080/api/health
+
+Verify from a tailnet device (see docs/runbook.md 'Phase 4'):
+  curl https://$TAILNET_HOST/api/health
+  curl -I https://$TAILNET_HOST/api/health    # security headers present
+EOF
+  exit 0
+fi
+
 kubectl -n "$NAMESPACE" get certificate
 
 INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 [ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-external-ip>"
 
-if [ "$ENV" = "staging" ]; then
-  TLS_NOTE="Staging uses a self-signed certificate (no DNS/ACME dependency); browsers will warn."
-else
-  TLS_NOTE="For production, ensure the $HOST A record points at $INGRESS_IP in DNS. Let's Encrypt will issue the cert automatically once DNS resolves."
-fi
+TLS_NOTE="For production, ensure the $HOST A record points at $INGRESS_IP in DNS. Let's Encrypt will issue the cert automatically once DNS resolves."
 
 cat <<EOF
 

@@ -1,0 +1,7 @@
+# The Tailscale proxy holds staging's certificate; without this the base prod Certificate
+# (fmicodes.com, Let's Encrypt) would be issued into the staging namespace.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fmi-codes-tls
+$patch: delete
