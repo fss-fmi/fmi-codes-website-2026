@@ -301,6 +301,33 @@ NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
 kubectl get --raw "/api/v1/nodes/$NODE/proxy/configz" | grep -o '"imageMaximumGCAge":"[^"]*"'
 ```
 
+**WSL2: eth0 is pinned to MTU 1500 before k3s starts.** In its default NAT networking mode,
+WSL2 gives `eth0` the lowest MTU of any Windows network adapter, so once Tailscale (or another
+VPN) is installed on Windows `eth0` boots at 1280. Flannel sizes every pod's network from `eth0`
+when k3s starts (1280 − 50 = 1230). That is too small for the WireGuard packets of the Tailscale
+proxy pods, so anything served over the tailnet (Grafana) resolves and connects but hangs in the
+TLS handshake. The signature: TCP connects (`Test-NetConnection <100.x address> -Port 443`
+succeeds on Windows), `curl -v https://grafana.<tailnet>.ts.net` stalls in the TLS handshake,
+and the proxy pod logs `TLS handshake error … EOF`. On WSL2, `bootstrap-k3s.sh` therefore writes a systemd drop-in,
+`/etc/systemd/system/k3s.service.d/wsl-mtu.conf`, that sets `eth0` to 1500 on every k3s start
+(override with `WSL_ETH0_MTU`). 1500 is right because WSL2's traffic leaves through the real
+network card, not the Tailscale adapter. Native Linux (where `eth0` is already 1500) and WSL2 in
+mirrored networking mode are left alone. Check it:
+
+```bash
+cat /sys/class/net/eth0/mtu                 # 1500 = fixed, 1280 = affected
+cat /sys/class/net/cni0/mtu                 # 1450 = fixed, 1230 = pods still on the old MTU
+grep MTU /run/flannel/subnet.env            # FLANNEL_MTU=1450 = fixed, 1230 = affected
+```
+
+A k3s restart keeps the pod network it already built, so a cluster that first started at 1280
+stays at 1230 until that network is rebuilt; the script ends with a warning when it finds one. The
+fix stops every pod, so the apps are down until they come back; data on the PVCs is kept:
+
+```bash
+sudo /usr/local/bin/k3s-killall.sh && sudo systemctl start k3s
+```
+
 **k3s installs as a systemd service, so it survives reboot** — on a real Linux host. Default
 WSL2 has systemd off, so either enable it once (`/etc/wsl.conf` → `[boot]\nsystemd=true`,
 then `wsl --shutdown`) or just re-run `bootstrap-k3s.sh` after each WSL relaunch (idempotent,
@@ -604,7 +631,9 @@ two steps touch the repo.
 7. **Verify.** `kubectl -n tailscale get pods` shows the operator Running, the admin console's
    Machines page lists `fmi-codes-operator` and a `grafana` proxy (both tagged), and
    `kubectl -n monitoring get ingress grafana` shows the `ts.net` address. Open it from a tailnet
-   device, then confirm the same address does **not** load with the Tailscale app off.
+   device, then confirm the same address does **not** load with the Tailscale app off. If the
+   name resolves but the page hangs on a WSL2 dev box, the pod network is running at a low MTU
+   (see the WSL2 eth0 note in [Phase 1](#1--tools--cluster)).
 
 The person hosting the server needs no Tailscale or GitHub account: the cluster joins through
 the OAuth client, not as a person.
@@ -1028,6 +1057,8 @@ kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=postgres
 kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=redis
 kubectl -n fmi-codes delete secret fmi-codes-db fmi-codes-redis
 
-# Or nuke the whole cluster:
+# Or nuke the whole cluster (on WSL2 also remove the eth0 MTU drop-in, which the uninstaller
+# leaves behind):
 /usr/local/bin/k3s-uninstall.sh
+sudo rm -f /etc/systemd/system/k3s.service.d/wsl-mtu.conf && sudo systemctl daemon-reload
 ```
