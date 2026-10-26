@@ -75,8 +75,8 @@ if [ "$(sudo cat "$KUBELET_DROPIN" 2>/dev/null)" != "$KUBELET_DROPIN_CONTENT" ];
   K3S_FORCE_RESTART=true
 fi
 
-# WSL2 (NAT mode) boots eth0 with the lowest MTU of any Windows adapter: 1280 once Tailscale for
-# Windows is installed. Flannel sizes every pod from eth0 when k3s starts, and at 1230 the Tailscale
+# WSL2 (NAT mode) boots eth0 with the lowest MTU of any Windows adapter: 1280 once Tailscale (or
+# another VPN) is installed on Windows. Flannel sizes every pod from eth0 when k3s starts, and at 1230 the Tailscale
 # proxy pods' WireGuard packets don't fit, so TLS over the tailnet stalls. Mirrored mode copies the
 # real adapters, so it is left alone. ExecStartPre has no "-": better k3s fail loudly than run at 1280.
 WSL_MTU_PINNED=false
@@ -136,14 +136,13 @@ if ! sudo k3s kubectl wait --for=condition=Ready node --all --timeout="${NODE_TI
 fi
 
 # A k3s restart keeps the pod network it already built (cni0 and every veth), so a cluster first
-# started at the low MTU keeps it until that network is torn down and recreated.
+# started at the low MTU keeps it until that network is torn down and recreated. Reported at the
+# end, so it doesn't scroll away behind the tool installs.
+STALE_POD_MTU=""
 if $WSL_MTU_PINNED; then
   cni_mtu="$(cat /sys/class/net/cni0/mtu 2>/dev/null || true)"
   if [ -n "$cni_mtu" ] && [ "$cni_mtu" -lt $(( WSL_ETH0_MTU - 50 )) ]; then
-    echo >&2
-    echo "Warning: the pod network still runs at MTU $cni_mtu (expected $(( WSL_ETH0_MTU - 50 ))), from a start before eth0 was pinned." >&2
-    echo "Traffic through the Tailscale proxies will stall until it is rebuilt. Stop every pod and start k3s again:" >&2
-    echo "  sudo /usr/local/bin/k3s-killall.sh && sudo systemctl start k3s" >&2
+    STALE_POD_MTU="$cni_mtu"
   fi
 fi
 
@@ -206,3 +205,13 @@ Next steps:
   - kubectl get pods -A              # sanity check core k3s pods are Running
   - Move on to Phase 2 (#27): Postgres + Redis Sentinel via Helm, into the '$NAMESPACE' namespace
 EOF
+
+if [ -n "$STALE_POD_MTU" ]; then
+  cat >&2 <<EOF
+
+$(printf '\033[1;33m')Warning: the pod network still runs at MTU $STALE_POD_MTU (expected $(( WSL_ETH0_MTU - 50 ))), from a k3s start before eth0 was pinned.$(printf '\033[0m')
+Anything served over Tailscale will hang in the TLS handshake until it is rebuilt. Stop every
+pod and start k3s again (the apps are down until they come back; data on the PVCs is kept):
+  sudo /usr/local/bin/k3s-killall.sh && sudo systemctl start k3s
+EOF
+fi

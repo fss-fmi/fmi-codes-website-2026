@@ -302,22 +302,26 @@ kubectl get --raw "/api/v1/nodes/$NODE/proxy/configz" | grep -o '"imageMaximumGC
 ```
 
 **WSL2: eth0 is pinned to MTU 1500 before k3s starts.** In its default NAT networking mode,
-WSL2 gives `eth0` the lowest MTU of any Windows network adapter, so once Tailscale for Windows is
-installed `eth0` boots at 1280. Flannel sizes every pod's network from `eth0` when k3s starts
-(1280 − 50 = 1230). That is too small for the WireGuard packets of the Tailscale proxy pods, so
-anything served over the tailnet (Grafana) resolves and connects but hangs in the TLS handshake.
-On WSL2, `bootstrap-k3s.sh` therefore writes a systemd drop-in,
+WSL2 gives `eth0` the lowest MTU of any Windows network adapter, so once Tailscale (or another
+VPN) is installed on Windows `eth0` boots at 1280. Flannel sizes every pod's network from `eth0`
+when k3s starts (1280 − 50 = 1230). That is too small for the WireGuard packets of the Tailscale
+proxy pods, so anything served over the tailnet (Grafana) resolves and connects but hangs in the
+TLS handshake. The signature: TCP connects (`Test-NetConnection <100.x address> -Port 443`
+succeeds on Windows), `curl -v https://grafana.<tailnet>.ts.net` stalls in the TLS handshake,
+and the proxy pod logs `TLS handshake error … EOF`. On WSL2, `bootstrap-k3s.sh` therefore writes a systemd drop-in,
 `/etc/systemd/system/k3s.service.d/wsl-mtu.conf`, that sets `eth0` to 1500 on every k3s start
 (override with `WSL_ETH0_MTU`). 1500 is right because WSL2's traffic leaves through the real
 network card, not the Tailscale adapter. Native Linux (where `eth0` is already 1500) and WSL2 in
 mirrored networking mode are left alone. Check it:
 
 ```bash
-cat /sys/class/net/eth0/mtu /sys/class/net/cni0/mtu   # 1500 and 1450
+cat /sys/class/net/eth0/mtu                 # 1500 = fixed, 1280 = affected
+cat /sys/class/net/cni0/mtu                 # 1450 = fixed, 1230 = pods still on the old MTU
+grep MTU /run/flannel/subnet.env            # FLANNEL_MTU=1450 = fixed, 1230 = affected
 ```
 
 A k3s restart keeps the pod network it already built, so a cluster that first started at 1280
-stays at 1230 until that network is rebuilt; the script prints a warning when it finds one. The
+stays at 1230 until that network is rebuilt; the script ends with a warning when it finds one. The
 fix stops every pod, so the apps are down until they come back; data on the PVCs is kept:
 
 ```bash
