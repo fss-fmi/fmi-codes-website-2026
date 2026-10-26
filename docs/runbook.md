@@ -22,7 +22,8 @@ infra/k8s/
                    base/tailscale/     Tailscale operator (shared)
   overlays/      per-env overlays layered on base
                    overlays/prod/     namespace fmi-codes, host fmicodes.com, Let's Encrypt
-                   overlays/staging/  namespace fmi-codes-staging, host staging.fmicodes.com, self-signed
+                   overlays/staging/  namespace fmi-codes-staging, any host, no TLS (Tailscale holds it)
+                   overlays/staging/tailnet/ staging's Tailscale Ingress (namespace ingress-nginx-staging)
   helm-values/   Bitnami postgresql + redis values (prod)
   secrets/       prod secrets, grafana-secret, tailscale-oauth .enc.yaml (SOPS); staging's live in
                  overlays/staging/secrets/
@@ -31,27 +32,31 @@ infra/k8s/
 
 ## Environments
 
-|                    | prod                                                 | staging                                                                 |
-| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| namespace          | `fmi-codes`                                          | `fmi-codes-staging`                                                     |
-| host / port        | `fmicodes.com` (443)                                 | `staging.fmicodes.com` (8443)                                           |
-| DB / Redis FQDN    | `*.fmi-codes.svc`                                    | `*.fmi-codes-staging.svc`                                               |
-| DB name            | `fmi_hackathon_2026`                                 | `fmi_hackathon_2026_staging`                                            |
-| TLS                | Let's Encrypt `ClusterIssuer` (browser-trusted)      | self-signed `Issuer` (`curl -k`)                                        |
-| ingress controller | release `ingress-nginx`, class `nginx`, ports 80/443 | release `ingress-nginx-staging`, class `nginx-staging`, ports 8080/8443 |
-| SOPS secret        | `secrets/secrets.enc.yaml`                           | `overlays/staging/secrets/secrets.enc.yaml` (separate age key)          |
-| deploy             | manual promote (human-merged PR)                     | auto on every push to `main`                                            |
+|                    | prod                                                 | staging                                                                             |
+| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| namespace          | `fmi-codes`                                          | `fmi-codes-staging`                                                                 |
+| URL                | `https://fmicodes.com` (public)                      | `https://staging.<tailnet>.ts.net` (tailnet only)                                   |
+| DB / Redis FQDN    | `*.fmi-codes.svc`                                    | `*.fmi-codes-staging.svc`                                                           |
+| DB name            | `fmi_hackathon_2026`                                 | `fmi_hackathon_2026_staging`                                                        |
+| TLS                | Let's Encrypt `ClusterIssuer` (browser-trusted)      | the Tailscale proxy's certificate (browser-trusted)                                 |
+| ingress controller | release `ingress-nginx`, class `nginx`, ports 80/443 | release `ingress-nginx-staging`, class `nginx-staging`, `ClusterIP` (no host ports) |
+| `FRONTEND_ORIGIN`  | ConfigMap (`base/app/backend.yaml`)                  | SOPS app secret, so the tailnet name stays out of the repo                          |
+| SOPS secret        | `secrets/secrets.enc.yaml`                           | `overlays/staging/secrets/secrets.enc.yaml` (separate age key)                      |
+| deploy             | manual promote (human-merged PR)                     | auto on every push to `main`                                                        |
 
 Everything else — replicas, probes, resource limits, feature-flag defaults, `FLASK_ENV` —
 is identical by design: staging mirrors prod so it catches problems before prod does. The
 two ingress controllers are fully independent, so a staging deploy never touches prod's
-routing or headers. Verify an overlay renders with `kubectl kustomize infra/k8s/overlays/<env>`.
+routing or headers. Staging's Tailscale proxy forwards to the staging controller, not to the
+app, so staging still exercises prod's `security-headers` and `/api` / `/static` routing
+([ADR-009](adr/009-staging-over-tailscale.md)). Verify an overlay renders with
+`kubectl kustomize infra/k8s/overlays/<env>`.
 
 ## TL;DR
 
 From the repo root: `./bootstrap.sh` (staging) or `./bootstrap.sh --env prod`. It runs a
 pre-flight (asks for the age key, the admin password and, with `--with-flux`, the Tailscale
-OAuth client for Grafana), then installs tools → k3s → Postgres/Redis → app → ingress, plus
+OAuth client for Grafana and staging), then installs tools → k3s → Postgres/Redis → app → ingress, plus
 Flux and the monitoring stack with `--with-flux`. Idempotent and resumable (`--from N`,
 N = 1–7). Full walkthrough below.
 
@@ -83,7 +88,10 @@ End-to-end, bare server → running cluster. Do it for staging first, then repea
     do that once, then come back here.
 - **DNS for prod only:** `fmicodes.com` needs a public A-record → the server's IP, resolving
   _before_ you deploy (Let's Encrypt verifies it over HTTP-01, so port 80 must be reachable
-  from the internet). Staging uses a self-signed cert — a hosts-file entry is enough.
+  from the internet). Staging needs no DNS or hosts entry: it is reached over the tailnet.
+- **For staging, the `fss-fmi` tailnet** ([Tailscale setup](#tailscale-setup-once-per-tailnet))
+  and `--with-flux`: Flux installs the Tailscale operator that serves staging. Without them
+  staging is reachable only by `kubectl port-forward`.
 
 ### 1. Clone
 
@@ -96,12 +104,12 @@ cd fmi-codes-website-2026
 
 Nothing to create by hand — the passwords split three ways and every one is handled for you:
 
-| Secret                            | Keys                                                                                                                                                       | How it's set                                                                                                                                                                           |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
-| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                               |
-| `grafana-admin` (SOPS, in git)    | `admin-user`, `admin-password`                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                           |
-| `operator-oauth` (SOPS, in git)   | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                      | committed **empty**; the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it    |
+| Secret                            | Keys                                                                                                                                                                                       | How it's set                                                                                                                                                                                                                                                                                       |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](#access-grafana-and-staging)) |
+| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                           |
+| `grafana-admin` (SOPS, in git)    | `admin-user`, `admin-password`                                                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
+| `operator-oauth` (SOPS, in git)   | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | committed **empty**; the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                                                                                                |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -136,37 +144,39 @@ bare box), then handles three things:
    the hash back into `secrets.enc.yaml` through stdin, so neither shows up in `ps`. Commit
    and push that file afterward so other servers get the same hash. (Skip it and the backend
    CrashLoops until you set one — fix later with `rotate-secret.sh ADMIN_PASSWORD_HASH`.)
-3. **The Tailscale OAuth client** (only with `--with-flux`, which also deploys Grafana): if
-   the env's `tailscale-oauth.enc.yaml` is empty, it lists the admin-console steps for a new
-   client and asks for its ID and secret (hidden, typed twice, checked for a swapped ID and
-   secret). If the file already holds a client it asks whether this cluster is **taking over**
-   from another one; answer yes on a new server and it walks you through the
-   [handover](#move-grafana-to-another-cluster) first. Enter skips it; Grafana then stays off
-   the tailnet until `tailscale-oauth.sh set`.
+3. **The Tailscale OAuth client** (only with `--with-flux`, which also deploys Grafana and the
+   operator that serves staging): if the env's `tailscale-oauth.enc.yaml` is empty, it lists
+   the admin-console steps for a new client and asks for its ID and secret (hidden, typed
+   twice, checked for a swapped ID and secret). If the file already holds a client it asks
+   whether this cluster is **taking over** from another one; answer yes on a new server and it
+   walks you through the [handover](#move-grafana-and-staging-to-another-cluster) first. Enter
+   skips it; Grafana and staging then stay off the tailnet until `tailscale-oauth.sh set`.
 
 It's idempotent and resumable — if a step fails, fix the cause and re-run with `--from N`
 (N = 1–7). Steps 1–2 need interactive sudo, so run it in a real terminal.
 
 > **WSL2 dev box:** `./bootstrap.sh` works identically — after the Linux bring-up it detects
-> WSL2 and prints the Windows hosts-file and forward-services steps automatically.
+> WSL2 and, for prod, prints the Windows hosts-file and forward-services steps automatically.
 
 ### 4. Point the host at the cluster
 
 **Prod:** set the `fmicodes.com` A-record in public DNS → the server's IP (do this _before_
-step 3 so the TLS cert issues). **Staging** (or prod local testing): add a hosts entry to the
-controller's IP — the deploy script prints the exact line:
+step 3 so the TLS cert issues). For prod local testing add a hosts entry to the controller's
+IP instead ([Phase 4](#4--ingress--tls)).
+
+**Staging:** nothing to point. Once the operator runs, staging's Tailscale Ingress gets its
+address, and every tailnet device can open it ([Access Grafana and staging](#access-grafana-and-staging)):
 
 ```bash
-INGRESS_IP=$(kubectl -n ingress-nginx-staging get svc ingress-nginx-staging-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-echo "$INGRESS_IP staging.fmicodes.com" | sudo tee -a /etc/hosts   # reach it at :8443
+kubectl -n ingress-nginx-staging get ingress staging   # ADDRESS = https://staging.<tailnet>.ts.net
 ```
 
-That line is for reaching the cluster from **inside WSL** (or a native Linux host). A **Windows
-browser** can reach the node IP too, but WSL2's NAT address can change after `wsl --shutdown` or a
-reboot, so a Windows hosts entry pointing at it goes stale. Install the boot-persistent forward
-services once (`install-forward-services.sh`) and use `127.0.0.1` hosts entries instead (see
-[Phase 4](#4--ingress--tls)).
+The first time, store that URL as staging's `FRONTEND_ORIGIN` so emailed links point at it
+(`deploy-observability.sh` warns while it differs):
+
+```bash
+ENV=staging bash infra/k8s/scripts/rotate-secret.sh FRONTEND_ORIGIN   # paste https://staging.<tailnet>.ts.net
+```
 
 ### 5. (Optional) Set mail / webhook secrets
 
@@ -238,8 +248,8 @@ Also turn on **Settings → General → Allow auto-merge**. The repo's required 
 ### 7. Verify
 
 ```bash
-kubectl -n fmi-codes-staging get pods                        # all Running/Ready
-curl -k https://staging.fmicodes.com:8443/api/health/ready   # {"db":"ok","redis":"ok"}
+kubectl -n fmi-codes-staging get pods                            # all Running/Ready
+curl https://staging.<tailnet>.ts.net/api/health/ready           # from a tailnet device: {"db":"ok","redis":"ok"}
 ```
 
 ### Forking: use your own keys
@@ -265,7 +275,8 @@ sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 # (prod: the same three files under infra/k8s/secrets/). tailscale-oauth can stay empty until
-# your tailnet exists (Phase 7).
+# your tailnet exists (Phase 7). Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key:
+# your https://staging.<tailnet>.ts.net, or "" until you know it.
 
 # 4. Commit .sops.yaml + the encrypted files. Bootstrap checks keys by decrypting the files,
 #    so it accepts YOUR key with no script changes.
@@ -313,7 +324,7 @@ kubectl get --raw "/api/v1/nodes/$NODE/proxy/configz" | grep -o '"imageMaximumGC
 WSL2 gives `eth0` the lowest MTU of any Windows network adapter, so once Tailscale (or another
 VPN) is installed on Windows `eth0` boots at 1280. Flannel sizes every pod's network from `eth0`
 when k3s starts (1280 − 50 = 1230). That is too small for the WireGuard packets of the Tailscale
-proxy pods, so anything served over the tailnet (Grafana) resolves and connects but hangs in the
+proxy pods, so anything served over the tailnet (Grafana, staging) resolves and connects but hangs in the
 TLS handshake. The signature: TCP connects (`Test-NetConnection <100.x address> -Port 443`
 succeeds on Windows), `curl -v https://grafana.<tailnet>.ts.net` stalls in the TLS handshake,
 and the proxy pod logs `TLS handshake error … EOF`. On WSL2, `bootstrap-k3s.sh` therefore writes a systemd drop-in,
@@ -388,8 +399,11 @@ Config split: non-secret env comes from the `fmi-codes-backend-config` ConfigMap
 `envFrom`; passwords via `secretKeyRef` (`DB_PASSWORD`, `REDIS_PASSWORD` from Phase 2, and
 `SECRET_KEY`/`JWT_SECRET_KEY`/`ADMIN_PASSWORD_HASH`/`MAIL_PASSWORD`/`DISCORD_BUG_WEBHOOK_URL`
 and, optionally, `SLACK_BUG_WEBHOOK_URL` from `fmi-codes-app`; the `migrate` initContainer
-reads `SLACK_MIGRATIONS_WEBHOOK_URL` from it, optionally). `DATABASE_URL` is intentionally
-unset — the backend composes it from the `DB_*` pieces.
+reads `SLACK_MIGRATIONS_WEBHOOK_URL` from it, optionally). On staging, `FRONTEND_ORIGIN` comes
+from `fmi-codes-app` too (`overlays/staging/backend-origin-patch.yaml`, optional, so a secret
+without it never blocks a rollout; the backend then falls back to `http://localhost:5173` and
+`deploy-app.sh` warns). `DATABASE_URL` is intentionally unset — the backend composes it from the
+`DB_*` pieces.
 
 Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready`
 (readiness — pooled `SELECT 1` + Redis ping; Postgres gates readiness, Redis is fail-open).
@@ -400,28 +414,48 @@ Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/he
 bash infra/k8s/scripts/deploy-ingress.sh   # ENV=prod|staging
 ```
 
-`helm upgrade --install`s the env's ingress-nginx controller + cert-manager, applies the
-Ingress, waits for the cert. Path routing: `/api` and `/static` → `backend:5001`, everything
-else → `frontend:80`. Security headers live in the `security-headers` ConfigMap wired into
-the controller via `add-headers`, so **every** response through the Ingress carries them
-(the backend routes shipped naked before). Prod gets a Let's Encrypt cert via HTTP-01 and
-auto-renews; HTTP → HTTPS redirect is automatic.
+`helm upgrade --install`s the env's ingress-nginx controller and applies the Ingress. Path
+routing: `/api` and `/static` → `backend:5001`, everything else → `frontend:80`. Security
+headers live in the `security-headers` ConfigMap wired into the controller via `add-headers`,
+so **every** response through the Ingress carries them (the backend routes shipped naked
+before).
 
-Resolve the host for local testing (the script prints the exact line):
+**Prod** also gets cert-manager and a Let's Encrypt cert via HTTP-01 (the script waits for it);
+it auto-renews and HTTP → HTTPS redirect is automatic. Resolve the host for local testing (the
+script prints the exact line):
 
 ```bash
 INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
-# staging: ingress-nginx-staging controller, port 8443 → https://staging.fmicodes.com:8443
 ```
 
 On the production server, set the `fmicodes.com` A-record in DNS instead.
 
-**From a Windows browser (WSL2 dev box):** Windows can reach the node IP above, but WSL2 gives the
+**Staging** has no certificate, no cert-manager and no host ports. Its controller is a
+`ClusterIP` Service, and the script also applies `overlays/staging/tailnet`, a Tailscale Ingress
+in `ingress-nginx-staging` whose backend is that controller on port 80:
+
+```
+device → Tailscale proxy (TLS, https://staging.<tailnet>.ts.net) → ingress-nginx-staging-controller:80 (HTTP) → app
+```
+
+The proxy terminates TLS and forwards plain HTTP with the `ts.net` Host header kept, so the
+staging nginx Ingress matches any host, has no TLS block and turns `ssl-redirect` off (a
+host-less rule sits in nginx's catch-all server, which has the default certificate, so the
+redirect would loop). Flux reconciles the tailnet Ingress as `fmi-codes-staging-tailnet`. The
+address appears once the operator runs ([Phase 7](#7--observability-prometheus--grafana)); until
+then, or without Tailscale:
+
+```bash
+kubectl -n ingress-nginx-staging port-forward svc/ingress-nginx-staging-controller 8080:80
+curl http://127.0.0.1:8080/api/health
+```
+
+**Prod from a Windows browser (WSL2 dev box):** Windows can reach the node IP above, but WSL2 gives the
 VM a NAT address that can change after `wsl --shutdown` or a Windows reboot, so a hosts entry
 pointing at it breaks without warning. Install the boot-persistent forward services once, then use
-`127.0.0.1` hosts entries, which never change. From the repo root inside WSL:
+a `127.0.0.1` hosts entry, which never changes. From the repo root inside WSL:
 
 ```bash
 wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash infra/k8s/scripts/install-forward-services.sh install
@@ -431,26 +465,25 @@ Keep the `-d "$WSL_DISTRO_NAME"`: a bare `wsl.exe` runs in the Windows default d
 `docker-desktop` when Docker Desktop is installed, and fails there with `bash: not found`.
 `sudo bash infra/k8s/scripts/install-forward-services.sh install` works too.
 
-The script only installs the services for an env whose ingress controller Service exists, so a
-port-forward never crash-loops against a missing controller. Re-run it after bootstrapping the other
-env to add that env's services. It writes up to three `systemd` services (`enabled`,
-`Restart=always`, so they come back on every boot with no terminal to keep open):
+The script installs the services only when prod's ingress controller Service exists, so a
+port-forward never crash-loops against a missing controller; without prod it does nothing (re-run
+it after bootstrapping prod). It writes two `systemd` services (`enabled`, `Restart=always`, so
+they come back on every boot with no terminal to keep open):
 
 - `fmi-forward-prod` — `kubectl port-forward` the prod ingress controller to `127.0.0.1:8443`.
 - `fmi-tls-prod` — `socat` `127.0.0.1:443` → `:8443`, so `fmicodes.com` works on bare `:443`.
-- `fmi-forward-staging` — `kubectl port-forward` the staging ingress controller to `127.0.0.1:9443`.
 
 It also sets `net.ipv4.ip_unprivileged_port_start=443` (persisted) so the `socat` bridge can bind
-`:443` as a non-root user. Add the hosts entries (elevated PowerShell, once):
+`:443` as a non-root user. Add the hosts entry (elevated PowerShell, once):
 
 ```
 127.0.0.1 fmicodes.com
-127.0.0.1 staging.fmicodes.com
 ```
 
-Then browse `https://fmicodes.com` and `https://staging.fmicodes.com:9443` — staging keeps a port
-suffix because `:443` has a single listener already taken by prod. Grafana needs none of this:
-it is reached over Tailscale ([Access Grafana](#access-grafana)). Remove everything with
+Then browse `https://fmicodes.com`. Staging and Grafana need none of this: they are reached over
+Tailscale ([Access Grafana and staging](#access-grafana-and-staging)). Every run also removes the
+`fmi-forward-staging` unit that older setups installed; delete their
+`127.0.0.1 staging.fmicodes.com` Windows hosts line by hand. Remove everything with
 `wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash infra/k8s/scripts/install-forward-services.sh uninstall`. Requires
 `systemd=true` in `/etc/wsl.conf` (the default here) and `socat` installed.
 
@@ -524,8 +557,9 @@ of a manual `kubectl top` marathon. Metrics are fully self-hosted: the `kube-pro
 Helm chart (Prometheus operator + Grafana + node-exporter + kube-state-metrics) runs in its own
 `monitoring` namespace, and a Flask `/metrics` endpoint feeds app-level series alongside the
 cluster resource metrics. The one outside service is [Tailscale](https://tailscale.com), which
-is how people reach Grafana (see [Access Grafana](#access-grafana)). The reasoning is in
-[ADR-008](adr/008-grafana-over-tailscale.md).
+is how people reach Grafana and staging (see [Access Grafana and staging](#access-grafana-and-staging)).
+The reasoning is in [ADR-008](adr/008-grafana-over-tailscale.md) and
+[ADR-009](adr/009-staging-over-tailscale.md).
 
 **GitOps-managed by Flux, independent of the app envs.** Three Kustomizations in
 `flux/source.yaml`, none of which depends on an app env, so a cluster with only staging
@@ -537,20 +571,25 @@ bootstrapped gets the whole stack:
 | `fmi-codes-monitors`      | `base/observability/monitors` | the backend ServiceMonitor (waits for the chart's CRDs)    |
 | `fmi-codes-tailscale`     | `base/tailscale`              | the Tailscale operator HelmRelease (namespace `tailscale`) |
 
-A values change merged to `main` rolls out with no script run.
+A values change merged to `main` rolls out with no script run. Staging's tailnet Ingress has
+its own Kustomization, `fmi-codes-staging-tailnet` ([Phase 4](#4--ingress--tls)); it uses the
+same operator.
 
 **One-time bootstrap: the two secrets.** Flux never decrypts SOPS, so one script applies the
 Grafana admin secret and the Tailscale OAuth secret. `bootstrap.sh --with-flux` runs it as
-step 7 (opt out with `--without-observability`); by hand:
+step 7 (opt out with `--without-observability`, which also leaves staging without a tailnet
+address, since the operator never gets its client); by hand:
 
 ```bash
 ENV=staging bash infra/k8s/scripts/deploy-observability.sh   # ENV=prod on a cluster that runs prod
 ```
 
-After applying the OAuth secret it waits up to 10 minutes (`TS_WAIT_SECONDS`) for Grafana's
-tailnet address and warns if there is none yet, or if the address starts with `grafana-1`
-instead of `grafana`: that means another cluster still holds the name, and the
-[handover](#move-grafana-to-another-cluster) was skipped. Neither stops the script.
+After applying the OAuth secret it waits up to 10 minutes (`TS_WAIT_SECONDS`) for the tailnet
+addresses of Grafana and, on a cluster that runs staging, of staging. It warns if one has none
+yet, or if an address starts with `grafana-1` or `staging-1`: that means another cluster still
+holds the name, and the [handover](#move-grafana-and-staging-to-another-cluster) was skipped.
+It also warns when staging's `FRONTEND_ORIGIN` (in the live app secret) is not staging's
+address, and prints the `rotate-secret.sh` command that fixes it. None of this stops the script.
 
 Both Secrets are cluster-wide (one monitoring stack, one operator), but each env keeps its own
 encrypted copy (`grafana-secret.enc.yaml`, `tailscale-oauth.enc.yaml`) under its age key. Pick
@@ -579,35 +618,47 @@ Resource requests+limits are set on every component (see `base/observability/hel
 `spec.values`) to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the
 limits are the guardrail on a single box already running the app+stateful tiers.
 
-#### Access Grafana
+#### Access Grafana and staging
 
-Grafana is reachable **only over the `fss-fmi` tailnet**, at
-`https://grafana.<tailnet>.ts.net`. The exact address is the Ingress's ADDRESS:
+Both are reachable **only over the `fss-fmi` tailnet**, at `https://grafana.<tailnet>.ts.net`
+and `https://staging.<tailnet>.ts.net`. The exact addresses are the Ingresses' ADDRESS:
 
 ```bash
 kubectl -n monitoring get ingress grafana
+kubectl -n ingress-nginx-staging get ingress staging
 ```
 
-The Tailscale operator serves that Ingress through a proxy pod that joins the tailnet as a
-`tag:k8s` device and gets its own certificate. Traffic goes from the viewer's device to that
-pod and on to the `kps-grafana` Service; it never touches ingress-nginx, so Grafana stays up
-when an app env's ingress is broken or not bootstrapped, and nothing about it is reachable from
-the internet. No hosts entry and no port forward is needed.
+The Tailscale operator serves each Ingress through a proxy pod that joins the tailnet as a
+`tag:k8s` device and gets its own certificate. Nothing about either is reachable from the
+internet or the LAN, and no hosts entry or port forward is needed. To open one: have the
+Tailscale app running and signed in to the `fss-fmi` tailnet, then browse to the address. With
+the app off the name doesn't resolve.
 
-To open it: have the Tailscale app running and signed in to the `fss-fmi` tailnet, then browse
-to the address. With the app off the name doesn't resolve. Log in with your own Grafana account
-([Add a developer](#add-or-remove-a-developer)) or, for administration, the admin user and
-password from the env's SOPS secret (`sops --decrypt infra/k8s/secrets/grafana-secret.enc.yaml`).
-Anonymous access and sign-up are **disabled** in the chart values.
+**Grafana's** proxy goes straight to the `kps-grafana` Service; it never touches ingress-nginx,
+so Grafana stays up when an app env's ingress is broken or not bootstrapped. So the app's strict
+`security-headers` CSP never reaches it, and Grafana's own CSP is left at its default (off). Log
+in with your own Grafana account ([Add a developer](#add-or-remove-a-developer)) or, for
+administration, the admin user and password from the env's SOPS secret
+(`sops --decrypt infra/k8s/secrets/grafana-secret.enc.yaml`). Anonymous access and sign-up are
+**disabled** in the chart values.
+
+**Staging's** proxy goes to the `ingress-nginx-staging` controller, so a staging request takes
+prod's path through nginx, headers and routing included ([ADR-009](adr/009-staging-over-tailscale.md)).
+The app's own login applies; the tailnet only decides who reaches it. Staging's `FRONTEND_ORIGIN`
+(the base of password-reset and verification links, and the CORS origin) is this address, kept
+in staging's SOPS app secret so the tailnet name never sits in the repo in plain text. If the
+address changes (a new tailnet, or the device joined as `staging-1`), store the new one:
+
+```bash
+ENV=staging bash infra/k8s/scripts/rotate-secret.sh FRONTEND_ORIGIN   # paste https://staging.<tailnet>.ts.net
+```
 
 Operators with cluster access can skip Tailscale with a one-off port-forward:
 
 ```bash
-kubectl -n monitoring port-forward svc/kps-grafana 3000:80    # http://localhost:3000
+kubectl -n monitoring port-forward svc/kps-grafana 3000:80                                 # http://localhost:3000
+kubectl -n ingress-nginx-staging port-forward svc/ingress-nginx-staging-controller 8080:80 # http://localhost:8080
 ```
-
-Grafana is no longer behind ingress-nginx, so the app's strict `security-headers` CSP never
-reaches it, and Grafana's own CSP is left at its default (off).
 
 #### Tailscale setup (once per tailnet)
 
@@ -643,11 +694,12 @@ two steps touch the repo.
    [rotation](#tailscale-oauth-client).
 
 7. **Verify.** `kubectl -n tailscale get pods` shows the operator Running, the admin console's
-   Machines page lists `fmi-codes-operator` and a `grafana` proxy (both tagged), and
-   `kubectl -n monitoring get ingress grafana` shows the `ts.net` address. Open it from a tailnet
-   device, then confirm the same address does **not** load with the Tailscale app off. If the
-   name resolves but the page hangs on a WSL2 dev box, the pod network is running at a low MTU
-   (see the WSL2 eth0 note in [Phase 1](#1--tools--cluster)).
+   Machines page lists `fmi-codes-operator`, a `grafana` proxy and, on a cluster that runs
+   staging, a `staging` proxy (all tagged), and `kubectl -n monitoring get ingress grafana` and
+   `kubectl -n ingress-nginx-staging get ingress staging` show their `ts.net` addresses. Open
+   them from a tailnet device, then confirm the same addresses do **not** load with the
+   Tailscale app off. If a name resolves but the page hangs on a WSL2 dev box, the pod network is
+   running at a low MTU (see the WSL2 eth0 note in [Phase 1](#1--tools--cluster)).
 
 The person hosting the server needs no Tailscale or GitHub account: the cluster joins through
 the OAuth client, not as a person.
@@ -659,7 +711,7 @@ block in sync when it changes.
 
 ```js
 {
-  // Who may open Grafana. Copy each login exactly as the Users page shows it
+  // Who may open Grafana and staging. Copy each login exactly as the Users page shows it
   // (GitHub logins look like name@github).
   "groups": {
     "group:devs": ["<github-login>@github"],
@@ -677,26 +729,32 @@ block in sync when it changes.
 Root on the host can read the operator's OAuth secret and act as `tag:k8s`. With this policy
 that buys nothing: it can add more `tag:k8s` devices, and those can't reach anyone either.
 
+The grant covers every `tag:k8s` device, so anyone in `group:devs` can open both Grafana and
+staging. Splitting them would take a tag per proxy; with a handful of developers who need both,
+one group is enough.
+
 #### Add or remove a developer
 
 **Add:** the developer installs the Tailscale app and signs in with GitHub, choosing the
 `fss-fmi` tailnet (someone outside the org needs an invite link from Users → Invite external
-users). An admin approves them on the Users page, adds their login to `group:devs` in the
-policy file, and creates them a Grafana account with the **Viewer** role (Grafana →
-Administration → Users).
+users). An admin approves them on the Users page and adds their login to `group:devs` in the
+policy file, which is all staging needs. For Grafana, also create them an account with the
+**Viewer** role (Grafana → Administration → Users). Every developer takes a tailnet seat, so the
+free plan's user cap counts staging testers and Grafana viewers together.
 
 **Remove:** remove them on the Users page (their devices go with them), take them out of
 `group:devs` and delete their Grafana account. Do it by hand when someone leaves the GitHub org;
 Tailscale doesn't document that leaving the org removes tailnet access.
 
-#### Move Grafana to another cluster
+#### Move Grafana and staging to another cluster
 
 **Rule: one cluster on the tailnet at a time.** Device names are unique in a tailnet, so a
-second cluster's proxy would join as `grafana-1` and `https://grafana.<tailnet>.ts.net` would
-keep pointing at whichever cluster got there first. Only the cluster whose SOPS file holds a
-**valid** OAuth client can join, so a handover means: the old cluster gives its client up, the
-new one gets its own. Use it when moving to a new server, when replacing the dev box, or when a
-dev box hands Grafana to the server for good.
+second cluster's proxies would join as `grafana-1` and `staging-1`, and the `ts.net` addresses
+would keep pointing at whichever cluster got there first. For staging that also breaks
+`FRONTEND_ORIGIN`, which names `staging`. Only the cluster whose SOPS file holds a **valid**
+OAuth client can join, so a handover means: the old cluster gives its client up, the new one
+gets its own. Use it when moving to a new server, when replacing the dev box, or when a dev box
+hands Grafana and staging to the server for good.
 
 Order matters: steps 1 and 2 must be finished before the new cluster deploys.
 
@@ -716,8 +774,8 @@ Order matters: steps 1 and 2 must be finished before the new cluster deploys.
 
 2. **Tailscale admin console** (a tailnet admin):
    - Settings → OAuth clients (or Trust credentials): **revoke the old cluster's client**.
-   - Machines: **delete the old `grafana` and `fmi-codes-operator` devices** (they may carry a
-     `-N` suffix). This logs them out at once and frees the name `grafana`.
+   - Machines: **delete the old `grafana`, `staging` and `fmi-codes-operator` devices** (they
+     may carry a `-N` suffix). This logs them out at once and frees the names.
 
 3. **Admin console:** create the new cluster's OAuth client (scopes and tag as in
    [Tailscale setup](#tailscale-setup-once-per-tailnet), step 5). Password manager only.
@@ -729,13 +787,14 @@ Order matters: steps 1 and 2 must be finished before the new cluster deploys.
    `ENV=<env> bash infra/k8s/scripts/tailscale-oauth.sh set`, then
    `ENV=<env> bash infra/k8s/scripts/deploy-observability.sh`. Commit the encrypted file.
 
-5. **Verify.** `deploy-observability.sh` waits for the address and prints
-   `Grafana is on the tailnet: https://grafana.<tailnet>.ts.net`. The admin console lists only
-   the new `grafana` and `fmi-codes-operator`. Open the address from a tailnet device.
+5. **Verify.** `deploy-observability.sh` waits for the addresses and prints
+   `Grafana is on the tailnet: https://grafana.<tailnet>.ts.net` (and the same for staging when
+   the cluster runs it). The admin console lists only the new devices. Open the addresses from a
+   tailnet device. Same tailnet, same names, so staging's `FRONTEND_ORIGIN` stays right.
 
-**If the new cluster got `grafana-1`** (step 2 was skipped or came too late): finish steps 1 and
-2 for the old cluster, then make the new cluster's proxy register again and delete its stale
-device on the Machines page:
+**If the new cluster got `grafana-1` or `staging-1`** (step 2 was skipped or came too late):
+finish steps 1 and 2 for the old cluster, then make the new cluster's proxies register again and
+delete its stale devices on the Machines page:
 
 ```bash
 kubectl -n tailscale delete statefulset,secret -l tailscale.com/managed=true   # the operator recreates it
@@ -744,9 +803,11 @@ kubectl -n tailscale delete statefulset,secret -l tailscale.com/managed=true   #
 Grafana's dashboards and users live on the old cluster's PVC and do not move. Recreate the
 developers' Viewer accounts on the new one ([Add or remove a developer](#add-or-remove-a-developer)).
 
-#### Troubleshooting: Grafana doesn't load over Tailscale
+#### Troubleshooting: Grafana or staging doesn't load over Tailscale
 
-Work from your device towards Grafana; stop at the first step that fails.
+Work from your device towards the app; stop at the first step that fails. The commands use
+Grafana's names; for staging read `ingress-nginx-staging` / `staging` for the Ingress,
+`ts-staging-…-0` for the proxy pod and the controller for the Service (step 4 below).
 
 1. **Your device.** `tailscale status` lists `grafana` (with the policy above you see only
    `tag:k8s` devices), `tailscale dns status` says MagicDNS is enabled, and the name resolves to
@@ -763,7 +824,10 @@ Work from your device towards Grafana; stop at the first step that fails.
    the Grafana Service.
 4. **Proxy to Grafana.**
    `kubectl -n tailscale exec ts-grafana-…-0 -c tailscale -- wget -qO- -T 5 http://kps-grafana.monitoring.svc.cluster.local/api/health`
-   returns `"database": "ok"`.
+   returns `"database": "ok"`. For staging:
+   `kubectl -n tailscale exec ts-staging-…-0 -c tailscale -- wget -qO- -T 5 http://ingress-nginx-staging-controller.ingress-nginx-staging.svc.cluster.local/api/health`
+   returns `{"status":"ok"}`. A `308` redirect loop instead means the staging nginx Ingress
+   has TLS or `ssl-redirect` back on ([Phase 4](#4--ingress--tls)).
 5. **Policy.** `Drop: … no rules matched` lines in the proxy log for your `100.x` address on
    port 443 mean your login is missing from `group:devs`. Drops on port 80 or 137 are expected.
 6. **TLS hangs on a WSL2 dev box.** TCP connects but the TLS handshake stalls and the proxy
@@ -775,8 +839,9 @@ Work from your device towards Grafana; stop at the first step that fails.
 Only the Owner can, under **Settings → General → Delete tailnet**. That permanently deletes its
 users and devices (logs and backups can linger up to 60 days). Then also:
 
-- remove `fmi-codes-tailscale` and the Grafana Ingress from git, or the operator keeps retrying
-  with a dead client and its Kustomization stays red;
+- remove `fmi-codes-tailscale`, the Grafana Ingress and `fmi-codes-staging-tailnet` from git,
+  or the operator keeps retrying with a dead client and its Kustomization stays red. Staging
+  then needs another way in (a port-forward, or a new access layer);
 - revoke Tailscale's access on GitHub (org settings → Third-party access, and each user's
   Settings → Applications → Authorized OAuth Apps), because deleting the tailnet doesn't.
 
@@ -843,9 +908,9 @@ To deploy this under your own project — your Docker Hub, your domain, your key
 - **Image registry** — the `fssfmi/fmi-codes-{backend,frontend}` names in `base/app/*.yaml`,
   `overlays/*/kustomization.yaml`, `.github/workflows/docker-cd.yaml`, and
   `flux/image-automation.yaml`; set the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets.
-- **Hostnames** — `fmicodes.com` / `staging.fmicodes.com` in `base/ingress/ingress.yaml`,
-  `overlays/*/ingress/*`, and `FRONTEND_ORIGIN` in `base/app/backend.yaml` +
-  `overlays/staging/backend-config-patch.yaml`.
+- **Hostnames** — `fmicodes.com` in `base/ingress/ingress.yaml` and `FRONTEND_ORIGIN` in
+  `base/app/backend.yaml`. Staging takes its name from your tailnet: set `FRONTEND_ORIGIN` in
+  staging's `secrets.enc.yaml` to your `https://staging.<tailnet>.ts.net`.
 - **Flux git URL / deploy key** — `flux-bootstrap.sh` defaults to
   `ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git`; override with
   `GIT_URL=… bash …` and add your own deploy key (step 6).
@@ -882,7 +947,8 @@ with the fix (reinstall the version `install-tools.sh` pins).
 | `SLACK_BUG_WEBHOOK_URL`        | `rotate-secret.sh SLACK_BUG_WEBHOOK_URL`                                                          | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | `SLACK_MIGRATIONS_WEBHOOK_URL` | `rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL`                                                   | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                       | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
-| Tailscale OAuth client         | `rotate-secret.sh --tailscale client_id`, then `client_secret` ([below](#tailscale-oauth-client)) | Nothing; the operator restarts and Grafana keeps its tailnet address.                                                                    | It leaked; someone with cluster or admin-console access leaves                                                                                                                 |
+| Tailscale OAuth client         | `rotate-secret.sh --tailscale client_id`, then `client_secret` ([below](#tailscale-oauth-client)) | Nothing; the operator restarts and Grafana and staging keep their tailnet addresses.                                                     | It leaked; someone with cluster or admin-console access leaves                                                                                                                 |
+| `FRONTEND_ORIGIN` (staging)    | `ENV=staging rotate-secret.sh FRONTEND_ORIGIN`                                                    | New reset and verification emails link to the new address.                                                                               | Staging's tailnet address changed (new tailnet, or it joined as `staging-1`)                                                                                                   |
 | age private keys               | [manual, below](#rotate-an-age-key)                                                               | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
 | DB / Redis passwords           | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords))       |                                                                                                                                          |                                                                                                                                                                                |
 
@@ -1048,9 +1114,11 @@ bash infra/k8s/scripts/apply-config.sh          # re-apply the overlay from disk
 
 It patches the `fmi-codes-backend-config` ConfigMap and restarts the backend. Secrets are
 refused (use `rotate-secret.sh` / `deploy-stateful.sh`). A live patch drifts from git, so
-also edit the source and commit: env-specific keys (`FRONTEND_ORIGIN`, `DB_HOST`,
-`REDIS_SENTINELS`) live in `overlays/<env>/backend-config-patch.yaml`, the rest in
-`base/app/backend.yaml`. Pass `RESTART=false` to batch, `ENV=staging` to target staging.
+also edit the source and commit: env-specific keys (`DB_HOST`, `DB_NAME`, `REDIS_SENTINELS`)
+live in `overlays/<env>/backend-config-patch.yaml`, the rest in `base/app/backend.yaml`. Prod's
+`FRONTEND_ORIGIN` is in `base/app/backend.yaml`; staging's is in its SOPS app secret, so the
+script refuses it for `ENV=staging` (use `rotate-secret.sh FRONTEND_ORIGIN`). Pass
+`RESTART=false` to batch, `ENV=staging` to target staging.
 
 ## Restore a migration backup
 
@@ -1080,9 +1148,13 @@ Confirm that on a live database with
 ```bash
 kubectl -n fmi-codes get pods                                  # 2 backend, 2 frontend, Postgres, Redis
 curl https://fmicodes.com/api/health                           # backend 200
-curl -k https://staging.fmicodes.com:8443/api/health/ready     # {"db":"ok","redis":"ok"}
+curl https://staging.<tailnet>.ts.net/api/health/ready         # from a tailnet device: {"db":"ok","redis":"ok"}
 flux get kustomizations -n flux-system                         # prod + staging Ready (if Flux is up)
 ```
+
+Staging's edge should match prod's: the response headers of
+`curl -sI https://staging.<tailnet>.ts.net/api/health` and `curl -sI https://fmicodes.com/api/health`
+carry the same `security-headers` set (CSP, HSTS, `X-Frame-Options` and the rest).
 
 Two invariants are the whole reason the staging/prod split exists — check both after any
 change:
@@ -1122,12 +1194,14 @@ flux uninstall --namespace flux-system --silent
 
 # Phase 7 — observability (suspend the Flux kustomizations first so Flux stops
 # reconciling, then let Helm uninstall clean up; deleting the ns cascades the PVCs).
-# Delete the Grafana Ingress while the operator still runs, so it removes the proxy's
-# tailnet device; anything left over goes from the admin console's Machines page.
+# Delete the tailnet Ingresses while the operator still runs, so it removes the proxies'
+# tailnet devices; anything left over goes from the admin console's Machines page.
 flux suspend kustomization fmi-codes-monitors -n flux-system
 flux suspend kustomization fmi-codes-observability -n flux-system
+flux suspend kustomization fmi-codes-staging-tailnet -n flux-system
 flux suspend kustomization fmi-codes-tailscale -n flux-system
 kubectl -n monitoring delete ingress grafana --wait
+kubectl -n ingress-nginx-staging delete ingress staging --wait --ignore-not-found
 helm -n monitoring uninstall kps
 helm -n tailscale uninstall tailscale-operator
 kubectl delete namespace monitoring tailscale
@@ -1136,7 +1210,7 @@ kubectl delete namespace monitoring tailscale
 kubectl delete -k overlays/prod/ingress; kubectl delete -k overlays/staging/ingress
 helm -n ingress-nginx uninstall ingress-nginx
 helm -n ingress-nginx-staging uninstall ingress-nginx-staging
-helm -n cert-manager uninstall cert-manager
+helm -n cert-manager uninstall cert-manager    # installed only by prod's deploy-ingress.sh
 kubectl delete namespace ingress-nginx ingress-nginx-staging cert-manager
 
 # Phase 3 — app tier (delete by label, NOT -k overlays/prod — that includes the namespace

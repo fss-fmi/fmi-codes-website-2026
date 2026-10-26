@@ -3,9 +3,8 @@ kind: Kustomization
 namespace: fmi-codes-staging
 resources:
   - ../../../base/ingress
-  - issuer.yaml
 patches:
-  - path: certificate-patch.yaml
+  - path: certificate-delete.yaml
     target:
       kind: Certificate
       name: fmi-codes-tls

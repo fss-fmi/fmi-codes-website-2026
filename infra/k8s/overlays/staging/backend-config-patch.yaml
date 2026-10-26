@@ -6,4 +6,5 @@ data:
   DB_HOST: "postgres.fmi-codes-staging.svc.cluster.local"
   DB_NAME: "fmi_hackathon_2026_staging"
   REDIS_SENTINELS: "redis.fmi-codes-staging.svc.cluster.local:26379"
-  FRONTEND_ORIGIN: "https://staging.fmicodes.com"
+  # Comes from the SOPS app secret instead (backend-origin-patch.yaml).
+  FRONTEND_ORIGIN: null

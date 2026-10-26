@@ -89,6 +89,10 @@ for s in $SECRET_KEYS; do
     die "'$KEY' is a secret — it does not belong in the ConfigMap. Use rotate-secret.sh (app secrets) or deploy-stateful.sh (DB/Redis)."
   fi
 done
+# The staging backend reads it from the app secret, which overrides the ConfigMap.
+if [ "$ENV" = "staging" ] && [ "$KEY" = "FRONTEND_ORIGIN" ]; then
+  die "staging's FRONTEND_ORIGIN lives in its SOPS app secret; a ConfigMap value would be ignored. Use: ENV=staging bash $SCRIPT_DIR/rotate-secret.sh FRONTEND_ORIGIN"
+fi
 
 command -v python3 >/dev/null 2>&1 || die "python3 not found — needed to safely JSON-encode the value."
 VALUE_JSON="$(VALUE="$VALUE" python3 -c 'import json,os;print(json.dumps(os.environ["VALUE"]))')"

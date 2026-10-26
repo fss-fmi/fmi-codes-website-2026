@@ -228,7 +228,7 @@ else
   warn "no $SECRETS_ENC; deploy-app.sh generates the app secret and prints how to set ADMIN_PASSWORD_HASH"
 fi
 
-log "Pre-flight: Tailscale OAuth client (Grafana access)"
+log "Pre-flight: Tailscale OAuth client (Grafana and staging access)"
 
 # Mirrors init-linux.sh: observability (step 7) runs whenever Flux does, unless opted out.
 WILL_OBSERVE="${WITH_FLUX:-false}"
@@ -270,27 +270,31 @@ set_ts_client() {
 }
 
 if [ "$WILL_OBSERVE" != "true" ]; then
-  ok "skipped: Grafana (step 7) only runs with --with-flux"
+  ok "skipped: the Tailscale client (step 7) only runs with --with-flux"
+  if [ "$ENV" = "staging" ]; then
+    warn "staging is reached only over the tailnet, so without it use a port-forward:
+  kubectl -n ingress-nginx-staging port-forward svc/ingress-nginx-staging-controller 8080:80"
+  fi
 elif [ ! -f "$TS_FILE" ]; then
-  warn "no $TS_FILE; Grafana will not join the tailnet"
+  warn "no $TS_FILE; Grafana and staging will not join the tailnet"
 # Not grep -q: exiting at the first match could SIGPIPE sops, and pipefail would invert the result.
 elif ! sops --decrypt "$TS_FILE" | grep -E "$TS_EMPTY_RE" >/dev/null; then
   ok "$TS_FILE already holds an OAuth client"
   if [ -t 0 ]; then
-    ask "Is this cluster taking over Grafana from another cluster (for example a new server)? [y/N]"
+    ask "Is this cluster taking over Grafana and staging from another cluster (for example a new server)? [y/N]"
     TAKEOVER=""
     read -r TAKEOVER || true
     case "$TAKEOVER" in
       y|Y)
         cat <<EOF
 
-Only one cluster may hold Grafana's tailnet name. Before this one takes over
-(details: docs/runbook.md 'Move Grafana to another cluster'):
+Only one cluster may hold the 'grafana' and 'staging' tailnet names. Before this one takes over
+(details: docs/runbook.md 'Move Grafana and staging to another cluster'):
   1. On the old cluster, if it still runs:
        ENV=<its env> bash infra/k8s/scripts/tailscale-oauth.sh release
      and commit the emptied file it names.
   2. Tailscale admin console: revoke the old cluster's OAuth client, and on the Machines page
-     delete its 'grafana' and 'fmi-codes-operator' devices.
+     delete its 'grafana', 'staging' and 'fmi-codes-operator' devices.
   3. $NEW_CLIENT_STEPS
 
 EOF
@@ -303,7 +307,7 @@ EOF
 else
   if [ -t 0 ]; then
     cat <<EOF
-Grafana is reached over Tailscale, and this cluster has no OAuth client yet.
+Grafana and staging are reached over Tailscale, and this cluster has no OAuth client yet.
 $NEW_CLIENT_STEPS
 
 EOF
@@ -311,11 +315,11 @@ EOF
     SET_NOW=""
     read -r SET_NOW || true
     case "$SET_NOW" in
-      n|N) warn "skipped; Grafana stays off the tailnet. Later: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set, then ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh" ;;
+      n|N) warn "skipped; Grafana and staging stay off the tailnet. Later: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set, then ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh" ;;
       *) set_ts_client ;;
     esac
   else
-    warn "no terminal to prompt on; Grafana stays off the tailnet until: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set"
+    warn "no terminal to prompt on; Grafana and staging stay off the tailnet until: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set"
   fi
 fi
 
@@ -325,20 +329,8 @@ export ENV
 bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
 
 if grep -qi microsoft /proc/version 2>/dev/null; then
-  case "$ENV" in
-    prod)    HOST="fmicodes.com";         HOST_URL="https://$HOST" ;;
-    staging) HOST="staging.fmicodes.com"; HOST_URL="https://$HOST:9443" ;;
-  esac
-
-  if [ "$ENV" = "prod" ]; then
-    DNS_NOTE="Note: adding $HOST to your hosts file overrides public DNS on this machine.
-Remove this line when you want your browser to reach the production server instead."
-  else
-    DNS_NOTE="Note: this maps $HOST only on this machine, for reaching the staging
-cluster in WSL2. Remove the line when you no longer need it."
-  fi
-
-  log "Installing boot-persistent forward services (one bridge per bootstrapped env)"
+  # Run for staging too: it removes the fmi-forward-staging unit older setups installed.
+  log "Installing boot-persistent forward services (prod only; staging is on the tailnet)"
   INSTALL_SVC_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh"
   # A bare wsl.exe targets the Windows default distro (docker-desktop when Docker Desktop is installed), not this one.
   if [ -n "${WSL_DISTRO_NAME:-}" ] \
@@ -351,25 +343,27 @@ One manual step remains — map"
 Then map"
   fi
 
-  cat <<EOF
+  if [ "$ENV" = "prod" ]; then
+    cat <<EOF
 
 $(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
 
 ${FWD_STATUS} the hostnames to loopback in the WINDOWS hosts file
 (C:\\Windows\\System32\\drivers\\etc\\hosts). Editing WSL's /etc/hosts does not help
 the Windows browser. From an elevated PowerShell:
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 $HOST"
+  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 fmicodes.com"
+
+Then browse to https://fmicodes.com
+
+Note: adding fmicodes.com to your hosts file overrides public DNS on this machine.
+Remove this line when you want your browser to reach the production server instead.
 EOF
-
-  cat <<EOF
-
-Then browse to ${HOST_URL}
-
-$DNS_NOTE
-EOF
-
-  if [ "$ENV" = "staging" ]; then
+  else
     cat <<EOF
+
+Staging needs no Windows hosts entry: open its tailnet address from any tailnet device
+(kubectl -n ingress-nginx-staging get ingress staging). If an older setup added
+"127.0.0.1 staging.fmicodes.com" to the Windows hosts file, delete that line.
 
 $(printf '\033[1;33m### Next step: bootstrap prod\033[0m')
 
@@ -381,7 +375,8 @@ fi
 
 cat <<EOF
 
-Grafana (deployed with --with-flux) needs no hosts entry: it is reachable only over
-Tailscale, at the address \`kubectl -n monitoring get ingress grafana\` shows.
+Grafana and staging (with --with-flux) need no hosts entry: they are reachable only over
+Tailscale, at the addresses \`kubectl -n monitoring get ingress grafana\` and
+\`kubectl -n ingress-nginx-staging get ingress staging\` show.
 Setup and handover: docs/runbook.md 'Phase 7'.
 EOF

@@ -1,18 +1,18 @@
 # Deployment
 
-How a change gets from a merged PR to `staging.fmicodes.com` and `fmicodes.com`, and how to verify, configure and roll back. This page is the operator summary. Standing up a cluster from a bare server, secrets, observability and teardown live in the full **[cluster runbook](runbook.md)**.
+How a change gets from a merged PR to staging and `fmicodes.com`, and how to verify, configure and roll back. This page is the operator summary. Standing up a cluster from a bare server, secrets, observability and teardown live in the full **[cluster runbook](runbook.md)**.
 
 ## Environments
 
-|           | Production                       | Staging                               |
-| --------- | -------------------------------- | ------------------------------------- |
-| URL       | https://fmicodes.com             | https://staging.fmicodes.com:8443     |
-| Namespace | `fmi-codes`                      | `fmi-codes-staging`                   |
-| TLS       | Let's Encrypt                    | Self-signed (`curl -k`)               |
-| Deploys   | Manual promote (human-merged PR) | Automatic after every merge to `main` |
-| Database  | `fmi_hackathon_2026`             | `fmi_hackathon_2026_staging`          |
+|           | Production                       | Staging                                                     |
+| --------- | -------------------------------- | ----------------------------------------------------------- |
+| URL       | https://fmicodes.com             | `https://staging.<tailnet>.ts.net` (`fss-fmi` tailnet only) |
+| Namespace | `fmi-codes`                      | `fmi-codes-staging`                                         |
+| TLS       | Let's Encrypt                    | The Tailscale proxy's certificate                           |
+| Deploys   | Manual promote (human-merged PR) | Automatic after every merge to `main`                       |
+| Database  | `fmi_hackathon_2026`             | `fmi_hackathon_2026_staging`                                |
 
-Both run on one self-hosted single-node k3s server, built from the same `infra/k8s/base/` with Kustomize overlays. Replicas (2 backend, 2 frontend), probes, resource limits and feature-flag defaults are identical by design.
+Both run on one self-hosted single-node k3s server, built from the same `infra/k8s/base/` with Kustomize overlays. Replicas (2 backend, 2 frontend), probes, resource limits and feature-flag defaults are identical by design. Staging is reached only from a device on the tailnet; its Tailscale proxy forwards to staging's own ingress-nginx, so requests take prod's path through the security headers and routing ([ADR-009](adr/009-staging-over-tailscale.md), [access details](runbook.md#access-grafana-and-staging)).
 
 ## Release flow
 
@@ -112,7 +112,7 @@ The complete list with defaults is `.env.example` (local) plus the ConfigMap and
 ```bash
 kubectl -n fmi-codes get pods
 curl https://fmicodes.com/api/health
-curl -k https://staging.fmicodes.com:8443/api/health/ready
+curl https://staging.<tailnet>.ts.net/api/health/ready   # from a tailnet device
 flux get kustomizations -n flux-system
 ```
 

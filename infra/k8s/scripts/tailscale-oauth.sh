@@ -5,6 +5,8 @@ set -euo pipefail
 ENV="${ENV:-staging}"
 TAILSCALE_NS="${TAILSCALE_NS:-tailscale}"
 MONITORING_NS="${MONITORING_NS:-monitoring}"
+STAGING_INGRESS_NS="${STAGING_INGRESS_NS:-ingress-nginx-staging}"
+STAGING_APP_NS="${STAGING_APP_NS:-fmi-codes-staging}"
 TS_WAIT_SECONDS="${TS_WAIT_SECONDS:-600}"
 ENV_LABEL="fmi-codes/secrets-env"
 # Matched with grep -E >/dev/null, never -q: an early grep exit can SIGPIPE sops under pipefail.
@@ -18,22 +20,23 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") set|release|check
 
-Manages the cluster's Tailscale OAuth client, which lets the operator put Grafana on the
-tailnet. Only one cluster may hold it at a time (docs/runbook.md 'Move Grafana to another
-cluster').
+Manages the cluster's Tailscale OAuth client, which lets the operator put Grafana and staging
+on the tailnet. Only one cluster may hold it at a time (docs/runbook.md 'Move Grafana and
+staging to another cluster').
 
   set      Ask for the OAuth client ID and secret (hidden, typed twice) and write them into
            the env's tailscale-oauth.enc.yaml. Touches no cluster, so it works before
            bootstrap. Piped input is read as two lines: ID, then secret.
-  release  Run on the cluster that is giving Grafana up: removes the operator's credentials,
-           its proxies and their tailnet state, empties the env's tailscale-oauth.enc.yaml,
-           then lists the admin-console steps that finish the handover.
-  check    Wait (up to TS_WAIT_SECONDS, default 600) for Grafana's tailnet address and fail
-           if another cluster still holds the name 'grafana'. Exit 0 ok, 3 name clash,
-           4 no address yet.
+  release  Run on the cluster that is giving the tailnet names up: removes the operator's
+           credentials, its proxies and their tailnet state, empties the env's
+           tailscale-oauth.enc.yaml, then lists the admin-console steps that finish the handover.
+  check    Wait (up to TS_WAIT_SECONDS, default 600) for the tailnet addresses of Grafana and,
+           when this cluster runs staging, of staging. Fails if another cluster still holds
+           either name, and warns if staging's FRONTEND_ORIGIN (SOPS app secret) is not its
+           address. Exit 0 ok, 3 name clash, 4 no address yet, 5 FRONTEND_ORIGIN mismatch.
 
 Env overrides: ENV (prod|staging, default staging), TAILSCALE_SECRET_ENC, TAILSCALE_NS,
-MONITORING_NS, TS_WAIT_SECONDS.
+MONITORING_NS, STAGING_INGRESS_NS, STAGING_APP_NS, TS_WAIT_SECONDS.
 EOF
 }
 
@@ -52,7 +55,7 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TS_FILE="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/tailscale-oauth.enc.yaml}"
-RUNBOOK="docs/runbook.md 'Move Grafana to another cluster'"
+RUNBOOK="docs/runbook.md 'Move Grafana and staging to another cluster'"
 
 need_sops_file() {
   command -v sops >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
@@ -89,8 +92,8 @@ print_console_release_steps() {
 
 Finish the handover in the Tailscale admin console (a tailnet admin):
   1. Settings -> OAuth clients (or Trust credentials): revoke the client this cluster used.
-  2. Machines: delete this cluster's 'grafana' and 'fmi-codes-operator' devices
-     (they may carry a -N suffix). That frees the name 'grafana' for the next cluster.
+  2. Machines: delete this cluster's 'grafana', 'staging' and 'fmi-codes-operator' devices
+     (they may carry a -N suffix). That frees the names for the next cluster.
 Then commit the emptied $TS_FILE.
 EOF
 }
@@ -122,7 +125,7 @@ cmd_set() {
 cmd_release() {
   need_sops_file
   command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
-  kubectl cluster-info >/dev/null 2>&1 || die "no reachable cluster; run this on the cluster that is giving Grafana up."
+  kubectl cluster-info >/dev/null 2>&1 || die "no reachable cluster; run this on the cluster that is giving the tailnet names up."
 
   local live_env
   live_env="$(kubectl -n "$TAILSCALE_NS" get secret operator-oauth --ignore-not-found \
@@ -156,16 +159,17 @@ cmd_release() {
   print_console_release_steps
 }
 
-cmd_check() {
-  command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
-  local deadline host="" next_note
-  deadline=$(( $(date +%s) + TS_WAIT_SECONDS ))
+# check_ingress LABEL NAMESPACE INGRESS NAME DEADLINE: wait for the Ingress's tailnet address,
+# then require that it joined as NAME. Sets TS_HOST; returns 0, 3 (name clash) or 4 (none).
+check_ingress() {
+  local label="$1" ns="$2" ingress="$3" name="$4" deadline="$5" next_note
   next_note=$(( $(date +%s) + 30 ))
-  log "Waiting up to ${TS_WAIT_SECONDS}s for Grafana's tailnet address"
+  TS_HOST=""
+  log "Waiting for $label's tailnet address (up to ${TS_WAIT_SECONDS}s for all checks)"
   while :; do
-    host="$(kubectl -n "$MONITORING_NS" get ingress grafana \
+    TS_HOST="$(kubectl -n "$ns" get ingress "$ingress" \
       -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
-    [ -z "$host" ] || break
+    [ -z "$TS_HOST" ] || break
     [ "$(date +%s)" -lt "$deadline" ] || break
     if [ "$(date +%s)" -ge "$next_note" ]; then
       echo "  still waiting (Flux installs the chart and operator first; kubectl -n $TAILSCALE_NS get pods)"
@@ -174,20 +178,55 @@ cmd_check() {
     sleep 5
   done
 
-  if [ -z "$host" ]; then
-    warn "Grafana has no tailnet address yet. Check: kubectl -n $TAILSCALE_NS get pods,statefulsets
-  and kubectl -n $MONITORING_NS describe ingress grafana. See docs/runbook.md 'Access Grafana'."
+  if [ -z "$TS_HOST" ]; then
+    warn "$label has no tailnet address yet. Check: kubectl -n $TAILSCALE_NS get pods,statefulsets
+  and kubectl -n $ns describe ingress $ingress. See docs/runbook.md 'Access Grafana and staging'."
     return 4
   fi
-  if [ "${host%%.*}" != "grafana" ]; then
-    warn "Grafana joined the tailnet as ${host%%.*}, not 'grafana': another cluster still holds the name.
+  if [ "${TS_HOST%%.*}" != "$name" ]; then
+    warn "$label joined the tailnet as ${TS_HOST%%.*}, not '$name': another cluster still holds the name.
   Hand over first ($RUNBOOK): on the old cluster run 'tailscale-oauth.sh release', and in the
   admin console revoke its OAuth client and delete its devices. Then make this cluster re-register:
     kubectl -n $TAILSCALE_NS delete statefulset,secret -l tailscale.com/managed=true
-  and delete this cluster's stale '${host%%.*}' device in the admin console."
+  and delete this cluster's stale '${TS_HOST%%.*}' device in the admin console."
     return 3
   fi
-  echo "Grafana is on the tailnet: https://$host"
+  echo "$label is on the tailnet: https://$TS_HOST"
+}
+
+# worse A B: the more serious exit code; a clash (3) outranks no address (4), which outranks an
+# origin mismatch (5).
+worse() {
+  local c
+  for c in 3 4 5; do
+    if [ "$1" = "$c" ] || [ "$2" = "$c" ]; then echo "$c"; return; fi
+  done
+  echo 0
+}
+
+cmd_check() {
+  command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
+  local deadline rc=0 r origin
+  deadline=$(( $(date +%s) + TS_WAIT_SECONDS ))
+
+  r=0; check_ingress Grafana "$MONITORING_NS" grafana grafana "$deadline" || r=$?
+  rc="$(worse "$rc" "$r")"
+
+  if kubectl -n "$STAGING_INGRESS_NS" get ingress staging >/dev/null 2>&1; then
+    r=0; check_ingress Staging "$STAGING_INGRESS_NS" staging staging "$deadline" || r=$?
+    if [ "$r" = 0 ]; then
+      origin="$(kubectl -n "$STAGING_APP_NS" get secret fmi-codes-app \
+        -o jsonpath='{.data.FRONTEND_ORIGIN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+      if [ "$origin" != "https://$TS_HOST" ]; then
+        warn "staging's FRONTEND_ORIGIN is '${origin:-<unset>}', not https://$TS_HOST, so its password-reset
+  and verification links point elsewhere. Store the address (the prompt takes it), then commit the file:
+    ENV=staging bash $SCRIPT_DIR/rotate-secret.sh FRONTEND_ORIGIN"
+        r=5
+      fi
+    fi
+    rc="$(worse "$rc" "$r")"
+  fi
+  return "$rc"
 }
 
 case "$CMD" in

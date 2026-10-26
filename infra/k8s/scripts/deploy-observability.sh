@@ -69,7 +69,7 @@ TAILSCALE_STATUS="applied"
 if sops --decrypt "$TAILSCALE_SECRET_ENC" 2>/dev/null \
     | grep -E "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$" >/dev/null; then
   TAILSCALE_STATUS="skipped"
-  warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana has no tailnet address.
+  warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana and staging have no tailnet address.
   Create the OAuth client (docs/runbook.md 'Phase 7'), then:
     ENV=$ENV bash $SCRIPT_DIR/tailscale-oauth.sh set
     ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
@@ -82,10 +82,11 @@ cat <<EOF
 Grafana admin secret applied; Tailscale OAuth secret $TAILSCALE_STATUS.
 
 Flux installs kube-prometheus-stack and the Tailscale operator and reconciles the
-ServiceMonitor and Grafana's tailnet Ingress. Watch progress:
+ServiceMonitor and the tailnet Ingresses of Grafana and staging. Watch progress:
   flux get helmreleases -n flux-system
   flux get kustomizations -n flux-system
-  kubectl -n $MONITORING_NS get ingress grafana    # ADDRESS = Grafana's tailnet URL
+  kubectl -n $MONITORING_NS get ingress grafana              # ADDRESS = Grafana's tailnet URL
+  kubectl -n ingress-nginx-staging get ingress staging  # ADDRESS = staging's tailnet URL
 EOF
 
 # A missing address or a name clash is reported, not fatal: everything else is deployed and

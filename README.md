@@ -105,12 +105,12 @@ Everything else (mail, feature flags, contact links, Redis timeouts, pool sizes)
 
 The app is deployed to a self-hosted single-node **k3s** cluster. Staging and prod live on the same node, isolated by namespace, built from one shared `base/` via Kustomize overlays:
 
-|           | prod                             | staging                           |
-| --------- | -------------------------------- | --------------------------------- |
-| namespace | `fmi-codes`                      | `fmi-codes-staging`               |
-| host      | `fmicodes.com` (443)             | `staging.fmicodes.com` (8443)     |
-| TLS       | Let's Encrypt (browser-trusted)  | self-signed (`curl -k`)           |
-| deploy    | manual promote (human-merged PR) | automatic on every push to `main` |
+|           | prod                             | staging                                     |
+| --------- | -------------------------------- | ------------------------------------------- |
+| namespace | `fmi-codes`                      | `fmi-codes-staging`                         |
+| host      | `fmicodes.com` (443)             | `staging.<tailnet>.ts.net` (tailnet only)   |
+| TLS       | Let's Encrypt (browser-trusted)  | the Tailscale proxy's certificate (trusted) |
+| deploy    | manual promote (human-merged PR) | automatic on every push to `main`           |
 
 Images are built and pushed to Docker Hub (`fssfmi/fmi-codes-backend`, `fssfmi/fmi-codes-frontend`) by `.github/workflows/docker-cd.yaml` on each push to `main`. Flux, running **inside** the cluster, pulls: it auto-bumps the **staging** overlay to the newest tag; **prod** only moves when the `promote-to-prod` workflow opens a PR and a human merges it.
 
@@ -121,7 +121,7 @@ The full step-by-step runbook — with per-phase verification, secret rotation, 
 **Prerequisites**
 
 - Debian/Ubuntu Linux (the scripts are apt + bash; k3s is Linux-native).
-- For **prod**: a public DNS A-record for `fmicodes.com` → the server's IP, resolving _before_ you deploy ingress (Let's Encrypt verifies it over HTTP-01). For **staging** a hosts-file entry is enough.
+- For **prod**: a public DNS A-record for `fmicodes.com` → the server's IP, resolving _before_ you deploy ingress (Let's Encrypt verifies it over HTTP-01). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook.md#access-grafana-and-staging)).
 - The **age private key** for the environment you're deploying (SOPS decrypts the committed secrets with it). Generate/obtain per the runbook's Phase 5.
 
 **Bring it up** — one front-door script runs the whole sequence (tools → k3s → Postgres/Redis → app → ingress) in order:
@@ -137,11 +137,11 @@ It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: 
 
 Runtime config is split in two — this is what you edit to point the deployment at your infrastructure:
 
-- **Non-secret config → the `fmi-codes-backend-config` ConfigMap.** Keys: `FLASK_ENV`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `REDIS_URL`, `FRONTEND_ORIGIN`, `MENTORS_STAY_TUNED`, `REGISTRATION_OPEN`, `RANKINGS_LIVE`. Global values live in `infra/k8s/base/app/backend.yaml`; per-env overrides in `infra/k8s/overlays/<env>/backend-config-patch.yaml`. Change one live with `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>` (then commit the source YAML too).
-- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`. Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; never pass it as an argument). Per-secret rotation guide: [docs/runbook.md](docs/runbook.md#rotate-a-secret).
+- **Non-secret config → the `fmi-codes-backend-config` ConfigMap.** Keys: `FLASK_ENV`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `REDIS_URL`, `FRONTEND_ORIGIN` (prod only; staging's is in its SOPS secret), `MENTORS_STAY_TUNED`, `REGISTRATION_OPEN`, `RANKINGS_LIVE`. Global values live in `infra/k8s/base/app/backend.yaml`; per-env overrides in `infra/k8s/overlays/<env>/backend-config-patch.yaml`. Change one live with `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>` (then commit the source YAML too).
+- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, and on staging `FRONTEND_ORIGIN` (its tailnet URL). Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; never pass it as an argument). Per-secret rotation guide: [docs/runbook.md](docs/runbook.md#rotate-a-secret).
 - **DB / Redis passwords** are generated in-cluster by `deploy-stateful.sh` and never committed (they're coupled to the datastore PVC). Rotate them without data loss with `bash infra/k8s/scripts/rotate-datastore-password.sh db|db-admin|redis`.
 
-Forking this to a different domain or registry means updating the hostnames (`base/ingress/ingress.yaml`, `overlays/*/ingress/*`, and `FRONTEND_ORIGIN`), the image names (`base/app/*.yaml`, `overlays/*/kustomization.yaml`, `docker-cd.yaml`, `flux/image-automation.yaml`), the age recipients in `.sops.yaml`, and the Flux git URL/deploy key. Details in the runbook.
+Forking this to a different domain or registry means updating the hostname (`base/ingress/ingress.yaml` and `FRONTEND_ORIGIN`; staging's comes from your tailnet), the image names (`base/app/*.yaml`, `overlays/*/kustomization.yaml`, `docker-cd.yaml`, `flux/image-automation.yaml`), the age recipients in `.sops.yaml`, and the Flux git URL/deploy key. Details in the runbook.
 
 ---
 

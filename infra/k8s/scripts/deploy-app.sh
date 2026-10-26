@@ -91,6 +91,19 @@ if [ -z "$admin_hash" ]; then
   echo "  ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh ADMIN_PASSWORD_HASH"
 fi
 
+# Staging reads its origin from the app secret (overlays/staging/backend-origin-patch.yaml);
+# without it the backend falls back to localhost and every emailed link is dead.
+if [ "$ENV" = "staging" ]; then
+  frontend_origin="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \
+    -o jsonpath='{.data.FRONTEND_ORIGIN}' 2>/dev/null || true)"
+  if [ -z "$frontend_origin" ]; then
+    log "FRONTEND_ORIGIN is empty — staging's password-reset and verification links will be dead"
+    echo "Set it to staging's tailnet URL, https://staging.<tailnet>.ts.net (docs/runbook.md"
+    echo "'Access Grafana and staging'). The key must exist in $SECRETS_ENC:"
+    echo "  ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh FRONTEND_ORIGIN"
+  fi
+fi
+
 if flux_owns_app; then
   log "Flux is active — it owns the backend/frontend Deployments"
   echo "Applied the app secret only. Flux reconciles the Deployments from git; it"
