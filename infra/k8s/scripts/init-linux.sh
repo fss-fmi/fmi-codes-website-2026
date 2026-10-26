@@ -5,7 +5,8 @@ set -euo pipefail
 ENV="${ENV:-staging}"
 FROM="${FROM:-1}"
 WITH_FLUX="${WITH_FLUX:-false}"
-WITH_OBSERVABILITY="${WITH_OBSERVABILITY:-false}"
+# auto = on whenever Flux is on (the stack is Flux-managed, so it needs Flux either way).
+WITH_OBSERVABILITY="${WITH_OBSERVABILITY:-auto}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -14,7 +15,7 @@ die() { echo "Error: $1" >&2; exit 1; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--env staging|prod] [--from N] [--with-flux] [--with-observability]
+Usage: $(basename "$0") [--env staging|prod] [--from N] [--with-flux] [--without-observability]
 
 All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
 
@@ -25,7 +26,7 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   5. deploy-ingress.sh   ingress-nginx + cert-manager + TLS
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
   7. deploy-observability.sh  Grafana admin + Tailscale OAuth secrets (Flux installs kube-prometheus-stack
-                              and the Tailscale operator; only with --with-observability)
+                              and the Tailscale operator; runs whenever step 6 does)
 
 Every step is idempotent, so re-running from the top is safe. If a step fails,
 fix the cause and resume without redoing earlier steps:
@@ -35,10 +36,10 @@ fix the cause and resume without redoing earlier steps:
   --from N                start at step N (1-7). Default 1.
   --with-flux             also run step 6 (Flux GitOps). Off by default because it needs an
                           SSH deploy key present — see README 'Phase 6' before enabling.
-  --with-observability    also run step 7 (Grafana admin + Tailscale OAuth secrets; Flux then
-                          reconciles kube-prometheus-stack and the Tailscale operator). Requires --with-flux
-                          and the env's age key at ~/.config/sops/age/keys.txt — see
-                          README 'Phase 7' before enabling.
+  --without-observability skip step 7 even with Flux (Grafana admin + Tailscale OAuth secrets;
+                          Flux reconciles kube-prometheus-stack and the Tailscale operator
+                          either way). --with-observability is still accepted and is the
+                          default with --with-flux. See docs/runbook.md 'Phase 7'.
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
 this in a terminal, not a headless context.
@@ -56,6 +57,7 @@ while [ $# -gt 0 ]; do
     --from) FROM="${2:-}"; [ -n "$FROM" ] || die "--from needs a step number (1-7)"; shift 2 ;;
     --with-flux) WITH_FLUX=true; shift ;;
     --with-observability) WITH_OBSERVABILITY=true; shift ;;
+    --without-observability) WITH_OBSERVABILITY=false; shift ;;
     *) die "unknown argument '$1' (see --help)" ;;
   esac
 done
@@ -92,6 +94,10 @@ if [ "$FROM" = "7" ]; then
   WITH_OBSERVABILITY=true
 fi
 
+if [ "$WITH_OBSERVABILITY" = "auto" ]; then
+  WITH_OBSERVABILITY="$WITH_FLUX"
+fi
+
 run_step() {
   local n="$1" name="$2" script="$3"
   if [ "$n" -lt "$FROM" ]; then
@@ -119,7 +125,7 @@ fi
 if [ "$WITH_OBSERVABILITY" = "true" ]; then
   run_step 7 "observability (Prometheus + Grafana)"  deploy-observability.sh
 else
-  log "Step 7 (observability) — skipped (pass --with-observability to enable; see README 'Phase 7')"
+  log "Step 7 (observability) — skipped (it runs with --with-flux unless --without-observability; see docs/runbook.md 'Phase 7')"
 fi
 
 INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \

@@ -161,7 +161,7 @@ VALUE="$VALUE" python3 -c 'import json,os;print(json.dumps(os.environ["VALUE"]))
 # The OAuth client is a pair. Applying it half-filled would let the waiting operator pod start
 # with credentials that can't authenticate.
 if [ "$TAILSCALE" = "true" ] && sops --decrypt "$SECRETS_ENC" \
-    | grep -qE "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$"; then
+    | grep -E "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$" >/dev/null; then
   unset VALUE
   if [ "$KEY" = "client_id" ]; then OTHER_KEY="client_secret"; else OTHER_KEY="client_id"; fi
   log "Stored '$KEY' in $SECRETS_ENC. Not applied yet: '$OTHER_KEY' is still empty. Set it next:"

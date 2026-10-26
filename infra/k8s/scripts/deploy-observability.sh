@@ -67,12 +67,12 @@ apply_secret "$GRAFANA_SECRET_ENC" "$MONITORING_NS"
 
 TAILSCALE_STATUS="applied"
 if sops --decrypt "$TAILSCALE_SECRET_ENC" 2>/dev/null \
-    | grep -qE "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$"; then
+    | grep -E "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$" >/dev/null; then
   TAILSCALE_STATUS="skipped"
   warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana has no tailnet address.
   Create the OAuth client (docs/runbook.md 'Phase 7'), then:
-    ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --tailscale client_id
-    ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --tailscale client_secret"
+    ENV=$ENV bash $SCRIPT_DIR/tailscale-oauth.sh set
+    ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
 else
   apply_secret "$TAILSCALE_SECRET_ENC" "$TAILSCALE_NS"
 fi
@@ -87,3 +87,10 @@ ServiceMonitor and Grafana's tailnet Ingress. Watch progress:
   flux get kustomizations -n flux-system
   kubectl -n $MONITORING_NS get ingress grafana    # ADDRESS = Grafana's tailnet URL
 EOF
+
+# A missing address or a name clash is reported, not fatal: everything else is deployed and
+# the fix happens in the Tailscale admin console.
+if [ "$TAILSCALE_STATUS" = "applied" ] && [ "${SKIP_TAILSCALE_CHECK:-false}" != "true" ]; then
+  ENV="$ENV" MONITORING_NS="$MONITORING_NS" TAILSCALE_NS="$TAILSCALE_NS" \
+    bash "$SCRIPT_DIR/tailscale-oauth.sh" check || true
+fi
