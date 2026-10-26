@@ -228,6 +228,97 @@ else
   warn "no $SECRETS_ENC; deploy-app.sh generates the app secret and prints how to set ADMIN_PASSWORD_HASH"
 fi
 
+log "Pre-flight: Tailscale OAuth client (Grafana access)"
+
+# Mirrors init-linux.sh: observability (step 7) runs whenever Flux does, unless opted out.
+WILL_OBSERVE="${WITH_FLUX:-false}"
+PREV_ARG=""
+for a in ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; do
+  case "$a" in
+    --with-flux|--with-observability) WILL_OBSERVE=true ;;
+  esac
+  if [ "$PREV_ARG" = "--from" ] && { [ "$a" = 6 ] || [ "$a" = 7 ]; }; then WILL_OBSERVE=true; fi
+  PREV_ARG="$a"
+done
+for a in ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; do
+  if [ "$a" = "--without-observability" ]; then WILL_OBSERVE=false; fi
+done
+[ "${WITH_OBSERVABILITY:-auto}" != "false" ] || WILL_OBSERVE=false
+
+TS_FILE="$SECRETS_DIR/tailscale-oauth.enc.yaml"
+TS_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/tailscale-oauth.sh"
+TS_EMPTY_RE="^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$"
+NEW_CLIENT_STEPS="Create an OAuth client for THIS cluster in the Tailscale admin console
+(Settings -> OAuth clients, or Trust credentials):
+  scopes: General -> Services, Devices -> Core, Keys -> Auth Keys (read + write each)
+  tag:    tag:k8s-operator
+Save the client ID and secret in the password manager; you paste them below.
+First time on this tailnet? Do docs/runbook.md 'Tailscale setup' (steps 1 to 4) first."
+
+# set_ts_client: run 'tailscale-oauth.sh set', offering another try after a typo.
+set_ts_client() {
+  until ENV="$ENV" TAILSCALE_SECRET_ENC="$TS_FILE" bash "$TS_SCRIPT" set; do
+    ask "Try again? [Y/n]"
+    local again=""
+    # EOF (terminal gone) counts as no, or this would ask forever.
+    read -r again || again=n
+    case "$again" in
+      n|N) warn "skipped; set it later with: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set"; return 0 ;;
+    esac
+  done
+  ok "OAuth client stored; commit $TS_FILE before deploying this env anywhere else"
+}
+
+if [ "$WILL_OBSERVE" != "true" ]; then
+  ok "skipped: Grafana (step 7) only runs with --with-flux"
+elif [ ! -f "$TS_FILE" ]; then
+  warn "no $TS_FILE; Grafana will not join the tailnet"
+# Not grep -q: exiting at the first match could SIGPIPE sops, and pipefail would invert the result.
+elif ! sops --decrypt "$TS_FILE" | grep -E "$TS_EMPTY_RE" >/dev/null; then
+  ok "$TS_FILE already holds an OAuth client"
+  if [ -t 0 ]; then
+    ask "Is this cluster taking over Grafana from another cluster (for example a new server)? [y/N]"
+    TAKEOVER=""
+    read -r TAKEOVER || true
+    case "$TAKEOVER" in
+      y|Y)
+        cat <<EOF
+
+Only one cluster may hold Grafana's tailnet name. Before this one takes over
+(details: docs/runbook.md 'Move Grafana to another cluster'):
+  1. On the old cluster, if it still runs:
+       ENV=<its env> bash infra/k8s/scripts/tailscale-oauth.sh release
+     and commit the emptied file it names.
+  2. Tailscale admin console: revoke the old cluster's OAuth client, and on the Machines page
+     delete its 'grafana' and 'fmi-codes-operator' devices.
+  3. $NEW_CLIENT_STEPS
+
+EOF
+        ask "Press Enter once steps 1 to 3 are done (Ctrl+C to stop here):"
+        read -r _ || true
+        set_ts_client
+        ;;
+    esac
+  fi
+else
+  if [ -t 0 ]; then
+    cat <<EOF
+Grafana is reached over Tailscale, and this cluster has no OAuth client yet.
+$NEW_CLIENT_STEPS
+
+EOF
+    ask "Set the OAuth client now? [Y/n]"
+    SET_NOW=""
+    read -r SET_NOW || true
+    case "$SET_NOW" in
+      n|N) warn "skipped; Grafana stays off the tailnet. Later: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set, then ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh" ;;
+      *) set_ts_client ;;
+    esac
+  else
+    warn "no terminal to prompt on; Grafana stays off the tailnet until: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set"
+  fi
+fi
+
 log "Handing off to init-linux.sh"
 
 export ENV
@@ -290,7 +381,7 @@ fi
 
 cat <<EOF
 
-Grafana (Flux plus --with-observability) needs no hosts entry: it is reachable only over
+Grafana (deployed with --with-flux) needs no hosts entry: it is reachable only over
 Tailscale, at the address \`kubectl -n monitoring get ingress grafana\` shows.
-Setup: docs/runbook.md 'Phase 7'.
+Setup and handover: docs/runbook.md 'Phase 7'.
 EOF

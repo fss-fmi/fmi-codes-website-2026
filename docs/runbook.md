@@ -14,7 +14,7 @@ native Windows (the scripts are apt + bash, k3s is Linux-native).
 infra/k8s/
   scripts/       init-linux, init-windows, install-tools, bootstrap-k3s,
                  deploy-stateful, deploy-app, deploy-ingress, install-forward-services,
-                 deploy-observability, apply-config, rotate-secret
+                 deploy-observability, tailscale-oauth, apply-config, rotate-secret
   base/          environment-agnostic manifests
                    base/app/     namespace, backend, frontend
                    base/ingress/ security-headers, certificate, ingress
@@ -50,9 +50,10 @@ routing or headers. Verify an overlay renders with `kubectl kustomize infra/k8s/
 ## TL;DR
 
 From the repo root: `./bootstrap.sh` (staging) or `./bootstrap.sh --env prod`. It runs a
-pre-flight (asks for the age key + admin password), then installs tools → k3s →
-Postgres/Redis → app → ingress. Idempotent and resumable (`--from N`, N = 1–7). Full
-walkthrough below.
+pre-flight (asks for the age key, the admin password and, with `--with-flux`, the Tailscale
+OAuth client for Grafana), then installs tools → k3s → Postgres/Redis → app → ingress, plus
+Flux and the monitoring stack with `--with-flux`. Idempotent and resumable (`--from N`,
+N = 1–7). Full walkthrough below.
 
 ## Set up on a brand-new machine — step by step
 
@@ -100,7 +101,7 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3 |
 | `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                               |
 | `grafana-admin` (SOPS, in git)    | `admin-user`, `admin-password`                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                           |
-| `operator-oauth` (SOPS, in git)   | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                      | committed **empty**; you set it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                              |
+| `operator-oauth` (SOPS, in git)   | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                      | committed **empty**; the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it    |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -119,7 +120,7 @@ Postgres/Redis → app → ingress in order.
 ```
 
 The pre-flight first installs `sops` and `age` if they're missing (so it can verify keys on a
-bare box), then handles two things:
+bare box), then handles three things:
 
 1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`,
    `grafana-secret.enc.yaml` and `tailscale-oauth.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
@@ -135,6 +136,13 @@ bare box), then handles two things:
    the hash back into `secrets.enc.yaml` through stdin, so neither shows up in `ps`. Commit
    and push that file afterward so other servers get the same hash. (Skip it and the backend
    CrashLoops until you set one — fix later with `rotate-secret.sh ADMIN_PASSWORD_HASH`.)
+3. **The Tailscale OAuth client** (only with `--with-flux`, which also deploys Grafana): if
+   the env's `tailscale-oauth.enc.yaml` is empty, it lists the admin-console steps for a new
+   client and asks for its ID and secret (hidden, typed twice, checked for a swapped ID and
+   secret). If the file already holds a client it asks whether this cluster is **taking over**
+   from another one; answer yes on a new server and it walks you through the
+   [handover](#move-grafana-to-another-cluster) first. Enter skips it; Grafana then stays off
+   the tailnet until `tailscale-oauth.sh set`.
 
 It's idempotent and resumable — if a step fails, fix the cause and re-run with `--from N`
 (N = 1–7). Steps 1–2 need interactive sudo, so run it in a real terminal.
@@ -532,11 +540,17 @@ bootstrapped gets the whole stack:
 A values change merged to `main` rolls out with no script run.
 
 **One-time bootstrap: the two secrets.** Flux never decrypts SOPS, so one script applies the
-Grafana admin secret and the Tailscale OAuth secret:
+Grafana admin secret and the Tailscale OAuth secret. `bootstrap.sh --with-flux` runs it as
+step 7 (opt out with `--without-observability`); by hand:
 
 ```bash
 ENV=staging bash infra/k8s/scripts/deploy-observability.sh   # ENV=prod on a cluster that runs prod
 ```
+
+After applying the OAuth secret it waits up to 10 minutes (`TS_WAIT_SECONDS`) for Grafana's
+tailnet address and warns if there is none yet, or if the address starts with `grafana-1`
+instead of `grafana`: that means another cluster still holds the name, and the
+[handover](#move-grafana-to-another-cluster) was skipped. Neither stops the script.
 
 Both Secrets are cluster-wide (one monitoring stack, one operator), but each env keeps its own
 encrypted copy (`grafana-secret.enc.yaml`, `tailscale-oauth.enc.yaml`) under its age key. Pick
@@ -615,18 +629,18 @@ two steps touch the repo.
    write), **Devices → Core** (read and write) and **Keys → Auth Keys** (read and write), and the
    tag **`tag:k8s-operator`**. Make one client per cluster (dev box, server) so each can be
    revoked on its own. Save the client ID and secret in the password manager only.
-6. **Store it in the env's SOPS file** on the machine that holds that env's age key. Both
-   prompts are hidden; the values never touch argv, history or a temp file:
+6. **Store it in the env's SOPS file** on the machine that holds that env's age key.
+   `bootstrap.sh` asks for it in its pre-flight. On an already running cluster:
 
    ```bash
-   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
-   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
+   ENV=prod bash infra/k8s/scripts/tailscale-oauth.sh set          # ID, then secret; hidden, typed twice
+   ENV=prod bash infra/k8s/scripts/deploy-observability.sh         # applies it and checks the address
    ```
 
-   While one half is still empty the script only stores the value and says which key to set
-   next; the second command applies the complete pair, so the operator never starts with half
-   of it. Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
-   `overlays/staging/secrets/tailscale-oauth.enc.yaml`).
+   The values never touch argv, history or a temp file, and a swapped ID and secret is
+   refused. Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
+   `overlays/staging/secrets/tailscale-oauth.enc.yaml`). Replacing the client later is a
+   [rotation](#tailscale-oauth-client).
 
 7. **Verify.** `kubectl -n tailscale get pods` shows the operator Running, the admin console's
    Machines page lists `fmi-codes-operator` and a `grafana` proxy (both tagged), and
@@ -674,6 +688,87 @@ Administration → Users).
 **Remove:** remove them on the Users page (their devices go with them), take them out of
 `group:devs` and delete their Grafana account. Do it by hand when someone leaves the GitHub org;
 Tailscale doesn't document that leaving the org removes tailnet access.
+
+#### Move Grafana to another cluster
+
+**Rule: one cluster on the tailnet at a time.** Device names are unique in a tailnet, so a
+second cluster's proxy would join as `grafana-1` and `https://grafana.<tailnet>.ts.net` would
+keep pointing at whichever cluster got there first. Only the cluster whose SOPS file holds a
+**valid** OAuth client can join, so a handover means: the old cluster gives its client up, the
+new one gets its own. Use it when moving to a new server, when replacing the dev box, or when a
+dev box hands Grafana to the server for good.
+
+Order matters: steps 1 and 2 must be finished before the new cluster deploys.
+
+1. **On the old cluster, if it still runs** (skip if it is gone). Use the env the old cluster
+   ran (`staging` for a staging-only dev box, `prod` for the server):
+
+   ```bash
+   ENV=staging bash infra/k8s/scripts/tailscale-oauth.sh release
+   ```
+
+   It stops the operator, deletes `operator-oauth`, the proxy StatefulSets and their tailnet
+   state, scales the operator back to one replica that waits idle for a Secret that never comes,
+   and empties that env's `tailscale-oauth.enc.yaml`. It refuses if the running Secret came from
+   the other env. **Commit the emptied file** (through a PR), or a later
+   `deploy-observability.sh` would re-apply a revoked client. The rest of the old cluster keeps
+   running; its monitoring stack is still reachable by port-forward.
+
+2. **Tailscale admin console** (a tailnet admin):
+   - Settings → OAuth clients (or Trust credentials): **revoke the old cluster's client**.
+   - Machines: **delete the old `grafana` and `fmi-codes-operator` devices** (they may carry a
+     `-N` suffix). This logs them out at once and frees the name `grafana`.
+
+3. **Admin console:** create the new cluster's OAuth client (scopes and tag as in
+   [Tailscale setup](#tailscale-setup-once-per-tailnet), step 5). Password manager only.
+
+4. **On the new cluster:** run `./bootstrap.sh --env <env> --with-flux`. When the pre-flight
+   asks whether this cluster is taking over, answer **y**; it shows steps 1 to 3 again, waits
+   for Enter and then asks for the new client. (If step 1 emptied the same env's file, it asks
+   for the client straight away.) On a cluster that is already bootstrapped instead:
+   `ENV=<env> bash infra/k8s/scripts/tailscale-oauth.sh set`, then
+   `ENV=<env> bash infra/k8s/scripts/deploy-observability.sh`. Commit the encrypted file.
+
+5. **Verify.** `deploy-observability.sh` waits for the address and prints
+   `Grafana is on the tailnet: https://grafana.<tailnet>.ts.net`. The admin console lists only
+   the new `grafana` and `fmi-codes-operator`. Open the address from a tailnet device.
+
+**If the new cluster got `grafana-1`** (step 2 was skipped or came too late): finish steps 1 and
+2 for the old cluster, then make the new cluster's proxy register again and delete its stale
+device on the Machines page:
+
+```bash
+kubectl -n tailscale delete statefulset,secret -l tailscale.com/managed=true   # the operator recreates it
+```
+
+Grafana's dashboards and users live on the old cluster's PVC and do not move. Recreate the
+developers' Viewer accounts on the new one ([Add or remove a developer](#add-or-remove-a-developer)).
+
+#### Troubleshooting: Grafana doesn't load over Tailscale
+
+Work from your device towards Grafana; stop at the first step that fails.
+
+1. **Your device.** `tailscale status` lists `grafana` (with the policy above you see only
+   `tag:k8s` devices), `tailscale dns status` says MagicDNS is enabled, and the name resolves to
+   that device's `100.x` address. Use `https://`: plain `http://` (port 80) is blocked by the
+   policy and just hangs.
+2. **The proxy.** `kubectl -n tailscale get pods` shows `operator` and `ts-grafana-…-0`
+   Running; `kubectl -n monitoring get ingress grafana` shows an ADDRESS. No address: run
+   `kubectl -n monitoring describe ingress grafana` (`no valid backends` means the Service name
+   in `grafana-ingress.yaml` doesn't exist) and read the operator log
+   (`kubectl -n tailscale logs deploy/operator`).
+3. **Certificate and serve config.** The proxy log
+   (`kubectl -n tailscale logs ts-grafana-…-0 -c tailscale`) shows `got cert`, and
+   `kubectl -n tailscale exec ts-grafana-…-0 -c tailscale -- tailscale serve status` proxies to
+   the Grafana Service.
+4. **Proxy to Grafana.**
+   `kubectl -n tailscale exec ts-grafana-…-0 -c tailscale -- wget -qO- -T 5 http://kps-grafana.monitoring.svc.cluster.local/api/health`
+   returns `"database": "ok"`.
+5. **Policy.** `Drop: … no rules matched` lines in the proxy log for your `100.x` address on
+   port 443 mean your login is missing from `group:devs`. Drops on port 80 or 137 are expected.
+6. **TLS hangs on a WSL2 dev box.** TCP connects but the TLS handshake stalls and the proxy
+   logs `TLS handshake error … EOF`: the pod network is running at a low MTU. Cause, checks and
+   fix are in the WSL2 eth0 note in [Phase 1](#1--tools--cluster).
 
 #### Tear down the tailnet
 
