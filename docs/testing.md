@@ -36,6 +36,7 @@ Counts are `def test_` occurrences, so parametrised tests run more cases than li
 | `test_bug_report_service.py` | Slack and Discord bug-report payloads, Slack escaping (no `<!channel>` pings) and length limits, which webhooks get a report, send failures never raise                                                  |
 | `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Slack reporting modes, message escaping and truncation, connection settings, waiting for Postgres on startup |
 | `test_slack_pr_feed.py`      | Slack PR feed (`.github/scripts`): drafts stay silent, one parent per PR, thread replies only on real state changes, Flux one-liners, escaping, Slack API client paging and retries                      |
+| `test_slack_ci_alerts.py`    | Slack CI alerts (`.github/scripts`): failed-step log tail (skips `continue-on-error` errors, strips frames, caps size), one alert per run attempt, PR thread replies and Flux one-liner edits, green-again detection, fork PR lookup, GitHub token never sent on redirects |
 
 Scope: a single function or a single route with dependencies replaced. No database. Runs in seconds.
 

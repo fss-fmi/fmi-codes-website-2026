@@ -151,7 +151,7 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 | Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches             | No (degrades)                             |
 | SMTP (Gmail by default)       | Password reset links, join-request emails to captains | No (features silently fail)               |
 | Discord webhook               | Bug reports                                           | No                                        |
-| Slack (webhooks + bot token)  | Bug reports, database migration results, PR feed      | No                                        |
+| Slack (webhooks + bot token)  | Bug reports, migration results, PR feed, CI alerts    | No                                        |
 | Docker Hub (`fssfmi/*`)       | Image registry                                        | For deploys                               |
 | Tailscale (`fss-fmi` tailnet) | Developer access to Grafana and staging               | No (both only via `kubectl port-forward`) |
 

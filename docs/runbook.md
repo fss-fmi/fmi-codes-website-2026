@@ -259,6 +259,8 @@ that is ready for review to `#pr-updates`:
   are not posted.
 - **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
   tags, edited to `merged ✅` when they auto-merge. No thread.
+- **CI results** (✅ passed, ❌ failed, ✅ green again) in the thread come from
+  [Slack CI alerts](#slack-ci-alerts), not from this workflow.
 - Reviews on PRs from forks are not posted: GitHub gives those runs no secrets.
 
 The parent is found again through Slack message metadata, so nothing else stores state. The
@@ -287,6 +289,43 @@ the migration and bug-report webhooks (a workspace admin may have to approve new
    ```
 
 To rotate the token, reinstall or regenerate it on the app page and set the secret again.
+
+#### Slack CI alerts
+
+`.github/workflows/slack-ci-alerts.yaml` (logic in `.github/scripts/ci_alerts.py`) is the one
+handler for finished runs of CI, Build and Push Docker Image, Docs, Open PR for Flux image
+bump, Migrate database and Promote to production. A workflow renamed or added there must be
+listed in its `workflow_run.workflows` by its exact `name:`.
+
+- **Failure** (also `timed_out`): one alert in `#actions-notifications` with the workflow,
+  where it failed (`main`, a branch or the PR), the failed job and step, the commit, and the
+  last lines of that step's log (at most 20 lines / 1,500 characters, no timestamps, colours
+  or stack frames). Then a reply in the PR's `#pr-updates` thread linking the alert; a Flux
+  bump's one-liner gets `· CI failed ❌` instead.
+- **Recovery:** when a run passes and the previous finished run of that workflow on the same
+  branch failed (cancelled runs are skipped over, and a re-run that passes counts),
+  `✅ <workflow> is green again on <main | #PR>` in `#actions-notifications` plus a thread
+  reply; a Flux one-liner drops its `CI failed`.
+- **Other passing runs** post only a `✅ <workflow> passed` reply in the PR thread.
+- Cancelled and skipped runs post nothing; draft PRs get no thread replies.
+- Each alert carries Slack message metadata (run id + attempt), so a duplicate event never
+  posts the same alert twice. A re-run that fails again is a new attempt and a new alert.
+
+The log tail is taken from the failed step only: the job stops there, so its error is the
+last `##[error]` line at or before that step finished. Earlier `##[error]` lines can come
+from `continue-on-error` steps (like the advisory `ruff format` check) and are skipped. The
+repo is public, so the excerpt stays short; GitHub masks registered secrets in logs.
+
+Like the PR feed it never runs PR code, and it only runs once it is on `main`. Setup, on top
+of the [Slack PR feed](#slack-pr-feed) token:
+
+```bash
+# after /invite @<app name> in #actions-notifications:
+gh variable set SLACK_ACTIONS_CHANNEL_ID --repo fss-fmi/fmi-codes-website-2026 --body C0YYYYYYY
+```
+
+Without `SLACK_ACTIONS_CHANNEL_ID` nothing posts; without `SLACK_PR_CHANNEL_ID` only the
+thread replies are skipped.
 
 ### 7. Verify
 
@@ -962,8 +1001,9 @@ To deploy this under your own project — your Docker Hub, your domain, your key
   `GIT_URL=… bash …` and add your own deploy key (step 6).
 - **Bot app** — create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
   [GitHub bot app for automated PRs](#github-bot-app-for-automated-prs).
-- **Slack PR feed** — set `SLACK_BOT_TOKEN` / `SLACK_PR_CHANNEL_ID` for your own workspace, per
-  [Slack PR feed](#slack-pr-feed), or leave them unset and the workflow skips.
+- **Slack PR feed and CI alerts** — set `SLACK_BOT_TOKEN`, `SLACK_PR_CHANNEL_ID` and
+  `SLACK_ACTIONS_CHANNEL_ID` for your own workspace, per [Slack PR feed](#slack-pr-feed) and
+  [Slack CI alerts](#slack-ci-alerts), or leave them unset and both workflows skip.
 
 ## Rotate a secret
 

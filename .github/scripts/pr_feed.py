@@ -14,10 +14,10 @@ import logging
 import os
 import re
 import sys
-import urllib.request
 from datetime import datetime
 
 import slack_notify
+from github_api import GitHub
 from slack_notify import escape, link, pr_metadata
 
 logger = logging.getLogger("pr_feed")
@@ -33,20 +33,7 @@ TRANSITIONS = {"ready_for_review", "converted_to_draft", "closed", "reopened"}
 STATUS_EMOJI = {"open": "🟢", "draft": "📝", "merged": "🟣", "closed": "🔴"}
 
 
-def github_get(path: str, token: str):
-    req = urllib.request.Request(
-        f"https://api.github.com{path}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def _epoch(iso: str) -> float:
+def epoch(iso: str) -> float:
     return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
 
 
@@ -143,7 +130,7 @@ class Feed:
 
     def _find(self, pr: dict):
         # The parent never predates the PR; the margin absorbs clock skew between GitHub and Slack.
-        oldest = _epoch(pr["created_at"]) - 60
+        oldest = epoch(pr["created_at"]) - 60
         return self.slack.find_pr_message(self.channel, self.repo, pr["number"], oldest)
 
     def _meta(self, pr: dict, kind: str) -> dict:
@@ -210,13 +197,13 @@ class Feed:
         parent = self._find(pr)
         if event["action"] == "closed" and not parent:
             return
-        text = flux_text(pr, self._bumps(pr), flux_suffix(pr))
+        text = flux_text(pr, self.bumps(pr), flux_suffix(pr))
         if parent:
             self.slack.update(self.channel, parent["ts"], text, metadata=self._meta(pr, "flux"))
         else:
             self.slack.post(self.channel, text, metadata=self._meta(pr, "flux"))
 
-    def _bumps(self, pr: dict) -> list[tuple[str, str, str]]:
+    def bumps(self, pr: dict) -> list[tuple[str, str, str]]:
         if not self.github:
             return []
         try:
@@ -236,7 +223,7 @@ def main() -> int:
     with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as f:
         event = json.load(f)
     gh_token = os.environ.get("GITHUB_TOKEN", "")
-    github = (lambda path: github_get(path, gh_token)) if gh_token else None
+    github = GitHub(gh_token).get if gh_token else None
     feed = Feed(slack_notify.Slack(token), channel, event["repository"]["full_name"], github)
     try:
         feed.handle(os.environ["GITHUB_EVENT_NAME"], event)
