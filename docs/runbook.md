@@ -316,7 +316,7 @@ pulled from Docker Hub again, which keeps every tag. The running image is never 
 85% backstop stays in place. A k3s restart resets the 7-day count, so a node that restarts more
 often than weekly never removes anything this way (tested on WSL2, which stops the distro whenever
 no session is open). On such a node, prune by hand while the pods are up:
-`sudo k3s crictl rmi --prune`. Check what the kubelet loaded:
+`sudo k3s crictl --timeout 60s rmi --prune`. Check what the kubelet loaded:
 
 ```bash
 NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
