@@ -245,6 +245,49 @@ so without the app every staging bump stalls. One-time setup, by an org admin:
 Also turn on **Settings → General → Allow auto-merge**. The repo's required checks (Lint, Unit
 & E2E tests) still gate every merge; the app gets no bypass.
 
+#### Slack PR feed
+
+`.github/workflows/slack-pr-feed.yaml` (logic in `.github/scripts/pr_feed.py`) posts every PR
+that is ready for review to `#pr-updates`:
+
+- **One parent message per PR**: status, title + link, number, author, base ← head. It is
+  edited in place when the PR is merged, closed, reopened, turned back into a draft or renamed.
+- **One-line replies in its thread** for approvals, change requests, draft/ready changes,
+  merge, close and reopen. A reply is only posted when the PR's state really changes, so a
+  re-run never duplicates one.
+- **Drafts post nothing** until they are marked ready; while a PR is back in draft, reviews
+  are not posted.
+- **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
+  tags, edited to `merged ✅` when they auto-merge. No thread.
+- Reviews on PRs from forks are not posted: GitHub gives those runs no secrets.
+
+The parent is found again through Slack message metadata, so nothing else stores state. The
+workflow never checks out PR code (it runs on `pull_request_target`, which has secrets even
+for forks). GitHub always runs the default branch's copy of a `pull_request_target`
+workflow, so a change to it can only be tested after it merges.
+
+It skips quietly until it is configured. One-time setup, in the Slack app that already holds
+the migration and bug-report webhooks (a workspace admin may have to approve new scopes):
+
+1. **Scopes:** api.slack.com/apps → the app → **OAuth & Permissions → Bot Token Scopes**: add
+   `chat:write` and `channels:history` (also `groups:history` if the channel is private).
+   Click **Reinstall to Workspace**; the existing incoming webhooks keep working.
+2. **Token:** copy the **Bot User OAuth Token** (`xoxb-…`) and store it (it prompts, so the
+   token stays out of shell history):
+
+   ```bash
+   gh secret set SLACK_BOT_TOKEN --repo fss-fmi/fmi-codes-website-2026
+   ```
+
+3. **Channel:** run `/invite @<app name>` in `#pr-updates`, then copy its ID from the bottom of
+   the channel details (`C0…`; not a secret):
+
+   ```bash
+   gh variable set SLACK_PR_CHANNEL_ID --repo fss-fmi/fmi-codes-website-2026 --body C0XXXXXXX
+   ```
+
+To rotate the token, reinstall or regenerate it on the app page and set the secret again.
+
 ### 7. Verify
 
 ```bash
@@ -916,6 +959,8 @@ To deploy this under your own project — your Docker Hub, your domain, your key
   `GIT_URL=… bash …` and add your own deploy key (step 6).
 - **Bot app** — create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
   [GitHub bot app for automated PRs](#github-bot-app-for-automated-prs).
+- **Slack PR feed** — set `SLACK_BOT_TOKEN` / `SLACK_PR_CHANNEL_ID` for your own workspace, per
+  [Slack PR feed](#slack-pr-feed), or leave them unset and the workflow skips.
 
 ## Rotate a secret
 
