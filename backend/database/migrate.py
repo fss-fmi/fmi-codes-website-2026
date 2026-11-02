@@ -14,6 +14,8 @@ DB_PASSWORD (the backend's own variables). The first connection is retried for
 up to CONNECT_WAIT_SECONDS, because after a node or k3s restart the backend's
 initContainer starts alongside Postgres. Results go to the Slack incoming
 webhook in SLACK_MIGRATIONS_WEBHOOK_URL when set, labelled with MIGRATION_ENV.
+--notify changes (the initContainer) only logs an unreachable database: every
+replica and every restart hits the same error, and CrashLoopBackOff shows it.
 """
 
 import argparse
@@ -45,6 +47,10 @@ _CREATE_TABLE = """
         applied_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
 """
+
+
+class DatabaseUnreachableError(Exception):
+    """The database never accepted a connection within CONNECT_WAIT_SECONDS."""
 
 
 class MigrationError(Exception):
@@ -102,7 +108,10 @@ def apply_pending(params: str | dict, directory: Path = MIGRATIONS_DIR) -> list[
     """
     files = migration_files(directory)
     applied: list[str] = []
-    conn = _connect(params)
+    try:
+        conn = _connect(params)
+    except psycopg2.OperationalError as e:
+        raise DatabaseUnreachableError(" ".join(str(e).split())) from e
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s)", (LOCK_ID,))
@@ -161,7 +170,10 @@ def main(argv: list[str] | None = None) -> int:
         "--notify",
         choices=("always", "changes", "never"),
         default="changes",
-        help="When to post to Slack: every run, only when something applied or failed, or never",
+        help=(
+            "When to post to Slack: every run; only when something applied or failed"
+            " (an unreachable database is only logged); or never"
+        ),
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -179,6 +191,14 @@ def main(argv: list[str] | None = None) -> int:
             notify(
                 f"❌ *DB migration failed* on `{env}` at `{e.filename}` (rolled back).\n"
                 f"Applied before the failure: {done}.\nError: {e.__cause__}{backup_note}"
+            )
+        return 1
+    except DatabaseUnreachableError as e:
+        logger.error("Database unreachable for %ds: %s", CONNECT_WAIT_SECONDS, e)
+        if args.notify == "always":
+            notify(
+                f"❌ *DB migration run failed* on `{env}` before applying anything: "
+                f"database unreachable for {CONNECT_WAIT_SECONDS}s: {e}"
             )
         return 1
     except Exception as e:
