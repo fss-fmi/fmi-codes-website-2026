@@ -95,13 +95,79 @@ class TestMain:
         assert "017_ok.sql" in posted[0]
         assert "relation does not exist" in posted[0]
 
-    def test_connection_error_is_reported(self, monkeypatch, posted):
+    def test_other_errors_before_applying_are_reported(self, monkeypatch, posted):
         def fail(params):
-            raise OSError("could not connect")
+            raise ValueError("Duplicate migration numbers: 016")
 
         monkeypatch.setattr(migrate, "apply_pending", fail)
         assert migrate.main([]) == 1
-        assert "could not connect" in posted[0]
+        assert "Duplicate migration numbers: 016" in posted[0]
+
+    @staticmethod
+    def _unreachable(params):
+        raise migrate.DatabaseUnreachableError('could not translate host name "postgres"')
+
+    def test_changes_mode_only_logs_an_unreachable_database(self, monkeypatch, posted, caplog):
+        monkeypatch.setattr(migrate, "apply_pending", self._unreachable)
+        assert migrate.main(["--notify", "changes"]) == 1
+        assert posted == []
+        assert "could not translate host name" in caplog.text
+
+    def test_replicas_and_restarts_never_post_an_unreachable_database(self, monkeypatch, posted):
+        monkeypatch.setattr(migrate, "apply_pending", self._unreachable)
+        for _ in range(4):
+            assert migrate.main(["--notify", "changes"]) == 1
+        assert posted == []
+
+    def test_always_mode_reports_an_unreachable_database(self, monkeypatch, posted):
+        monkeypatch.setattr(migrate, "apply_pending", self._unreachable)
+        assert migrate.main(["--notify", "always"]) == 1
+        assert "could not translate host name" in posted[0]
+        assert "unreachable" in posted[0]
+        assert "fmi-codes-staging" in posted[0]
+
+    def test_never_mode_stays_quiet_on_an_unreachable_database(self, monkeypatch, posted):
+        monkeypatch.setattr(migrate, "apply_pending", self._unreachable)
+        assert migrate.main(["--notify", "never"]) == 1
+        assert posted == []
+
+
+class TestApplyPending:
+    def test_connect_failure_becomes_database_unreachable(self, monkeypatch, tmp_path):
+        def refuse(params):
+            raise migrate.psycopg2.OperationalError("connection refused\n\tIs the server running?")
+
+        monkeypatch.setattr(migrate, "_connect", refuse)
+        with pytest.raises(
+            migrate.DatabaseUnreachableError, match="connection refused Is the server"
+        ):
+            migrate.apply_pending({"host": "postgres"}, tmp_path)
+
+    def test_errors_after_connecting_are_not_database_unreachable(self, monkeypatch, tmp_path):
+        class Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, *args):
+                raise migrate.psycopg2.OperationalError("server closed the connection")
+
+        class Conn:
+            closed = False
+
+            def cursor(self):
+                return Cursor()
+
+            def close(self):
+                self.closed = True
+
+        conn = Conn()
+        monkeypatch.setattr(migrate, "_connect", lambda params: conn)
+        with pytest.raises(migrate.psycopg2.OperationalError):
+            migrate.apply_pending({"host": "postgres"}, tmp_path)
+        assert conn.closed
 
 
 class TestConnectionParams:
