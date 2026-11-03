@@ -16,6 +16,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: cluster
 spec:
   interval: 5m
   retryInterval: 1m
@@ -34,6 +36,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes-ingress
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: cluster
 spec:
   interval: 5m
   retryInterval: 1m
@@ -50,6 +54,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes-staging
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: staging
 spec:
   interval: 5m
   retryInterval: 1m
@@ -68,6 +74,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes-staging-ingress
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: staging
 spec:
   interval: 5m
   retryInterval: 1m
@@ -84,6 +92,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes-staging-tailnet
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: staging
 spec:
   interval: 5m
   retryInterval: 1m
@@ -103,6 +113,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes-observability
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: cluster
 spec:
   interval: 5m
   retryInterval: 2m
@@ -121,6 +133,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes-monitors
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: cluster
 spec:
   interval: 5m
   retryInterval: 30s
@@ -140,6 +154,8 @@ kind: Kustomization
 metadata:
   name: fmi-codes-tailscale
   namespace: flux-system
+  labels:
+    fmi-codes/alerts: cluster
 spec:
   interval: 5m
   retryInterval: 2m

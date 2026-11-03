@@ -1,0 +1,89 @@
+# Two channels: the staging one, and the one for the env this cluster serves (prod on the
+# server, staging on a staging-only box), which also gets everything shared. The Kustomizations
+# in source.yaml and self.yaml carry `fmi-codes/alerts` so each Alert picks its own.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: slack
+  namespace: flux-system
+spec:
+  type: slack
+  # Holds `address`, copied from monitoring/alertmanager-slack (key `cluster_url`) by
+  # deploy-observability.sh and rotate-secret.sh. Until it exists Flux posts nothing.
+  secretRef:
+    name: flux-slack
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: slack-staging
+  namespace: flux-system
+spec:
+  type: slack
+  # Same, from key `staging_url`.
+  secretRef:
+    name: flux-slack-staging
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: slack
+  namespace: flux-system
+spec:
+  providerRef:
+    name: slack
+  eventSeverity: error
+  eventSources:
+    - kind: GitRepository
+      name: '*'
+    - kind: HelmRepository
+      name: '*'
+    - kind: HelmChart
+      name: '*'
+    - kind: HelmRelease
+      name: '*'
+    - kind: Kustomization
+      name: '*'
+      matchLabels:
+        fmi-codes/alerts: cluster
+  # Every cluster gets the Kustomizations of both envs. On a cluster that runs only one, the
+  # other env's fail on every retry because its namespace doesn't exist. The rest are network
+  # blips (a GitHub, Docker Hub or chart repo outage) that would repost every few minutes until
+  # it ends; the next fetch retries by itself. Auth and apply errors still post.
+  exclusionList:
+    - 'namespaces "fmi-codes(-staging)?" not found'
+    - 'dial tcp'
+    - 'i/o timeout'
+    - 'no such host'
+    - 'TLS handshake timeout'
+    - 'connection reset by peer'
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: slack-staging
+  namespace: flux-system
+spec:
+  providerRef:
+    name: slack-staging
+  eventSeverity: error
+  # Image automation only ever bumps staging; prod is promoted by a PR.
+  eventSources:
+    - kind: Kustomization
+      name: '*'
+      matchLabels:
+        fmi-codes/alerts: staging
+    - kind: ImageRepository
+      name: '*'
+    - kind: ImagePolicy
+      name: '*'
+    - kind: ImageUpdateAutomation
+      name: '*'
+  # Same as the other Alert.
+  exclusionList:
+    - 'namespaces "fmi-codes(-staging)?" not found'
+    - 'dial tcp'
+    - 'i/o timeout'
+    - 'no such host'
+    - 'TLS handshake timeout'
+    - 'connection reset by peer'

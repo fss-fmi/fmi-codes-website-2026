@@ -86,6 +86,7 @@ nav:
           - ADR-007 Recorded migrations: adr/007-recorded-migrations-runner.md
           - ADR-008 Grafana over Tailscale: adr/008-grafana-over-tailscale.md
           - ADR-009 Staging over Tailscale: adr/009-staging-over-tailscale.md
+          - ADR-010 Cluster alerts to Slack: adr/010-cluster-alerts-to-slack.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

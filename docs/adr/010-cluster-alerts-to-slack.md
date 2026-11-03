@@ -1,0 +1,35 @@
+# ADR-010: In-cluster failures posted to Slack by Alertmanager and Flux
+
+**Status**: accepted. Replaces the runbook's "alertmanager off: no paging on a hobby cluster" setting from the first observability rollout.
+
+## Context
+
+The monitoring stack was built to answer one question, whether the backend leaks memory, so its Alertmanager was turned off: alerting was never in scope and there was nowhere to send alerts. Prometheus still evaluated every default kube-prometheus-stack rule; the results went nowhere.
+
+Since then the team gained Slack channels, and two GitHub workflows post everything up to a merge: the PR feed (`#pr-updates`) and failed Actions runs (`#actions-notifications`), Flux image-bump PRs included. Nothing watches the cluster after a merge. A bump that merges green but fails its health check, image automation that can no longer push, a crash-looping pod or a failed Job are only seen by someone who runs `kubectl`. The migration initContainer also stopped posting unreachable-database failures, by design, because every replica and restart posted the same error; the pod now just sits in `Init:CrashLoopBackOff`.
+
+Checked on the staging cluster before deciding: over 14 days of history the only alerts that fired were noise (`KubeControllerManagerDown`, `KubeSchedulerDown`, `KubeProxyDown`, `Watchdog`, `InfoInhibitor` and `PrometheusNotConnectedToAlertmanagers`), and the prod Kustomizations fail on every retry on a staging-only cluster.
+
+## Decision
+
+- **Alertmanager is on**, in the same `kps` release: one message per alert name and namespace, a resolved message, a 12-hour reminder. The title names the env from the namespace.
+- **Flux's notification-controller posts reconcile errors** (`flux/notifications.yaml`): Kustomizations, HelmReleases, sources and image automation, `error` severity only.
+- **Two channels, split by who has to act**: `#cluster-alerts-staging` gets the `fmi-codes-staging` namespace, staging's Flux Kustomizations and image automation (which only ever bumps staging). Everything else goes to the channel of the env the cluster serves, `#cluster-alerts-prod` on the server and the staging channel on a staging-only box, because on a shared node a node, monitoring or Flux-core failure is a prod failure. Staging is where things break on purpose (test pods, migration runs, WSL reboots). In one channel staging would be most of the traffic, people would mute it, and Slack mutes per channel, so prod would go quiet with it. Alertmanager routes on the `namespace` label; Flux, which has no exclude-by-name, selects Kustomizations by a `fmi-codes/alerts: cluster | staging` label.
+- **Incoming webhooks**, not the PR feed's bot token. A webhook can only post to its one channel. The bot token can read the history of, and post to, every channel the bot is in, and a cluster is a wider exposure than a GitHub workflow. Neither sender needs threads or edits.
+- **The webhooks are a SOPS secret with one copy per env** (`alertmanager-slack.enc.yaml`, keys `cluster_url` for the cluster's channel and `staging_url`), like the other cluster-wide secrets: `deploy-observability.sh` applies it with the env label and copies each key to `flux-system/flux-slack` or `flux-slack-staging` in the shape Flux expects, and `rotate-secret.sh --alertmanager cluster_url | staging_url` changes them. Alertmanager reads them from mounted files on every send, so no URL sits in git or in the Helm values, and rotating needs no restart.
+- **Noise is cut at the source, not muted in Slack.** The k3s-embedded components' monitors are off, which also drops their rules. `Watchdog`, `InfoInhibitor` and `severity=info` go to a `null` receiver. A crash loop inhibits the not-ready alert of its pod and the replica and rollout alerts of its namespace. Flux errors about the other env's missing namespace, and network-level fetch errors from a GitHub, Docker Hub or chart repo outage, are excluded. The default delay drops from 15 to 5 minutes for `KubePodCrashLooping`, to 10 for `KubePodNotReady` and to 1 for `KubeJobFailed`, because a quarter of an hour is long during a 48-hour event.
+- **Two rules are added**: `ContainerOOMKilled`, and `KubeInitContainerCrashLooping`, because the default crash-loop rule ignores initContainers and so misses the migration step.
+
+Rejected:
+
+- **An event watcher** (kubernetes-event-exporter, Botkube): one more component, and Prometheus already holds the state and maintained rules.
+- **Grafana alerting**: the rules would be copied into Grafana and maintained by hand, and Grafana is a tailnet-only viewer, not the thing that should page.
+- **An external dead man's switch**: it needs an outside account, and a dead cluster also takes the site down, which is noticed anyway.
+- **One channel for both envs**: one place to look and little traffic so far (nothing real fired in 14 days), but that history is a mostly-off dev box outside an event. The env in the title only helps once someone has already read the message.
+- **A backend 5xx-rate rule**: the app counters are per Gunicorn worker and each scrape reads a random one. On staging one series read `75, 11, 11, 90, 96, 100, 103, 15, 115, 119, 18, 129`, five resets in 30 minutes, so any rate on it fires on noise. It comes back once the counters are aggregated across workers ([issue #169](https://github.com/fss-fmi/fmi-codes-website-2026/issues/169)).
+
+## Consequences
+
+- **Easier**: crash loops, failed Jobs, stuck rollouts, full volumes, OOM kills and post-merge Flux failures reach the team within minutes, in prod and staging, with nothing to open. Alertmanager adds about 32Mi to the node.
+- **Harder**: the Alertmanager pod mounts `alertmanager-slack` and can't start without it, and since the operator, not Helm, creates that pod, the release does not fail: Alertmanager is just silently down. `deploy-observability.sh` applies the Secret even while empty, and the runbook says to check the pod. Exactly one empty key makes every send to that channel fail and `AlertmanagerFailedToSendAlerts` post, so both keys are set together. A cluster without the Tailscale OAuth client posts the waiting operator pod every 12 hours, which is a real, if known, gap. Silences live in the pod with no volume and are lost on every restart. Two webhooks to rotate, and the staging one lives in both envs' files. A new Flux Kustomization without the `fmi-codes/alerts` label posts nothing, and `self.yaml` is not re-applied by Flux, so existing clusters apply it once by hand.
+- **Technical debt**: the exclusion that hides the other env's missing namespace would also hide that error for an env that should be there (the site being down would show it). Alertmanager's posts can't be threaded or edited, so a flapping alert posts again each time. A staging alert that is really a node problem (a pod evicted for disk pressure) lands in the staging channel while the node alert itself goes to prod. Errors from the backend itself are only covered by the bug-report and migration webhooks until the app counters are aggregated across workers.
