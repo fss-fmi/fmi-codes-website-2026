@@ -11,6 +11,7 @@ esac
 
 MONITORING_NS="${MONITORING_NS:-monitoring}"
 TAILSCALE_NS="${TAILSCALE_NS:-tailscale}"
+PROD_NS="${PROD_NS:-fmi-codes}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -55,7 +56,9 @@ apply_secret() {
     -o go-template="{{index .metadata.labels \"$ENV_LABEL\"}}" 2>/dev/null || true)"
   live_env="${live_env#<no value>}"
   if [ -n "$live_env" ] && [ "$live_env" != "$ENV" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ]; then
-    die "$ns/$name holds the $live_env credentials; refusing to replace them with $ENV's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose."
+    local hint=""
+    [ "$ENV" = "prod" ] && hint=" A staging-only box that now runs prod too should switch: docs/runbook.md 'Adding prod to a staging-only box'."
+    die "$ns/$name holds the $live_env credentials; refusing to replace them with $ENV's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose.$hint"
   fi
 
   log "Applying $ns/$name from $file ($ENV)"
@@ -114,4 +117,13 @@ EOF
 if [ "$TAILSCALE_STATUS" = "applied" ] && [ "${SKIP_TAILSCALE_CHECK:-false}" != "true" ]; then
   ENV="$ENV" MONITORING_NS="$MONITORING_NS" TAILSCALE_NS="$TAILSCALE_NS" \
     bash "$SCRIPT_DIR/tailscale-oauth.sh" check || true
+fi
+
+# cluster_url is the channel of the env that owns the cluster, so staging's copies on a box
+# that runs prod send prod's alerts to the staging channel, and nothing else would say so.
+if [ "$ENV" = "staging" ] && kubectl get namespace "$PROD_NS" >/dev/null 2>&1; then
+  warn "this cluster also runs prod (namespace $PROD_NS) but now holds staging's cluster-wide
+  Secrets, so prod's alerts post to the staging Slack channel. Switch them to prod:
+    ALLOW_ENV_SWITCH=true ENV=prod bash $SCRIPT_DIR/deploy-observability.sh
+  Details: docs/runbook.md 'Adding prod to a staging-only box'."
 fi

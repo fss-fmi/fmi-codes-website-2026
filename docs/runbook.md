@@ -908,13 +908,20 @@ ALLOW_ENV_SWITCH=true ENV=prod bash infra/k8s/scripts/deploy-observability.sh
   ([Grafana admin password](#grafana-admin-password)).
 - While prod's `tailscale-oauth.enc.yaml` is empty the script skips it, so the operator keeps
   staging's client and Grafana and staging keep their tailnet addresses. Leave it empty on this
-  box.
+  box: if the prod bootstrap runs with `--with-flux`, answer `n` when its pre-flight offers to
+  set an OAuth client.
 
-From then on it is a prod cluster: run `deploy-observability.sh` and the cluster-wide
-`rotate-secret.sh` targets (`--grafana`, `--tailscale`, `--alertmanager`) with `ENV=prod`.
-Staging's app secrets still rotate with `ENV=staging`. Staging's `alertmanager-slack.enc.yaml`
-isn't used until a staging-only box exists again. Check with the test below: the
-scratch-namespace pod posts in `#cluster-alerts-prod`.
+From then on it is a prod cluster: run `deploy-observability.sh` and `rotate-secret.sh
+--grafana` / `--alertmanager` with `ENV=prod`. The Tailscale client stays staging's, so
+`rotate-secret.sh --tailscale` and `tailscale-oauth.sh` keep `ENV=staging`, and so do
+staging's app secrets. Staging's `alertmanager-slack.enc.yaml` isn't used until a staging-only
+box exists again. Check with the test below: the scratch-namespace pod posts in
+`#cluster-alerts-prod`.
+
+Both scripts print the switch command when they find the mix: the prod bootstrap when the
+shared Secrets are still staging's, and `deploy-observability.sh` when it runs with
+`ENV=staging` on a cluster that has the `fmi-codes` namespace. The env guard's refusal of
+`ENV=prod` points here too.
 
 **Silence an alert** during planned work or while a known issue is being fixed:
 

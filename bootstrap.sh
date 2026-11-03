@@ -380,3 +380,14 @@ Tailscale, at the addresses \`kubectl -n monitoring get ingress grafana\` and
 \`kubectl -n ingress-nginx-staging get ingress staging\` show.
 Setup and handover: docs/runbook.md 'Phase 7'.
 EOF
+
+# Without --with-flux this run never touches the cluster-wide Secrets, so on a staging-only box
+# that just got prod they stay staging's and prod's alerts post to the staging channel.
+if [ "$ENV" = "prod" ] && [ "$(kubectl -n monitoring get secret grafana-admin --ignore-not-found \
+    -o go-template='{{index .metadata.labels "fmi-codes/secrets-env"}}' 2>/dev/null || true)" = "staging" ]; then
+  echo
+  warn "this cluster's shared Secrets (Grafana admin, Slack alert webhooks) are still staging's, so
+  prod's alerts post to the staging Slack channel. Switch them to prod:
+    ALLOW_ENV_SWITCH=true ENV=prod bash infra/k8s/scripts/deploy-observability.sh
+  Details, including the Grafana password: docs/runbook.md 'Adding prod to a staging-only box'."
+fi
