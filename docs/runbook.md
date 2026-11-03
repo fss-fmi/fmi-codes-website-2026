@@ -252,11 +252,13 @@ that is ready for review to `#pr-updates`:
 
 - **One parent message per PR**: status, title + link, number, author, base ← head. It is
   edited in place when the PR is merged, closed, reopened, turned back into a draft or renamed.
-- **One-line replies in its thread** for approvals, change requests, review comments,
-  conversation comments (`💬 <comment> by X`), draft/ready changes, merge, close and reopen.
-  Bots' reviews and comments are skipped. State replies only post when the PR's state really
-  changes, and review and comment replies carry the review or comment id, so a re-run never
-  duplicates one.
+- **One-line replies in its thread** for approvals, change requests, "Comment" reviews that
+  have a summary, conversation comments (`💬 <comment> by X`), draft/ready changes, merge,
+  close and reopen. A "Comment" review with no summary is skipped: every reply in an inline
+  review thread is its own review, so posting them would flood the thread. Bots' reviews and
+  comments are skipped (bot comments don't even start a job). State replies only post when
+  the PR's state really changes, and review and comment replies carry the review or comment
+  id, so a re-run never duplicates one.
 - **Drafts post nothing** until they are marked ready; while a PR is back in draft, reviews
   are not posted.
 - **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
@@ -266,9 +268,9 @@ that is ready for review to `#pr-updates`:
 - **Only people who can push to the repo are posted.** The repo is public and
   `pull_request_target` runs for any PR without approval, so without this anyone on GitHub
   could make the bot post text of their choosing (titles can carry links Slack makes
-  clickable). A PR or review counts when its author is `OWNER`, `MEMBER` or `COLLABORATOR`, or
-  the repo permission API says `write` or `admin` (the fallback covers members whose org
-  membership is private, who may not show as `MEMBER`). Bots count only on PRs from this
+  clickable). A PR, review or comment counts only when the repo permission API says its
+  author has `write` or `admin`. `author_association` is not used: `MEMBER` and
+  `COLLABORATOR` include read-only access. Bots count only on PRs from this
   repo's own branches (Flux bumps, migration PRs). If the check fails, nothing is posted. The
   same check applies to each reviewer and commenter.
 - Reviews on PRs from forks are not posted: GitHub gives those runs no secrets.
@@ -321,9 +323,11 @@ listed in its `workflow_run.workflows` by its exact `name:`.
   where it failed (`main`, a branch or the PR), the failed job and step, the commit, and the
   last lines of that step's log (at most 20 lines / 1,500 characters, no timestamps, colours
   or stack frames). Then a reply in the PR's `#pr-updates` thread linking the alert; a Flux
-  bump's one-liner gets `· CI failed ❌` instead.
+  bump's one-liner gets `· CI failed ❌` instead (never once it is merged or closed: its final
+  state stays).
 - **Recovery:** when a run passes and the previous finished run of that workflow on the same
-  branch failed (cancelled runs are skipped over, and a re-run that passes counts),
+  branch failed (cancelled runs are skipped over; a re-run that passes after a failed attempt
+  counts, re-running a run that already passed does not),
   `✅ <workflow> is green again on <main | #PR>` in `#actions-notifications` plus a thread
   reply; a Flux one-liner drops its `CI failed`.
 - **Other passing runs** post only a `✅ <workflow> passed` reply in the PR thread.

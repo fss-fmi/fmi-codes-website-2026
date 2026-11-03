@@ -8,20 +8,17 @@ import urllib.request
 logger = logging.getLogger("github_api")
 
 API = "https://api.github.com"
-TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 PUSH_PERMISSIONS = {"admin", "write"}
 
 
-def can_push(get, repo: str, user: dict, association: str | None, head_repo: str | None) -> bool:
+def can_push(get, repo: str, user: dict, head_repo: str | None) -> bool:
     """Whether *user* may push to *repo*. Only their PRs, reviews and runs reach Slack.
 
     The repo is public and pull_request_target needs no approval, so without this
-    anyone on GitHub could make the bot post text of their choosing. Members whose
-    org membership is private may not show as MEMBER, so anything short of a trusted
-    association asks the permission API; any failure there counts as untrusted.
+    anyone on GitHub could make the bot post text of their choosing. Always asks
+    the permission API: author_association can't be used, because MEMBER and
+    COLLABORATOR include read-only access. Any failure counts as untrusted.
     """
-    if association in TRUSTED_ASSOCIATIONS:
-        return True
     if user.get("type") == "Bot":
         # This repo's own apps (Flux bumps, migration PRs) open PRs from its branches.
         return head_repo == repo
@@ -36,17 +33,34 @@ def can_push(get, repo: str, user: dict, association: str | None, head_repo: str
     return permission in PUSH_PERMISSIONS
 
 
+class _SameHostAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow redirects, carrying the token only while they stay on the same host.
+
+    API redirects (a renamed or transferred repo) stay on api.github.com and need
+    it; job logs redirect to blob storage, which must never receive it.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        auth = req.unredirected_hdrs.get("Authorization")
+        same_host = (
+            urllib.parse.urlsplit(newurl).hostname == urllib.parse.urlsplit(req.full_url).hostname
+        )
+        if new is not None and auth and same_host:
+            new.add_unredirected_header("Authorization", auth)
+        return new
+
+
 class GitHub:
-    def __init__(self, token: str, opener=urllib.request.urlopen):
+    def __init__(self, token: str, opener=None):
         self._token = token
-        self._open = opener
+        self._open = opener or urllib.request.build_opener(_SameHostAuthRedirect).open
 
     def _request(self, path: str, params: dict) -> urllib.request.Request:
         query = f"?{urllib.parse.urlencode(params)}" if params else ""
         req = urllib.request.Request(f"{API}{path}{query}")
         req.add_header("Accept", "application/vnd.github+json")
         req.add_header("X-GitHub-Api-Version", "2022-11-28")
-        # Unredirected: job logs redirect to blob storage, which must not receive the token.
         req.add_unredirected_header("Authorization", f"Bearer {self._token}")
         return req
 

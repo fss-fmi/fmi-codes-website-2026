@@ -47,6 +47,14 @@ FAILED_LOG = """\
 """
 
 
+REPO_ID = 4242
+
+
+def pr_ref(number, sha="abc1234def5678", base_repo_id=REPO_ID):
+    """A workflow_run.pull_requests entry (only what GitHub puts there)."""
+    return {"number": number, "head": {"sha": sha}, "base": {"repo": {"id": base_repo_id}}}
+
+
 def make_run(conclusion="failure", event="pull_request", attempt=1, prs=None, **extra):
     run = {
         "id": 900,
@@ -60,9 +68,9 @@ def make_run(conclusion="failure", event="pull_request", attempt=1, prs=None, **
         "html_url": f"{REPO_URL}/actions/runs/900",
         "created_at": "2026-11-03T01:00:00Z",
         "run_started_at": "2026-11-03T01:00:00Z",
-        "pull_requests": [{"number": 7, "head": {"sha": "abc1234def5678"}}] if prs is None else prs,
+        "pull_requests": [pr_ref(7)] if prs is None else prs,
         "head_repository": {"full_name": REPO, "owner": {"login": "fss-fmi"}},
-        "repository": {"html_url": REPO_URL},
+        "repository": {"html_url": REPO_URL, "id": REPO_ID},
         "triggering_actor": {"login": "alice"},
     }
     run.update(extra)
@@ -157,6 +165,8 @@ class FakeGitHub:
 
     def get(self, path, **params):
         self.calls.append((path, params))
+        if path.endswith("/permission"):
+            return {"permission": "write"}
         if path == f"/repos/{REPO}/pulls/{self.pr['number']}":
             return self.pr
         if path == f"/repos/{REPO}/pulls/{self.pr['number']}/files":
@@ -366,7 +376,7 @@ class TestFluxBumps:
 
     def run(self, **kw):
         return make_run(
-            prs=[{"number": 152, "head": {"sha": "abc1234def5678"}}],
+            prs=[pr_ref(152)],
             head_branch=pr_feed.FLUX_BRANCH,
             **kw,
         )
@@ -554,9 +564,9 @@ class TestTrust:
 
 
 class TestCanPush:
-    def test_trusted_associations_skip_the_api(self):
-        for association in ("OWNER", "MEMBER", "COLLABORATOR"):
-            assert github_api.can_push(None, REPO, {"login": "a"}, association, None)
+    def test_association_is_never_trusted_on_its_own(self):
+        # MEMBER and COLLABORATOR include read-only access.
+        assert not github_api.can_push(None, REPO, {"login": "a"}, None)
 
     @pytest.mark.parametrize(
         ("permission", "expected"),
@@ -567,12 +577,95 @@ class TestCanPush:
             assert path == f"/repos/{REPO}/collaborators/a%2Fb/permission"
             return {"permission": permission}
 
-        assert github_api.can_push(get, REPO, {"login": "a/b"}, "NONE", None) is expected
+        assert github_api.can_push(get, REPO, {"login": "a/b"}, None) is expected
 
     def test_bots_only_from_this_repo(self):
         bot = {"login": "fmi-codes-bot[bot]", "type": "Bot"}
-        assert github_api.can_push(None, REPO, bot, "CONTRIBUTOR", REPO)
-        assert not github_api.can_push(None, REPO, bot, "CONTRIBUTOR", "mallory/fork")
+        assert github_api.can_push(None, REPO, bot, REPO)
+        assert not github_api.can_push(None, REPO, bot, "mallory/fork")
+
+
+class TestRedirects:
+    """The token follows API redirects on api.github.com, never off-host ones (log blobs)."""
+
+    @staticmethod
+    def follow(newurl):
+        req = github_api.GitHub("fake-gh-credential")._request("/repos/x/y", {})
+        handler = github_api._SameHostAuthRedirect()
+        return handler.redirect_request(req, None, 302, "Found", {}, newurl)
+
+    def test_same_host_redirect_keeps_the_token(self):
+        new = self.follow("https://api.github.com/repositories/1/pulls")
+        assert new.unredirected_hdrs["Authorization"] == "Bearer fake-gh-credential"
+
+    def test_off_host_redirect_drops_it(self):
+        new = self.follow("https://productionresultssa1.blob.core.windows.net/logs/1.txt?sig=x")
+        assert "Authorization" not in new.unredirected_hdrs
+        assert "Authorization" not in new.headers
+
+
+class TestReviewFixes:
+    def test_rerun_of_a_green_run_is_not_a_second_recovery(self, slack):
+        with_parent(slack)
+        gh = FakeGitHub(previous=[prior("failure", run_id=850)], attempts={1: "success"})
+        alerts(slack, gh).handle(make_run(conclusion="success", attempt=1))
+        assert len(slack.in_channel(ACTIONS)) == 1
+        alerts(slack, gh).handle(make_run(conclusion="success", attempt=2))
+        assert len(slack.in_channel(ACTIONS)) == 1
+        assert [r["text"].split("|CI> ")[1] for r in slack.replies()] == ["green again", "passed"]
+
+    def test_rerun_finishes_a_thread_reply_that_failed(self, slack):
+        with_parent(slack)
+        alerts(slack, FakeGitHub()).handle(make_run())
+        slack.messages = [m for m in slack.messages if m["thread_ts"] is None]
+        alerts(slack, FakeGitHub()).handle(make_run())
+        assert len(slack.in_channel(ACTIONS)) == 1
+        [reply] = slack.replies()
+        assert "failed" in reply["text"]
+
+    def test_rerun_finishes_a_recovery_thread_reply(self, slack):
+        with_parent(slack)
+        gh = FakeGitHub(previous=[prior("failure")])
+        alerts(slack, gh).handle(make_run(conclusion="success"))
+        slack.messages = [m for m in slack.messages if m["thread_ts"] is None]
+        alerts(slack, gh).handle(make_run(conclusion="success"))
+        assert len(slack.in_channel(ACTIONS)) == 1
+        assert len(slack.replies()) == 1
+
+    def test_pull_requests_from_other_repos_are_ignored(self, slack):
+        with_parent(slack)
+        gh = FakeGitHub()
+        run = make_run(prs=[pr_ref(3, sha="other", base_repo_id=999), pr_ref(7, sha="other")])
+        alerts(slack, gh).handle(run)
+        assert "#7 feat: add things" in slack.in_channel(ACTIONS)[0]["text"]
+        assert not any(path.endswith("/pulls/3") for path, _ in gh.calls)
+
+    def test_only_foreign_pull_requests_fall_back_to_the_head_lookup(self, slack):
+        gh = FakeGitHub()
+        alerts(slack, gh).handle(make_run(prs=[pr_ref(3, base_repo_id=999)]))
+        assert any(path == f"/repos/{REPO}/pulls" for path, _ in gh.calls)
+        assert not any(path.endswith("/pulls/3") for path, _ in gh.calls)
+
+    @pytest.mark.parametrize("merged", [True, False])
+    def test_ci_results_never_overwrite_a_closed_flux_line(self, slack, merged):
+        pr = make_pr(number=152, head=pr_feed.FLUX_BRANCH)
+        pr.update(state="closed", merged=merged)
+        line = with_parent(slack, pr, kind="flux", text="final state")
+        gh = FakeGitHub(pr=pr, previous=[prior("failure")])
+        run = make_run(conclusion="success", prs=[pr_ref(152)], head_branch=pr_feed.FLUX_BRANCH)
+        alerts(slack, gh).handle(run)
+        alerts(slack, gh).handle(make_run(prs=[pr_ref(152)], head_branch=pr_feed.FLUX_BRANCH))
+        assert line["text"] == "final state"
+
+    def test_read_only_member_runs_post_nothing(self, slack):
+        class ReadOnly(FakeGitHub):
+            def get(self, path, **params):
+                if path.endswith("/permission"):
+                    return {"permission": "read"}
+                return super().get(path, **params)
+
+        alerts(slack, ReadOnly()).handle(make_run())
+        assert slack.messages == []
 
 
 # Fake credentials are assembled from pieces so this file itself never looks like a leak.

@@ -21,16 +21,8 @@ import sys
 
 import pr_feed
 import slack_notify
-from github_api import GitHub, can_push
-from slack_notify import (
-    ALERT_EVENT_TYPE,
-    REPLY_EVENT_TYPE,
-    alert_metadata,
-    escape,
-    link,
-    pr_metadata,
-    reply_metadata,
-)
+from github_api import GitHub
+from slack_notify import ALERT_EVENT_TYPE, alert_metadata, escape, link, pr_metadata
 
 logger = logging.getLogger("ci_alerts")
 
@@ -145,6 +137,8 @@ class Alerts:
         self.repo = repo
         self.actions_channel = actions_channel
         self.pr_channel = pr_channel
+        # The PR feed owns thread lookup, keyed replies and the push check; reuse them.
+        self.feed = pr_feed.Feed(slack, pr_channel, repo, github.get)
 
     def handle(self, run: dict) -> None:
         if run["conclusion"] not in FAILED | {"success"}:
@@ -165,10 +159,7 @@ class Alerts:
         workflow_run matches by name; their author still has to be trusted.
         """
         if pr:
-            head_repo = (pr["head"].get("repo") or {}).get("full_name")
-            return can_push(
-                self.gh.get, self.repo, pr["user"], pr.get("author_association"), head_repo
-            )
+            return self.feed.can_push(pr["user"], pr)
         return (run.get("head_repository") or {}).get("full_name") == self.repo
 
     # --- where the run belongs -------------------------------------------------
@@ -176,7 +167,14 @@ class Alerts:
     def find_pr(self, run: dict):
         if run["event"] not in PR_EVENTS:
             return None
-        prs = run.get("pull_requests") or []
+        repo_id = (run.get("repository") or {}).get("id")
+        # The list can include PRs in other repos (a fork's PR whose head is a branch
+        # here); their numbers mean nothing in this repo.
+        prs = [
+            p
+            for p in run.get("pull_requests") or []
+            if ((p.get("base") or {}).get("repo") or {}).get("id") == repo_id
+        ]
         number = next((p["number"] for p in prs if p["head"]["sha"] == run["head_sha"]), None)
         if number is None and prs:
             number = prs[0]["number"]
@@ -200,15 +198,17 @@ class Alerts:
     # --- failure ---------------------------------------------------------------
 
     def _failure(self, run: dict, pr) -> None:
-        if self._already_posted(run, "failure"):
+        ts = self._posted_ts(run, "failure")
+        if ts:
             logger.info("Alert for run %s attempt %s already posted", run["id"], run["run_attempt"])
-            return
-        job, step, tail = self._failed_step(run)
-        ts = self.slack.post(
-            self.actions_channel,
-            alert_text(run, self.where(run, pr), job, step, tail),
-            metadata=alert_metadata(self.repo, run["id"], run["run_attempt"], "failure"),
-        )
+        else:
+            job, step, tail = self._failed_step(run)
+            ts = self.slack.post(
+                self.actions_channel,
+                alert_text(run, self.where(run, pr), job, step, tail),
+                metadata=alert_metadata(self.repo, run["id"], run["run_attempt"], "failure"),
+            )
+        # Even when the alert already exists: a re-run must finish a thread reply that failed.
         alert = self.slack.permalink(self.actions_channel, ts)
         self._pr_note(
             pr,
@@ -249,13 +249,12 @@ class Alerts:
                 key=_run_key(run, "success"),
             )
             return
-        if self._already_posted(run, "recovery"):
-            return
-        self.slack.post(
-            self.actions_channel,
-            f"✅ {link(run['html_url'], run['name'])} is green again on {self.where(run, pr)}",
-            metadata=alert_metadata(self.repo, run["id"], run["run_attempt"], "recovery"),
-        )
+        if not self._posted_ts(run, "recovery"):
+            self.slack.post(
+                self.actions_channel,
+                f"✅ {link(run['html_url'], run['name'])} is green again on {self.where(run, pr)}",
+                metadata=alert_metadata(self.repo, run["id"], run["run_attempt"], "recovery"),
+            )
         self._pr_note(
             pr,
             f"✅ {link(run['html_url'], run['name'])} green again",
@@ -268,9 +267,12 @@ class Alerts:
         if run["run_attempt"] > 1:
             prev = self.gh.get(
                 f"/repos/{self.repo}/actions/runs/{run['id']}/attempts/{run['run_attempt'] - 1}"
-            )
-            if prev.get("conclusion") in FAILED:
+            ).get("conclusion")
+            if prev in FAILED:
                 return True
+            if prev == "success":
+                # Re-running a green run: any recovery was reported by the earlier attempt.
+                return False
         if not run.get("head_branch"):
             return False
         runs = self.gh.get(
@@ -294,51 +296,43 @@ class Alerts:
 
     # --- shared ----------------------------------------------------------------
 
-    def _already_posted(self, run: dict, kind: str) -> bool:
+    def _posted_ts(self, run: dict, kind: str):
+        """The ts of this run attempt's alert or recovery ping, if already posted."""
         oldest = pr_feed.epoch(run["run_started_at"]) - 60
-        return bool(
-            self.slack.find_message(
-                self.actions_channel,
-                ALERT_EVENT_TYPE,
-                oldest,
-                repo=self.repo,
-                run_id=run["id"],
-                run_attempt=run["run_attempt"],
-                kind=kind,
-            )
+        message = self.slack.find_message(
+            self.actions_channel,
+            ALERT_EVENT_TYPE,
+            oldest,
+            repo=self.repo,
+            run_id=run["id"],
+            run_attempt=run["run_attempt"],
+            kind=kind,
         )
+        return message["ts"] if message else None
 
     def _pr_note(self, pr, text: str, flux_suffix: str | None, key: str) -> None:
         """A reply in the PR's thread; for a Flux bump, set its one-liner's suffix instead.
 
-        flux_suffix None leaves a Flux one-liner untouched.
+        flux_suffix None leaves a Flux one-liner untouched. A merged or closed bump
+        keeps its final state; CI results no longer change it.
         """
         if not pr or not self.pr_channel or pr.get("draft"):
             return
-        parent = self.slack.find_pr_message(
-            self.pr_channel, self.repo, pr["number"], pr_feed.epoch(pr["created_at"]) - 60
-        )
+        parent = self.feed.find(pr)
         if not parent:
             return
         kind = ((parent.get("metadata") or {}).get("event_payload") or {}).get("kind")
         if kind != "flux":
-            match = {"repo": self.repo, "pr_number": pr["number"], "key": key}
-            if not self.slack.find_reply(self.pr_channel, parent["ts"], REPLY_EVENT_TYPE, **match):
-                self.slack.post(
-                    self.pr_channel,
-                    text,
-                    thread_ts=parent["ts"],
-                    metadata=reply_metadata(self.repo, pr["number"], key),
-                )
+            self.feed.reply_once(pr, parent, text, key)
             return
-        if flux_suffix is None:
+        state = pr_feed.pr_state(pr)
+        if flux_suffix is None or state in ("merged", "closed"):
             return
-        feed = pr_feed.Feed(self.slack, self.pr_channel, self.repo, self.gh.get)
         self.slack.update(
             self.pr_channel,
             parent["ts"],
-            pr_feed.flux_text(pr, feed.bumps(pr), flux_suffix),
-            metadata=pr_metadata(self.repo, pr["number"], "flux", pr_feed.pr_state(pr)),
+            pr_feed.flux_text(pr, self.feed.bumps(pr), flux_suffix),
+            metadata=pr_metadata(self.repo, pr["number"], "flux", state),
         )
 
 

@@ -129,19 +129,19 @@ class Feed:
         self.repo = repo
         self.github = github
 
-    def _oldest(self, pr: dict) -> float:
+    def oldest(self, pr: dict) -> float:
         # The parent never predates the PR; the margin absorbs clock skew between GitHub and Slack.
         return epoch(pr["created_at"]) - 60
 
-    def _find(self, pr: dict):
-        return self.slack.find_pr_message(self.channel, self.repo, pr["number"], self._oldest(pr))
+    def find(self, pr: dict):
+        return self.slack.find_pr_message(self.channel, self.repo, pr["number"], self.oldest(pr))
 
     def _post_parent(self, pr: dict, text: str, kind: str) -> None:
         self.slack.post_unique(
             self.channel,
             text,
             self._meta(pr, kind),
-            self._oldest(pr),
+            self.oldest(pr),
             repo=self.repo,
             pr_number=pr["number"],
         )
@@ -152,8 +152,8 @@ class Feed:
     def _reply(self, parent: dict, text: str) -> None:
         self.slack.post(self.channel, text, thread_ts=parent["ts"])
 
-    def _reply_once(self, pr: dict, parent: dict, text: str, key: str) -> None:
-        """A thread reply for one review or comment; a re-run finds it and stays silent."""
+    def reply_once(self, pr: dict, parent: dict, text: str, key: str) -> None:
+        """A thread reply keyed by what it reports; a re-run finds it and stays silent."""
         if self.slack.find_reply(
             self.channel,
             parent["ts"],
@@ -177,18 +177,25 @@ class Feed:
         else:
             self._post_parent(pr, text, "pr")
 
-    def _can_push(self, user: dict, association: str | None, pr: dict) -> bool:
+    def can_push(self, user: dict, pr: dict) -> bool:
         head_repo = (pr["head"].get("repo") or {}).get("full_name")
-        return can_push(self.github, self.repo, user, association, head_repo)
+        return can_push(self.github, self.repo, user, head_repo)
 
     def handle(self, event_name: str, event: dict) -> None:
         if event_name == "issue_comment":
-            if "pull_request" not in event["issue"] or not self.github:
+            comment = event["comment"]
+            # Cheap checks first: most comments are discarded before any API call.
+            if (
+                event["action"] != "created"
+                or "pull_request" not in event["issue"]
+                or comment["user"].get("type") == "Bot"
+                or not self.github
+            ):
                 return
             pr = self.github(f"/repos/{self.repo}/pulls/{event['issue']['number']}")
         else:
             pr = event["pull_request"]
-        if not self._can_push(pr["user"], pr.get("author_association"), pr):
+        if not self.can_push(pr["user"], pr):
             logger.info(
                 "#%s is by %s, who can't push here; not posted", pr["number"], pr["user"]["login"]
             )
@@ -206,7 +213,7 @@ class Feed:
         action = event["action"]
         if action not in CREATES_PARENT | TRANSITIONS | {"edited"}:
             return
-        parent = self._find(pr)
+        parent = self.find(pr)
         new = pr_state(pr)
         if not parent:
             if action in CREATES_PARENT and new == "open":
@@ -226,7 +233,7 @@ class Feed:
         review = event["review"]
         if review["user"].get("type") == "Bot":
             return
-        if not self._can_push(review["user"], review.get("author_association"), pr):
+        if not self.can_push(review["user"], pr):
             return
         state = review["state"].lower()
         reviewer = escape(review["user"]["login"])
@@ -234,33 +241,33 @@ class Feed:
             text = f"✅ {link(review['html_url'], 'approved')} by {reviewer}"
         elif state == "changes_requested":
             text = f"🔁 {link(review['html_url'], 'changes requested')} by {reviewer}"
-        elif state == "commented":
+        elif state == "commented" and (review.get("body") or "").strip():
+            # Each reply in an inline thread is its own "commented" review with an empty
+            # body; only reviews with a summary are worth a line, or replies flood the thread.
             text = f"💬 {link(review['html_url'], 'review comments')} by {reviewer}"
         else:
             return
-        parent = self._find(pr)
+        parent = self.find(pr)
         if parent:
-            self._reply_once(pr, parent, text, f"review:{review['id']}")
+            self.reply_once(pr, parent, text, f"review:{review['id']}")
 
     def _handle_comment(self, event: dict, pr: dict) -> None:
         comment = event["comment"]
-        if event["action"] != "created" or pr.get("draft") or comment["user"].get("type") == "Bot":
+        if pr.get("draft") or not self.can_push(comment["user"], pr):
             return
-        if not self._can_push(comment["user"], comment.get("author_association"), pr):
-            return
-        parent = self._find(pr)
+        parent = self.find(pr)
         if parent:
             text = (
                 f"💬 {link(comment['html_url'], 'comment')} by {escape(comment['user']['login'])}"
             )
-            self._reply_once(pr, parent, text, f"comment:{comment['id']}")
+            self.reply_once(pr, parent, text, f"comment:{comment['id']}")
 
     def _handle_flux(self, event_name: str, event: dict, pr: dict) -> None:
         if event_name != "pull_request_target" or pr.get("draft"):
             return
         if event["action"] not in ("opened", "reopened", "ready_for_review", "closed"):
             return
-        parent = self._find(pr)
+        parent = self.find(pr)
         if event["action"] == "closed" and not parent:
             return
         text = flux_text(pr, self.bumps(pr), flux_suffix(pr))

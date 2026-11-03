@@ -93,7 +93,7 @@ def pr_event(action, pr, sender="alice", **extra):
     return {"action": action, "pull_request": pr, "sender": {"login": sender}, **extra}
 
 
-def review_event(pr, state, reviewer="carol", review_id=1):
+def review_event(pr, state, reviewer="carol", review_id=1, body=""):
     return {
         "action": "submitted",
         "pull_request": pr,
@@ -101,6 +101,7 @@ def review_event(pr, state, reviewer="carol", review_id=1):
         "review": {
             "id": review_id,
             "state": state,
+            "body": body,
             "user": {"login": reviewer, "type": "User"},
             "author_association": "MEMBER",
             "html_url": f"{pr['html_url']}#pullrequestreview-1",
@@ -113,9 +114,29 @@ def slack():
     return FakeSlack()
 
 
+def github_stub(files=(), pr=None, read_only=("mallory",), error=None):
+    """The GitHub API surface Feed uses: everyone can push except *read_only* users."""
+    calls = []
+
+    def get(path):
+        calls.append(path)
+        if path.endswith("/permission"):
+            if error:
+                raise error
+            login = path.split("/")[-2]
+            return {"permission": "read" if login in read_only else "write"}
+        if path.endswith("/files"):
+            return list(files)
+        assert pr is not None and path == f"/repos/{REPO}/pulls/{pr['number']}", path
+        return pr
+
+    get.calls = calls
+    return get
+
+
 @pytest.fixture()
 def feed(slack):
-    return pr_feed.Feed(slack, CHANNEL, REPO)
+    return pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub())
 
 
 def target(feed, action, pr, **extra):
@@ -155,7 +176,10 @@ class TestThread:
         feed.handle(
             "pull_request_review", review_event(make_pr(), "changes_requested", review_id=1)
         )
-        feed.handle("pull_request_review", review_event(make_pr(), "commented", review_id=2))
+        feed.handle(
+            "pull_request_review",
+            review_event(make_pr(), "commented", review_id=2, body="A few nits inline."),
+        )
         feed.handle("pull_request_review", review_event(make_pr(), "approved", review_id=3))
         target(feed, "closed", make_pr(state="closed", merged=True))
 
@@ -274,7 +298,7 @@ class TestFluxBumps:
 
     @pytest.fixture()
     def flux_feed(self, slack):
-        return pr_feed.Feed(slack, CHANNEL, REPO, github=lambda path: self.FILES)
+        return pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub(files=self.FILES))
 
     def test_single_one_liner_from_the_diff(self, flux_feed, slack):
         target(flux_feed, "opened", self.bump(), sender="fmi-codes-bot[bot]")
@@ -300,6 +324,8 @@ class TestFluxBumps:
 
     def test_falls_back_to_the_title_when_the_diff_is_unreadable(self, slack):
         def broken(path):
+            if path.endswith("/permission"):
+                return {"permission": "write"}
             raise OSError("api down")
 
         target(pr_feed.Feed(slack, CHANNEL, REPO, github=broken), "opened", self.bump())
@@ -332,13 +358,29 @@ class TestMain:
         monkeypatch.setenv("SLACK_PR_CHANNEL_ID", CHANNEL)
         monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
         monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request_target")
-        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.setenv("GITHUB_TOKEN", "fake-gh-credential")
+        monkeypatch.setattr(pr_feed.GitHub, "get", lambda self, path, **p: {"permission": "write"})
 
         def fail(self, method, **params):
             raise slack_notify.SlackError(f"{method}: not_in_channel")
 
         monkeypatch.setattr(slack_notify.Slack, "call", fail)
         assert pr_feed.main() == 1
+
+    def test_no_github_token_posts_nothing(self, monkeypatch, tmp_path):
+        event = tmp_path / "event.json"
+        event.write_text(
+            json.dumps({**pr_event("opened", make_pr()), "repository": {"full_name": REPO}})
+        )
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+        monkeypatch.setenv("SLACK_PR_CHANNEL_ID", CHANNEL)
+        monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+        monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request_target")
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.setattr(
+            slack_notify.Slack, "call", lambda *a, **k: pytest.fail("must not call Slack")
+        )
+        assert pr_feed.main() == 0
 
 
 class FakeResponse(io.BytesIO):
@@ -439,23 +481,9 @@ def outsider_pr(**kw):
     return pr
 
 
-def permission_api(permission=None, error=None):
-    calls = []
-
-    def get(path):
-        calls.append(path)
-        if error:
-            raise error
-        assert path.endswith("/permission"), path
-        return {"permission": permission}
-
-    get.calls = calls
-    return get
-
-
 class TestTrust:
     def test_outsider_prs_post_nothing(self, slack):
-        feed = pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read"))
+        feed = pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub())
         for action in ("opened", "ready_for_review", "reopened"):
             target(feed, action, outsider_pr())
         target(feed, "edited", outsider_pr(), changes={"title": {"from": "x"}})
@@ -464,55 +492,54 @@ class TestTrust:
     def test_outsider_pr_from_an_existing_repo_branch_posts_nothing(self, slack):
         pr = outsider_pr()
         pr["head"]["repo"] = {"full_name": REPO}
-        target(pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read")), "opened", pr)
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub()), "opened", pr)
         assert slack.messages == []
 
     def test_outsider_on_the_flux_branch_is_not_a_flux_bump(self, slack):
         pr = outsider_pr(head=pr_feed.FLUX_BRANCH)
         pr["head"]["repo"] = {"full_name": REPO}
-        target(pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read")), "opened", pr)
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub()), "opened", pr)
         assert slack.messages == []
 
-    def test_private_member_is_trusted_through_the_permission_api(self, slack):
-        pr = make_pr(author_association="CONTRIBUTOR")
-        api = permission_api("write")
-        target(pr_feed.Feed(slack, CHANNEL, REPO, github=api), "opened", pr)
+    def test_the_permission_api_decides_not_the_association(self, slack):
+        # MEMBER and COLLABORATOR include read-only access; only the permission counts.
+        api = github_stub(read_only=("alice",))
+        feed = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+        for association in ("OWNER", "MEMBER", "COLLABORATOR"):
+            target(feed, "opened", make_pr(author_association=association))
+        assert slack.messages == []
+        assert api.calls == [f"/repos/{REPO}/collaborators/alice/permission"] * 3
+
+    def test_writer_with_any_association_is_posted(self, slack):
+        feed = pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub())
+        target(feed, "opened", make_pr(author_association="NONE"))
         assert len(slack.parents) == 1
-        assert api.calls == [f"/repos/{REPO}/collaborators/alice/permission"]
 
     def test_permission_api_failure_fails_closed(self, slack):
-        api = permission_api(error=OSError("403"))
-        target(
-            pr_feed.Feed(slack, CHANNEL, REPO, github=api),
-            "opened",
-            make_pr(author_association="NONE"),
-        )
+        api = github_stub(error=OSError("403"))
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=api), "opened", make_pr())
         assert slack.messages == []
 
-    def test_no_github_token_trusts_only_associations(self, slack, feed):
-        target(feed, "opened", make_pr(author_association="CONTRIBUTOR"))
+    def test_no_github_token_trusts_nobody_but_repo_bots(self, slack):
+        target(pr_feed.Feed(slack, CHANNEL, REPO), "opened", make_pr(author_association="OWNER"))
         assert slack.messages == []
 
-    def test_outsider_reviews_on_a_member_pr_post_nothing(self, slack):
-        feed = pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read"))
+    def test_outsider_reviews_on_a_member_pr_post_nothing(self, slack, feed):
         target(feed, "opened", make_pr())
-        event = review_event(make_pr(), "approved", reviewer="mallory")
-        event["review"]["author_association"] = "NONE"
-        feed.handle("pull_request_review", event)
+        feed.handle("pull_request_review", review_event(make_pr(), "approved", reviewer="mallory"))
         assert slack.replies == []
 
-    def test_repo_bot_prs_are_trusted(self, slack):
+    def test_repo_bot_prs_are_trusted_without_the_api(self, slack):
         pr = TestFluxBumps.bump()
         pr["user"] = {"login": "fmi-codes-bot[bot]", "type": "Bot"}
-        pr["author_association"] = "CONTRIBUTOR"
         target(pr_feed.Feed(slack, CHANNEL, REPO), "opened", pr)
         assert slack.messages[0]["text"].startswith("⬆️ ")
 
     def test_bots_from_forks_are_not(self, slack):
-        pr = make_pr(author_association="NONE")
+        pr = make_pr()
         pr["user"] = {"login": "evil[bot]", "type": "Bot"}
         pr["head"]["repo"] = {"full_name": "mallory/fork"}
-        target(pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("write")), "opened", pr)
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub()), "opened", pr)
         assert slack.messages == []
 
 
@@ -543,15 +570,18 @@ def comment_event(
 class TestComments:
     @pytest.fixture()
     def api(self):
-        state = {"pr": make_pr(), "permission": "read"}
+        state = {"pr": make_pr()}
+        base = github_stub()
 
         def get(path):
             if path.endswith("/permission"):
-                return {"permission": state["permission"]}
+                return base(path)
+            base.calls.append(path)
             assert path == f"/repos/{REPO}/pulls/7", path
             return state["pr"]
 
         get.state = state
+        get.calls = base.calls
         return get
 
     @pytest.fixture()
@@ -610,6 +640,24 @@ class TestComments:
     def test_no_parent_means_no_reply(self, slack, api):
         pr_feed.Feed(slack, CHANNEL, REPO, github=api).handle("issue_comment", comment_event())
         assert slack.messages == []
+
+    def test_bot_and_edited_comments_cost_no_api_call(self, slack, api):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+        f.handle("issue_comment", comment_event(commenter="dependabot[bot]", user_type="Bot"))
+        edited = comment_event()
+        edited["action"] = "edited"
+        f.handle("issue_comment", edited)
+        assert api.calls == []
+
+    def test_inline_reply_reviews_without_a_summary_post_nothing(self, feed, slack):
+        target(feed, "opened", make_pr())
+        for review_id in range(5):
+            event = review_event(make_pr(), "commented", review_id=review_id)
+            feed.handle("pull_request_review", event)
+        assert slack.replies == []
+        event = review_event(make_pr(), "commented", review_id=9, body="Summary")
+        feed.handle("pull_request_review", event)
+        assert len(slack.replies) == 1
 
     def test_bot_reviews_post_nothing(self, feed, slack):
         target(feed, "opened", make_pr())
