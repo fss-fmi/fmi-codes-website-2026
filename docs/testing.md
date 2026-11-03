@@ -12,7 +12,7 @@ How the test suite is built and how to extend it. For setup and single-test comm
 
 | Layer                   | Location                     | Tests | Needs                               |
 | ----------------------- | ---------------------------- | ----- | ----------------------------------- |
-| Backend unit            | `tests/*.py`                 | 267   | Nothing (Redis optional)            |
+| Backend unit            | `tests/*.py`                 | 298   | Nothing (Redis optional)            |
 | Backend API integration | `tests/e2e/*.py`             | 188   | PostgreSQL test DB (Redis optional) |
 | Frontend component      | `frontend/src/**/*.test.tsx` | 6     | Node only                           |
 
@@ -35,7 +35,7 @@ Counts are `def test_` occurrences, so parametrised tests run more cases than li
 | `test_email_verification.py` | Verification email contents and SMTP failure handling; the `REQUIRE_EMAIL_VERIFICATION` gate decorator                                                                                                   |
 | `test_bug_report_service.py` | Slack and Discord bug-report payloads, Slack escaping (no `<!channel>` pings) and length limits, which webhooks get a report, send failures never raise                                                  |
 | `test_migrate.py`            | Migration runner: file naming and ordering, no transaction control in committed migrations, Slack reporting modes, message escaping and truncation, connection settings, waiting for Postgres on startup |
-| `test_slack_pr_feed.py`      | Slack PR feed (`.github/scripts`): drafts stay silent, one parent per PR (racing duplicates delete themselves), thread replies only on real state changes, reviews and comments once each, only people who can push, Flux one-liners, escaping, Slack client paging, retries and `Retry-After` parsing |
+| `test_slack_pr_feed.py`      | Slack PR feed (`.github/scripts`): drafts stay silent, one parent per PR (racing duplicates delete themselves), thread replies only on real state changes, reviews and comments once each, new-commit replies (by ancestry, force pushes, cancelled runs covered by the next push, waiting for the ready run, lagging commit lists, nothing pushed in draft listed), only people who can push, Flux one-liners (re-rendered on new tags, CI verdict kept on re-delivery), escaping, Slack client paging, retries and `Retry-After` parsing |
 | `test_slack_ci_alerts.py`    | Slack CI alerts (`.github/scripts`): failed-step log tail (skips `continue-on-error` errors, strips frames, redacts credentials and private keys, caps size), one alert and one thread reply per run attempt, Flux one-liner edits, green-again detection, only runs from people who can push, fork PR lookup, GitHub token never sent on redirects |
 
 Scope: a single function or a single route with dependencies replaced. No database. Runs in seconds.

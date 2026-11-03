@@ -332,8 +332,8 @@ class Alerts:
         parent = self.feed.find(pr)
         if not parent:
             return
-        kind = ((parent.get("metadata") or {}).get("event_payload") or {}).get("kind")
-        if kind != "flux":
+        payload = pr_feed.meta_payload(parent)
+        if payload.get("kind") != "flux":
             self.feed.reply_once(pr, parent, text, key)
             return
         state = pr_feed.pr_state(pr)
@@ -343,7 +343,8 @@ class Alerts:
             self.pr_channel,
             parent["ts"],
             pr_feed.flux_text(pr, self.feed.bumps(pr), flux_suffix),
-            metadata=pr_metadata(self.repo, pr["number"], "flux", state),
+            # The PR feed skips a re-delivered push for the head recorded here.
+            metadata=pr_metadata(self.repo, pr["number"], "flux", state, payload.get("head")),
         )
 
 
