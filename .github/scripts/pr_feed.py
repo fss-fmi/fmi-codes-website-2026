@@ -17,7 +17,7 @@ import sys
 from datetime import datetime
 
 import slack_notify
-from github_api import GitHub
+from github_api import GitHub, can_push
 from slack_notify import escape, link, pr_metadata
 
 logger = logging.getLogger("pr_feed")
@@ -146,8 +146,17 @@ class Feed:
         else:
             self.slack.post(self.channel, text, metadata=self._meta(pr, "pr"))
 
+    def _can_push(self, user: dict, association: str | None, pr: dict) -> bool:
+        head_repo = (pr["head"].get("repo") or {}).get("full_name")
+        return can_push(self.github, self.repo, user, association, head_repo)
+
     def handle(self, event_name: str, event: dict) -> None:
         pr = event["pull_request"]
+        if not self._can_push(pr["user"], pr.get("author_association"), pr):
+            logger.info(
+                "#%s is by %s, who can't push here; not posted", pr["number"], pr["user"]["login"]
+            )
+            return
         if is_flux_bump(pr, self.repo):
             self._handle_flux(event_name, event, pr)
         elif event_name == "pull_request_review":
@@ -177,6 +186,8 @@ class Feed:
         if event["action"] != "submitted" or pr.get("draft"):
             return
         review = event["review"]
+        if not self._can_push(review["user"], review.get("author_association"), pr):
+            return
         state = review["state"].lower()
         reviewer = escape(review["user"]["login"])
         if state == "approved":

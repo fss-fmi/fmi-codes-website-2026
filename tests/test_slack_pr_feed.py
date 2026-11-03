@@ -60,7 +60,8 @@ def make_pr(number=7, draft=False, state="open", merged=False, head="feature/x",
         "number": number,
         "title": "feat: add things",
         "html_url": f"https://github.com/{REPO}/pull/{number}",
-        "user": {"login": "alice"},
+        "user": {"login": "alice", "type": "User"},
+        "author_association": "MEMBER",
         "draft": draft,
         "state": state,
         "merged": merged,
@@ -84,7 +85,8 @@ def review_event(pr, state, reviewer="carol"):
         "sender": {"login": reviewer},
         "review": {
             "state": state,
-            "user": {"login": reviewer},
+            "user": {"login": reviewer, "type": "User"},
+            "author_association": "MEMBER",
             "html_url": f"{pr['html_url']}#pullrequestreview-1",
         },
     }
@@ -407,3 +409,89 @@ class TestSlackClient:
 
     def test_escape(self):
         assert slack_notify.escape("a<b>&c") == "a&lt;b&gt;&amp;c"
+
+
+def outsider_pr(**kw):
+    pr = make_pr(**kw)
+    pr["user"] = {"login": "mallory", "type": "User"}
+    pr["author_association"] = "NONE"
+    pr["head"]["repo"] = {"full_name": "mallory/fork"}
+    pr["title"] = "Free credits https://phish.example"
+    return pr
+
+
+def permission_api(permission=None, error=None):
+    calls = []
+
+    def get(path):
+        calls.append(path)
+        if error:
+            raise error
+        assert path.endswith("/permission"), path
+        return {"permission": permission}
+
+    get.calls = calls
+    return get
+
+
+class TestTrust:
+    def test_outsider_prs_post_nothing(self, slack):
+        feed = pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read"))
+        for action in ("opened", "ready_for_review", "reopened"):
+            target(feed, action, outsider_pr())
+        target(feed, "edited", outsider_pr(), changes={"title": {"from": "x"}})
+        assert slack.messages == []
+
+    def test_outsider_pr_from_an_existing_repo_branch_posts_nothing(self, slack):
+        pr = outsider_pr()
+        pr["head"]["repo"] = {"full_name": REPO}
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read")), "opened", pr)
+        assert slack.messages == []
+
+    def test_outsider_on_the_flux_branch_is_not_a_flux_bump(self, slack):
+        pr = outsider_pr(head=pr_feed.FLUX_BRANCH)
+        pr["head"]["repo"] = {"full_name": REPO}
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read")), "opened", pr)
+        assert slack.messages == []
+
+    def test_private_member_is_trusted_through_the_permission_api(self, slack):
+        pr = make_pr(author_association="CONTRIBUTOR")
+        api = permission_api("write")
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=api), "opened", pr)
+        assert len(slack.parents) == 1
+        assert api.calls == [f"/repos/{REPO}/collaborators/alice/permission"]
+
+    def test_permission_api_failure_fails_closed(self, slack):
+        api = permission_api(error=OSError("403"))
+        target(
+            pr_feed.Feed(slack, CHANNEL, REPO, github=api),
+            "opened",
+            make_pr(author_association="NONE"),
+        )
+        assert slack.messages == []
+
+    def test_no_github_token_trusts_only_associations(self, slack, feed):
+        target(feed, "opened", make_pr(author_association="CONTRIBUTOR"))
+        assert slack.messages == []
+
+    def test_outsider_reviews_on_a_member_pr_post_nothing(self, slack):
+        feed = pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("read"))
+        target(feed, "opened", make_pr())
+        event = review_event(make_pr(), "approved", reviewer="mallory")
+        event["review"]["author_association"] = "NONE"
+        feed.handle("pull_request_review", event)
+        assert slack.replies == []
+
+    def test_repo_bot_prs_are_trusted(self, slack):
+        pr = TestFluxBumps.bump()
+        pr["user"] = {"login": "fmi-codes-bot[bot]", "type": "Bot"}
+        pr["author_association"] = "CONTRIBUTOR"
+        target(pr_feed.Feed(slack, CHANNEL, REPO), "opened", pr)
+        assert slack.messages[0]["text"].startswith("⬆️ ")
+
+    def test_bots_from_forks_are_not(self, slack):
+        pr = make_pr(author_association="NONE")
+        pr["user"] = {"login": "evil[bot]", "type": "Bot"}
+        pr["head"]["repo"] = {"full_name": "mallory/fork"}
+        target(pr_feed.Feed(slack, CHANNEL, REPO, github=permission_api("write")), "opened", pr)
+        assert slack.messages == []

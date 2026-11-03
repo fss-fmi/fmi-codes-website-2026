@@ -21,7 +21,7 @@ import sys
 
 import pr_feed
 import slack_notify
-from github_api import GitHub
+from github_api import GitHub, can_push
 from slack_notify import ALERT_EVENT_TYPE, alert_metadata, escape, link, pr_metadata
 
 logger = logging.getLogger("ci_alerts")
@@ -101,10 +101,29 @@ class Alerts:
         self.pr_channel = pr_channel
 
     def handle(self, run: dict) -> None:
+        if run["conclusion"] not in FAILED | {"success"}:
+            return
+        pr = self.find_pr(run)
+        if not self._trusted(run, pr):
+            logger.info("Run %s is from someone who can't push here; not posted", run["id"])
+            return
         if run["conclusion"] in FAILED:
-            self._failure(run)
-        elif run["conclusion"] == "success":
-            self._success(run)
+            self._failure(run, pr)
+        else:
+            self._success(run, pr)
+
+    def _trusted(self, run: dict, pr) -> bool:
+        """Only runs of code and PRs from people who can push here reach Slack.
+
+        Fork PRs can also add their own workflow with a watched name, since
+        workflow_run matches by name; their author still has to be trusted.
+        """
+        if pr:
+            head_repo = (pr["head"].get("repo") or {}).get("full_name")
+            return can_push(
+                self.gh.get, self.repo, pr["user"], pr.get("author_association"), head_repo
+            )
+        return (run.get("head_repository") or {}).get("full_name") == self.repo
 
     # --- where the run belongs -------------------------------------------------
 
@@ -117,7 +136,9 @@ class Alerts:
             number = prs[0]["number"]
         if number is None:
             # GitHub leaves pull_requests empty for runs on fork PRs.
-            owner = run["head_repository"]["owner"]["login"]
+            owner = ((run.get("head_repository") or {}).get("owner") or {}).get("login")
+            if not owner:
+                return None
             found = self.gh.get(
                 f"/repos/{self.repo}/pulls", state="open", head=f"{owner}:{run['head_branch']}"
             )
@@ -132,11 +153,10 @@ class Alerts:
 
     # --- failure ---------------------------------------------------------------
 
-    def _failure(self, run: dict) -> None:
+    def _failure(self, run: dict, pr) -> None:
         if self._already_posted(run, "failure"):
             logger.info("Alert for run %s attempt %s already posted", run["id"], run["run_attempt"])
             return
-        pr = self.find_pr(run)
         job, step, tail = self._failed_step(run)
         ts = self.slack.post(
             self.actions_channel,
@@ -173,8 +193,7 @@ class Alerts:
 
     # --- success ---------------------------------------------------------------
 
-    def _success(self, run: dict) -> None:
-        pr = self.find_pr(run)
+    def _success(self, run: dict, pr) -> None:
         if not self._previous_failed(run):
             self._pr_note(pr, f"✅ {link(run['html_url'], run['name'])} passed", flux_suffix=None)
             return

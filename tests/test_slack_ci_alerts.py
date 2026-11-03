@@ -74,7 +74,8 @@ def make_pr(number=7, head="feature/x", draft=False):
         "number": number,
         "title": "feat: add things",
         "html_url": f"{REPO_URL}/pull/{number}",
-        "user": {"login": "alice"},
+        "user": {"login": "alice", "type": "User"},
+        "author_association": "MEMBER",
         "draft": draft,
         "state": "open",
         "merged": False,
@@ -474,3 +475,89 @@ class TestGitHubClient:
         assert req.full_url == "https://api.github.com/repos/x/y/pulls?state=open&head=o%3Ab"
         assert req.unredirected_hdrs["Authorization"] == "Bearer fake-gh-credential"
         assert "Authorization" not in req.headers
+
+
+class Outsider(FakeGitHub):
+    def __init__(self, permission="read", **kw):
+        pr = make_pr()
+        pr["user"] = {"login": "mallory", "type": "User"}
+        pr["author_association"] = "NONE"
+        pr["head"]["repo"] = {"full_name": "mallory/fork"}
+        super().__init__(pr=pr, **kw)
+        self.permission = permission
+
+    def get(self, path, **params):
+        if path.endswith("/permission"):
+            self.calls.append((path, params))
+            return {"permission": self.permission}
+        return super().get(path, **params)
+
+
+FORK_HEAD = {"full_name": "mallory/fork", "owner": {"login": "mallory"}}
+
+
+class TestTrust:
+    def test_outsider_fork_pr_failure_posts_nothing(self, slack):
+        gh = Outsider()
+        alerts(slack, gh).handle(make_run(prs=[], head_repository=FORK_HEAD))
+        assert slack.messages == []
+        assert not any(path.endswith("/logs") for path, _ in gh.calls)
+
+    def test_outsider_success_posts_nothing(self, slack):
+        with_parent(slack)
+        alerts(slack, Outsider(previous=[prior("failure")])).handle(
+            make_run(conclusion="success", prs=[], head_repository=FORK_HEAD)
+        )
+        assert len(slack.messages) == 1
+
+    def test_fork_run_without_a_pr_posts_nothing(self, slack):
+        class NoPR(FakeGitHub):
+            def get(self, path, **params):
+                if path == f"/repos/{REPO}/pulls":
+                    return []
+                return super().get(path, **params)
+
+        alerts(slack, NoPR()).handle(make_run(prs=[], head_repository=FORK_HEAD))
+        assert slack.messages == []
+
+    def test_repo_branch_without_a_pr_still_alerts(self, slack):
+        class NoPR(FakeGitHub):
+            def get(self, path, **params):
+                if path == f"/repos/{REPO}/pulls":
+                    return []
+                return super().get(path, **params)
+
+        alerts(slack, NoPR()).handle(make_run(prs=[]))
+        assert "failed on `feature/x`" in slack.in_channel(ACTIONS)[0]["text"]
+
+    def test_outsider_who_can_push_is_trusted(self, slack):
+        alerts(slack, Outsider(permission="write")).handle(
+            make_run(prs=[], head_repository=FORK_HEAD)
+        )
+        assert len(slack.in_channel(ACTIONS)) == 1
+
+    def test_deleted_fork_does_not_crash(self, slack):
+        alerts(slack, FakeGitHub()).handle(make_run(prs=[], head_repository=None))
+        assert slack.messages == []
+
+
+class TestCanPush:
+    def test_trusted_associations_skip_the_api(self):
+        for association in ("OWNER", "MEMBER", "COLLABORATOR"):
+            assert github_api.can_push(None, REPO, {"login": "a"}, association, None)
+
+    @pytest.mark.parametrize(
+        ("permission", "expected"),
+        [("admin", True), ("write", True), ("read", False), ("none", False), (None, False)],
+    )
+    def test_permission_api(self, permission, expected):
+        def get(path):
+            assert path == f"/repos/{REPO}/collaborators/a%2Fb/permission"
+            return {"permission": permission}
+
+        assert github_api.can_push(get, REPO, {"login": "a/b"}, "NONE", None) is expected
+
+    def test_bots_only_from_this_repo(self):
+        bot = {"login": "fmi-codes-bot[bot]", "type": "Bot"}
+        assert github_api.can_push(None, REPO, bot, "CONTRIBUTOR", REPO)
+        assert not github_api.can_push(None, REPO, bot, "CONTRIBUTOR", "mallory/fork")

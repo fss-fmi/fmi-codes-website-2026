@@ -1,10 +1,39 @@
 """Minimal GitHub REST client for the notification workflows (stdlib only)."""
 
 import json
+import logging
 import urllib.parse
 import urllib.request
 
+logger = logging.getLogger("github_api")
+
 API = "https://api.github.com"
+TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+PUSH_PERMISSIONS = {"admin", "write"}
+
+
+def can_push(get, repo: str, user: dict, association: str | None, head_repo: str | None) -> bool:
+    """Whether *user* may push to *repo*. Only their PRs, reviews and runs reach Slack.
+
+    The repo is public and pull_request_target needs no approval, so without this
+    anyone on GitHub could make the bot post text of their choosing. Members whose
+    org membership is private may not show as MEMBER, so anything short of a trusted
+    association asks the permission API; any failure there counts as untrusted.
+    """
+    if association in TRUSTED_ASSOCIATIONS:
+        return True
+    if user.get("type") == "Bot":
+        # This repo's own apps (Flux bumps, migration PRs) open PRs from its branches.
+        return head_repo == repo
+    if get is None:
+        return False
+    login = urllib.parse.quote(user["login"], safe="")
+    try:
+        permission = get(f"/repos/{repo}/collaborators/{login}/permission").get("permission")
+    except Exception as e:
+        logger.warning("Could not check %s's permission, treating as untrusted: %s", login, e)
+        return False
+    return permission in PUSH_PERMISSIONS
 
 
 class GitHub:

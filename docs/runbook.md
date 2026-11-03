@@ -261,6 +261,13 @@ that is ready for review to `#pr-updates`:
   tags, edited to `merged ✅` when they auto-merge. No thread.
 - **CI results** (✅ passed, ❌ failed, ✅ green again) in the thread come from
   [Slack CI alerts](#slack-ci-alerts), not from this workflow.
+- **Only people who can push to the repo are posted.** The repo is public and
+  `pull_request_target` runs for any PR without approval, so without this anyone on GitHub
+  could make the bot post text of their choosing (titles can carry links Slack makes
+  clickable). A PR or review counts when its author is `OWNER`, `MEMBER` or `COLLABORATOR`, or
+  the repo permission API says `write` or `admin` (the fallback covers members whose org
+  membership is private, who may not show as `MEMBER`). Bots count only on PRs from this repo's own branches (Flux bumps,
+  migration PRs). If the check fails, nothing is posted.
 - Reviews on PRs from forks are not posted: GitHub gives those runs no secrets.
 
 The parent is found again through Slack message metadata, so nothing else stores state. The
@@ -308,6 +315,10 @@ listed in its `workflow_run.workflows` by its exact `name:`.
   reply; a Flux one-liner drops its `CI failed`.
 - **Other passing runs** post only a `✅ <workflow> passed` reply in the PR thread.
 - Cancelled and skipped runs post nothing; draft PRs get no thread replies.
+- Runs on a PR count only when the PR's author passes the same push check as the
+  [PR feed](#slack-pr-feed); runs with no PR count only from this repo's own branches. So a
+  fork PR can't post its log output, or a workflow it adds under a watched name
+  (`workflow_run` matches by name).
 - Each alert carries Slack message metadata (run id + attempt), so a duplicate event never
   posts the same alert twice. A re-run that fails again is a new attempt and a new alert.
 
