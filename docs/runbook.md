@@ -913,8 +913,8 @@ ALLOW_ENV_SWITCH=true ENV=prod bash infra/k8s/scripts/deploy-observability.sh
 From then on it is a prod cluster: run `deploy-observability.sh` and the cluster-wide
 `rotate-secret.sh` targets (`--grafana`, `--tailscale`, `--alertmanager`) with `ENV=prod`.
 Staging's app secrets still rotate with `ENV=staging`. Staging's `alertmanager-slack.enc.yaml`
-isn't used until a staging-only box exists again. Check with the test below: the scratch-namespace pod posts in
-`#cluster-alerts-prod`.
+isn't used until a staging-only box exists again. Check with the test below: the
+scratch-namespace pod posts in `#cluster-alerts-prod`.
 
 **Silence an alert** during planned work or while a known issue is being fixed:
 
