@@ -321,8 +321,9 @@ listed in its `workflow_run.workflows` by its exact `name:`.
 
 - **Failure** (also `timed_out`): one alert in `#actions-notifications` with the workflow,
   where it failed (`main`, a branch or the PR), the failed job and step, the commit, and the
-  last lines of that step's log (at most 20 lines / 1,500 characters, no timestamps, colours
-  or stack frames). Then a reply in the PR's `#pr-updates` thread linking the alert; a Flux
+  last lines of that step's log (at most 20 lines / 1,500 characters, no timestamps, colours,
+  stack frames, or pytest's per-test `PASSED`/`SKIPPED` lines and session header, since CI
+  runs pytest with `-v`). Then a reply in the PR's `#pr-updates` thread linking the alert; a Flux
   bump's one-liner gets `· CI failed ❌` instead (never once it is merged or closed: its final
   state stays).
 - **Recovery:** when a run passes and the previous finished run of that workflow on the same
