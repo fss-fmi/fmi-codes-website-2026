@@ -14,9 +14,12 @@ TAILSCALE_NS="${TAILSCALE_NS:-tailscale}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/slack-webhooks.sh
+. "$SCRIPT_DIR/lib/slack-webhooks.sh"
 GRAFANA_SECRET_ENC="${GRAFANA_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/grafana-secret.enc.yaml}"
 TAILSCALE_SECRET_ENC="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/tailscale-oauth.enc.yaml}"
-# Both Secrets are cluster-wide (one monitoring stack, one operator) but each env has its own
+ALERTMANAGER_SECRET_ENC="${ALERTMANAGER_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/alertmanager-slack.enc.yaml}"
+# These Secrets are cluster-wide (one monitoring stack, one operator) but each env has its own
 # encrypted copy. The label records which env's copy is live so a second run with the other
 # ENV can't silently swap the credentials underneath the running stack.
 ENV_LABEL="fmi-codes/secrets-env"
@@ -29,6 +32,7 @@ command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-too
 command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
 [ -f "$GRAFANA_SECRET_ENC" ]   || die "missing $GRAFANA_SECRET_ENC"
 [ -f "$TAILSCALE_SECRET_ENC" ] || die "missing $TAILSCALE_SECRET_ENC"
+[ -f "$ALERTMANAGER_SECRET_ENC" ] || die "missing $ALERTMANAGER_SECRET_ENC"
 
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
@@ -57,6 +61,7 @@ apply_secret() {
   log "Applying $ns/$name from $file ($ENV)"
   printf '%s\n' "$manifest" | kubectl apply -f -
   kubectl -n "$ns" label secret "$name" "$ENV_LABEL=$ENV" --overwrite >/dev/null
+  APPLIED_SECRET_NAME="$name"
 }
 
 log "Ensuring namespaces '$MONITORING_NS' and '$TAILSCALE_NS' exist"
@@ -64,6 +69,20 @@ ensure_namespace "$MONITORING_NS"
 ensure_namespace "$TAILSCALE_NS"
 
 apply_secret "$GRAFANA_SECRET_ENC" "$MONITORING_NS"
+
+# Applied even while the webhooks are empty: the Alertmanager pod mounts it and can't start
+# without it, and nothing would report that (the kps release itself still looks fine).
+apply_secret "$ALERTMANAGER_SECRET_ENC" "$MONITORING_NS"
+
+copy_slack_webhooks_for_flux "$MONITORING_NS" "$APPLIED_SECRET_NAME"
+SLACK_STATUS="set"
+if [ -n "$SLACK_EMPTY_KEYS" ]; then
+  SLACK_STATUS="missing: $SLACK_EMPTY_KEYS"
+  warn "$ALERTMANAGER_SECRET_ENC has no webhook for: $SLACK_EMPTY_KEYS. Set both keys: with only one,
+  every send to the other fails and AlertmanagerFailedToSendAlerts posts to the cluster's channel.
+  Create the webhooks (docs/runbook.md 'Cluster alerts'), then for each key:
+    ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --alertmanager <url|staging_url>"
+fi
 
 TAILSCALE_STATUS="applied"
 if sops --decrypt "$TAILSCALE_SECRET_ENC" 2>/dev/null \
@@ -79,7 +98,8 @@ fi
 
 cat <<EOF
 
-Grafana admin secret applied; Tailscale OAuth secret $TAILSCALE_STATUS.
+Grafana admin and Alertmanager secrets applied (Slack webhooks $SLACK_STATUS);
+Tailscale OAuth secret $TAILSCALE_STATUS.
 
 Flux installs kube-prometheus-stack and the Tailscale operator and reconciles the
 ServiceMonitor and the tailnet Ingresses of Grafana and staging. Watch progress:

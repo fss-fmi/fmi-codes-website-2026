@@ -15,6 +15,7 @@ infra/k8s/
   scripts/       init-linux, init-windows, install-tools, bootstrap-k3s,
                  deploy-stateful, deploy-app, deploy-ingress, install-forward-services,
                  deploy-observability, tailscale-oauth, apply-config, rotate-secret
+                 scripts/lib/ shared helpers the scripts source (slack-webhooks)
   base/          environment-agnostic manifests
                    base/app/     namespace, backend, frontend
                    base/ingress/ security-headers, certificate, ingress
@@ -25,9 +26,9 @@ infra/k8s/
                    overlays/staging/  namespace fmi-codes-staging, any host, no TLS (Tailscale holds it)
                    overlays/staging/tailnet/ staging's Tailscale Ingress (namespace ingress-nginx-staging)
   helm-values/   Bitnami postgresql + redis values (prod)
-  secrets/       prod secrets, grafana-secret, tailscale-oauth .enc.yaml (SOPS); staging's live in
-                 overlays/staging/secrets/
-  flux/          Flux GitOps — source, image-automation, self
+  secrets/       prod secrets, grafana-secret, tailscale-oauth, alertmanager-slack .enc.yaml (SOPS);
+                 staging's live in overlays/staging/secrets/
+  flux/          Flux GitOps — source, image-automation, notifications, self
 ```
 
 ## Environments
@@ -104,12 +105,13 @@ cd fmi-codes-website-2026
 
 Nothing to create by hand — the passwords split three ways and every one is handled for you:
 
-| Secret                            | Keys                                                                                                                                                                                       | How it's set                                                                                                                                                                                                                                                                                       |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fmi-codes-app` (SOPS, in git)    | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](#access-grafana-and-staging)) |
-| `fmi-codes-db`, `fmi-codes-redis` | DB / Redis passwords                                                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                           |
-| `grafana-admin` (SOPS, in git)    | `admin-user`, `admin-password`                                                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
-| `operator-oauth` (SOPS, in git)   | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | committed **empty**; the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                                                                                                |
+| Secret                              | Keys                                                                                                                                                                                       | How it's set                                                                                                                                                                                                                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fmi-codes-app` (SOPS, in git)      | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](#access-grafana-and-staging)) |
+| `fmi-codes-db`, `fmi-codes-redis`   | DB / Redis passwords                                                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                           |
+| `grafana-admin` (SOPS, in git)      | `admin-user`, `admin-password`                                                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
+| `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | committed **empty**; the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                                                                                                |
+| `alertmanager-slack` (SOPS, in git) | `url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                                | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                                    |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -131,7 +133,7 @@ The pre-flight first installs `sops` and `age` if they're missing (so it can ver
 bare box), then handles three things:
 
 1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`,
-   `grafana-secret.enc.yaml` and `tailscale-oauth.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
+   `grafana-secret.enc.yaml`, `tailscale-oauth.enc.yaml` and `alertmanager-slack.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
    if set). If that works it does nothing, whatever else is in the file and in whatever order.
    Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`), falling
    back to a hidden paste prompt, verifies the key decrypts those files **before** writing
@@ -382,8 +384,9 @@ key, point `.sops.yaml` at it and replace that env's encrypted files with your o
 mkdir -p ~/.config/sops/age
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)
 
-# 2. In .sops.yaml, set the `age:` recipient of ALL THREE rules for your env (secrets.enc.yaml,
-#    grafana-secret.enc.yaml and tailscale-oauth.enc.yaml) to that age1… value.
+# 2. In .sops.yaml, set the `age:` recipient of ALL FOUR rules for your env (secrets.enc.yaml,
+#    grafana-secret.enc.yaml, tailscale-oauth.enc.yaml and alertmanager-slack.enc.yaml) to that
+#    age1… value.
 
 # 3. Overwrite each of that env's .enc.yaml files with a plaintext Secret holding your values
 #    (same metadata and stringData keys as the committed file; those stay readable), then
@@ -391,8 +394,10 @@ mkdir -p ~/.config/sops/age
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
-# (prod: the same three files under infra/k8s/secrets/). tailscale-oauth can stay empty until
-# your tailnet exists (Phase 7). Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key:
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
+# (prod: the same four files under infra/k8s/secrets/). tailscale-oauth can stay empty until
+# your tailnet exists (Phase 7), alertmanager-slack until you have a Slack webhook
+# (Cluster alerts). Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key:
 # your https://staging.<tailnet>.ts.net, or "" until you know it.
 
 # 4. Commit .sops.yaml + the encrypted files. Bootstrap checks keys by decrypting the files,
@@ -662,8 +667,9 @@ One-time setup is the SSH deploy key (Flux commits tag bumps back, so it needs w
 plus `flux-bootstrap.sh` — see [step 6 of the setup guide](#6-optional-enable-gitops-auto-deploy--the-flux-deploy-key).
 Once bootstrapped, Flux owns the app Deployments in both namespaces; `deploy-app.sh` detects
 this and skips re-applying them (no tug-of-war over the image tag). The `flux/` directory is
-itself GitOps-managed — edits to `source.yaml`/`image-automation.yaml` self-reconcile within
-5m; editing `self.yaml` needs a `flux-bootstrap.sh` re-run.
+itself GitOps-managed: edits to `source.yaml`, `image-automation.yaml` and
+`notifications.yaml` self-reconcile within 5m; editing `self.yaml` needs a `flux-bootstrap.sh`
+re-run (or `kubectl apply -f infra/k8s/flux/self.yaml`).
 
 > `docker-cd.yaml` ignores `infra/**` on purpose: a bump commit is a push to `main`, and
 > without the guard it would re-fire the build, mint a newer tag, and loop forever. The
@@ -676,10 +682,12 @@ Answers "is the backend leaking memory?" with a memory-per-pod graph over **days
 of a manual `kubectl top` marathon. Metrics are fully self-hosted: the `kube-prometheus-stack`
 Helm chart (Prometheus operator + Grafana + node-exporter + kube-state-metrics) runs in its own
 `monitoring` namespace, and a Flask `/metrics` endpoint feeds app-level series alongside the
-cluster resource metrics. The one outside service is [Tailscale](https://tailscale.com), which
-is how people reach Grafana and staging (see [Access Grafana and staging](#access-grafana-and-staging)).
-The reasoning is in [ADR-008](adr/008-grafana-over-tailscale.md) and
-[ADR-009](adr/009-staging-over-tailscale.md).
+cluster resource metrics. Alertmanager posts cluster failures to Slack
+([Cluster alerts](#cluster-alerts)). The one outside service besides Slack is
+[Tailscale](https://tailscale.com), which is how people reach Grafana and staging (see
+[Access Grafana and staging](#access-grafana-and-staging)).
+The reasoning is in [ADR-008](adr/008-grafana-over-tailscale.md),
+[ADR-009](adr/009-staging-over-tailscale.md) and [ADR-010](adr/010-cluster-alerts-to-slack.md).
 
 **GitOps-managed by Flux, independent of the app envs.** Three Kustomizations in
 `flux/source.yaml`, none of which depends on an app env, so a cluster with only staging
@@ -695,8 +703,9 @@ A values change merged to `main` rolls out with no script run. Staging's tailnet
 its own Kustomization, `fmi-codes-staging-tailnet` ([Phase 4](#4--ingress--tls)); it uses the
 same operator.
 
-**One-time bootstrap: the two secrets.** Flux never decrypts SOPS, so one script applies the
-Grafana admin secret and the Tailscale OAuth secret. `bootstrap.sh --with-flux` runs it as
+**One-time bootstrap: the secrets.** Flux never decrypts SOPS, so one script applies the
+Grafana admin secret, the Alertmanager webhook secret and the Tailscale OAuth secret, and
+copies the webhooks to `flux-system` for Flux. `bootstrap.sh --with-flux` runs it as
 step 7 (opt out with `--without-observability`, which also leaves staging without a tailnet
 address, since the operator never gets its client); by hand:
 
@@ -711,13 +720,16 @@ holds the name, and the [handover](#move-grafana-and-staging-to-another-cluster)
 It also warns when staging's `FRONTEND_ORIGIN` (in the live app secret) is not staging's
 address, and prints the `rotate-secret.sh` command that fixes it. None of this stops the script.
 
-Both Secrets are cluster-wide (one monitoring stack, one operator), but each env keeps its own
-encrypted copy (`grafana-secret.enc.yaml`, `tailscale-oauth.enc.yaml`) under its age key. Pick
+These Secrets are cluster-wide (one monitoring stack, one operator), but each env keeps its own
+encrypted copy (`grafana-secret.enc.yaml`, `alertmanager-slack.enc.yaml`,
+`tailscale-oauth.enc.yaml`) under its age key. Pick
 the env the cluster belongs to: `prod` on the server, `staging` on a staging-only dev box. The
 script labels each Secret with that env and refuses to overwrite it with the other env's copy
 later (`ALLOW_ENV_SWITCH=true` switches on purpose). While `tailscale-oauth.enc.yaml` still
 holds empty values the script skips it with a warning and the operator sits idle; fill it in
-once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet), step 6). If
+once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet), step 6). An
+empty `alertmanager-slack.enc.yaml` is still applied, because the Alertmanager pod mounts it
+and can't start without it; only the copy for Flux is skipped, with a warning. If
 `flux-bootstrap.sh` has not been run yet, apply the Flux objects once first:
 `kubectl apply -f infra/k8s/flux/source.yaml`.
 
@@ -731,12 +743,186 @@ app must be running for the ServiceMonitor to have a scrape target.
 | retention                          | `14d`                                   | the leak window is multi-day; 10d default is too short                             |
 | Prometheus PVC                     | 5Gi                                     | TSDB survives `wsl --shutdown`; in-memory would reset and defeat the investigation |
 | Grafana PVC                        | 1Gi                                     | dashboards, users and sessions survive restarts                                    |
-| alertmanager                       | **off**                                 | no paging on a hobby cluster                                                       |
+| alertmanager                       | **on**                                  | posts cluster failures to Slack ([Cluster alerts](#cluster-alerts))                |
 | node-exporter + kube-state-metrics | **on**                                  | they produce the node/pod resource series — the whole point                        |
 
 Resource requests+limits are set on every component (see `base/observability/helmrelease.yaml`
 `spec.values`) to bound the stack's footprint — it adds roughly 600–900Mi to the node, so the
 limits are the guardrail on a single box already running the app+stateful tiers.
+
+#### Cluster alerts
+
+Failures inside the cluster are posted to Slack by two senders
+([ADR-010](adr/010-cluster-alerts-to-slack.md)). What happens on GitHub up to a merge is
+covered separately, by the [Slack PR feed](#slack-pr-feed) and [Slack CI alerts](#slack-ci-alerts).
+
+There are two channels, `#cluster-alerts-prod` and `#cluster-alerts-staging`, split by who has
+to act:
+
+| Goes to                                                                      | On the prod server        | On a staging-only box     |
+| ---------------------------------------------------------------------------- | ------------------------- | ------------------------- |
+| the `fmi-codes-staging` namespace, staging's Flux objects, image automation  | `#cluster-alerts-staging` | `#cluster-alerts-staging` |
+| everything else: `fmi-codes`, the node, monitoring, Flux core, Helm releases | `#cluster-alerts-prod`    | `#cluster-alerts-staging` |
+
+Alerts shared by both envs go to the channel of the env the cluster serves: on a shared node a
+node problem is a prod problem. The `alertmanager-slack` Secret holds two webhooks: `url` for
+that channel and `staging_url` for the staging one. On a staging-only box both hold the staging
+webhook. Flux picks its two sets by the `fmi-codes/alerts: cluster | staging` label on each
+Kustomization in `flux/source.yaml` and `flux/self.yaml`; a new Kustomization needs that label,
+or its errors are not posted. Flux doesn't re-apply `self.yaml` by itself, so on a cluster
+bootstrapped before the label existed run `kubectl apply -f infra/k8s/flux/self.yaml` once.
+
+- **Alertmanager** (part of `kps`) posts Prometheus alerts about pods, Jobs, rollouts, the node,
+  volumes, scrape targets and the monitoring stack itself. One message per alert name and
+  namespace, a `✅ Resolved` message when it clears, and a reminder every 12 hours while it
+  keeps firing. The title names the env: `prod` (`fmi-codes`), `staging` (`fmi-codes-staging`)
+  or `cluster` for everything else (node alerts carry the exporter's `monitoring` namespace, so
+  the namespace alone can't tell them from the monitoring stack's own); the text names the
+  namespace. The title links to this section. A crash loop inhibits the `KubePodNotReady` of the
+  same pod and the replica and rollout alerts of its namespace, so one incident posts once.
+- **Flux** (`flux/notifications.yaml`) posts reconcile errors: a Kustomization that won't apply
+  or fails its health check after a merge, a failed HelmRelease, a source or image scan that
+  can't fetch, image automation that can't push its bump. Info events (successful applies,
+  "dependency not ready") are not posted.
+
+The alerts most likely to matter:
+
+| Alert                                                                                             | Fires when                                                                                                                    | After   |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `KubePodCrashLooping`                                                                             | a container is in CrashLoopBackOff                                                                                            | 5m      |
+| `KubeInitContainerCrashLooping`                                                                   | an initContainer is, like the backend's `migrate` step when Postgres stays unreachable (the step itself no longer posts that) | 5m      |
+| `ContainerOOMKilled`                                                                              | a container was restarted after running out of memory                                                                         | at once |
+| `KubePodNotReady`                                                                                 | a pod stays Pending, Unknown or Failed: ImagePullBackOff, unschedulable, stuck in Init                                        | 10m     |
+| `KubeContainerWaiting`                                                                            | a container stays waiting for any other reason                                                                                | 1h      |
+| `KubeDeploymentRolloutStuck`, `KubeDeploymentReplicasMismatch`, `KubeStatefulSetReplicasMismatch` | a rollout stops progressing or replicas stay unavailable                                                                      | 15m     |
+| `KubeJobFailed`                                                                                   | a Job failed (the manual `db-migrate` Job also posts its own result)                                                          | 1m      |
+| `KubePersistentVolumeFillingUp`                                                                   | a PVC (Postgres, Prometheus, Grafana) is almost full, or will be within 4 days                                                | 1m / 1h |
+| `KubeNodeNotReady`                                                                                | the node is not ready                                                                                                         | 15m     |
+| `TargetDown`                                                                                      | a scrape target, like the backend's `/metrics`, is unreachable                                                                | 10m     |
+
+Kept quiet on purpose:
+
+- `Watchdog` (always fires, by design), `InfoInhibitor` and every `severity=info` alert go to a
+  `null` receiver.
+- k3s runs the controller manager, scheduler, proxy and etcd inside its own process and exposes
+  no endpoints for them, so those monitors and their rules are off. They only ever produced
+  permanent "down" alerts here.
+- Flux errors containing `namespaces "fmi-codes" not found` (or `"fmi-codes-staging"`). Every
+  cluster gets both envs' Kustomizations, so on a cluster that runs one env the other's fail on
+  every retry.
+- Flux errors that are network blips (`dial tcp`, `i/o timeout`, `no such host`,
+  `TLS handshake timeout`, `connection reset by peer`): a GitHub, Docker Hub or chart repo
+  outage would repost every few minutes until it ends. Auth errors, like a revoked deploy key,
+  still post.
+- Every pod restarts on a WSL boot, but that is neither a CrashLoopBackOff nor an OOM kill, so
+  it posts nothing. Over the 14 days of history checked when this was set up, only the alerts
+  silenced above ever fired.
+
+Posts that look like noise but aren't:
+
+- **Tailscale not set up yet.** Until the OAuth client exists, the operator pod waits for its
+  `operator-oauth` Secret, so `KubePodNotReady` and `KubeDeploymentReplicasMismatch` for
+  namespace `tailscale` post every 12 hours. Grafana and staging have no tailnet address until
+  then, so it is a real gap; it stops once [Tailscale setup](#tailscale-setup-once-per-tailnet)
+  is done.
+- **One webhook key set, the other empty.** Every send to the empty one fails, and
+  `AlertmanagerFailedToSendAlerts` posts to the cluster's channel. Set both keys. With both
+  empty nothing is posted at all.
+
+Not covered:
+
+- **The whole cluster down.** Nothing inside a cluster can report its own death. A dead
+  cluster also takes the site down, which is noticed anyway, so there is no external dead
+  man's switch.
+- **The backend's 5xx rate.** The app counters are per Gunicorn worker (the multiprocess
+  limitation in [Dashboards and checks](#dashboards-and-checks)): each scrape reads a random
+  worker, so a rate rule on them would fire on noise. Aggregating them across workers, and
+  then adding the rule, is [issue #169](https://github.com/fss-fmi/fmi-codes-website-2026/issues/169).
+
+**Setup:**
+
+1. In Slack, create both channels. In the Slack app that holds the other webhooks, add an
+   incoming webhook for each (**Incoming Webhooks → Add New Webhook**).
+2. Store them (hidden prompt, typed twice; anything that isn't a
+   `https://hooks.slack.com/services/…` URL is refused). Each env's file needs both keys:
+
+   ```bash
+   # prod's file (the server): url = the prod webhook, staging_url = the staging webhook
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --alertmanager url
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --alertmanager staging_url
+   # staging's file (a staging-only box): both = the staging webhook
+   ENV=staging bash infra/k8s/scripts/rotate-secret.sh --alertmanager url
+   ENV=staging bash infra/k8s/scripts/rotate-secret.sh --alertmanager staging_url
+   ```
+
+   Each run writes that key in the env's `alertmanager-slack.enc.yaml`, applies
+   `monitoring/alertmanager-slack` and copies the webhooks for Flux: `url` to
+   `flux-system/flux-slack`, `staging_url` to `flux-system/flux-slack-staging` (key `address`;
+   an empty key deletes its copy). It reminds you when the other key is still empty.
+   Like the other cluster-wide Secrets, it refuses to overwrite the other env's copy on a
+   running cluster, so run each env's pair against its own cluster. For an env whose cluster
+   doesn't exist yet, fill its file without touching any cluster with
+   `sops infra/k8s/secrets/alertmanager-slack.enc.yaml` (opens it decrypted in `$EDITOR` and
+   re-encrypts on save); `deploy-observability.sh` applies it at bootstrap. Nothing restarts:
+   Alertmanager reads the file on every send, Flux reads its Secret on every event, and the
+   kubelet updates the mounted Secret within a minute or two.
+
+3. Commit the changed `alertmanager-slack.enc.yaml` files.
+
+The Alertmanager pod mounts `alertmanager-slack`, so without the Secret it stays in
+`ContainerCreating` and nothing posts, including about itself. The operator creates that pod,
+not Helm, so don't expect the `kps` release to fail; check the pod:
+`kubectl -n monitoring get pods -l app.kubernetes.io/name=alertmanager`. `deploy-observability.sh`
+applies the Secret, empty or not, so run it once on an existing cluster before a change that
+turns Alertmanager on reaches it. On a fresh cluster the pod starts by itself once the script
+has run.
+
+**Silence an alert** during planned work or while a known issue is being fixed:
+
+```bash
+kubectl -n monitoring port-forward svc/kps-alertmanager 9093:9093
+# http://localhost:9093 -> New Silence: match alertname (and namespace), pick a duration
+```
+
+Alertmanager has no volume, so silences are lost when its pod restarts (every WSL boot). To
+mute something for good, change the route or the rule in `base/observability/helmrelease.yaml`.
+
+**Test it.** A crash-looping pod should post within about 6 minutes and resolve a few minutes
+after it's gone. One in a scratch namespace goes to the cluster's own channel, one in
+`fmi-codes-staging` to the staging channel:
+
+```bash
+kubectl create namespace alert-test
+kubectl -n alert-test run crasher --image=busybox:1.37 -- sh -c 'exit 1'
+kubectl -n fmi-codes-staging run alert-test-crasher --image=busybox:1.37 -- sh -c 'exit 1'
+# 🚨 Warning: KubePodCrashLooping · cluster        (url channel)
+# 🚨 Warning: KubePodCrashLooping · staging        (staging channel)
+kubectl delete namespace alert-test
+kubectl -n fmi-codes-staging delete pod alert-test-crasher
+# ✅ Resolved: ... for both
+```
+
+A Flux error, posted within a minute (`staging` here; `cluster` tests the other channel):
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: alert-test
+  namespace: flux-system
+  labels:
+    fmi-codes/alerts: staging
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: fmi-codes
+  path: ./does-not-exist
+  prune: false
+EOF
+kubectl -n flux-system delete kustomization alert-test
+```
 
 #### Access Grafana and staging
 
@@ -1039,6 +1225,9 @@ To deploy this under your own project — your Docker Hub, your domain, your key
 - **Slack PR feed and CI alerts** — set `SLACK_BOT_TOKEN`, `SLACK_PR_CHANNEL_ID` and
   `SLACK_ACTIONS_CHANNEL_ID` for your own workspace, per [Slack PR feed](#slack-pr-feed) and
   [Slack CI alerts](#slack-ci-alerts), or leave them unset and both workflows skip.
+- **Cluster alerts**: your own prod and staging channel webhooks in both envs' files, per
+  [Cluster alerts](#cluster-alerts). With both keys left empty, alerts are evaluated but
+  nothing is posted; don't set only one.
 
 ## Rotate a secret
 
@@ -1071,6 +1260,7 @@ with the fix (reinstall the version `install-tools.sh` pins).
 | `SLACK_MIGRATIONS_WEBHOOK_URL` | `rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL`                                                   | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                       | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
 | Tailscale OAuth client         | `rotate-secret.sh --tailscale client_id`, then `client_secret` ([below](#tailscale-oauth-client)) | Nothing; the operator restarts and Grafana and staging keep their tailnet addresses.                                                     | It leaked; someone with cluster or admin-console access leaves                                                                                                                 |
+| Cluster alerts webhooks        | `rotate-secret.sh --alertmanager url` / `staging_url`                                             | Nothing; no restart.                                                                                                                     | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | `FRONTEND_ORIGIN` (staging)    | `ENV=staging rotate-secret.sh FRONTEND_ORIGIN`                                                    | New reset and verification emails link to the new address.                                                                               | Staging's tailnet address changed (new tailnet, or it joined as `staging-1`)                                                                                                   |
 | age private keys               | [manual, below](#rotate-an-age-key)                                                               | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
 | DB / Redis passwords           | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords))       |                                                                                                                                          |                                                                                                                                                                                |
@@ -1106,6 +1296,10 @@ Notes per secret:
 - **`SLACK_BUG_WEBHOOK_URL`** and **`SLACK_MIGRATIONS_WEBHOOK_URL`**: add a new webhook for
   the same channel under the Slack app's Incoming Webhooks, rotate, then remove the old one
   there. A test bug report (or the next migration run) confirms it.
+- **Cluster alerts webhooks** (`--alertmanager url` or `staging_url`): same steps for that
+  channel. The staging webhook sits in both envs' files, so rotate `staging_url` in each. The
+  script also updates Flux's copy (`flux-system/flux-slack` or `flux-slack-staging`). The test in
+  [Cluster alerts](#cluster-alerts) confirms it.
 - `--generate` is refused for `ADMIN_PASSWORD_HASH` (nobody would know the password), and an
   empty value is always refused. To clear an optional secret, edit the file with `sops`.
 
@@ -1159,16 +1353,18 @@ prod use the `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
 # 1. New key pair, appended next to the old one (keep the old one until step 5).
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)   # prints "Public key: age1…"
 
-# 2. In .sops.yaml, replace the old age1… recipient in ALL THREE staging rules
-#    (secrets.enc.yaml, grafana-secret.enc.yaml, tailscale-oauth.enc.yaml) with the new one.
+# 2. In .sops.yaml, replace the old age1… recipient in ALL FOUR staging rules
+#    (secrets.enc.yaml, grafana-secret.enc.yaml, tailscale-oauth.enc.yaml,
+#    alertmanager-slack.enc.yaml) with the new one.
 
-# 3. Re-wrap the three files to the new key (needs the old key, still in keys.txt):
+# 3. Re-wrap the four files to the new key (needs the old key, still in keys.txt):
 sops updatekeys -y infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
+sops updatekeys -y infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
 grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new age1… is listed
 
-# 4. Commit and push .sops.yaml and the three files.
+# 4. Commit and push .sops.yaml and the four files.
 
 # 5. Hand out the new private key and retire the old one:
 #    Replace the old AGE-SECRET-KEY-1… line in the password manager with the new one. On every
@@ -1310,7 +1506,10 @@ Run from `infra/k8s/` (the `-f` and `-k` paths below are relative to it):
 
 ```bash
 # Phase 6 — GitOps (delete self.yaml first so it stops reconciling flux/; prune:false means
-# the automation objects don't cascade-delete, so remove them explicitly):
+# the automation objects don't cascade-delete, so remove them explicitly). The Slack alerts
+# go first, so the teardown doesn't post its own errors; `flux uninstall` removes the
+# flux-slack Secrets with the namespace:
+kubectl -n flux-system delete -f flux/notifications.yaml
 kubectl -n flux-system delete -f flux/self.yaml
 kubectl -n flux-system delete -f flux/image-automation.yaml -f flux/source.yaml
 flux uninstall --namespace flux-system --silent

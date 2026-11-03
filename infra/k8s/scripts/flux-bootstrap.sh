@@ -59,9 +59,10 @@ else
     --private-key-file "$DEPLOY_KEY"
 fi
 
-log "Applying Flux source, image-automation, and self-managing resources"
+log "Applying Flux source, image-automation, notifications and self-managing resources"
 kubectl apply -f "$FLUX_DIR/source.yaml"
 kubectl apply -f "$FLUX_DIR/image-automation.yaml"
+kubectl apply -f "$FLUX_DIR/notifications.yaml"
 kubectl apply -f "$FLUX_DIR/self.yaml"
 
 log "Waiting for the git source and kustomization to reconcile"

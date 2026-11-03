@@ -28,7 +28,7 @@ case "$ENV" in
 esac
 SECRETS_ENC="$SECRETS_DIR/secrets.enc.yaml"
 ENC_FILES=()
-for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/tailscale-oauth.enc.yaml"; do
+for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/tailscale-oauth.enc.yaml" "$SECRETS_DIR/alertmanager-slack.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
 done
 

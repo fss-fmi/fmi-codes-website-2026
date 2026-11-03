@@ -41,7 +41,134 @@ spec:
   values:
     fullnameOverride: kps
     alertmanager:
+      enabled: true
+      # global and templates keep the chart defaults (Helm merges this map over them).
+      # Staging's namespace goes to the staging channel. Everything else, shared alerts
+      # included, goes to the channel of the env this cluster serves: the `url` key holds the
+      # prod webhook on the server and the staging one on a staging-only box.
+      config:
+        # A list replaces the chart's, so its four default rules are repeated here.
+        inhibit_rules:
+          - source_matchers: [severity = critical]
+            target_matchers: [severity =~ warning|info]
+            equal: [namespace, alertname]
+          - source_matchers: [severity = warning]
+            target_matchers: [severity = info]
+            equal: [namespace, alertname]
+          - source_matchers: [alertname = InfoInhibitor]
+            target_matchers: [severity = info]
+            equal: [namespace]
+          - target_matchers: [alertname = InfoInhibitor]
+          # One crash loop is one message: the pod it keeps from becoming ready and the rollout
+          # it holds up would otherwise post on their own a few minutes later.
+          - source_matchers: [alertname =~ "KubeInitContainerCrashLooping|KubePodCrashLooping"]
+            target_matchers: [alertname = KubePodNotReady]
+            equal: [namespace, pod]
+          - source_matchers: [alertname =~ "KubeInitContainerCrashLooping|KubePodCrashLooping"]
+            target_matchers:
+              - alertname =~ "KubeDeploymentReplicasMismatch|KubeDeploymentRolloutStuck|KubeStatefulSetReplicasMismatch"
+            equal: [namespace]
+        route:
+          receiver: slack
+          group_by: [alertname, namespace]
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 12h
+          routes:
+            # Watchdog always fires by design and InfoInhibitor only exists to mute info alerts.
+            - receiver: 'null'
+              matchers:
+                - alertname =~ "Watchdog|InfoInhibitor"
+            - receiver: 'null'
+              matchers:
+                - severity = "info"
+            - receiver: slack-staging
+              matchers:
+                - namespace = "fmi-codes-staging"
+        receivers:
+          - name: 'null'
+          - name: slack
+            slack_configs:
+              # Read on every send, so rotating the webhook needs no restart.
+              - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/url
+                send_resolved: true
+                # The default links to Alertmanager's in-cluster URL, which nobody can open, and
+                # the operator drops an empty value.
+                title_link: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cluster-alerts
+                color: '{{ template "fmi.color" . }}'
+                title: '{{ template "fmi.title" . }}'
+                text: '{{ template "fmi.text" . }}'
+          - name: slack-staging
+            slack_configs:
+              - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/staging_url
+                send_resolved: true
+                title_link: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cluster-alerts
+                color: '{{ template "fmi.color" . }}'
+                title: '{{ template "fmi.title" . }}'
+                text: '{{ template "fmi.text" . }}'
+      templateFiles:
+        # Node alerts carry namespace=monitoring (the exporter's), so anything outside the two
+        # app namespaces is titled `cluster`; the description names the namespace.
+        fmi-codes.tmpl: |-
+          {{ define "fmi.env" }}{{ if eq .CommonLabels.namespace "fmi-codes" }}prod{{ else if eq .CommonLabels.namespace "fmi-codes-staging" }}staging{{ else }}cluster{{ end }}{{ end }}
+          {{ define "fmi.color" }}{{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ end }}
+          {{ define "fmi.title" }}{{ if eq .Status "resolved" }}✅ Resolved{{ else }}🚨 {{ .CommonLabels.severity | title }}{{ end }}: {{ .CommonLabels.alertname }} · {{ template "fmi.env" . }}{{ end }}
+          {{ define "fmi.text" }}{{ $alerts := .Alerts.Firing }}{{ if eq .Status "resolved" }}{{ $alerts = .Alerts.Resolved }}{{ end }}{{ range $alerts }}• *{{ .Annotations.summary }}* {{ .Annotations.description }}{{ with .Annotations.runbook_url }} <{{ . }}|runbook>{{ end }}
+          {{ end }}{{ end }}
+      alertmanagerSpec:
+        # The pod can't start without this Secret, so deploy-observability.sh must have applied
+        # it first. Don't count on the release failing without it: the pod is created by the
+        # operator, not Helm, so check the pod.
+        secrets:
+          - alertmanager-slack
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
+    # k3s runs these inside its own process and exposes no endpoints for them, so their
+    # monitors only produce permanent "down" alerts. Disabling them also drops their rules.
+    kubeControllerManager:
       enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeProxy:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+    customRules:
+      KubePodCrashLooping:
+        for: 5m
+      KubePodNotReady:
+        for: 10m
+      KubeJobFailed:
+        for: 1m
+    additionalPrometheusRulesMap:
+      fmi-codes:
+        groups:
+          - name: fmi-codes.containers
+            rules:
+              - alert: ContainerOOMKilled
+                expr: |-
+                  increase(kube_pod_container_status_restarts_total{job="kube-state-metrics"}[10m]) >= 1
+                  and on (namespace, pod, container)
+                  kube_pod_container_status_last_terminated_reason{job="kube-state-metrics", reason="OOMKilled"} == 1
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Container was OOMKilled.
+                  description: '{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) ran out of memory and was restarted in the last 10 minutes.'
+              # KubePodCrashLooping only looks at regular containers. A crash-looping
+              # initContainer (the backend's migrate step) leaves the pod in Init.
+              - alert: KubeInitContainerCrashLooping
+                expr: max_over_time(kube_pod_init_container_status_waiting_reason{job="kube-state-metrics", reason="CrashLoopBackOff"}[5m]) >= 1
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Init container is crash looping.
+                  description: '{{ $labels.namespace }}/{{ $labels.pod }} (init container {{ $labels.container }}) is in CrashLoopBackOff, so the pod never starts.'
     grafana:
       admin:
         existingSecret: grafana-admin
