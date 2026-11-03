@@ -2,7 +2,7 @@
 
 FLUX_NS="${FLUX_NS:-flux-system}"
 # Alertmanager Secret key -> the flux-system Secret its Flux Provider reads.
-SLACK_WEBHOOK_KEYS="url:flux-slack staging_url:flux-slack-staging"
+SLACK_WEBHOOK_KEYS="cluster_url:flux-slack staging_url:flux-slack-staging"
 
 # copy_slack_webhooks_for_flux NAMESPACE SECRET: Flux's Providers can only read Secrets in their
 # own namespace, under the key `address`, so each webhook in the live Alertmanager Secret is

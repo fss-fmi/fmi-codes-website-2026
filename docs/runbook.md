@@ -111,7 +111,7 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | `fmi-codes-db`, `fmi-codes-redis`   | DB / Redis passwords                                                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                           |
 | `grafana-admin` (SOPS, in git)      | `admin-user`, `admin-password`                                                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
 | `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | committed **empty**; the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                                                                                                |
-| `alertmanager-slack` (SOPS, in git) | `url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                                | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                                    |
+| `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                        | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                            |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -765,7 +765,7 @@ to act:
 | everything else: `fmi-codes`, the node, monitoring, Flux core, Helm releases | `#cluster-alerts-prod`    | `#cluster-alerts-staging` |
 
 Alerts shared by both envs go to the channel of the env the cluster serves: on a shared node a
-node problem is a prod problem. The `alertmanager-slack` Secret holds two webhooks: `url` for
+node problem is a prod problem. The `alertmanager-slack` Secret holds two webhooks: `cluster_url` for
 that channel and `staging_url` for the staging one. On a staging-only box both hold the staging
 webhook. Flux picks its two sets by the `fmi-codes/alerts: cluster | staging` label on each
 Kustomization in `flux/source.yaml` and `flux/self.yaml`; a new Kustomization needs that label,
@@ -847,16 +847,16 @@ Not covered:
    `https://hooks.slack.com/services/…` URL is refused). Each env's file needs both keys:
 
    ```bash
-   # prod's file (the server): url = the prod webhook, staging_url = the staging webhook
-   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --alertmanager url
+   # prod's file (the server): cluster_url = the prod webhook, staging_url = the staging webhook
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --alertmanager cluster_url
    ENV=prod bash infra/k8s/scripts/rotate-secret.sh --alertmanager staging_url
    # staging's file (a staging-only box): both = the staging webhook
-   ENV=staging bash infra/k8s/scripts/rotate-secret.sh --alertmanager url
+   ENV=staging bash infra/k8s/scripts/rotate-secret.sh --alertmanager cluster_url
    ENV=staging bash infra/k8s/scripts/rotate-secret.sh --alertmanager staging_url
    ```
 
    Each run writes that key in the env's `alertmanager-slack.enc.yaml`, applies
-   `monitoring/alertmanager-slack` and copies the webhooks for Flux: `url` to
+   `monitoring/alertmanager-slack` and copies the webhooks for Flux: `cluster_url` to
    `flux-system/flux-slack`, `staging_url` to `flux-system/flux-slack-staging` (key `address`;
    an empty key deletes its copy). It reminds you when the other key is still empty.
    Like the other cluster-wide Secrets, it refuses to overwrite the other env's copy on a
@@ -895,7 +895,7 @@ after it's gone. One in a scratch namespace goes to the cluster's own channel, o
 kubectl create namespace alert-test
 kubectl -n alert-test run crasher --image=busybox:1.37 -- sh -c 'exit 1'
 kubectl -n fmi-codes-staging run alert-test-crasher --image=busybox:1.37 -- sh -c 'exit 1'
-# 🚨 Warning: KubePodCrashLooping · cluster        (url channel)
+# 🚨 Warning: KubePodCrashLooping · cluster        (cluster_url channel)
 # 🚨 Warning: KubePodCrashLooping · staging        (staging channel)
 kubectl delete namespace alert-test
 kubectl -n fmi-codes-staging delete pod alert-test-crasher
@@ -1260,7 +1260,7 @@ with the fix (reinstall the version `install-tools.sh` pins).
 | `SLACK_MIGRATIONS_WEBHOOK_URL` | `rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL`                                                   | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                       | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
 | Tailscale OAuth client         | `rotate-secret.sh --tailscale client_id`, then `client_secret` ([below](#tailscale-oauth-client)) | Nothing; the operator restarts and Grafana and staging keep their tailnet addresses.                                                     | It leaked; someone with cluster or admin-console access leaves                                                                                                                 |
-| Cluster alerts webhooks        | `rotate-secret.sh --alertmanager url` / `staging_url`                                             | Nothing; no restart.                                                                                                                     | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| Cluster alerts webhooks        | `rotate-secret.sh --alertmanager cluster_url` / `staging_url`                                     | Nothing; no restart.                                                                                                                     | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | `FRONTEND_ORIGIN` (staging)    | `ENV=staging rotate-secret.sh FRONTEND_ORIGIN`                                                    | New reset and verification emails link to the new address.                                                                               | Staging's tailnet address changed (new tailnet, or it joined as `staging-1`)                                                                                                   |
 | age private keys               | [manual, below](#rotate-an-age-key)                                                               | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
 | DB / Redis passwords           | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords))       |                                                                                                                                          |                                                                                                                                                                                |
@@ -1296,7 +1296,7 @@ Notes per secret:
 - **`SLACK_BUG_WEBHOOK_URL`** and **`SLACK_MIGRATIONS_WEBHOOK_URL`**: add a new webhook for
   the same channel under the Slack app's Incoming Webhooks, rotate, then remove the old one
   there. A test bug report (or the next migration run) confirms it.
-- **Cluster alerts webhooks** (`--alertmanager url` or `staging_url`): same steps for that
+- **Cluster alerts webhooks** (`--alertmanager cluster_url` or `staging_url`): same steps for that
   channel. The staging webhook sits in both envs' files, so rotate `staging_url` in each. The
   script also updates Flux's copy (`flux-system/flux-slack` or `flux-slack-staging`). The test in
   [Cluster alerts](#cluster-alerts) confirms it.

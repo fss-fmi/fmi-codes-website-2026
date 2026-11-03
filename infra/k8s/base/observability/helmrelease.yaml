@@ -44,7 +44,7 @@ spec:
       enabled: true
       # global and templates keep the chart defaults (Helm merges this map over them).
       # Staging's namespace goes to the staging channel. Everything else, shared alerts
-      # included, goes to the channel of the env this cluster serves: the `url` key holds the
+      # included, goes to the channel of the env this cluster serves: `cluster_url` holds the
       # prod webhook on the server and the staging one on a staging-only box.
       config:
         # A list replaces the chart's, so its four default rules are repeated here.
@@ -90,7 +90,7 @@ spec:
           - name: slack
             slack_configs:
               # Read on every send, so rotating the webhook needs no restart.
-              - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/url
+              - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/cluster_url
                 send_resolved: true
                 # The default links to Alertmanager's in-cluster URL, which nobody can open, and
                 # the operator drops an empty value.

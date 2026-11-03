@@ -81,7 +81,7 @@ if [ -n "$SLACK_EMPTY_KEYS" ]; then
   warn "$ALERTMANAGER_SECRET_ENC has no webhook for: $SLACK_EMPTY_KEYS. Set both keys: with only one,
   every send to the other fails and AlertmanagerFailedToSendAlerts posts to the cluster's channel.
   Create the webhooks (docs/runbook.md 'Cluster alerts'), then for each key:
-    ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --alertmanager <url|staging_url>"
+    ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --alertmanager <cluster_url|staging_url>"
 fi
 
 TAILSCALE_STATUS="applied"

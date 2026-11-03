@@ -26,7 +26,7 @@ and restart the workload so pods pick up the new value.
               staging FRONTEND_ORIGIN, its tailnet URL),
               with --grafana: admin-password,
               with --tailscale: client_id or client_secret,
-              with --alertmanager: url or staging_url.
+              with --alertmanager: cluster_url or staging_url.
   --generate  Use a strong random value (SECRET_KEY, JWT_SECRET_KEY).
   --grafana   Rotate the env's grafana-secret.enc.yaml (namespace monitoring,
               restarts deployment/kps-grafana). For admin-password it also
@@ -37,7 +37,7 @@ and restart the workload so pods pick up the new value.
   --alertmanager
               Set a cluster-alerts incoming webhook in the env's
               alertmanager-slack.enc.yaml (namespace monitoring) and copy it
-              for Flux: url (this cluster's channel, shared alerts included)
+              for Flux: cluster_url (this cluster's channel, shared alerts included)
               to flux-system/flux-slack, staging_url (the staging channel) to
               flux-system/flux-slack-staging. Nothing restarts: Alertmanager
               and Flux read them on every send.
@@ -64,7 +64,7 @@ Examples:
   $(basename "$0") DISCORD_BUG_WEBHOOK_URL < webhook.txt
   ENV=prod $(basename "$0") --grafana admin-password
   ENV=prod $(basename "$0") --tailscale client_secret
-  ENV=prod $(basename "$0") --alertmanager url
+  ENV=prod $(basename "$0") --alertmanager cluster_url
   ENV=prod $(basename "$0") --alertmanager staging_url
 EOF
 }
@@ -110,8 +110,8 @@ elif [ "$ALERTMANAGER" = "true" ]; then
   SECRET_NAME="${SECRET_NAME:-alertmanager-slack}"
   RESTART_TARGET="${RESTART_TARGET:-}"
   case "$KEY" in
-    url|staging_url) ;;
-    *) die "--alertmanager takes url or staging_url, got '$KEY'." ;;
+    cluster_url|staging_url) ;;
+    *) die "--alertmanager takes cluster_url or staging_url, got '$KEY'." ;;
   esac
   # shellcheck source=lib/slack-webhooks.sh
   . "$SCRIPT_DIR/lib/slack-webhooks.sh"

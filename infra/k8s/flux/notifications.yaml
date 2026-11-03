@@ -8,7 +8,7 @@ metadata:
   namespace: flux-system
 spec:
   type: slack
-  # Holds `address`, copied from monitoring/alertmanager-slack (key `url`) by
+  # Holds `address`, copied from monitoring/alertmanager-slack (key `cluster_url`) by
   # deploy-observability.sh and rotate-secret.sh. Until it exists Flux posts nothing.
   secretRef:
     name: flux-slack
