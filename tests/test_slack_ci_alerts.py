@@ -746,3 +746,67 @@ class TestThreadIdempotency:
         alerts(slack, FakeGitHub()).handle(make_run())
         [reply] = slack.replies()
         assert reply["metadata"]["event_payload"]["key"] == "run:900:1:failure"
+
+
+PYTEST_V_LOG = "\n".join(
+    [
+        "2026-11-03T00:58:00.0Z ##[group]Run pytest tests/ --ignore=tests/e2e -v",
+        "2026-11-03T00:58:00.1Z ##[endgroup]",
+        "2026-11-03T00:58:00.2Z ============================= test session starts ==============================",
+        "2026-11-03T00:58:00.3Z platform linux -- Python 3.12.15, pytest-9.0.3, pluggy-1.6.0 -- /usr/bin/python",
+        "2026-11-03T00:58:00.4Z cachedir: .pytest_cache",
+        "2026-11-03T00:58:00.5Z rootdir: /srv/app",
+        "2026-11-03T00:58:00.6Z configfile: pytest.ini",
+        "2026-11-03T00:58:00.7Z plugins: flask-1.3.0",
+        "2026-11-03T00:58:00.8Z collecting ... collected 304 items",
+        *(
+            f"2026-11-03T00:58:01.{i}Z tests/test_team_service.py::TestCodes::test_{i} PASSED [ {90 + i}%]"
+            for i in range(8)
+        ),
+        "2026-11-03T00:58:01.8Z tests/test_x.py::test_param[admin-True] PASSED [ 98%]",
+        "2026-11-03T00:58:01.85Z tests/test_x.py::test_ctx[git clone x-y] PASSED [ 98%]",
+        "2026-11-03T00:58:01.9Z tests/test_x.py::test_redis SKIPPED (no redis) [ 99%]",
+        "2026-11-03T00:58:02.0Z tests/test_x.py::test_known XFAIL (bug 12) [ 99%]",
+        "2026-11-03T00:58:02.1Z tests/test_slack_live_check.py::test_live_check FAILED [100%]",
+        "2026-11-03T00:58:02.2Z =================================== FAILURES ===================================",
+        "2026-11-03T00:58:02.3Z _______________________________ test_live_check ________________________________",
+        "2026-11-03T00:58:02.4Z E       AssertionError: deliberate failure",
+        "2026-11-03T00:58:02.5Z FAILED tests/test_slack_live_check.py::test_live_check - AssertionError",
+        "2026-11-03T00:58:02.6Z ======================== 1 failed, 303 passed in 3.98s =========================",
+        "2026-11-03T00:58:02.7Z ##[error]Process completed with exit code 1.",
+    ]
+)
+
+
+class TestPytestProgress:
+    def test_passed_skipped_and_xfail_lines_are_dropped(self):
+        tail = ci_alerts.log_tail(PYTEST_V_LOG)
+        for noise in (
+            " PASSED [",
+            " SKIPPED (",
+            " XFAIL (",
+            "rootdir:",
+            "plugins:",
+            "collected 304",
+        ):
+            assert noise not in tail, noise
+        assert tail.splitlines() == [
+            "tests/test_slack_live_check.py::test_live_check FAILED [100%]",
+            "=================================== FAILURES ===================================",
+            "_______________________________ test_live_check ________________________________",
+            "E       AssertionError: deliberate failure",
+            "FAILED tests/test_slack_live_check.py::test_live_check - AssertionError",
+            "======================== 1 failed, 303 passed in 3.98s =========================",
+            "Error: Process completed with exit code 1.",
+        ]
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "PASSED all checks",
+            "tests/test_x.py::test_y passed in 0.1s",
+            "assert result == 'PASSED [ 5%]'",
+        ],
+    )
+    def test_lines_that_only_mention_passed_are_kept(self, line):
+        assert ci_alerts.log_tail(f"{line}\n##[error]boom\n").splitlines()[0] == line

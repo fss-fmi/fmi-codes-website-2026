@@ -35,6 +35,14 @@ TS_RE = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?Z ?")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 FRAME_RE = re.compile(r'^\s+(File ".*", line \d+|at \S)')
 CARETS_RE = re.compile(r"^\s*[\^~]+\s*$")
+# pytest -v prints one line per passing test; CI runs it that way, so without this
+# the last lines before the failure summary are all "... PASSED [ 97%]". Parametrised
+# ids can contain spaces. The session header says nothing about the failure either.
+PYTEST_PROGRESS_RE = re.compile(r"^\S+::.*? (?:PASSED|SKIPPED|XFAIL|XPASS)\b.*\[ *\d+%\]$")
+PYTEST_HEADER_RE = re.compile(
+    r"^(=+ test session starts =+$|platform \S+ -- Python |cachedir: |rootdir: |configfile: "
+    r"|testpaths: |plugins: |collecting \.\.\. |collected \d+ items?)"
+)
 
 # GitHub masks registered secrets in logs, but not values derived from them or
 # credentials a step prints that were never registered.
@@ -68,7 +76,8 @@ def redact(text: str) -> str:
 
 
 def log_tail(log: str, step_completed_at: str | None = None) -> str:
-    """The failed step's error, without timestamps, colours, stack frames or credentials.
+    """The failed step's error, without timestamps, colours, stack frames, pytest
+    progress lines or credentials.
 
     The job stops at its failed step, so that step's error is the last ##[error]
     at or before the step's completion, ahead of the post-job cleanup. Earlier
@@ -114,6 +123,8 @@ def log_tail(log: str, step_completed_at: str | None = None) -> str:
             skip_code = text.lstrip().startswith("File ")
             continue
         if text.startswith("Traceback (most recent call last)") or CARETS_RE.match(text):
+            continue
+        if PYTEST_PROGRESS_RE.match(text) or PYTEST_HEADER_RE.match(text):
             continue
         if text == "##[endgroup]":
             continue
