@@ -91,7 +91,7 @@ def make_pr(number=7, draft=False, state="open", merged=False, head="feature/x",
         "merged": merged,
         "merged_by": {"login": "bob"} if merged else None,
         "created_at": "2026-11-03T00:00:00Z",
-        "base": {"ref": "main"},
+        "base": {"ref": "main", "repo": {"html_url": f"https://github.com/{REPO}"}},
         "head": {"ref": head, "label": f"alice:{head}", "repo": {"full_name": REPO}},
     }
     pr.update(extra)
@@ -144,6 +144,7 @@ def github_stub(files=(), pr=None, read_only=("mallory",), error=None, commits=(
         return pr
 
     get.calls = calls
+    get.pr = pr
     return get
 
 
@@ -745,8 +746,14 @@ def sha(n):
     return f"sha{n:04d}" + "0" * 33
 
 
-def commit(n, message=None):
-    return {"sha": sha(n), "commit": {"message": message or f"commit {n}\n\nbody {n}"}}
+def commit(n, message=None, parents=None):
+    if parents is None:
+        parents = [n - 1]
+    return {
+        "sha": sha(n),
+        "commit": {"message": message or f"commit {n}\n\nbody {n}"},
+        "parents": [{"sha": sha(p)} for p in parents],
+    }
 
 
 def pr_at(n, **kw):
@@ -764,17 +771,28 @@ class TestPushes:
         return [commit(1)]
 
     @pytest.fixture()
-    def api(self, commits):
-        return github_stub(commits=commits)
+    def current(self):
+        """The PR as GET /pulls/7 returns it now."""
+        return pr_at(1)
 
     @pytest.fixture()
-    def pfeed(self, slack, api):
-        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+    def api(self, commits, current):
+        return github_stub(commits=commits, pr=current)
+
+    @pytest.fixture()
+    def sleeps(self):
+        return []
+
+    @pytest.fixture()
+    def pfeed(self, slack, api, sleeps):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api, sleep=sleeps.append)
         target(f, "opened", pr_at(1))
         return f
 
     @staticmethod
-    def push(feed, before, after, sender="alice", **kw):
+    def push(feed, before, after, sender="alice", head=None, **kw):
+        """Push *before* -> *after*; *head* is the PR's head by the time the run reads it."""
+        feed.github.pr["head"]["sha"] = sha(head or after)
         target(
             feed,
             "synchronize",
@@ -800,7 +818,7 @@ class TestPushes:
             ]
         )
         payload = reply["metadata"]["event_payload"]
-        assert payload["key"] == f"push:{sha(3)}" and payload["head"] == sha(3)
+        assert payload["key"] == f"push:{sha(1)}..{sha(3)}" and payload["head"] == sha(3)
 
     def test_one_commit_is_singular(self, pfeed, slack, commits):
         commits.append(commit(2))
@@ -840,6 +858,34 @@ class TestPushes:
         assert slack.replies[-1]["text"].startswith("🔨 1 new commit")
         assert sha(103) in slack.replies[-1]["text"]
 
+    def test_pushing_back_to_an_earlier_head_is_reported(self, pfeed, slack, commits):
+        commits += [commit(2), commit(3)]
+        self.push(pfeed, 1, 3)
+        commits.pop()
+        self.push(pfeed, 3, 2)
+        assert slack.replies[-1]["text"].startswith("⚠️ force-pushed by alice")
+        commits.append(commit(3))
+        self.push(pfeed, 2, 3)
+        assert len(slack.replies) == 3
+        assert slack.replies[-1]["text"].startswith("🔨 1 new commit")
+
+    def test_merge_from_main_is_one_commit(self, pfeed, slack, commits):
+        # GET /pulls/7/commits leaves out main's commits; the merge's other parent is one.
+        commits.append(commit(2, "Merge branch 'main' into feature/x", parents=[1, 900]))
+        self.push(pfeed, 1, 2)
+        lines = slack.replies[0]["text"].split("\n")
+        assert lines[0].startswith("🔨 1 new commit")
+        assert lines[1].endswith("Merge branch 'main' into feature/x")
+
+    def test_commits_sorted_before_the_last_head_are_still_listed(self, pfeed, slack, commits):
+        commits += [commit(2), commit(3)]
+        self.push(pfeed, 1, 3)
+        # A cherry-pick with an old date: GitHub lists it before the commits it follows.
+        commits.insert(1, commit(4, "cherry-picked fix", parents=[3]))
+        self.push(pfeed, 3, 4)
+        text = slack.replies[-1]["text"]
+        assert text.startswith("🔨 1 new commit") and text.endswith("cherry-picked fix")
+
     def test_duplicate_delivery_posts_once(self, pfeed, slack, commits, api):
         commits.append(commit(2))
         self.push(pfeed, 1, 2)
@@ -856,17 +902,34 @@ class TestPushes:
         assert len(slack.replies) == 2
         text = slack.replies[1]["text"]
         assert text.startswith("🔨 2 new commits") and f"files/{sha(2)}..{sha(4)}" in text
-        assert "sha0003" in text and "sha0004" in text and "|sha0002>" not in text
+        assert "|sha0003>" in text and "|sha0004>" in text and "|sha0002>" not in text
 
     def test_late_rerun_of_an_older_push_posts_nothing(self, pfeed, slack, commits):
         commits += [commit(2), commit(3)]
         self.push(pfeed, 1, 3)
-        self.push(pfeed, 1, 2)
+        self.push(pfeed, 1, 2, head=3)
         assert len(slack.replies) == 1
 
-    def test_superseded_push_posts_nothing(self, pfeed, slack, commits):
+    def test_superseded_push_posts_nothing(self, pfeed, slack, commits, sleeps):
         commits[:] = [commit(101)]
+        self.push(pfeed, 1, 2, head=101)
+        assert slack.replies == []
+        assert sleeps == []
+
+    def test_a_lagging_commit_list_is_retried(self, pfeed, slack, commits, sleeps, monkeypatch):
+        def catch_up(seconds):
+            sleeps.append(seconds)
+            commits.append(commit(2))
+
+        monkeypatch.setattr(pfeed, "sleep", catch_up)
         self.push(pfeed, 1, 2)
+        assert sleeps == [pr_feed.POLL_SECONDS]
+        assert slack.replies[0]["text"].startswith("🔨 1 new commit")
+
+    def test_a_commit_list_that_never_catches_up_fails_the_run(self, pfeed, slack, sleeps):
+        with pytest.raises(pr_feed.CommitListLagError):
+            self.push(pfeed, 1, 2)
+        assert len(sleeps) == pr_feed.COMMIT_POLLS - 1
         assert slack.replies == []
 
     def test_draft_pushes_are_never_listed(self, pfeed, slack, commits, api):
@@ -884,17 +947,48 @@ class TestPushes:
         assert text.startswith("🔨 1 new commit") and "|sha0002>" not in text
         assert [r["text"][0] for r in slack.replies] == ["📝", "🟢", "🔨"]
 
-    def test_ready_reply_landing_after_a_push_does_not_relist(self, pfeed, slack, commits):
-        commits += [commit(2), commit(3), commit(4)]
-        self.push(pfeed, 1, 3)
-        # A "ready again" run raced the push run and posted later with an older head.
-        meta = slack_notify.reply_metadata(REPO, 7, f"state:open:{sha(2)}", sha(2))
-        slack.post(CHANNEL, "🟢 ready for review again (alice)", slack.parents[0]["ts"], meta)
-        self.push(pfeed, 3, 4)
+    def test_push_racing_the_ready_run_waits_for_it(self, pfeed, slack, commits, sleeps):
+        target(pfeed, "converted_to_draft", pr_at(1, draft=True))
+        commits += [commit(2), commit(3)]
+
+        def ready_run_finishes(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) == 2:
+                target(pfeed, "ready_for_review", pr_at(2))
+
+        pfeed.sleep = ready_run_finishes
+        # Pushed right after "Ready for review": the payload is no longer a draft.
+        self.push(pfeed, 2, 3)
+        assert len(sleeps) == 2
+        text = slack.replies[-1]["text"]
+        assert text.startswith("🔨 1 new commit") and "|sha0002>" not in text
+
+    def test_push_then_draft_conversion_is_still_posted(self, pfeed, slack, commits, api, sleeps):
+        commits.append(commit(2))
+        # The conversion's run finished before the push run read the thread.
+        target(pfeed, "converted_to_draft", pr_at(1, draft=True))
+        api.pr["draft"] = True
+        self.push(pfeed, 1, 2)
+        assert sleeps == []
         assert slack.replies[-1]["text"].startswith("🔨 1 new commit")
 
-    def test_parents_posted_before_heads_were_recorded_use_the_event(self, slack, api, commits):
-        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+    def test_ready_reply_is_posted_before_the_parent_turns_open(self, pfeed, slack):
+        target(pfeed, "converted_to_draft", pr_at(1, draft=True))
+        seen = []
+        update = slack.update
+
+        def spy(channel, ts, text, metadata=None):
+            seen.append(len(slack.replies))
+            update(channel, ts, text, metadata)
+
+        slack.update = spy
+        target(pfeed, "ready_for_review", pr_at(1))
+        assert seen == [2]
+
+    def test_parents_posted_before_heads_were_recorded_use_the_event(
+        self, slack, api, commits, sleeps
+    ):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api, sleep=sleeps.append)
         slack.post(
             CHANNEL, "🟢 old parent", metadata=slack_notify.pr_metadata(REPO, 7, "pr", "open")
         )
@@ -911,21 +1005,29 @@ class TestPushes:
 
     def test_over_the_api_limit_links_instead_of_listing(self, pfeed, slack, commits, api):
         commits += [commit(n) for n in range(2, 262)]
-        self.push(pfeed, 1, 261)
+        self.push(pfeed, 260, 261)
         assert slack.replies[0]["text"] == (
-            f"🔨 new commits by alice · <{PR_URL}/files/{sha(1)}..{sha(261)}|view changes>"
+            f"🔨 new commits by alice · <{PR_URL}/files/{sha(260)}..{sha(261)}|view changes>"
             " (over 250 commits, not listed)"
         )
         assert sum(c.endswith("/commits") for c in api.calls) == 3
 
-    def test_no_parent_or_outsider_posts_nothing(self, slack, api, commits):
-        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+    def test_no_parent_waits_then_posts_nothing(self, slack, api, commits, sleeps):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api, sleep=sleeps.append)
         commits.append(commit(2))
         self.push(f, 1, 2)
+        assert slack.messages == []
+        assert len(sleeps) == pr_feed.PARENT_POLLS - 1
+
+    def test_outsider_pr_or_pusher_posts_nothing(self, pfeed, slack, commits, api):
+        commits.append(commit(2))
         pr = outsider_pr()
         pr["head"]["sha"] = sha(2)
-        target(f, "synchronize", pr, before=sha(1), after=sha(2))
-        assert slack.messages == []
+        target(pfeed, "synchronize", pr, before=sha(1), after=sha(2))
+        self.push(pfeed, 1, 2, sender="mallory")
+        assert slack.replies == []
+        self.push(pfeed, 1, 2)
+        assert len(slack.replies) == 1
 
     def test_closed_pr_posts_nothing(self, pfeed, slack, commits):
         target(pfeed, "closed", pr_at(1, state="closed"))
@@ -940,10 +1042,24 @@ class TestPushes:
         assert slack.messages == []
 
         target(f, "opened", TestFluxBumps.bump())
-        files[0]["patch"] = files[0]["patch"].replace("1793041510-85d3415", "1793100000-abcdef0")
+        # A new head drops the old head's CI verdict.
+        slack.messages[0]["text"] += " · CI failed ❌"
         target(f, "synchronize", TestFluxBumps.bump(), before="a", after="b")
+        assert not slack.messages[0]["text"].endswith("CI failed ❌")
+        assert slack.messages[0]["metadata"]["event_payload"]["head"] == "b"
+
+        # A re-delivery for the head already shown keeps CI's verdict on it.
+        slack.messages[0]["text"] += " · CI failed ❌"
+        target(f, "synchronize", TestFluxBumps.bump(), before="a", after="b")
+        assert slack.messages[0]["text"].endswith("CI failed ❌")
+
+        files[0]["patch"] = files[0]["patch"].replace("1793041510-85d3415", "1793100000-abcdef0")
+        target(f, "synchronize", TestFluxBumps.bump(), before="b", after="c")
         assert len(slack.messages) == 1
-        assert "→ `1793100000-abcdef0`" in slack.messages[0]["text"]
+        assert slack.messages[0]["text"].endswith(
+            f"→ `1793100000-abcdef0` · <https://github.com/{REPO}/pull/152|#152>"
+        )
+        assert slack.messages[0]["metadata"]["event_payload"]["head"] == "c"
 
     def test_github_failure_fails_the_run(self, monkeypatch, tmp_path):
         event = tmp_path / "event.json"
@@ -960,6 +1076,12 @@ class TestPushes:
             raise urllib.error.HTTPError("https://api.github.com/x", 502, "Bad Gateway", {}, None)
 
         monkeypatch.setattr(pr_feed.Feed, "handle", boom)
+        assert pr_feed.main() == 1
+
+        def lagging(self, event_name, event):
+            raise pr_feed.CommitListLagError("sha0002 is #7's head but not in its commit list yet")
+
+        monkeypatch.setattr(pr_feed.Feed, "handle", lagging)
         assert pr_feed.main() == 1
 
 

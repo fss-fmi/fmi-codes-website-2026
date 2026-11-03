@@ -277,8 +277,8 @@ that is ready for review to `#pr-updates`:
 - **Drafts post nothing** until they are marked ready; while a PR is back in draft, reviews
   and pushes are not posted, and commits pushed while it was a draft are not listed later.
 - **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
-  tags, re-rendered when Flux pushes newer tags to the open PR and edited to `merged ✅`
-  when it auto-merges. No thread.
+  tags, re-rendered when Flux pushes newer tags to the open PR (which drops a `CI failed`
+  that belonged to the old head) and edited to `merged ✅` when it auto-merges. No thread.
 - **CI results** (✅ passed, ❌ failed, ✅ green again) in the thread come from
   [Slack CI alerts](#slack-ci-alerts), not from this workflow.
 - **Only people who can push to the repo are posted.** The repo is public and
@@ -288,16 +288,24 @@ that is ready for review to `#pr-updates`:
   author has `write` or `admin`. `author_association` is not used: `MEMBER` and
   `COLLABORATOR` include read-only access. Bots count only on PRs from this
   repo's own branches (Flux bumps, migration PRs). If the check fails, nothing is posted. The
-  same check applies to each reviewer and commenter.
+  same check applies to each reviewer, commenter and pusher. Commit subjects are posted on the
+  pusher's word, the way a title is posted on the author's.
 - Reviews on PRs from forks are not posted: GitHub gives those runs no secrets.
 
 The parent is found again through Slack message metadata, so nothing else stores state. Two
 runs for the same PR can both find no parent and both post one; each run checks again right
-after posting and the newer message deletes itself, so exactly one survives. Push runs for
-one PR share a concurrency group, so their replies post in order. GitHub keeps only the
-newest pending run in a group and cancels the others, so every push reply records the head
-it reached (the parent records the head it was posted at, a "ready"/"reopened" reply the
-head at that moment) and the next push lists every commit after it. The workflow
+after posting and the newer message deletes itself, so exactly one survives.
+
+Push runs for one PR share a concurrency group, so their replies post in order. GitHub keeps
+only the newest pending run in a group and cancels the others, so every push reply records
+the head it reached and the next push lists every commit after it, by ancestry rather than
+list position (GitHub sorts PR commits by date). The parent records the head it was posted
+at; a "ready"/"reopened" reply records the head at that moment and is posted before the
+parent turns open. Those runs are outside the push group, so a push run waits up to a minute
+for an open parent, which keeps a push right after "Ready for review" from listing the
+draft's commits. If the commit list has not caught up with the pushed head after about 10
+seconds the run fails; re-run it to post the push. Replies are keyed by both ends of the
+push, so re-runs and duplicate deliveries post nothing. The workflow
 never checks out PR code (it runs on `pull_request_target` and `issue_comment`, which have
 secrets even for forks), and its `actions/checkout` is pinned to a commit SHA. GitHub always
 runs the default branch's copy of these workflows, so a change can only be tested after it

@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import sys
+import time
 from datetime import datetime
 
 import slack_notify
@@ -34,9 +35,18 @@ CREATES_PARENT = {"opened", "ready_for_review", "reopened"}
 TRANSITIONS = {"ready_for_review", "converted_to_draft", "closed", "reopened"}
 STATUS_EMOJI = {"open": "🟢", "draft": "📝", "merged": "🟣", "closed": "🔴"}
 COMMITS_SHOWN = 5
-# GET /pulls/{n}/commits returns at most this many, oldest first.
+# GET /pulls/{n}/commits returns at most this many, sorted by date.
 MAX_PR_COMMITS = 250
 SUBJECT_CHARS = 72
+POLL_SECONDS = 5
+# How long a push run waits for the run that posts the parent or marks it ready.
+PARENT_POLLS = 12
+# How long a push run waits for the commit list to catch up with the pushed head.
+COMMIT_POLLS = 3
+
+
+class CommitListLagError(Exception):
+    """The pushed head is still the PR's head but missing from its commit list."""
 
 
 def epoch(iso: str) -> float:
@@ -45,6 +55,18 @@ def epoch(iso: str) -> float:
 
 def meta_payload(message: dict) -> dict:
     return (message.get("metadata") or {}).get("event_payload") or {}
+
+
+def ancestors(sha: str, by_sha: dict[str, dict]) -> set[str]:
+    """*sha* and its ancestors among the PR's own commits (the base branch's are absent)."""
+    seen, stack = set(), [sha]
+    while stack:
+        current = stack.pop()
+        if current in seen or current not in by_sha:
+            continue
+        seen.add(current)
+        stack.extend(p["sha"] for p in by_sha[current].get("parents") or [])
+    return seen
 
 
 def is_flux_bump(pr: dict, repo: str) -> bool:
@@ -112,7 +134,7 @@ def push_text(pr: dict, pusher: str, commits: list[dict], base: str, head: str) 
 
 
 def force_push_text(pr: dict, pusher: str, old: str, new: str) -> str:
-    compare = f"{pr['html_url'].rsplit('/pull/', 1)[0]}/compare/{old}..{new}"
+    compare = f"{pr['base']['repo']['html_url']}/compare/{old}..{new}"
     return f"⚠️ force-pushed by {escape(pusher)} · {link(compare, f'{old[:7]} → {new[:7]}')}"
 
 
@@ -162,11 +184,12 @@ def flux_suffix(pr: dict) -> str:
 
 
 class Feed:
-    def __init__(self, slack, channel: str, repo: str, github=None):
+    def __init__(self, slack, channel: str, repo: str, github=None, sleep=time.sleep):
         self.slack = slack
         self.channel = channel
         self.repo = repo
         self.github = github
+        self.sleep = sleep
 
     def oldest(self, pr: dict) -> float:
         # The parent never predates the PR; the margin absorbs clock skew between GitHub and Slack.
@@ -265,8 +288,6 @@ class Feed:
             return
         old = meta_payload(parent).get("state")
         renamed = action == "edited" and {"title", "base"} & set(event.get("changes") or {})
-        if old != new or renamed:
-            self._upsert_parent(pr, parent)
         # Replies only on a real state change, so re-runs and duplicate events stay silent.
         if action in TRANSITIONS and old != new:
             metadata = None
@@ -275,7 +296,10 @@ class Feed:
                 # The next push lists commits from here on, not those pushed while
                 # the PR was a draft or closed.
                 metadata = reply_metadata(self.repo, pr["number"], f"state:open:{head}", head)
+            # Before the parent turns open: a waiting push run must find this head.
             self._reply(parent, transition_text(event, pr), metadata)
+        if old != new or renamed:
+            self._upsert_parent(pr, parent)
 
     def _handle_push(self, event: dict, pr: dict) -> None:
         """One reply per push listing its new commits, or saying it was a force push.
@@ -287,44 +311,96 @@ class Feed:
         """
         if pr.get("draft") or pr["state"] != "open" or not self.github:
             return
-        parent = self.find(pr)
-        if not parent or meta_payload(parent).get("kind") != "pr":
+        sender = event["sender"]
+        if not self.can_push(sender, pr):
+            logger.info("Push to #%s by %s, who can't push here", pr["number"], sender["login"])
             return
-        after = event["after"]
-        key = f"push:{after}"
+        parent = self._open_parent(pr)
+        if not parent:
+            return
+        before, after = event["before"], event["after"]
+        # Both ends, so a later push back to an earlier head is still reported.
+        key = f"push:{before}..{after}"
         replies = self.slack.find_replies(
             self.channel, parent["ts"], REPLY_EVENT_TYPE, repo=self.repo, pr_number=pr["number"]
         )
+        # One history read serves the duplicate check and the recorded heads.
         if any(meta_payload(r).get("key") == key for r in replies):
             return
-        recorded = [meta_payload(parent).get("head")]
-        recorded += [meta_payload(r).get("head") for r in replies]
-        recorded = [h for h in recorded if h] or [event["before"]]
+        heads = [meta_payload(m).get("head") for m in (parent, *replies)]
+        heads = [h for h in heads if h]
+        # Parents posted before heads were recorded fall back to the event.
+        last = heads[-1] if heads else before
 
-        commits = self.pr_commits(pr)
-        shas = [c["sha"] for c in commits]
-        pusher = event["sender"]["login"]
+        commits = self._commits_with(pr, after)
+        if commits is None:
+            return
+        by_sha = {c["sha"]: c for c in commits}
+        pusher = sender["login"]
         metadata = reply_metadata(self.repo, pr["number"], key, after)
-        if len(commits) >= MAX_PR_COMMITS and after not in shas:
+        if after not in by_sha:
             text = (
                 f"🔨 new commits by {escape(pusher)}"
-                f" · {link(changes_url(pr, recorded[-1], after), 'view changes')}"
+                f" · {link(changes_url(pr, before, after), 'view changes')}"
                 f" (over {MAX_PR_COMMITS} commits, not listed)"
             )
             self._reply(parent, text, metadata)
             return
-        if after not in shas:
-            logger.info("%s is no longer on #%s; a later push run covers it", after, pr["number"])
+        if last not in by_sha:
+            self._reply(parent, force_push_text(pr, pusher, last, after), metadata)
             return
-        if recorded[-1] not in shas:
-            self._reply(parent, force_push_text(pr, pusher, recorded[-1], after), metadata)
-            return
-        # The furthest recorded head, not the newest reply: a "ready again" reply can
-        # land after a push reply that already went past it.
-        base = max((h for h in recorded if h in shas), key=shas.index)
-        new = commits[shas.index(base) + 1 : shas.index(after) + 1]
+        # By ancestry, not list position: GitHub sorts PR commits by date, so a
+        # cherry-pick or merged branch can sort before commits it comes after.
+        new_shas = ancestors(after, by_sha) - ancestors(last, by_sha)
+        new = [c for c in commits if c["sha"] in new_shas]
         if new:
-            self._reply(parent, push_text(pr, pusher, new, base, after), metadata)
+            self._reply(parent, push_text(pr, pusher, new, last, after), metadata)
+
+    def _open_parent(self, pr: dict):
+        """The parent once it exists and is open, or None.
+
+        The run that posts the parent or marks it ready is not in the push
+        concurrency group, so a push right after "Ready for review" can start first.
+        Going ahead without it would list commits pushed while the PR was a draft.
+        """
+        for attempt in range(PARENT_POLLS):
+            parent = self.find(pr)
+            payload = meta_payload(parent) if parent else {}
+            if payload.get("kind") == "flux":
+                return None
+            if payload.get("state") == "open":
+                return parent
+            if (
+                parent
+                and pr_state(self.github(f"/repos/{self.repo}/pulls/{pr['number']}")) != "open"
+            ):
+                # The event says this push landed while the PR was open, so it left
+                # "open" afterwards; nothing is pending that would record a head.
+                return parent
+            if attempt < PARENT_POLLS - 1:
+                self.sleep(POLL_SECONDS)
+        logger.info("#%s has no open parent; push not posted", pr["number"])
+        return None
+
+    def _commits_with(self, pr: dict, after: str):
+        """The PR's commits, once they include *after*; None if the PR moved past it."""
+        for attempt in range(COMMIT_POLLS):
+            commits = self.pr_commits(pr)
+            if any(c["sha"] == after for c in commits):
+                return commits
+            head = self.github(f"/repos/{self.repo}/pulls/{pr['number']}")["head"]["sha"]
+            if head != after:
+                logger.info(
+                    "%s is no longer #%s's head; a later run covers it", after, pr["number"]
+                )
+                return None
+            if len(commits) >= MAX_PR_COMMITS:
+                return commits
+            if attempt < COMMIT_POLLS - 1:
+                self.sleep(POLL_SECONDS)
+        raise CommitListLagError(
+            f"{after} is #{pr['number']}'s head but not in its commit list yet"
+        )
 
     def pr_commits(self, pr: dict) -> list[dict]:
         commits = []
@@ -384,14 +460,24 @@ class Feed:
         ):
             return
         parent = self.find(pr)
-        # synchronize: Flux pushed newer tags to the open bump PR; re-render them.
         if event["action"] in ("closed", "synchronize") and not parent:
             return
+        head = pr["head"].get("sha")
+        if event["action"] == "synchronize":
+            # Flux pushed newer tags to the open bump PR: re-render them, which also
+            # drops a "CI failed" that belonged to the old head. A re-delivery for
+            # the head already shown must keep it.
+            if meta_payload(parent).get("head") == event["after"]:
+                return
+            head = event["after"]
+        elif parent:
+            head = meta_payload(parent).get("head")
         text = flux_text(pr, self.bumps(pr), flux_suffix(pr))
         if parent:
-            self.slack.update(self.channel, parent["ts"], text, metadata=self._meta(pr, "flux"))
+            meta = self._meta(pr, "flux", head)
+            self.slack.update(self.channel, parent["ts"], text, metadata=meta)
         else:
-            self._post_parent(pr, text, "flux")
+            self._post_parent(pr, text, "flux", head)
 
     def bumps(self, pr: dict) -> list[tuple[str, str, str]]:
         if not self.github:
@@ -422,6 +508,9 @@ def main() -> int:
         return 1
     except OSError as e:
         logger.error("GitHub call failed: %s", e)
+        return 1
+    except CommitListLagError as e:
+        logger.error("%s; re-run this job to post the push", e)
         return 1
     return 0
 
