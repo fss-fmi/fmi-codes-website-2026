@@ -252,9 +252,11 @@ that is ready for review to `#pr-updates`:
 
 - **One parent message per PR**: status, title + link, number, author, base ← head. It is
   edited in place when the PR is merged, closed, reopened, turned back into a draft or renamed.
-- **One-line replies in its thread** for approvals, change requests, draft/ready changes,
-  merge, close and reopen. A reply is only posted when the PR's state really changes, so a
-  re-run never duplicates one.
+- **One-line replies in its thread** for approvals, change requests, review comments,
+  conversation comments (`💬 <comment> by X`), draft/ready changes, merge, close and reopen.
+  Bots' reviews and comments are skipped. State replies only post when the PR's state really
+  changes, and review and comment replies carry the review or comment id, so a re-run never
+  duplicates one.
 - **Drafts post nothing** until they are marked ready; while a PR is back in draft, reviews
   are not posted.
 - **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
@@ -266,14 +268,25 @@ that is ready for review to `#pr-updates`:
   could make the bot post text of their choosing (titles can carry links Slack makes
   clickable). A PR or review counts when its author is `OWNER`, `MEMBER` or `COLLABORATOR`, or
   the repo permission API says `write` or `admin` (the fallback covers members whose org
-  membership is private, who may not show as `MEMBER`). Bots count only on PRs from this repo's own branches (Flux bumps,
-  migration PRs). If the check fails, nothing is posted.
+  membership is private, who may not show as `MEMBER`). Bots count only on PRs from this
+  repo's own branches (Flux bumps, migration PRs). If the check fails, nothing is posted. The
+  same check applies to each reviewer and commenter.
 - Reviews on PRs from forks are not posted: GitHub gives those runs no secrets.
 
-The parent is found again through Slack message metadata, so nothing else stores state. The
-workflow never checks out PR code (it runs on `pull_request_target`, which has secrets even
-for forks). GitHub always runs the default branch's copy of a `pull_request_target`
-workflow, so a change to it can only be tested after it merges.
+The parent is found again through Slack message metadata, so nothing else stores state. Two
+runs for the same PR can both find no parent and both post one; each run checks again right
+after posting and the newer message deletes itself, so exactly one survives. The workflow
+never checks out PR code (it runs on `pull_request_target` and `issue_comment`, which have
+secrets even for forks), and its `actions/checkout` is pinned to a commit SHA. GitHub always
+runs the default branch's copy of these workflows, so a change can only be tested after it
+merges.
+
+Hardening decisions (2026-11-03): **Settings → Actions → Fork pull request workflows** requires
+approval for all outside contributors (`all_external_contributors`), so no fork PR's
+workflows run until someone with write access approves them. `SLACK_BOT_TOKEN` stays a
+repo-level secret on purpose: any workflow a writer pushes can read it, and `main` needs no
+approving review. Moving it to a `main`-only environment with CODEOWNERS review on
+`.github/` is tracked in #163; pinning every action by SHA is tracked in #164.
 
 It skips quietly until it is configured. One-time setup, in the Slack app that already holds
 the migration and bug-report webhooks (a workspace admin may have to approve new scopes):
@@ -319,13 +332,20 @@ listed in its `workflow_run.workflows` by its exact `name:`.
   [PR feed](#slack-pr-feed); runs with no PR count only from this repo's own branches. So a
   fork PR can't post its log output, or a workflow it adds under a watched name
   (`workflow_run` matches by name).
-- Each alert carries Slack message metadata (run id + attempt), so a duplicate event never
-  posts the same alert twice. A re-run that fails again is a new attempt and a new alert.
+- Each alert, and each thread reply, carries Slack message metadata (run id + attempt), so a
+  duplicate event never posts twice; duplicate deliveries of one attempt also queue behind
+  each other (`concurrency` per run attempt). A re-run that fails again is a new attempt and
+  a new alert.
 
 The log tail is taken from the failed step only: the job stops there, so its error is the
 last `##[error]` line at or before that step finished. Earlier `##[error]` lines can come
 from `continue-on-error` steps (like the advisory `ruff format` check) and are skipped. The
-repo is public, so the excerpt stays short; GitHub masks registered secrets in logs.
+repo is public, so the excerpt stays short. GitHub masks registered secrets in logs, but not
+values derived from them or credentials a step prints that were never registered, so the
+excerpt is also redacted: token shapes (Slack, GitHub, AWS, Google, OpenAI, GitLab, Tailscale,
+Docker, npm, age keys, JWTs, Slack and Discord webhook URLs), credentials in URLs,
+`Authorization` values, `password=` / `api_key:` style assignments, `*_PASSWORD=` / `*_TOKEN=`
+style variables, and whole private-key blocks all become `[redacted]`.
 
 Like the PR feed it never runs PR code, and it only runs once it is on `main`. Setup, on top
 of the [Slack PR feed](#slack-pr-feed) token:

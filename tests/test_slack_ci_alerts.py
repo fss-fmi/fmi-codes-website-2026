@@ -127,6 +127,18 @@ class FakeSlack:
             channel, slack_notify.PR_EVENT_TYPE, oldest, repo=repo, pr_number=pr_number
         )
 
+    def find_reply(self, channel, thread_ts, event_type, **match):
+        for m in self.messages:
+            meta = m["metadata"] or {}
+            payload = meta.get("event_payload") or {}
+            if (
+                m["thread_ts"] == thread_ts
+                and meta.get("event_type") == event_type
+                and all(str(payload.get(k)) == str(v) for k, v in match.items())
+            ):
+                return m
+        return None
+
     def in_channel(self, channel):
         return [m for m in self.messages if m["channel"] == channel and m["thread_ts"] is None]
 
@@ -561,3 +573,83 @@ class TestCanPush:
         bot = {"login": "fmi-codes-bot[bot]", "type": "Bot"}
         assert github_api.can_push(None, REPO, bot, "CONTRIBUTOR", REPO)
         assert not github_api.can_push(None, REPO, bot, "CONTRIBUTOR", "mallory/fork")
+
+
+# Fake credentials are assembled from pieces so this file itself never looks like a leak.
+FAKE = {
+    "slack": "xox" + "b-" + "1234567890-abcdefghijkl",
+    "github": "gh" + "p_" + "A" * 36,
+    "aws": "AK" + "IA" + "ABCDEFGHIJKLMNOP",
+    "jwt": "eyJ" + "a" * 12 + ".eyJ" + "b" * 12 + "." + "c" * 12,
+    "webhook": "https://hooks.slack" + ".com/services/T000/B000/" + "x" * 24,
+}
+
+
+class TestRedaction:
+    @pytest.mark.parametrize("kind", sorted(FAKE))
+    def test_token_shapes(self, kind):
+        out = ci_alerts.redact(f"error: auth failed with {FAKE[kind]} (401)")
+        assert FAKE[kind] not in out
+        assert "[redacted]" in out
+        assert out.startswith("error: auth failed with ")
+
+    @pytest.mark.parametrize(
+        ("line", "kept"),
+        [
+            (
+                "git clone https://deploy:" + "s3cr3tvalue@example.com/x/y",
+                "https://deploy:[redacted]@example.com",
+            ),
+            ("Authorization: Bearer " + "abcdefghijklmnop1234", "Authorization: Bearer [redacted]"),
+            ("password=" + "hunter2hunter2", "password=[redacted]"),
+            ("api_key: " + "'abcdef123456'", "api_key: [redacted]"),
+            ("DB_PASSWORD=" + "correcthorse", "DB_PASSWORD=[redacted]"),
+        ],
+    )
+    def test_credentials_in_context(self, line, kept):
+        assert kept in ci_alerts.redact(line)
+
+    def test_ordinary_errors_are_untouched(self):
+        line = "FAILED tests/test_auth.py::test_token_expiry - AssertionError: token expired"
+        assert ci_alerts.redact(line) == line
+
+    def test_private_key_blocks_are_dropped(self):
+        log = "\n".join(
+            [
+                "2026-10-12T23:45:30.0Z ##[group]Run deploy",
+                "2026-10-12T23:45:30.1Z ##[endgroup]",
+                "2026-10-12T23:45:31.0Z -----BEGIN " + "OPENSSH PRIVATE KEY-----",
+                "2026-10-12T23:45:31.1Z b3BlbnNzaC1rZXktdjEAAAAABG5vbmU",
+                "2026-10-12T23:45:31.2Z -----END " + "OPENSSH PRIVATE KEY-----",
+                "2026-10-12T23:45:32.0Z Permission denied (publickey).",
+                "2026-10-12T23:45:33.0Z ##[error]Process completed with exit code 255.",
+            ]
+        )
+        tail = ci_alerts.log_tail(log)
+        assert tail.splitlines() == [
+            "[redacted private key]",
+            "Permission denied (publickey).",
+            "Error: Process completed with exit code 255.",
+        ]
+
+    def test_alert_never_carries_a_token(self, slack):
+        log = FAILED_LOG.replace("FAILED tests", f"token {FAKE['github']} FAILED tests")
+        alerts(slack, FakeGitHub(log=log)).handle(make_run())
+        assert FAKE["github"] not in slack.in_channel(ACTIONS)[0]["text"]
+
+
+class TestThreadIdempotency:
+    def test_success_reply_posts_once_per_run_attempt(self, slack):
+        with_parent(slack)
+        gh = FakeGitHub(previous=[prior("success")], attempts={1: "success"})
+        for _ in range(3):
+            alerts(slack, gh).handle(make_run(conclusion="success"))
+        assert len(slack.replies()) == 1
+        alerts(slack, gh).handle(make_run(conclusion="success", attempt=2))
+        assert len(slack.replies()) == 2
+
+    def test_failure_reply_has_its_own_key(self, slack):
+        with_parent(slack)
+        alerts(slack, FakeGitHub()).handle(make_run())
+        [reply] = slack.replies()
+        assert reply["metadata"]["event_payload"]["key"] == "run:900:1:failure"

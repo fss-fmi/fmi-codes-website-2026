@@ -20,6 +20,7 @@ logger = logging.getLogger("slack_notify")
 API = "https://slack.com/api/"
 PR_EVENT_TYPE = "github_pr"
 ALERT_EVENT_TYPE = "github_ci_alert"
+REPLY_EVENT_TYPE = "github_pr_reply"
 # conversations.history pages scanned before giving up; 200 messages per page.
 MAX_HISTORY_PAGES = 10
 MAX_RETRIES = 3
@@ -60,6 +61,21 @@ def alert_metadata(repo: str, run_id: int, run_attempt: int, kind: str) -> dict:
     }
 
 
+def reply_metadata(repo: str, pr_number: int, key: str) -> dict:
+    """*key* names what the thread reply reports (a review, a comment, a run result)."""
+    return {
+        "event_type": REPLY_EVENT_TYPE,
+        "event_payload": {"repo": repo, "pr_number": pr_number, "key": key},
+    }
+
+
+def _retry_after(value) -> int:
+    try:
+        return max(1, min(int(value), MAX_RETRY_AFTER))
+    except (TypeError, ValueError):
+        return 1
+
+
 def _form_value(value) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -95,7 +111,7 @@ class Slack:
                     data = json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as e:
                 if e.code == 429 and attempt < MAX_RETRIES:
-                    wait = min(int(e.headers.get("Retry-After", "1")), MAX_RETRY_AFTER)
+                    wait = _retry_after(e.headers.get("Retry-After"))
                     logger.info("Slack rate limit on %s, retrying in %ss", method, wait)
                     self._sleep(wait)
                     continue
@@ -123,6 +139,9 @@ class Slack:
     def update(self, channel: str, ts: str, text: str, metadata=None) -> None:
         self.call("chat.update", channel=channel, ts=ts, text=text, metadata=metadata)
 
+    def delete(self, channel: str, ts: str) -> None:
+        self.call("chat.delete", channel=channel, ts=ts)
+
     def permalink(self, channel: str, ts: str) -> str:
         return self.call("chat.getPermalink", channel=channel, message_ts=ts)["permalink"]
 
@@ -135,15 +154,46 @@ class Slack:
 
     def find_message(self, channel: str, event_type: str, oldest: float = 0, **match):
         """The newest channel message whose metadata has *event_type* and every *match* value."""
+        return next(
+            self._matches("conversations.history", channel, event_type, oldest, match), None
+        )
+
+    def find_reply(self, channel: str, thread_ts: str, event_type: str, **match):
+        """The reply in *thread_ts* whose metadata has *event_type* and every *match* value."""
+        return next(
+            self._matches("conversations.replies", channel, event_type, 0, match, ts=thread_ts),
+            None,
+        )
+
+    def post_unique(self, channel: str, text: str, metadata: dict, oldest: float, **match) -> str:
+        """Post a top-level message that must exist once, and return the surviving ts.
+
+        Find-then-post is not atomic: two runs for the same event can both find
+        nothing and both post. Each run checks again afterwards and the newer
+        message deletes itself, so exactly one survives without dropping events.
+        """
+        ts = self.post(channel, text, metadata=metadata)
+        found = list(
+            self._matches("conversations.history", channel, metadata["event_type"], oldest, match)
+        )
+        first = min((m["ts"] for m in found), key=float, default=ts)
+        if float(first) < float(ts):
+            logger.info("Another run posted this message first; deleting the duplicate")
+            self.delete(channel, ts)
+            return first
+        return ts
+
+    def _matches(self, method: str, channel: str, event_type: str, oldest: float, match, **extra):
         cursor = None
         for _ in range(MAX_HISTORY_PAGES):
             data = self.call(
-                "conversations.history",
+                method,
                 channel=channel,
                 oldest=f"{oldest:.6f}",
                 limit=200,
                 include_all_metadata=True,
                 cursor=cursor,
+                **extra,
             )
             for message in data.get("messages", []):
                 meta = message.get("metadata") or {}
@@ -151,9 +201,8 @@ class Slack:
                 if meta.get("event_type") == event_type and all(
                     str(payload.get(k)) == str(v) for k, v in match.items()
                 ):
-                    return message
+                    yield message
             cursor = (data.get("response_metadata") or {}).get("next_cursor")
             if not cursor:
-                return None
-        logger.warning("No %s message %s in %d history pages", event_type, match, MAX_HISTORY_PAGES)
-        return None
+                return
+        logger.warning("Stopped after %d %s pages looking for %s", MAX_HISTORY_PAGES, method, match)

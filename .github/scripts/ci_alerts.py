@@ -22,7 +22,15 @@ import sys
 import pr_feed
 import slack_notify
 from github_api import GitHub, can_push
-from slack_notify import ALERT_EVENT_TYPE, alert_metadata, escape, link, pr_metadata
+from slack_notify import (
+    ALERT_EVENT_TYPE,
+    REPLY_EVENT_TYPE,
+    alert_metadata,
+    escape,
+    link,
+    pr_metadata,
+    reply_metadata,
+)
 
 logger = logging.getLogger("ci_alerts")
 
@@ -36,9 +44,39 @@ ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 FRAME_RE = re.compile(r'^\s+(File ".*", line \d+|at \S)')
 CARETS_RE = re.compile(r"^\s*[\^~]+\s*$")
 
+# GitHub masks registered secrets in logs, but not values derived from them or
+# credentials a step prints that were never registered.
+REDACTED = "[redacted]"
+TOKEN_RE = re.compile(
+    r"xox[abeprs]-[A-Za-z0-9-]{10,}|xapp-[A-Za-z0-9-]{10,}"
+    r"|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
+    r"|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9_-]{20,}|glpat-[A-Za-z0-9_-]{20,}"
+    r"|tskey-[A-Za-z0-9-]{10,}|dckr_pat_[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{36}"
+    r"|AGE-SECRET-KEY-1[0-9A-Z]+"
+    r"|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+"
+    r"|hooks\.slack\.com/\S+|discord(?:app)?\.com/api/webhooks/\S+"
+)
+URL_CREDS_RE = re.compile(r"(://[^/\s:@]+:)[^/\s@]+@")
+AUTH_HEADER_RE = re.compile(r"(?i)\b(bearer|basic|token)(\s+)[A-Za-z0-9._~+/=-]{12,}")
+ASSIGNMENT_RE = re.compile(
+    r"(?i)\b((?:password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|private[_-]?key)"
+    r"[\"']?\s*[:=]\s*)[\"']?[^\s\"']{6,}[\"']?"
+)
+ENV_ASSIGNMENT_RE = re.compile(
+    r"\b([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY)[A-Z0-9_]*\s*[:=]\s*)\S{6,}"
+)
+
+
+def redact(text: str) -> str:
+    text = TOKEN_RE.sub(REDACTED, text)
+    text = URL_CREDS_RE.sub(rf"\g<1>{REDACTED}@", text)
+    text = AUTH_HEADER_RE.sub(rf"\g<1>\g<2>{REDACTED}", text)
+    text = ASSIGNMENT_RE.sub(rf"\g<1>{REDACTED}", text)
+    return ENV_ASSIGNMENT_RE.sub(rf"\g<1>{REDACTED}", text)
+
 
 def log_tail(log: str, step_completed_at: str | None = None) -> str:
-    """The failed step's error, without timestamps, colours or stack frames.
+    """The failed step's error, without timestamps, colours, stack frames or credentials.
 
     The job stops at its failed step, so that step's error is the last ##[error]
     at or before the step's completion, ahead of the post-job cleanup. Earlier
@@ -67,7 +105,15 @@ def log_tail(log: str, step_completed_at: str | None = None) -> str:
 
     kept = []
     skip_code = False
+    in_key = False
     for text in section:
+        if in_key:
+            in_key = "-----END" not in text
+            continue
+        if "-----BEGIN" in text and "PRIVATE KEY" in text:
+            kept.append("[redacted private key]")
+            in_key = "-----END" not in text.split("-----BEGIN", 1)[1]
+            continue
         if skip_code and text.startswith("    "):
             skip_code = False
             continue
@@ -83,7 +129,7 @@ def log_tail(log: str, step_completed_at: str | None = None) -> str:
         text = re.sub(r"^##\[warning\]", "Warning: ", text)
         text = re.sub(r"^##\[\w+\]", "", text)
         if text.strip():
-            kept.append(text.replace("```", "'''"))
+            kept.append(redact(text).replace("```", "'''"))
 
     kept = kept[-TAIL_LINES:]
     while len(kept) > 1 and len("\n".join(kept)) > TAIL_CHARS:
@@ -168,6 +214,7 @@ class Alerts:
             pr,
             f"❌ {link(run['html_url'], run['name'])} failed · {link(alert, 'details')}",
             flux_suffix=f"CI failed ❌ ({link(alert, 'alert')})",
+            key=_run_key(run, "failure"),
         )
 
     def _failed_step(self, run: dict):
@@ -195,7 +242,12 @@ class Alerts:
 
     def _success(self, run: dict, pr) -> None:
         if not self._previous_failed(run):
-            self._pr_note(pr, f"✅ {link(run['html_url'], run['name'])} passed", flux_suffix=None)
+            self._pr_note(
+                pr,
+                f"✅ {link(run['html_url'], run['name'])} passed",
+                flux_suffix=None,
+                key=_run_key(run, "success"),
+            )
             return
         if self._already_posted(run, "recovery"):
             return
@@ -204,7 +256,12 @@ class Alerts:
             f"✅ {link(run['html_url'], run['name'])} is green again on {self.where(run, pr)}",
             metadata=alert_metadata(self.repo, run["id"], run["run_attempt"], "recovery"),
         )
-        self._pr_note(pr, f"✅ {link(run['html_url'], run['name'])} green again", flux_suffix="")
+        self._pr_note(
+            pr,
+            f"✅ {link(run['html_url'], run['name'])} green again",
+            flux_suffix="",
+            key=_run_key(run, "recovery"),
+        )
 
     def _previous_failed(self, run: dict) -> bool:
         """Did the last finished run of this workflow on this branch fail?"""
@@ -251,7 +308,7 @@ class Alerts:
             )
         )
 
-    def _pr_note(self, pr, text: str, flux_suffix: str | None) -> None:
+    def _pr_note(self, pr, text: str, flux_suffix: str | None, key: str) -> None:
         """A reply in the PR's thread; for a Flux bump, set its one-liner's suffix instead.
 
         flux_suffix None leaves a Flux one-liner untouched.
@@ -265,7 +322,14 @@ class Alerts:
             return
         kind = ((parent.get("metadata") or {}).get("event_payload") or {}).get("kind")
         if kind != "flux":
-            self.slack.post(self.pr_channel, text, thread_ts=parent["ts"])
+            match = {"repo": self.repo, "pr_number": pr["number"], "key": key}
+            if not self.slack.find_reply(self.pr_channel, parent["ts"], REPLY_EVENT_TYPE, **match):
+                self.slack.post(
+                    self.pr_channel,
+                    text,
+                    thread_ts=parent["ts"],
+                    metadata=reply_metadata(self.repo, pr["number"], key),
+                )
             return
         if flux_suffix is None:
             return
@@ -276,6 +340,10 @@ class Alerts:
             pr_feed.flux_text(pr, feed.bumps(pr), flux_suffix),
             metadata=pr_metadata(self.repo, pr["number"], "flux", pr_feed.pr_state(pr)),
         )
+
+
+def _run_key(run: dict, kind: str) -> str:
+    return f"run:{run['id']}:{run['run_attempt']}:{kind}"
 
 
 def alert_text(run: dict, where: str, job, step, tail: str) -> str:

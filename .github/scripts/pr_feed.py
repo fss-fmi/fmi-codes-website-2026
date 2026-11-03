@@ -1,8 +1,9 @@
 """Threaded PR feed for the #pr-updates Slack channel (issue #154).
 
-Run by .github/workflows/slack-pr-feed.yaml on pull_request_target and
-pull_request_review events. Reads the event from GITHUB_EVENT_PATH and only
-calls the Slack and GitHub APIs; it never checks out or runs PR code.
+Run by .github/workflows/slack-pr-feed.yaml on pull_request_target,
+pull_request_review and issue_comment events. Reads the event from
+GITHUB_EVENT_PATH and only calls the Slack and GitHub APIs; it never checks out
+or runs PR code.
 
 One parent message per ready PR, edited in place as its state changes; every
 later event is a one-line reply in its thread. Draft PRs post nothing until they
@@ -18,7 +19,7 @@ from datetime import datetime
 
 import slack_notify
 from github_api import GitHub, can_push
-from slack_notify import escape, link, pr_metadata
+from slack_notify import REPLY_EVENT_TYPE, escape, link, pr_metadata, reply_metadata
 
 logger = logging.getLogger("pr_feed")
 
@@ -128,10 +129,22 @@ class Feed:
         self.repo = repo
         self.github = github
 
-    def _find(self, pr: dict):
+    def _oldest(self, pr: dict) -> float:
         # The parent never predates the PR; the margin absorbs clock skew between GitHub and Slack.
-        oldest = epoch(pr["created_at"]) - 60
-        return self.slack.find_pr_message(self.channel, self.repo, pr["number"], oldest)
+        return epoch(pr["created_at"]) - 60
+
+    def _find(self, pr: dict):
+        return self.slack.find_pr_message(self.channel, self.repo, pr["number"], self._oldest(pr))
+
+    def _post_parent(self, pr: dict, text: str, kind: str) -> None:
+        self.slack.post_unique(
+            self.channel,
+            text,
+            self._meta(pr, kind),
+            self._oldest(pr),
+            repo=self.repo,
+            pr_number=pr["number"],
+        )
 
     def _meta(self, pr: dict, kind: str) -> dict:
         return pr_metadata(self.repo, pr["number"], kind, state=pr_state(pr))
@@ -139,19 +152,42 @@ class Feed:
     def _reply(self, parent: dict, text: str) -> None:
         self.slack.post(self.channel, text, thread_ts=parent["ts"])
 
+    def _reply_once(self, pr: dict, parent: dict, text: str, key: str) -> None:
+        """A thread reply for one review or comment; a re-run finds it and stays silent."""
+        if self.slack.find_reply(
+            self.channel,
+            parent["ts"],
+            REPLY_EVENT_TYPE,
+            repo=self.repo,
+            pr_number=pr["number"],
+            key=key,
+        ):
+            return
+        self.slack.post(
+            self.channel,
+            text,
+            thread_ts=parent["ts"],
+            metadata=reply_metadata(self.repo, pr["number"], key),
+        )
+
     def _upsert_parent(self, pr: dict, parent) -> None:
         text = parent_text(pr, self.repo)
         if parent:
             self.slack.update(self.channel, parent["ts"], text, metadata=self._meta(pr, "pr"))
         else:
-            self.slack.post(self.channel, text, metadata=self._meta(pr, "pr"))
+            self._post_parent(pr, text, "pr")
 
     def _can_push(self, user: dict, association: str | None, pr: dict) -> bool:
         head_repo = (pr["head"].get("repo") or {}).get("full_name")
         return can_push(self.github, self.repo, user, association, head_repo)
 
     def handle(self, event_name: str, event: dict) -> None:
-        pr = event["pull_request"]
+        if event_name == "issue_comment":
+            if "pull_request" not in event["issue"] or not self.github:
+                return
+            pr = self.github(f"/repos/{self.repo}/pulls/{event['issue']['number']}")
+        else:
+            pr = event["pull_request"]
         if not self._can_push(pr["user"], pr.get("author_association"), pr):
             logger.info(
                 "#%s is by %s, who can't push here; not posted", pr["number"], pr["user"]["login"]
@@ -163,6 +199,8 @@ class Feed:
             self._handle_review(event, pr)
         elif event_name == "pull_request_target":
             self._handle_pr(event, pr)
+        elif event_name == "issue_comment":
+            self._handle_comment(event, pr)
 
     def _handle_pr(self, event: dict, pr: dict) -> None:
         action = event["action"]
@@ -186,6 +224,8 @@ class Feed:
         if event["action"] != "submitted" or pr.get("draft"):
             return
         review = event["review"]
+        if review["user"].get("type") == "Bot":
+            return
         if not self._can_push(review["user"], review.get("author_association"), pr):
             return
         state = review["state"].lower()
@@ -194,11 +234,26 @@ class Feed:
             text = f"✅ {link(review['html_url'], 'approved')} by {reviewer}"
         elif state == "changes_requested":
             text = f"🔁 {link(review['html_url'], 'changes requested')} by {reviewer}"
+        elif state == "commented":
+            text = f"💬 {link(review['html_url'], 'review comments')} by {reviewer}"
         else:
             return
         parent = self._find(pr)
         if parent:
-            self._reply(parent, text)
+            self._reply_once(pr, parent, text, f"review:{review['id']}")
+
+    def _handle_comment(self, event: dict, pr: dict) -> None:
+        comment = event["comment"]
+        if event["action"] != "created" or pr.get("draft") or comment["user"].get("type") == "Bot":
+            return
+        if not self._can_push(comment["user"], comment.get("author_association"), pr):
+            return
+        parent = self._find(pr)
+        if parent:
+            text = (
+                f"💬 {link(comment['html_url'], 'comment')} by {escape(comment['user']['login'])}"
+            )
+            self._reply_once(pr, parent, text, f"comment:{comment['id']}")
 
     def _handle_flux(self, event_name: str, event: dict, pr: dict) -> None:
         if event_name != "pull_request_target" or pr.get("draft"):
@@ -212,7 +267,7 @@ class Feed:
         if parent:
             self.slack.update(self.channel, parent["ts"], text, metadata=self._meta(pr, "flux"))
         else:
-            self.slack.post(self.channel, text, metadata=self._meta(pr, "flux"))
+            self._post_parent(pr, text, "flux")
 
     def bumps(self, pr: dict) -> list[tuple[str, str, str]]:
         if not self.github:

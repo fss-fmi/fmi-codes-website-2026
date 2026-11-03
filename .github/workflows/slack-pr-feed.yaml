@@ -7,6 +7,8 @@ name: Slack PR feed
 # never check out or run PR code: it checks out the default branch's scripts only
 # and reads the PR from the event payload. GitHub withholds secrets from
 # pull_request_review runs on fork PRs, so reviews on those are not posted.
+# issue_comment runs from the default branch for every issue and PR comment; the
+# job skips plain issues, and the script posts only commenters who can push.
 # Skips quietly while SLACK_BOT_TOKEN or SLACK_PR_CHANNEL_ID is unset.
 
 on:
@@ -14,6 +16,8 @@ on:
     types: [opened, ready_for_review, converted_to_draft, closed, reopened, edited]
   pull_request_review:
     types: [submitted]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -21,12 +25,14 @@ permissions:
 
 jobs:
   post:
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
       - name: Checkout the default branch's scripts
-        uses: actions/checkout@v4
+        # Pinned by SHA: this job holds the Slack token (repo-wide pinning: #164).
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
