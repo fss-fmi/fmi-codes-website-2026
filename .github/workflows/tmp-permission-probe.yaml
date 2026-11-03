@@ -1,0 +1,29 @@
+name: Temporary permission probe
+
+# Throwaway: proves GITHUB_TOKEN with read-only permissions can call the repo
+# permission API that can_push relies on. Removed in the next commit.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Call the permission API with GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          for user in "$ACTOR" torvalds; do
+            printf '%s -> ' "$user"
+            curl -sS -o resp.json -w 'HTTP %{http_code} ' \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/collaborators/$user/permission"
+            jq -r '.permission // .message' resp.json
+          done
