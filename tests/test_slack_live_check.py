@@ -2,4 +2,4 @@
 
 
 def test_live_check():
-    assert 1 == 2, "deliberate failure for the Slack alert check"
+    assert True
