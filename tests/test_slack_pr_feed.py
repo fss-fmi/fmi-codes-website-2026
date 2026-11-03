@@ -61,6 +61,15 @@ class FakeSlack:
                 return m
         return None
 
+    def find_replies(self, channel, thread_ts, event_type, **match):
+        return [
+            m
+            for m in self.messages
+            if m["thread_ts"] == thread_ts
+            and (m["metadata"] or {}).get("event_type") == event_type
+            and all(str(m["metadata"]["event_payload"].get(k)) == str(v) for k, v in match.items())
+        ]
+
     @property
     def parents(self):
         return [m for m in self.messages if m["thread_ts"] is None]
@@ -114,11 +123,11 @@ def slack():
     return FakeSlack()
 
 
-def github_stub(files=(), pr=None, read_only=("mallory",), error=None):
+def github_stub(files=(), pr=None, read_only=("mallory",), error=None, commits=()):
     """The GitHub API surface Feed uses: everyone can push except *read_only* users."""
     calls = []
 
-    def get(path):
+    def get(path, **params):
         calls.append(path)
         if path.endswith("/permission"):
             if error:
@@ -127,6 +136,10 @@ def github_stub(files=(), pr=None, read_only=("mallory",), error=None):
             return {"permission": "read" if login in read_only else "write"}
         if path.endswith("/files"):
             return list(files)
+        if path.endswith("/commits"):
+            size = params["per_page"]
+            start = (params["page"] - 1) * size
+            return list(commits)[: pr_feed.MAX_PR_COMMITS][start : start + size]
         assert pr is not None and path == f"/repos/{REPO}/pulls/{pr['number']}", path
         return pr
 
@@ -726,3 +739,242 @@ class TestSlackClientRaces:
         slack, _ = self.client(limited, {"ok": True}, sleeps=sleeps)
         slack.update(CHANNEL, "1.0", "text")
         assert sleeps == [expected]
+
+
+def sha(n):
+    return f"sha{n:04d}" + "0" * 33
+
+
+def commit(n, message=None):
+    return {"sha": sha(n), "commit": {"message": message or f"commit {n}\n\nbody {n}"}}
+
+
+def pr_at(n, **kw):
+    pr = make_pr(**kw)
+    pr["head"]["sha"] = sha(n)
+    return pr
+
+
+PR_URL = f"https://github.com/{REPO}/pull/7"
+
+
+class TestPushes:
+    @pytest.fixture()
+    def commits(self):
+        return [commit(1)]
+
+    @pytest.fixture()
+    def api(self, commits):
+        return github_stub(commits=commits)
+
+    @pytest.fixture()
+    def pfeed(self, slack, api):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+        target(f, "opened", pr_at(1))
+        return f
+
+    @staticmethod
+    def push(feed, before, after, sender="alice", **kw):
+        target(
+            feed,
+            "synchronize",
+            pr_at(after, **kw),
+            sender=sender,
+            before=sha(before),
+            after=sha(after),
+        )
+
+    def test_parent_records_the_head_it_was_posted_at(self, pfeed, slack):
+        assert slack.parents[0]["metadata"]["event_payload"]["head"] == sha(1)
+
+    def test_push_lists_its_new_commits(self, pfeed, slack, commits):
+        commits += [commit(2), commit(3, "fix: <!channel> & co")]
+        self.push(pfeed, 1, 3, sender="bob")
+        [reply] = slack.replies
+        assert reply["thread_ts"] == slack.parents[0]["ts"]
+        assert reply["text"] == "\n".join(
+            [
+                f"🔨 2 new commits by bob · <{PR_URL}/files/{sha(1)}..{sha(3)}|view changes>",
+                f"• <{PR_URL}/commits/{sha(2)}|sha0002> commit 2",
+                f"• <{PR_URL}/commits/{sha(3)}|sha0003> fix: &lt;!channel&gt; &amp; co",
+            ]
+        )
+        payload = reply["metadata"]["event_payload"]
+        assert payload["key"] == f"push:{sha(3)}" and payload["head"] == sha(3)
+
+    def test_one_commit_is_singular(self, pfeed, slack, commits):
+        commits.append(commit(2))
+        self.push(pfeed, 1, 2)
+        assert slack.replies[0]["text"].startswith("🔨 1 new commit by alice · ")
+
+    def test_long_subjects_are_cut(self, pfeed, slack, commits):
+        commits.append(commit(2, "x" * 100 + "\nbody"))
+        self.push(pfeed, 1, 2)
+        line = slack.replies[0]["text"].split("\n")[1]
+        assert line.endswith(" " + "x" * 71 + "…")
+
+    def test_more_than_five_commits_collapse(self, pfeed, slack, commits):
+        commits += [commit(n) for n in range(2, 10)]
+        self.push(pfeed, 1, 9)
+        lines = slack.replies[0]["text"].split("\n")
+        assert lines[0].startswith("🔨 8 new commits")
+        assert [line.split("|")[1][:7] for line in lines[1:6]] == [
+            "sha0002",
+            "sha0003",
+            "sha0004",
+            "sha0005",
+            "sha0006",
+        ]
+        assert lines[6] == f"<{PR_URL}/files/{sha(1)}..{sha(9)}|+3 more>"
+        assert len(lines) == 7
+
+    def test_force_push(self, pfeed, slack, commits):
+        commits[:] = [commit(101), commit(102)]
+        self.push(pfeed, 1, 102)
+        assert slack.replies[-1]["text"] == (
+            f"⚠️ force-pushed by alice · <https://github.com/{REPO}/compare/{sha(1)}..{sha(102)}"
+            "|sha0001 → sha0102>"
+        )
+        commits.append(commit(103))
+        self.push(pfeed, 102, 103)
+        assert slack.replies[-1]["text"].startswith("🔨 1 new commit")
+        assert sha(103) in slack.replies[-1]["text"]
+
+    def test_duplicate_delivery_posts_once(self, pfeed, slack, commits, api):
+        commits.append(commit(2))
+        self.push(pfeed, 1, 2)
+        calls = len(api.calls)
+        self.push(pfeed, 1, 2)
+        assert len(slack.replies) == 1
+        assert not any(c.endswith("/commits") for c in api.calls[calls:])
+
+    def test_a_cancelled_run_is_covered_by_the_next(self, pfeed, slack, commits):
+        commits += [commit(2), commit(3), commit(4)]
+        self.push(pfeed, 1, 2)
+        # The run for 2 -> 3 was cancelled as a superseded pending run.
+        self.push(pfeed, 3, 4)
+        assert len(slack.replies) == 2
+        text = slack.replies[1]["text"]
+        assert text.startswith("🔨 2 new commits") and f"files/{sha(2)}..{sha(4)}" in text
+        assert "sha0003" in text and "sha0004" in text and "|sha0002>" not in text
+
+    def test_late_rerun_of_an_older_push_posts_nothing(self, pfeed, slack, commits):
+        commits += [commit(2), commit(3)]
+        self.push(pfeed, 1, 3)
+        self.push(pfeed, 1, 2)
+        assert len(slack.replies) == 1
+
+    def test_superseded_push_posts_nothing(self, pfeed, slack, commits):
+        commits[:] = [commit(101)]
+        self.push(pfeed, 1, 2)
+        assert slack.replies == []
+
+    def test_draft_pushes_are_never_listed(self, pfeed, slack, commits, api):
+        target(pfeed, "converted_to_draft", pr_at(1, draft=True))
+        commits.append(commit(2))
+        calls = len(api.calls)
+        self.push(pfeed, 1, 2, draft=True)
+        assert not any(c.endswith("/commits") for c in api.calls[calls:])
+        target(pfeed, "ready_for_review", pr_at(2))
+        assert slack.replies[-1]["metadata"]["event_payload"]["head"] == sha(2)
+
+        commits.append(commit(3))
+        self.push(pfeed, 2, 3)
+        text = slack.replies[-1]["text"]
+        assert text.startswith("🔨 1 new commit") and "|sha0002>" not in text
+        assert [r["text"][0] for r in slack.replies] == ["📝", "🟢", "🔨"]
+
+    def test_ready_reply_landing_after_a_push_does_not_relist(self, pfeed, slack, commits):
+        commits += [commit(2), commit(3), commit(4)]
+        self.push(pfeed, 1, 3)
+        # A "ready again" run raced the push run and posted later with an older head.
+        meta = slack_notify.reply_metadata(REPO, 7, f"state:open:{sha(2)}", sha(2))
+        slack.post(CHANNEL, "🟢 ready for review again (alice)", slack.parents[0]["ts"], meta)
+        self.push(pfeed, 3, 4)
+        assert slack.replies[-1]["text"].startswith("🔨 1 new commit")
+
+    def test_parents_posted_before_heads_were_recorded_use_the_event(self, slack, api, commits):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+        slack.post(
+            CHANNEL, "🟢 old parent", metadata=slack_notify.pr_metadata(REPO, 7, "pr", "open")
+        )
+        commits += [commit(2), commit(3)]
+        self.push(f, 2, 3)
+        assert slack.replies[0]["text"].startswith("🔨 1 new commit")
+
+    def test_title_edit_keeps_the_parent_head(self, pfeed, slack, commits):
+        commits.append(commit(2))
+        self.push(pfeed, 1, 2)
+        target(pfeed, "edited", pr_at(2, title="feat: renamed"), changes={"title": {"from": "x"}})
+        assert "feat: renamed" in slack.parents[0]["text"]
+        assert slack.parents[0]["metadata"]["event_payload"]["head"] == sha(1)
+
+    def test_over_the_api_limit_links_instead_of_listing(self, pfeed, slack, commits, api):
+        commits += [commit(n) for n in range(2, 262)]
+        self.push(pfeed, 1, 261)
+        assert slack.replies[0]["text"] == (
+            f"🔨 new commits by alice · <{PR_URL}/files/{sha(1)}..{sha(261)}|view changes>"
+            " (over 250 commits, not listed)"
+        )
+        assert sum(c.endswith("/commits") for c in api.calls) == 3
+
+    def test_no_parent_or_outsider_posts_nothing(self, slack, api, commits):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api)
+        commits.append(commit(2))
+        self.push(f, 1, 2)
+        pr = outsider_pr()
+        pr["head"]["sha"] = sha(2)
+        target(f, "synchronize", pr, before=sha(1), after=sha(2))
+        assert slack.messages == []
+
+    def test_closed_pr_posts_nothing(self, pfeed, slack, commits):
+        target(pfeed, "closed", pr_at(1, state="closed"))
+        commits.append(commit(2))
+        self.push(pfeed, 1, 2, state="closed")
+        assert len(slack.replies) == 1
+
+    def test_flux_bump_rerenders_the_one_liner(self, slack):
+        files = [dict(f) for f in TestFluxBumps.FILES]
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub(files=files))
+        target(f, "synchronize", TestFluxBumps.bump(), before="a", after="b")
+        assert slack.messages == []
+
+        target(f, "opened", TestFluxBumps.bump())
+        files[0]["patch"] = files[0]["patch"].replace("1793041510-85d3415", "1793100000-abcdef0")
+        target(f, "synchronize", TestFluxBumps.bump(), before="a", after="b")
+        assert len(slack.messages) == 1
+        assert "→ `1793100000-abcdef0`" in slack.messages[0]["text"]
+
+    def test_github_failure_fails_the_run(self, monkeypatch, tmp_path):
+        event = tmp_path / "event.json"
+        event.write_text(
+            json.dumps({**pr_event("opened", make_pr()), "repository": {"full_name": REPO}})
+        )
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+        monkeypatch.setenv("SLACK_PR_CHANNEL_ID", CHANNEL)
+        monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+        monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request_target")
+        monkeypatch.setenv("GITHUB_TOKEN", "fake-gh-credential")
+
+        def boom(self, event_name, event):
+            raise urllib.error.HTTPError("https://api.github.com/x", 502, "Bad Gateway", {}, None)
+
+        monkeypatch.setattr(pr_feed.Feed, "handle", boom)
+        assert pr_feed.main() == 1
+
+
+class TestSlackReplies:
+    def test_find_replies_returns_every_match_oldest_first(self):
+        first = {"ts": "2", "metadata": slack_notify.reply_metadata(REPO, 7, "push:a", "a")}
+        second = {"ts": "3", "metadata": slack_notify.reply_metadata(REPO, 7, "review:1")}
+        parent = {"ts": "1", "metadata": slack_notify.pr_metadata(REPO, 7, "pr", "open", "z")}
+        slack, requests = TestSlackClient.client(
+            TestSlackClient(), {"ok": True, "messages": [parent, first, second]}
+        )
+        found = slack.find_replies(CHANNEL, "1", slack_notify.REPLY_EVENT_TYPE, pr_number=7)
+        assert found == [first, second]
+        assert requests[0].full_url.endswith("/conversations.replies")
+
+    def test_head_is_left_out_when_unset(self):
+        assert "head" not in slack_notify.pr_metadata(REPO, 7, "pr", "open")["event_payload"]
+        assert "head" not in slack_notify.reply_metadata(REPO, 7, "k")["event_payload"]

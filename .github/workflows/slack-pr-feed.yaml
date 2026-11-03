@@ -1,7 +1,8 @@
 name: Slack PR feed
 
-# Posts ready PRs to #pr-updates: one parent message per PR, later events in its
-# thread, Flux bumps as a single edited one-liner (.github/scripts/pr_feed.py).
+# Posts ready PRs to #pr-updates: one parent message per PR, later events (new
+# commits included) in its thread, Flux bumps as a single edited one-liner
+# (.github/scripts/pr_feed.py).
 #
 # pull_request_target runs with secrets even for fork PRs, so this workflow must
 # never check out or run PR code: it checks out the default branch's scripts only
@@ -14,11 +15,19 @@ name: Slack PR feed
 
 on:
   pull_request_target:
-    types: [opened, ready_for_review, converted_to_draft, closed, reopened, edited]
+    types: [opened, ready_for_review, converted_to_draft, closed, reopened, edited, synchronize]
   pull_request_review:
     types: [submitted]
   issue_comment:
     types: [created]
+
+# Pushes to one PR run one at a time, so their replies post in order. GitHub keeps
+# only the newest pending run per group and cancels the others; the script then
+# lists their commits in the next reply. Every other event gets a group of its own,
+# so a burst of reviews or comments is never cancelled.
+concurrency:
+  group: slack-pr-feed-${{ github.event.action == 'synchronize' && format('push-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

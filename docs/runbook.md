@@ -268,10 +268,17 @@ that is ready for review to `#pr-updates`:
   comments are skipped (bot comments don't even start a job). State replies only post when
   the PR's state really changes, and review and comment replies carry the review or comment
   id, so a re-run never duplicates one.
+- **New commits**: each push adds one reply, `🔨 3 new commits by X · view changes`, then
+  one line per commit (short SHA + first line of the message, at most 72 characters), oldest
+  first. Past 5 commits the rest collapse into a `+N more` link. The list comes from the PR's
+  own commits, so "Update branch" shows as one merge commit, not everything pulled in from
+  `main`. A force push (rebase, amend) says `⚠️ force-pushed by X · old → new` instead. A PR
+  with over 250 commits gets a link without a list (the API limit).
 - **Drafts post nothing** until they are marked ready; while a PR is back in draft, reviews
-  are not posted.
+  and pushes are not posted, and commits pushed while it was a draft are not listed later.
 - **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
-  tags, edited to `merged ✅` when they auto-merge. No thread.
+  tags, re-rendered when Flux pushes newer tags to the open PR and edited to `merged ✅`
+  when it auto-merges. No thread.
 - **CI results** (✅ passed, ❌ failed, ✅ green again) in the thread come from
   [Slack CI alerts](#slack-ci-alerts), not from this workflow.
 - **Only people who can push to the repo are posted.** The repo is public and
@@ -286,7 +293,11 @@ that is ready for review to `#pr-updates`:
 
 The parent is found again through Slack message metadata, so nothing else stores state. Two
 runs for the same PR can both find no parent and both post one; each run checks again right
-after posting and the newer message deletes itself, so exactly one survives. The workflow
+after posting and the newer message deletes itself, so exactly one survives. Push runs for
+one PR share a concurrency group, so their replies post in order. GitHub keeps only the
+newest pending run in a group and cancels the others, so every push reply records the head
+it reached (the parent records the head it was posted at, a "ready"/"reopened" reply the
+head at that moment) and the next push lists every commit after it. The workflow
 never checks out PR code (it runs on `pull_request_target` and `issue_comment`, which have
 secrets even for forks), and its `actions/checkout` is pinned to a commit SHA. GitHub always
 runs the default branch's copy of these workflows, so a change can only be tested after it

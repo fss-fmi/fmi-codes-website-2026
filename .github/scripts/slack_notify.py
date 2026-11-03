@@ -2,7 +2,7 @@
 
 Stdlib only, so a workflow runs it with the runner's python3 and installs nothing.
 Messages that belong to a pull request carry Slack message metadata
-(event_type github_pr, payload {repo, pr_number, kind, state}); that is how a
+(event_type github_pr, payload {repo, pr_number, kind, state, head}); that is how a
 later run finds the PR's parent message again without any other storage. CI
 alerts carry github_ci_alert {repo, run_id, run_attempt, kind} the same way, so
 a duplicate event never posts the same alert twice.
@@ -40,12 +40,16 @@ def link(url: str, label: str) -> str:
     return f"<{url}|{escape(label)}>"
 
 
-def pr_metadata(repo: str, pr_number: int, kind: str, state: str) -> dict:
-    """kind is "pr" (threaded parent) or "flux" (one-liner); state is the PR's last posted state."""
-    return {
-        "event_type": PR_EVENT_TYPE,
-        "event_payload": {"repo": repo, "pr_number": pr_number, "kind": kind, "state": state},
-    }
+def pr_metadata(repo: str, pr_number: int, kind: str, state: str, head: str | None = None) -> dict:
+    """kind is "pr" (threaded parent) or "flux" (one-liner); state is the PR's last posted state.
+
+    *head* is the PR's head commit when the parent was first posted: the PR feed's
+    first push reply lists the commits after it.
+    """
+    payload = {"repo": repo, "pr_number": pr_number, "kind": kind, "state": state}
+    if head:
+        payload["head"] = head
+    return {"event_type": PR_EVENT_TYPE, "event_payload": payload}
 
 
 def alert_metadata(repo: str, run_id: int, run_attempt: int, kind: str) -> dict:
@@ -61,12 +65,16 @@ def alert_metadata(repo: str, run_id: int, run_attempt: int, kind: str) -> dict:
     }
 
 
-def reply_metadata(repo: str, pr_number: int, key: str) -> dict:
-    """*key* names what the thread reply reports (a review, a comment, a run result)."""
-    return {
-        "event_type": REPLY_EVENT_TYPE,
-        "event_payload": {"repo": repo, "pr_number": pr_number, "key": key},
-    }
+def reply_metadata(repo: str, pr_number: int, key: str, head: str | None = None) -> dict:
+    """*key* names what the thread reply reports (a review, a comment, a run result, a push).
+
+    *head* marks the PR head commit the thread has caught up to; the next push
+    reply lists the commits after the newest one.
+    """
+    payload = {"repo": repo, "pr_number": pr_number, "key": key}
+    if head:
+        payload["head"] = head
+    return {"event_type": REPLY_EVENT_TYPE, "event_payload": payload}
 
 
 def _retry_after(value) -> int:
@@ -163,6 +171,12 @@ class Slack:
         return next(
             self._matches("conversations.replies", channel, event_type, 0, match, ts=thread_ts),
             None,
+        )
+
+    def find_replies(self, channel: str, thread_ts: str, event_type: str, **match) -> list:
+        """Every reply in *thread_ts* whose metadata matches, oldest first."""
+        return list(
+            self._matches("conversations.replies", channel, event_type, 0, match, ts=thread_ts)
         )
 
     def post_unique(self, channel: str, text: str, metadata: dict, oldest: float, **match) -> str:
