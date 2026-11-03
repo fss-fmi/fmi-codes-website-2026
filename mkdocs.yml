@@ -87,6 +87,7 @@ nav:
           - ADR-008 Grafana over Tailscale: adr/008-grafana-over-tailscale.md
           - ADR-009 Staging over Tailscale: adr/009-staging-over-tailscale.md
           - ADR-010 Cluster alerts to Slack: adr/010-cluster-alerts-to-slack.md
+          - ADR-011 One Tailscale client: adr/011-one-tailscale-client-staging.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

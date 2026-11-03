@@ -2,7 +2,6 @@
 
 set -euo pipefail
 
-ENV="${ENV:-staging}"
 TAILSCALE_NS="${TAILSCALE_NS:-tailscale}"
 MONITORING_NS="${MONITORING_NS:-monitoring}"
 STAGING_INGRESS_NS="${STAGING_INGRESS_NS:-ingress-nginx-staging}"
@@ -22,21 +21,22 @@ Usage: $(basename "$0") set|release|check
 
 Manages the cluster's Tailscale OAuth client, which lets the operator put Grafana and staging
 on the tailnet. Only one cluster may hold it at a time (docs/runbook.md 'Move Grafana and
-staging to another cluster').
+staging to another cluster'). It always lives in staging's tailscale-oauth.enc.yaml, on every
+cluster, prod's included, so this needs the staging age key.
 
   set      Ask for the OAuth client ID and secret (hidden, typed twice) and write them into
-           the env's tailscale-oauth.enc.yaml. Touches no cluster, so it works before
+           staging's tailscale-oauth.enc.yaml. Touches no cluster, so it works before
            bootstrap. Piped input is read as two lines: ID, then secret.
   release  Run on the cluster that is giving the tailnet names up: removes the operator's
-           credentials, its proxies and their tailnet state, empties the env's
+           credentials, its proxies and their tailnet state, empties staging's
            tailscale-oauth.enc.yaml, then lists the admin-console steps that finish the handover.
   check    Wait (up to TS_WAIT_SECONDS, default 600) for the tailnet addresses of Grafana and,
            when this cluster runs staging, of staging. Fails if another cluster still holds
            either name, and warns if staging's FRONTEND_ORIGIN (SOPS app secret) is not its
            address. Exit 0 ok, 3 name clash, 4 no address yet, 5 FRONTEND_ORIGIN mismatch.
 
-Env overrides: ENV (prod|staging, default staging), TAILSCALE_SECRET_ENC, TAILSCALE_NS,
-MONITORING_NS, STAGING_INGRESS_NS, STAGING_APP_NS, TS_WAIT_SECONDS.
+Env overrides: TAILSCALE_SECRET_ENC, TAILSCALE_NS, MONITORING_NS, STAGING_INGRESS_NS,
+STAGING_APP_NS, TS_WAIT_SECONDS. ENV is ignored: the client is staging's on every cluster.
 EOF
 }
 
@@ -47,21 +47,18 @@ case "$CMD" in
   *) usage; exit 1 ;;
 esac
 
-case "$ENV" in
-  prod)    SECRETS_REL="secrets" ;;
-  staging) SECRETS_REL="overlays/staging/secrets" ;;
-  *)       die "ENV must be 'prod' or 'staging', got '$ENV'." ;;
-esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-TS_FILE="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/tailscale-oauth.enc.yaml}"
+# shellcheck source=lib/tailscale-client.sh
+. "$SCRIPT_DIR/lib/tailscale-client.sh"
+TS_FILE="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$TS_CLIENT_REL}"
 RUNBOOK="docs/runbook.md 'Move Grafana and staging to another cluster'"
 
 need_sops_file() {
   command -v sops >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
   [ -f "$TS_FILE" ] || die "missing $TS_FILE"
   sops --decrypt "$TS_FILE" >/dev/null 2>&1 \
-    || die "cannot decrypt $TS_FILE — is your $ENV age key at ~/.config/sops/age/keys.txt?"
+    || die "cannot decrypt $TS_FILE — is the staging age key in ~/.config/sops/age/keys.txt? A machine that runs prod needs it too."
 }
 
 # The value never reaches argv: python3 JSON-encodes it from the environment for sops' stdin.
@@ -131,8 +128,8 @@ cmd_release() {
   live_env="$(kubectl -n "$TAILSCALE_NS" get secret operator-oauth --ignore-not-found \
     -o go-template="{{index .metadata.labels \"$ENV_LABEL\"}}" 2>/dev/null || true)"
   live_env="${live_env#<no value>}"
-  if [ -n "$live_env" ] && [ "$live_env" != "$ENV" ]; then
-    die "this cluster runs the $live_env OAuth client; re-run with ENV=$live_env so the right file is emptied."
+  if [ -n "$live_env" ] && [ "$live_env" != "staging" ]; then
+    die "this cluster's OAuth client is labelled $live_env, so it did not come from $TS_FILE and emptying that file would not release it. Follow $RUNBOOK by hand."
   fi
 
   log "Removing the operator's credentials, proxies and tailnet state from this cluster"

@@ -27,10 +27,15 @@ case "$ENV" in
   *)       echo "Error: --env must be 'staging' or 'prod', got '$ENV'" >&2; exit 1 ;;
 esac
 SECRETS_ENC="$SECRETS_DIR/secrets.enc.yaml"
+# shellcheck source=infra/k8s/scripts/lib/tailscale-client.sh
+. "$SCRIPT_DIR/infra/k8s/scripts/lib/tailscale-client.sh"
+# Staging's on every cluster, so a prod run that sets up Tailscale needs the staging key too.
+TS_FILE="$SCRIPT_DIR/infra/k8s/$TS_CLIENT_REL"
 ENC_FILES=()
-for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/tailscale-oauth.enc.yaml" "$SECRETS_DIR/alertmanager-slack.enc.yaml"; do
+for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/alertmanager-slack.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
 done
+if [ "$ENV" = "staging" ] && [ -f "$TS_FILE" ]; then ENC_FILES+=("$TS_FILE"); fi
 
 log()  { printf '\n\033[1;36m### %s\033[0m\n' "$1"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$1"; }
@@ -94,7 +99,7 @@ import_age_keys() {
     while IFS= read -r key; do
       printf '    %s\n' "$(printf '%s\n' "$key" | age-keygen -y)"
     done <<<"$keys"
-    echo "  the $ENV secrets are encrypted to:"
+    echo "  the $KEY_ENV secrets are encrypted to:"
     recipients | sed 's/^/    /'
     echo "  sops said:"
     sed 's/^/    /' "$PREFLIGHT_TMP/sops.err"
@@ -112,12 +117,72 @@ import_age_keys() {
     key_in_file "$key" && continue
     pub="$(printf '%s\n' "$key" | age-keygen -y)"
     printf '# added by bootstrap.sh (%s) on %s\n# public key: %s\n%s\n' \
-      "$ENV" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pub" "$key" >> "$AGE_KEY_FILE"
+      "$KEY_ENV" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pub" "$key" >> "$AGE_KEY_FILE"
     ok "added key $pub to $AGE_KEY_FILE"
   done <<<"$keys"
   decrypts_all "$AGE_KEY_FILE" \
     || die "$AGE_KEY_FILE still cannot decrypt $FAILED_FILE: $(cat "$PREFLIGHT_TMP/sops.err")"
-  ok "verified: $AGE_KEY_FILE decrypts every $ENV secrets file"
+  ok "verified: $AGE_KEY_FILE decrypts every $KEY_ENV secrets file"
+}
+
+# ensure_age_key KEY_ENV KEY_VAR [optional]: make keys.txt decrypt every file in ENC_FILES,
+# adding KEY_ENV's key from $KEY_VAR or a hidden prompt when it can't yet. With "optional", no
+# key (no terminal, or Enter at the prompt) returns 1 instead of stopping the bootstrap.
+ensure_age_key() {
+  KEY_ENV="$1"
+  local key_var="$2" optional="${3:-}" env_val raw_key
+  if [ -e "$AGE_KEY_FILE" ]; then
+    { [ -r "$AGE_KEY_FILE" ] && [ -w "$AGE_KEY_FILE" ]; } \
+      || die "$AGE_KEY_FILE is not readable and writable by $(id -un); fix its ownership and re-run"
+    if [ -s "$AGE_KEY_FILE" ] && ! age-keygen -y "$AGE_KEY_FILE" >/dev/null 2>"$PREFLIGHT_TMP/age.err"; then
+      die "$AGE_KEY_FILE contains a line age cannot parse, so no key in it works: $(cat "$PREFLIGHT_TMP/age.err")"
+    fi
+  fi
+
+  if [ -s "$AGE_KEY_FILE" ] && decrypts_all "$AGE_KEY_FILE"; then
+    ok "$AGE_KEY_FILE already decrypts every $KEY_ENV secrets file; nothing to do"
+    return 0
+  fi
+  if [ -s "$AGE_KEY_FILE" ]; then
+    warn "no key in $AGE_KEY_FILE can decrypt $FAILED_FILE"
+    warn "existing keys are kept; the $KEY_ENV key is added alongside them"
+  else
+    echo "No age key found at $AGE_KEY_FILE."
+  fi
+  echo
+  echo "The $KEY_ENV secrets are encrypted to:"
+  recipients | sed 's/^/  /'
+  echo
+  env_val="${!key_var:-}"
+  if [ -n "$env_val" ]; then
+    ok "using the key from \$$key_var"
+    import_age_keys "$env_val"
+  else
+    if [ ! -t 0 ]; then
+      [ -n "$optional" ] || die "no terminal to prompt on; export $key_var=AGE-SECRET-KEY-1... and re-run"
+      warn "no terminal to prompt on and no \$$key_var; skipping the $KEY_ENV key"
+      return 1
+    fi
+    echo "Tip: export $key_var=AGE-SECRET-KEY-1... to skip this prompt."
+    echo
+    echo "If you have the key on another machine, copy its AGE-SECRET-KEY-1... line from"
+    echo "that machine's ~/.config/sops/age/keys.txt."
+    echo
+    if [ -n "$optional" ]; then
+      ask "Paste the AGE-SECRET-KEY-1... line (input is hidden), or press Enter to skip:"
+    else
+      ask "Paste the AGE-SECRET-KEY-1... line (input is hidden), then press Enter:"
+    fi
+    raw_key=""
+    read -rs raw_key || true
+    echo
+    if [ -z "$raw_key" ]; then
+      [ -n "$optional" ] || die "no key provided; cannot decrypt secrets"
+      warn "skipped the $KEY_ENV key"
+      return 1
+    fi
+    import_age_keys "$raw_key"
+  fi
 }
 
 log "Pre-flight: tools (sops, age)"
@@ -129,54 +194,45 @@ else
   bash "$INSTALL_TOOLS" || die "install-tools.sh failed; fix the cause above and re-run"
 fi
 
+# The same decision init-linux.sh makes for step 7 (env vars, then flags, then --from), so the
+# pre-flight prepares exactly what that step will need.
+WILL_FLUX="${WITH_FLUX:-false}"
+WILL_OBSERVE="${WITH_OBSERVABILITY:-auto}"
+STEP_FROM="${FROM:-1}"
+PREV_ARG=""
+for a in ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; do
+  if [ "$PREV_ARG" = "--from" ]; then STEP_FROM="$a"; fi
+  case "$a" in
+    --with-flux) WILL_FLUX=true ;;
+    --with-observability) WILL_OBSERVE=true ;;
+    --without-observability) WILL_OBSERVE=false ;;
+  esac
+  PREV_ARG="$a"
+done
+case "$STEP_FROM" in
+  6) WILL_FLUX=true ;;
+  7) WILL_FLUX=true; WILL_OBSERVE=true ;;
+esac
+[ "$WILL_OBSERVE" != "auto" ] || WILL_OBSERVE="$WILL_FLUX"
+
 log "Pre-flight: age key (SOPS decryption)"
 
 if [ "${#ENC_FILES[@]}" -eq 0 ]; then
   warn "no SOPS files in $SECRETS_DIR; skipping (deploy-app.sh will generate an in-cluster app secret)"
 else
-  if [ -e "$AGE_KEY_FILE" ]; then
-    { [ -r "$AGE_KEY_FILE" ] && [ -w "$AGE_KEY_FILE" ]; } \
-      || die "$AGE_KEY_FILE is not readable and writable by $(id -un); fix its ownership and re-run"
-    if [ -s "$AGE_KEY_FILE" ] && ! age-keygen -y "$AGE_KEY_FILE" >/dev/null 2>"$PREFLIGHT_TMP/age.err"; then
-      die "$AGE_KEY_FILE contains a line age cannot parse, so no key in it works: $(cat "$PREFLIGHT_TMP/age.err")"
-    fi
-  fi
+  ensure_age_key "$ENV" "$ENV_KEY_VAR"
+fi
 
-  if [ -s "$AGE_KEY_FILE" ] && decrypts_all "$AGE_KEY_FILE"; then
-    ok "$AGE_KEY_FILE already decrypts every $ENV secrets file; nothing to do"
-  else
-    if [ -s "$AGE_KEY_FILE" ]; then
-      warn "no key in $AGE_KEY_FILE can decrypt $FAILED_FILE"
-      warn "existing keys are kept; the $ENV key is added alongside them"
-    else
-      echo "No age key found at $AGE_KEY_FILE."
-    fi
-    echo
-    echo "The $ENV secrets are encrypted to:"
-    recipients | sed 's/^/  /'
-    echo
-    ENV_VAL="${!ENV_KEY_VAR:-}"
-    if [ -n "$ENV_VAL" ]; then
-      ok "using the key from \$$ENV_KEY_VAR"
-      import_age_keys "$ENV_VAL"
-    else
-      [ -t 0 ] || die "no terminal to prompt on; export $ENV_KEY_VAR=AGE-SECRET-KEY-1... and re-run"
-      echo "Tip: export $ENV_KEY_VAR=AGE-SECRET-KEY-1... to skip this prompt."
-      echo
-      echo "If you have the key on another machine, copy its AGE-SECRET-KEY-1... line from"
-      echo "that machine's ~/.config/sops/age/keys.txt."
-      echo
-      ask "Paste the AGE-SECRET-KEY-1... line (input is hidden), then press Enter:"
-      RAW_KEY=""
-      read -rs RAW_KEY || true
-      echo
-      [ -n "$RAW_KEY" ] || die "no key provided; cannot decrypt secrets"
-      import_age_keys "$RAW_KEY"
-    fi
-  fi
+TS_DECRYPTS=true
+if [ "$ENV" = "prod" ] && [ "$WILL_OBSERVE" = "true" ] && [ -f "$TS_FILE" ]; then
+  log "Pre-flight: staging age key (Tailscale OAuth client)"
+  echo "Every cluster, prod's included, uses staging's Tailscale OAuth client, so this prod machine"
+  echo "also needs the staging age key to decrypt $TS_FILE."
+  ENC_FILES=("$TS_FILE")
+  ensure_age_key staging SOPS_AGE_KEY_STAGING optional || TS_DECRYPTS=false
 fi
 # The key is on disk now; installers, helm and kubectl run below never need it in their env.
-unset SOPS_AGE_KEY_STAGING SOPS_AGE_KEY_PROD ENV_VAL RAW_KEY
+unset SOPS_AGE_KEY_STAGING SOPS_AGE_KEY_PROD
 
 log "Pre-flight: admin password"
 
@@ -230,22 +286,6 @@ fi
 
 log "Pre-flight: Tailscale OAuth client (Grafana and staging access)"
 
-# Mirrors init-linux.sh: observability (step 7) runs whenever Flux does, unless opted out.
-WILL_OBSERVE="${WITH_FLUX:-false}"
-PREV_ARG=""
-for a in ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; do
-  case "$a" in
-    --with-flux|--with-observability) WILL_OBSERVE=true ;;
-  esac
-  if [ "$PREV_ARG" = "--from" ] && { [ "$a" = 6 ] || [ "$a" = 7 ]; }; then WILL_OBSERVE=true; fi
-  PREV_ARG="$a"
-done
-for a in ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; do
-  if [ "$a" = "--without-observability" ]; then WILL_OBSERVE=false; fi
-done
-[ "${WITH_OBSERVABILITY:-auto}" != "false" ] || WILL_OBSERVE=false
-
-TS_FILE="$SECRETS_DIR/tailscale-oauth.enc.yaml"
 TS_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/tailscale-oauth.sh"
 TS_EMPTY_RE="^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$"
 NEW_CLIENT_STEPS="Create an OAuth client for THIS cluster in the Tailscale admin console
@@ -257,16 +297,16 @@ First time on this tailnet? Do docs/runbook.md 'Tailscale setup' (steps 1 to 4) 
 
 # set_ts_client: run 'tailscale-oauth.sh set', offering another try after a typo.
 set_ts_client() {
-  until ENV="$ENV" TAILSCALE_SECRET_ENC="$TS_FILE" bash "$TS_SCRIPT" set; do
+  until TAILSCALE_SECRET_ENC="$TS_FILE" bash "$TS_SCRIPT" set; do
     ask "Try again? [Y/n]"
     local again=""
     # EOF (terminal gone) counts as no, or this would ask forever.
     read -r again || again=n
     case "$again" in
-      n|N) warn "skipped; set it later with: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set"; return 0 ;;
+      n|N) warn "skipped; set it later with: bash infra/k8s/scripts/tailscale-oauth.sh set"; return 0 ;;
     esac
   done
-  ok "OAuth client stored; commit $TS_FILE before deploying this env anywhere else"
+  ok "OAuth client stored; commit $TS_FILE before deploying anywhere else"
 }
 
 if [ "$WILL_OBSERVE" != "true" ]; then
@@ -277,6 +317,9 @@ if [ "$WILL_OBSERVE" != "true" ]; then
   fi
 elif [ ! -f "$TS_FILE" ]; then
   warn "no $TS_FILE; Grafana and staging will not join the tailnet"
+elif [ "$TS_DECRYPTS" != "true" ]; then
+  warn "without the staging age key step 7 skips the Tailscale client, so Grafana and staging
+  stay off the tailnet. Add the key to $AGE_KEY_FILE, then: ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh"
 # Not grep -q: exiting at the first match could SIGPIPE sops, and pipefail would invert the result.
 elif ! sops --decrypt "$TS_FILE" | grep -E "$TS_EMPTY_RE" >/dev/null; then
   ok "$TS_FILE already holds an OAuth client"
@@ -291,7 +334,7 @@ elif ! sops --decrypt "$TS_FILE" | grep -E "$TS_EMPTY_RE" >/dev/null; then
 Only one cluster may hold the 'grafana' and 'staging' tailnet names. Before this one takes over
 (details: docs/runbook.md 'Move Grafana and staging to another cluster'):
   1. On the old cluster, if it still runs:
-       ENV=<its env> bash infra/k8s/scripts/tailscale-oauth.sh release
+       bash infra/k8s/scripts/tailscale-oauth.sh release
      and commit the emptied file it names.
   2. Tailscale admin console: revoke the old cluster's OAuth client, and on the Machines page
      delete its 'grafana', 'staging' and 'fmi-codes-operator' devices.
@@ -315,11 +358,11 @@ EOF
     SET_NOW=""
     read -r SET_NOW || true
     case "$SET_NOW" in
-      n|N) warn "skipped; Grafana and staging stay off the tailnet. Later: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set, then ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh" ;;
+      n|N) warn "skipped; Grafana and staging stay off the tailnet. Later: bash infra/k8s/scripts/tailscale-oauth.sh set, then ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh" ;;
       *) set_ts_client ;;
     esac
   else
-    warn "no terminal to prompt on; Grafana and staging stay off the tailnet until: ENV=$ENV bash infra/k8s/scripts/tailscale-oauth.sh set"
+    warn "no terminal to prompt on; Grafana and staging stay off the tailnet until: bash infra/k8s/scripts/tailscale-oauth.sh set"
   fi
 fi
 
