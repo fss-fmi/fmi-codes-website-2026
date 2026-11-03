@@ -725,7 +725,8 @@ encrypted copy (`grafana-secret.enc.yaml`, `alertmanager-slack.enc.yaml`,
 `tailscale-oauth.enc.yaml`) under its age key. Pick
 the env the cluster belongs to: `prod` on the server, `staging` on a staging-only dev box. The
 script labels each Secret with that env and refuses to overwrite it with the other env's copy
-later (`ALLOW_ENV_SWITCH=true` switches on purpose). While `tailscale-oauth.enc.yaml` still
+later (`ALLOW_ENV_SWITCH=true` switches on purpose, as when a staging-only box gets prod too:
+[Adding prod to a staging-only box](#cluster-alerts)). While `tailscale-oauth.enc.yaml` still
 holds empty values the script skips it with a warning and the operator sits idle; fill it in
 once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet), step 6). An
 empty `alertmanager-slack.enc.yaml` is still applied, because the Alertmanager pod mounts it
@@ -876,6 +877,44 @@ not Helm, so don't expect the `kps` release to fail; check the pod:
 applies the Secret, empty or not, so run it once on an existing cluster before a change that
 turns Alertmanager on reaches it. On a fresh cluster the pod starts by itself once the script
 has run.
+
+**Adding prod to a staging-only box.** The usual order on one machine is staging first
+(`./bootstrap.sh`), then prod next to it (`ENV=prod bash bootstrap.sh`, which the staging run
+suggests). That second run sets up prod's namespace, data, app and ingress (steps 1 to 5) and
+leaves the cluster-wide Secrets alone, so they still hold staging's copies. With `--with-flux`
+its step 7 stops on the env guard instead (`monitoring/grafana-admin holds the staging
+credentials`). Either way `cluster_url` is still the staging webhook, so on the now-shared box:
+
+- prod's own alerts (`fmi-codes`: a crash loop, an OOM kill, a full Postgres volume, a failed
+  promotion) post to `#cluster-alerts-staging`, titled `· prod`;
+- node, monitoring, Flux-core and Helm alerts post there too, although a node problem now
+  takes prod down;
+- `#cluster-alerts-prod` gets nothing, and nothing warns: the routing can't tell the box
+  changed hands.
+
+Nothing about this is wrong in the config; the box now belongs to prod and its Secrets don't
+say so yet. Make prod the env this cluster belongs to, right after `ENV=prod bash bootstrap.sh`
+(prod alerts from the minutes in between go to the staging channel):
+
+```bash
+ALLOW_ENV_SWITCH=true ENV=prod bash infra/k8s/scripts/deploy-observability.sh
+```
+
+- `alertmanager-slack` becomes prod's copy (`cluster_url` = the prod webhook, `staging_url` =
+  the staging webhook) and both Flux copies follow. Nothing restarts.
+- `grafana-admin` becomes prod's copy, but Grafana keeps the password it stored on its first
+  start. To log in with prod's, run
+  `ENV=prod bash infra/k8s/scripts/rotate-secret.sh --grafana admin-password` and enter it
+  ([Grafana admin password](#grafana-admin-password)).
+- While prod's `tailscale-oauth.enc.yaml` is empty the script skips it, so the operator keeps
+  staging's client and Grafana and staging keep their tailnet addresses. Leave it empty on this
+  box.
+
+From then on it is a prod cluster: run `deploy-observability.sh` and the cluster-wide
+`rotate-secret.sh` targets (`--grafana`, `--tailscale`, `--alertmanager`) with `ENV=prod`.
+Staging's app secrets still rotate with `ENV=staging`. Staging's `alertmanager-slack.enc.yaml`
+isn't used until a staging-only box exists again. Check with the test below: the scratch-namespace pod posts in
+`#cluster-alerts-prod`.
 
 **Silence an alert** during planned work or while a known issue is being fixed:
 
