@@ -148,6 +148,7 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 - [ADR-008](adr/008-grafana-over-tailscale.md): one shared Grafana, reached only over a Tailscale tailnet.
 - [ADR-009](adr/009-staging-over-tailscale.md): staging reached only over the tailnet, in front of its own ingress-nginx.
 - [ADR-010](adr/010-cluster-alerts-to-slack.md): Alertmanager and Flux post in-cluster failures to a prod and a staging Slack channel through webhooks.
+- [ADR-011](adr/011-one-tailscale-client-staging.md): every cluster, prod's included, uses staging's Tailscale OAuth client, so a prod machine needs the staging age key too.
 
 ## External dependencies
 

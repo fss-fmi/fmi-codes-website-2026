@@ -1,6 +1,6 @@
 # ADR-008: One shared Grafana, reached over Tailscale
 
-**Status**: accepted
+**Status**: accepted. Amended by [ADR-011](011-one-tailscale-client-staging.md): the Tailscale OAuth client has one copy, staging's.
 
 ## Context
 

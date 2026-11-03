@@ -18,11 +18,13 @@ K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/slack-webhooks.sh
 . "$SCRIPT_DIR/lib/slack-webhooks.sh"
 GRAFANA_SECRET_ENC="${GRAFANA_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/grafana-secret.enc.yaml}"
-TAILSCALE_SECRET_ENC="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/tailscale-oauth.enc.yaml}"
+# One OAuth client per tailnet name, so every cluster, prod's included, uses staging's. A prod
+# file would let a prod-first bootstrap put a second client on the tailnet.
+TAILSCALE_SECRET_ENC="${TAILSCALE_SECRET_ENC:-$K8S_DIR/overlays/staging/secrets/tailscale-oauth.enc.yaml}"
 ALERTMANAGER_SECRET_ENC="${ALERTMANAGER_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/alertmanager-slack.enc.yaml}"
-# These Secrets are cluster-wide (one monitoring stack, one operator) but each env has its own
-# encrypted copy. The label records which env's copy is live so a second run with the other
-# ENV can't silently swap the credentials underneath the running stack.
+# These Secrets are cluster-wide (one monitoring stack, one operator). Grafana's and the Slack
+# webhooks have a copy per env; the label records which env's copy is live so a second run
+# with the other ENV can't silently swap the credentials underneath the running stack.
 ENV_LABEL="fmi-codes/secrets-env"
 
 log()  { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
@@ -42,11 +44,12 @@ ensure_namespace() {
   kubectl get namespace "$1" >/dev/null 2>&1 || kubectl create namespace "$1"
 }
 
-# apply_secret FILE NAMESPACE: decrypt, check the target, refuse an env switch, apply, label.
+# apply_secret FILE NAMESPACE [ENV]: decrypt, check the target, refuse an env switch, apply,
+# label. ENV is the env whose copy FILE is, $ENV unless given.
 apply_secret() {
-  local file="$1" ns="$2" manifest name live_env
+  local file="$1" ns="$2" env="${3:-$ENV}" manifest name live_env
   manifest="$(sops --decrypt "$file" 2>/dev/null)" \
-    || die "could not decrypt $file — is your $ENV age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 7'."
+    || die "could not decrypt $file — is your $env age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 7'."
   # printf is a builtin: the plaintext goes through a pipe, never argv or a here-string temp file.
   [ "$(printf '%s\n' "$manifest" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}')" = "$ns" ] \
     || die "$file does not target namespace '$ns' — refusing to apply a secret across targets."
@@ -55,15 +58,15 @@ apply_secret() {
   live_env="$(kubectl -n "$ns" get secret "$name" --ignore-not-found \
     -o go-template="{{index .metadata.labels \"$ENV_LABEL\"}}" 2>/dev/null || true)"
   live_env="${live_env#<no value>}"
-  if [ -n "$live_env" ] && [ "$live_env" != "$ENV" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ]; then
+  if [ -n "$live_env" ] && [ "$live_env" != "$env" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ]; then
     local hint=""
-    [ "$ENV" = "prod" ] && hint=" A staging-only box that now runs prod too should switch: docs/runbook.md 'Adding prod to a staging-only box'."
-    die "$ns/$name holds the $live_env credentials; refusing to replace them with $ENV's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose.$hint"
+    [ "$env" = "prod" ] && hint=" A staging-only box that now runs prod too should switch: docs/runbook.md 'Adding prod to a staging-only box'."
+    die "$ns/$name holds the $live_env credentials; refusing to replace them with $env's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose.$hint"
   fi
 
-  log "Applying $ns/$name from $file ($ENV)"
+  log "Applying $ns/$name from $file ($env)"
   printf '%s\n' "$manifest" | kubectl apply -f -
-  kubectl -n "$ns" label secret "$name" "$ENV_LABEL=$ENV" --overwrite >/dev/null
+  kubectl -n "$ns" label secret "$name" "$ENV_LABEL=$env" --overwrite >/dev/null
   APPLIED_SECRET_NAME="$name"
 }
 
@@ -93,10 +96,10 @@ if sops --decrypt "$TAILSCALE_SECRET_ENC" 2>/dev/null \
   TAILSCALE_STATUS="skipped"
   warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana and staging have no tailnet address.
   Create the OAuth client (docs/runbook.md 'Phase 7'), then:
-    ENV=$ENV bash $SCRIPT_DIR/tailscale-oauth.sh set
+    bash $SCRIPT_DIR/tailscale-oauth.sh set
     ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
 else
-  apply_secret "$TAILSCALE_SECRET_ENC" "$TAILSCALE_NS"
+  apply_secret "$TAILSCALE_SECRET_ENC" "$TAILSCALE_NS" staging
 fi
 
 cat <<EOF
@@ -115,7 +118,7 @@ EOF
 # A missing address or a name clash is reported, not fatal: everything else is deployed and
 # the fix happens in the Tailscale admin console.
 if [ "$TAILSCALE_STATUS" = "applied" ] && [ "${SKIP_TAILSCALE_CHECK:-false}" != "true" ]; then
-  ENV="$ENV" MONITORING_NS="$MONITORING_NS" TAILSCALE_NS="$TAILSCALE_NS" \
+  MONITORING_NS="$MONITORING_NS" TAILSCALE_NS="$TAILSCALE_NS" \
     bash "$SCRIPT_DIR/tailscale-oauth.sh" check || true
 fi
 

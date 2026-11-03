@@ -26,8 +26,8 @@ infra/k8s/
                    overlays/staging/  namespace fmi-codes-staging, any host, no TLS (Tailscale holds it)
                    overlays/staging/tailnet/ staging's Tailscale Ingress (namespace ingress-nginx-staging)
   helm-values/   Bitnami postgresql + redis values (prod)
-  secrets/       prod secrets, grafana-secret, tailscale-oauth, alertmanager-slack .enc.yaml (SOPS);
-                 staging's live in overlays/staging/secrets/
+  secrets/       prod secrets, grafana-secret, alertmanager-slack .enc.yaml (SOPS);
+                 staging's live in overlays/staging/secrets/, with the only tailscale-oauth
   flux/          Flux GitOps — source, image-automation, notifications, self
 ```
 
@@ -87,6 +87,9 @@ End-to-end, bare server → running cluster. Do it for staging first, then repea
   - **Forking to your own project:** you don't have the org's key, so mint your own and take
     over the recipient — see [Forking: use your own keys](#forking-use-your-own-keys) below,
     do that once, then come back here.
+- **A prod machine also needs the staging age key** when it runs with `--with-flux`: the
+  Tailscale client is staging's on every cluster
+  ([One Tailscale client for every cluster](#one-tailscale-client-for-every-cluster)).
 - **DNS for prod only:** `fmicodes.com` needs a public A-record → the server's IP, resolving
   _before_ you deploy (Let's Encrypt verifies it over HTTP-01, so port 80 must be reachable
   from the internet). Staging needs no DNS or hosts entry: it is reached over the tailnet.
@@ -110,7 +113,7 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | `fmi-codes-app` (SOPS, in git)      | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](#access-grafana-and-staging)) |
 | `fmi-codes-db`, `fmi-codes-redis`   | DB / Redis passwords                                                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                           |
 | `grafana-admin` (SOPS, in git)      | `admin-user`, `admin-password`                                                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
-| `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | committed **empty**; the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                                                                                                |
+| `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | **staging's file only**, used by every cluster ([why](#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                    |
 | `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                        | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                            |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
@@ -133,21 +136,25 @@ The pre-flight first installs `sops` and `age` if they're missing (so it can ver
 bare box), then handles three things:
 
 1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`,
-   `grafana-secret.enc.yaml`, `tailscale-oauth.enc.yaml` and `alertmanager-slack.enc.yaml`) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
+   `grafana-secret.enc.yaml` and `alertmanager-slack.enc.yaml`, plus `tailscale-oauth.enc.yaml`
+   on staging) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
    if set). If that works it does nothing, whatever else is in the file and in whatever order.
    Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`), falling
    back to a hidden paste prompt, verifies the key decrypts those files **before** writing
    anything, then **appends** it to `keys.txt` with a `# public key:` comment (`chmod 600`).
    Existing keys are never replaced or removed. A wrong key aborts with its public key next
    to the one the files are encrypted to, and leaves `keys.txt` untouched. To skip the prompt,
-   export the key first as shown in [step 0](#0-prerequisites).
+   export the key first as shown in [step 0](#0-prerequisites). A prod run with `--with-flux`
+   then checks the **staging** key the same way (`SOPS_AGE_KEY_STAGING` or the prompt), because
+   the Tailscale client is staging's on every cluster
+   ([One Tailscale client for every cluster](#one-tailscale-client-for-every-cluster)).
 2. **The admin password** — if `ADMIN_PASSWORD_HASH` is empty in the secrets file, it asks
    for a password (hidden, typed twice, at least 12 characters), bcrypt-hashes it, and writes
    the hash back into `secrets.enc.yaml` through stdin, so neither shows up in `ps`. Commit
    and push that file afterward so other servers get the same hash. (Skip it and the backend
    CrashLoops until you set one — fix later with `rotate-secret.sh ADMIN_PASSWORD_HASH`.)
 3. **The Tailscale OAuth client** (only with `--with-flux`, which also deploys Grafana and the
-   operator that serves staging): if the env's `tailscale-oauth.enc.yaml` is empty, it lists
+   operator that serves staging): if staging's `tailscale-oauth.enc.yaml` is empty, it lists
    the admin-console steps for a new client and asks for its ID and secret (hidden, typed
    twice, checked for a swapped ID and secret). If the file already holds a client it asks
    whether this cluster is **taking over** from another one; answer yes on a new server and it
@@ -385,9 +392,9 @@ key, point `.sops.yaml` at it and replace that env's encrypted files with your o
 mkdir -p ~/.config/sops/age
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)
 
-# 2. In .sops.yaml, set the `age:` recipient of ALL FOUR rules for your env (secrets.enc.yaml,
-#    grafana-secret.enc.yaml, tailscale-oauth.enc.yaml and alertmanager-slack.enc.yaml) to that
-#    age1… value.
+# 2. In .sops.yaml, set the `age:` recipient of every rule for your env to that age1… value:
+#    secrets.enc.yaml, grafana-secret.enc.yaml and alertmanager-slack.enc.yaml, plus
+#    tailscale-oauth.enc.yaml for staging (it has no prod copy).
 
 # 3. Overwrite each of that env's .enc.yaml files with a plaintext Secret holding your values
 #    (same metadata and stringData keys as the committed file; those stay readable), then
@@ -396,7 +403,7 @@ sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
-# (prod: the same four files under infra/k8s/secrets/). tailscale-oauth can stay empty until
+# (prod: the same files under infra/k8s/secrets/, minus tailscale-oauth). It can stay empty until
 # your tailnet exists (Phase 7), alertmanager-slack until you have a Slack webhook
 # (Cluster alerts). Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key:
 # your https://staging.<tailnet>.ts.net, or "" until you know it.
@@ -721,15 +728,18 @@ holds the name, and the [handover](#move-grafana-and-staging-to-another-cluster)
 It also warns when staging's `FRONTEND_ORIGIN` (in the live app secret) is not staging's
 address, and prints the `rotate-secret.sh` command that fixes it. None of this stops the script.
 
-These Secrets are cluster-wide (one monitoring stack, one operator), but each env keeps its own
-encrypted copy (`grafana-secret.enc.yaml`, `alertmanager-slack.enc.yaml`,
-`tailscale-oauth.enc.yaml`) under its age key. Pick
+These Secrets are cluster-wide (one monitoring stack, one operator). Grafana's and the Slack
+webhooks have an encrypted copy per env (`grafana-secret.enc.yaml`,
+`alertmanager-slack.enc.yaml`) under its age key. Pick
 the env the cluster belongs to: `prod` on the server, `staging` on a staging-only dev box. The
 script labels each Secret with that env and refuses to overwrite it with the other env's copy
 later (`ALLOW_ENV_SWITCH=true` switches on purpose, as when a staging-only box gets prod too:
-[Adding prod to a staging-only box](#cluster-alerts)). While `tailscale-oauth.enc.yaml` still
-holds empty values the script skips it with a warning and the operator sits idle; fill it in
-once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet), step 6). An
+[Adding prod to a staging-only box](#cluster-alerts)). The Tailscale client is the exception:
+there is only staging's `tailscale-oauth.enc.yaml`, applied with the `staging` label whatever
+`ENV` is ([One Tailscale client for every cluster](#one-tailscale-client-for-every-cluster)).
+While it still holds empty values the script skips it with a warning and the operator sits
+idle; fill it in once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet),
+step 6). An
 empty `alertmanager-slack.enc.yaml` is still applied, because the Alertmanager pod mounts it
 and can't start without it; only the copy for Flux is skipped, with a warning. If
 `flux-bootstrap.sh` has not been run yet, apply the Flux objects once first:
@@ -907,16 +917,16 @@ ALLOW_ENV_SWITCH=true ENV=prod bash infra/k8s/scripts/deploy-observability.sh
   start. To log in with prod's, run
   `ENV=prod bash infra/k8s/scripts/rotate-secret.sh --grafana admin-password` and enter it
   ([Grafana admin password](#grafana-admin-password)).
-- While prod's `tailscale-oauth.enc.yaml` is empty the script skips it, so the operator keeps
-  staging's client and Grafana and staging keep their tailnet addresses. Leave it empty on this
-  box: if the prod bootstrap runs with `--with-flux`, answer `n` when its pre-flight offers to
-  set an OAuth client.
+- `operator-oauth` is re-applied from staging's file, the only one there is, so the operator
+  keeps its client and Grafana and staging keep their tailnet addresses
+  ([One Tailscale client for every cluster](#one-tailscale-client-for-every-cluster)). If the
+  prod bootstrap runs with `--with-flux`, answer `N` when its pre-flight asks whether this
+  cluster is taking over from another one: it is the same cluster.
 
 From then on it is a prod cluster: run `deploy-observability.sh` and `rotate-secret.sh
---grafana` / `--alertmanager` with `ENV=prod`. The Tailscale client stays staging's, so
-`rotate-secret.sh --tailscale` and `tailscale-oauth.sh` keep `ENV=staging`, and so do
-staging's app secrets. Staging's `alertmanager-slack.enc.yaml` isn't used until a staging-only
-box exists again. Check with the test below: the scratch-namespace pod posts in
+--grafana` / `--alertmanager` with `ENV=prod`. Staging's app secrets still rotate with
+`ENV=staging`. Staging's `alertmanager-slack.enc.yaml` isn't used until a staging-only box
+exists again. Check with the test below: the scratch-namespace pod posts in
 `#cluster-alerts-prod`.
 
 Both scripts print the switch command when they find the mix: the prod bootstrap when the
@@ -1013,6 +1023,28 @@ kubectl -n monitoring port-forward svc/kps-grafana 3000:80                      
 kubectl -n ingress-nginx-staging port-forward svc/ingress-nginx-staging-controller 8080:80 # http://localhost:8080
 ```
 
+#### One Tailscale client for every cluster
+
+Every cluster, prod's included, uses **staging's** Tailscale OAuth client. There is one
+`tailscale-oauth.enc.yaml`, in `overlays/staging/secrets/`, and no prod copy.
+`deploy-observability.sh`, `tailscale-oauth.sh`, `rotate-secret.sh --tailscale` and the
+bootstrap pre-flight read it whatever `ENV` is, and label `tailscale/operator-oauth` as
+`staging`. The tailnet names `grafana` and `staging` belong to one client at a time; with a
+copy per env, whichever env bootstrapped first decided the cluster's client, and a prod-first
+bootstrap would have put a second client on the tailnet next to staging's. Grafana's admin
+secret and the Slack webhooks still follow `ENV`.
+
+!!! warning "A machine that runs prod needs the staging age key"
+
+    Staging's Tailscale file is encrypted to the staging key, so a prod machine needs that key
+    as well as prod's. `bootstrap.sh --env prod --with-flux` asks for it (from
+    `SOPS_AGE_KEY_STAGING` or a hidden prompt), and `ENV=prod deploy-observability.sh` stops
+    with a decryption error without it. This bends the one-key-per-env rule: the staging key on
+    the server can read the tailnet OAuth client. It is fine here because every planned prod
+    machine also runs staging and needs the staging key for that anyway. A machine that runs
+    only prod would hold the staging key just for this, so revisit this section before setting
+    one up.
+
 #### Tailscale setup (once per tailnet)
 
 Done by an **owner of the `fss-fmi` GitHub org**, in the Tailscale admin console. Only the last
@@ -1032,19 +1064,22 @@ two steps touch the repo.
 5. **Create an OAuth client** for the operator with the scopes **General → Services** (read and
    write), **Devices → Core** (read and write) and **Keys → Auth Keys** (read and write), and the
    tag **`tag:k8s-operator`**. Make one client per cluster (dev box, server) so each can be
-   revoked on its own. Save the client ID and secret in the password manager only.
-6. **Store it in the env's SOPS file** on the machine that holds that env's age key.
-   `bootstrap.sh` asks for it in its pre-flight. On an already running cluster:
+   revoked on its own; only the cluster on the tailnet holds one at a time
+   ([handover](#move-grafana-and-staging-to-another-cluster)). Save the client ID and secret in
+   the password manager only.
+6. **Store it in staging's SOPS file**, whatever env the cluster runs
+   ([One Tailscale client for every cluster](#one-tailscale-client-for-every-cluster)), on a
+   machine that holds the staging age key. `bootstrap.sh` asks for it in its pre-flight. On an
+   already running cluster:
 
    ```bash
-   ENV=prod bash infra/k8s/scripts/tailscale-oauth.sh set          # ID, then secret; hidden, typed twice
-   ENV=prod bash infra/k8s/scripts/deploy-observability.sh         # applies it and checks the address
+   bash infra/k8s/scripts/tailscale-oauth.sh set                   # ID, then secret; hidden, typed twice
+   ENV=prod bash infra/k8s/scripts/deploy-observability.sh         # the cluster's env; applies it and checks the address
    ```
 
    The values never touch argv, history or a temp file, and a swapped ID and secret is
-   refused. Commit `infra/k8s/secrets/tailscale-oauth.enc.yaml` (staging:
-   `overlays/staging/secrets/tailscale-oauth.enc.yaml`). Replacing the client later is a
-   [rotation](#tailscale-oauth-client).
+   refused. Commit `infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml`. Replacing
+   the client later is a [rotation](#tailscale-oauth-client).
 
 7. **Verify.** `kubectl -n tailscale get pods` shows the operator Running, the admin console's
    Machines page lists `fmi-codes-operator`, a `grafana` proxy and, on a cluster that runs
@@ -1111,17 +1146,17 @@ hands Grafana and staging to the server for good.
 
 Order matters: steps 1 and 2 must be finished before the new cluster deploys.
 
-1. **On the old cluster, if it still runs** (skip if it is gone). Use the env the old cluster
-   ran (`staging` for a staging-only dev box, `prod` for the server):
+1. **On the old cluster, if it still runs** (skip if it is gone), whatever env it ran:
 
    ```bash
-   ENV=staging bash infra/k8s/scripts/tailscale-oauth.sh release
+   bash infra/k8s/scripts/tailscale-oauth.sh release
    ```
 
    It stops the operator, deletes `operator-oauth`, the proxy StatefulSets and their tailnet
    state, scales the operator back to one replica that waits idle for a Secret that never comes,
-   and empties that env's `tailscale-oauth.enc.yaml`. It refuses if the running Secret came from
-   the other env. **Commit the emptied file** (through a PR), or a later
+   and empties staging's `tailscale-oauth.enc.yaml`. It refuses if the running Secret is not
+   labelled `staging`, since it then didn't come from that file. **Commit the emptied file**
+   (through a PR), or a later
    `deploy-observability.sh` would re-apply a revoked client. The rest of the old cluster keeps
    running; its monitoring stack is still reachable by port-forward.
 
@@ -1135,9 +1170,10 @@ Order matters: steps 1 and 2 must be finished before the new cluster deploys.
 
 4. **On the new cluster:** run `./bootstrap.sh --env <env> --with-flux`. When the pre-flight
    asks whether this cluster is taking over, answer **y**; it shows steps 1 to 3 again, waits
-   for Enter and then asks for the new client. (If step 1 emptied the same env's file, it asks
-   for the client straight away.) On a cluster that is already bootstrapped instead:
-   `ENV=<env> bash infra/k8s/scripts/tailscale-oauth.sh set`, then
+   for Enter and then asks for the new client. (If step 1's emptied file is already in this
+   checkout, it asks for the client straight away.) A prod bootstrap asks the same, because the
+   client lives in staging's file there too. On a cluster that is already bootstrapped instead:
+   `bash infra/k8s/scripts/tailscale-oauth.sh set`, then
    `ENV=<env> bash infra/k8s/scripts/deploy-observability.sh`. Commit the encrypted file.
 
 5. **Verify.** `deploy-observability.sh` waits for the addresses and prints
@@ -1376,8 +1412,8 @@ rotating it only changes the Secret; rename the account in Grafana's UI to match
 ### Tailscale OAuth client
 
 ```bash
-ENV=prod RESTART=false bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
-ENV=prod bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
+RESTART=false bash infra/k8s/scripts/rotate-secret.sh --tailscale client_id
+bash infra/k8s/scripts/rotate-secret.sh --tailscale client_secret
 ```
 
 An OAuth client's ID and secret come as a pair, so a rotation always replaces both: create a
@@ -1386,15 +1422,17 @@ new client in the admin console with the same scopes and tag as the old one
 (the first skips the restart so the running operator isn't restarted onto a half-updated
 pair), confirm
 `kubectl -n tailscale get pods` shows the operator Running again, then revoke the old client.
-`--tailscale` targets the env's `tailscale-oauth.enc.yaml` (namespace `tailscale`, restarts
-`deployment/operator`). Like `--grafana`, it refuses to overwrite a Secret that holds the other
-env's credentials.
+`--tailscale` targets staging's `tailscale-oauth.enc.yaml` on every cluster, prod's included
+(namespace `tailscale`, restarts `deployment/operator`); an `ENV=prod` is ignored with a note
+([One Tailscale client for every cluster](#one-tailscale-client-for-every-cluster)). It refuses
+to overwrite a Secret that isn't labelled `staging`.
 
 ### Rotate an age key
 
 Each environment's SOPS files are encrypted to one age key (`.sops.yaml`). Replace it when the
 private key may have leaked or when someone who holds it leaves. Example for staging; for
-prod use the `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
+prod use the `infra/k8s/secrets/` files (three: prod has no `tailscale-oauth.enc.yaml`) and
+`SOPS_AGE_KEY_PROD`.
 
 ```bash
 # 1. New key pair, appended next to the old one (keep the old one until step 5).
@@ -1415,14 +1453,15 @@ grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new ag
 
 # 5. Hand out the new private key and retire the old one:
 #    Replace the old AGE-SECRET-KEY-1… line in the password manager with the new one. On every
-#    machine that deploys staging, add the new line to keys.txt (bootstrap.sh does it from its
-#    prompt or SOPS_AGE_KEY_STAGING) and delete the old key's lines.
+#    machine that deploys staging, and every prod machine (it reads staging's Tailscale file),
+#    add the new line to keys.txt (bootstrap.sh does it from its prompt or
+#    SOPS_AGE_KEY_STAGING) and delete the old key's lines.
 ```
 
 `updatekeys` changes who can decrypt, not the values. Anyone holding the **old** key can still
 decrypt every old version of these files from git history, so if the old key leaked, also
-rotate every secret of that environment from the table above, including Grafana's and the
-Tailscale OAuth client.
+rotate every secret of that environment from the table above, including Grafana's and, for the
+staging key, the Tailscale OAuth client.
 
 ### DB and Redis passwords
 

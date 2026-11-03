@@ -32,8 +32,9 @@ and restart the workload so pods pick up the new value.
               restarts deployment/kps-grafana). For admin-password it also
               resets the password stored in Grafana's database, because
               Grafana only reads the secret on its very first start.
-  --tailscale Rotate the env's tailscale-oauth.enc.yaml, the operator's OAuth
-              client (namespace tailscale, restarts deployment/operator).
+  --tailscale Rotate staging's tailscale-oauth.enc.yaml, the operator's OAuth
+              client (namespace tailscale, restarts deployment/operator). Every
+              cluster, prod's included, uses staging's client, so ENV is ignored.
   --alertmanager
               Set a cluster-alerts incoming webhook in the env's
               alertmanager-slack.enc.yaml (namespace monitoring) and copy it
@@ -63,7 +64,7 @@ Examples:
   ENV=prod $(basename "$0") ADMIN_PASSWORD_HASH
   $(basename "$0") DISCORD_BUG_WEBHOOK_URL < webhook.txt
   ENV=prod $(basename "$0") --grafana admin-password
-  ENV=prod $(basename "$0") --tailscale client_secret
+  $(basename "$0") --tailscale client_secret
   ENV=prod $(basename "$0") --alertmanager cluster_url
   ENV=prod $(basename "$0") --alertmanager staging_url
 EOF
@@ -86,6 +87,11 @@ done
 TARGETS=0
 for flag in "$GRAFANA" "$TAILSCALE" "$ALERTMANAGER"; do [ "$flag" = "false" ] || TARGETS=$((TARGETS + 1)); done
 [ "$TARGETS" -le 1 ] || die "--grafana, --tailscale and --alertmanager target different secrets; pick one."
+# One OAuth client per tailnet name: every cluster uses staging's (see deploy-observability.sh).
+if [ "$TAILSCALE" = "true" ]; then
+  [ "$ENV" = "staging" ] || echo "Note: the Tailscale client is staging's on every cluster; using ENV=staging." >&2
+  ENV=staging
+fi
 
 case "$ENV" in
   prod)    DEFAULT_NAMESPACE="fmi-codes"; SECRETS_REL="secrets" ;;
@@ -194,7 +200,7 @@ if [ "$TAILSCALE" = "true" ] && sops --decrypt "$SECRETS_ENC" \
   unset VALUE
   if [ "$KEY" = "client_id" ]; then OTHER_KEY="client_secret"; else OTHER_KEY="client_id"; fi
   log "Stored '$KEY' in $SECRETS_ENC. Not applied yet: '$OTHER_KEY' is still empty. Set it next:"
-  echo "  ENV=$ENV bash $0 --tailscale $OTHER_KEY"
+  echo "  bash $0 --tailscale $OTHER_KEY"
   exit 0
 fi
 
