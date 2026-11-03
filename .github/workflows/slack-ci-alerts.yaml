@@ -1,0 +1,56 @@
+name: Slack CI alerts
+
+# The one handler for finished runs (.github/scripts/ci_alerts.py): failure
+# alerts and "green again" pings in #actions-notifications, CI results in each
+# PR's #pr-updates thread, "CI failed" on Flux bump one-liners.
+#
+# workflow_run has secrets even for runs on fork PRs, so this never checks out
+# or runs PR code: only the default branch's scripts, reading the run from the
+# event payload and the REST API. Failed-step logs are posted escaped.
+# Skips quietly while SLACK_BOT_TOKEN or SLACK_ACTIONS_CHANNEL_ID is unset.
+
+on:
+  workflow_run:
+    # Must match each workflow's `name:` exactly.
+    workflows:
+      - CI
+      - Build and Push Docker Image
+      - Docs
+      - Open PR for Flux image bump
+      - Migrate database
+      - Promote to production
+    types: [completed]
+
+# Duplicate deliveries of one run attempt queue behind each other, so the second
+# finds the first one's alert instead of racing it. Distinct runs never share a group.
+concurrency:
+  group: slack-ci-alerts-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify:
+    if: contains(fromJSON('["success", "failure", "timed_out", "startup_failure"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout the default branch's scripts
+        # Pinned by SHA: this job holds the Slack token (repo-wide pinning: #164).
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Post to Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_ACTIONS_CHANNEL_ID: ${{ vars.SLACK_ACTIONS_CHANNEL_ID }}
+          SLACK_PR_CHANNEL_ID: ${{ vars.SLACK_PR_CHANNEL_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_alerts.py
