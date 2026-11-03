@@ -394,7 +394,8 @@ mkdir -p ~/.config/sops/age
 
 # 2. In .sops.yaml, set the `age:` recipient of every rule for your env to that age1… value:
 #    secrets.enc.yaml, grafana-secret.enc.yaml and alertmanager-slack.enc.yaml, plus
-#    tailscale-oauth.enc.yaml for staging (it has no prod copy).
+#    tailscale-oauth.enc.yaml for staging. That file has no prod copy: every cluster reads
+#    staging's, so a prod-only fork still has to replace it and use its staging key on prod.
 
 # 3. Overwrite each of that env's .enc.yaml files with a plaintext Secret holding your values
 #    (same metadata and stringData keys as the committed file; those stay readable), then
@@ -403,8 +404,8 @@ sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
-# (prod: the same files under infra/k8s/secrets/, minus tailscale-oauth). It can stay empty until
-# your tailnet exists (Phase 7), alertmanager-slack until you have a Slack webhook
+# (prod: the same files under infra/k8s/secrets/, minus tailscale-oauth). tailscale-oauth can
+# stay empty until your tailnet exists (Phase 7), alertmanager-slack until you have a Slack webhook
 # (Cluster alerts). Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key:
 # your https://staging.<tailnet>.ts.net, or "" until you know it.
 
@@ -1038,12 +1039,14 @@ secret and the Slack webhooks still follow `ENV`.
 
     Staging's Tailscale file is encrypted to the staging key, so a prod machine needs that key
     as well as prod's. `bootstrap.sh --env prod --with-flux` asks for it (from
-    `SOPS_AGE_KEY_STAGING` or a hidden prompt), and `ENV=prod deploy-observability.sh` stops
-    with a decryption error without it. This bends the one-key-per-env rule: the staging key on
-    the server can read the tailnet OAuth client. It is fine here because every planned prod
-    machine also runs staging and needs the staging key for that anyway. A machine that runs
-    only prod would hold the staging key just for this, so revisit this section before setting
-    one up.
+    `SOPS_AGE_KEY_STAGING` or a hidden prompt). Without it, Enter at the prompt or a run with no
+    terminal, prod still deploys, but `deploy-observability.sh` skips the Tailscale client with
+    a warning, leaves any live `operator-oauth` as it is, and Grafana and staging stay off the
+    tailnet until the key is added and the script runs again. This bends the one-key-per-env
+    rule: the staging key on the server can read the tailnet OAuth client. It is fine here
+    because every planned prod machine also runs staging and needs the staging key for that
+    anyway. A machine that runs only prod would hold the staging key just for this, so revisit
+    this section before setting one up.
 
 #### Tailscale setup (once per tailnet)
 
@@ -1430,15 +1433,15 @@ to overwrite a Secret that isn't labelled `staging`.
 ### Rotate an age key
 
 Each environment's SOPS files are encrypted to one age key (`.sops.yaml`). Replace it when the
-private key may have leaked or when someone who holds it leaves. Example for staging; for
-prod use the `infra/k8s/secrets/` files (three: prod has no `tailscale-oauth.enc.yaml`) and
-`SOPS_AGE_KEY_PROD`.
+private key may have leaked or when someone who holds it leaves. The example is for staging,
+which has four files. Prod has three (no `tailscale-oauth.enc.yaml`): use its three rules, the
+three `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
 
 ```bash
 # 1. New key pair, appended next to the old one (keep the old one until step 5).
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)   # prints "Public key: age1…"
 
-# 2. In .sops.yaml, replace the old age1… recipient in ALL FOUR staging rules
+# 2. In .sops.yaml, replace the old age1… recipient in the four staging rules
 #    (secrets.enc.yaml, grafana-secret.enc.yaml, tailscale-oauth.enc.yaml,
 #    alertmanager-slack.enc.yaml) with the new one.
 

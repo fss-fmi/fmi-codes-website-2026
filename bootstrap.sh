@@ -27,9 +27,10 @@ case "$ENV" in
   *)       echo "Error: --env must be 'staging' or 'prod', got '$ENV'" >&2; exit 1 ;;
 esac
 SECRETS_ENC="$SECRETS_DIR/secrets.enc.yaml"
-# One OAuth client per tailnet name, so every cluster uses staging's, and a prod run that sets
-# up Tailscale needs the staging age key too.
-TS_FILE="$SCRIPT_DIR/infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml"
+# shellcheck source=infra/k8s/scripts/lib/tailscale-client.sh
+. "$SCRIPT_DIR/infra/k8s/scripts/lib/tailscale-client.sh"
+# Staging's on every cluster, so a prod run that sets up Tailscale needs the staging key too.
+TS_FILE="$SCRIPT_DIR/infra/k8s/$TS_CLIENT_REL"
 ENC_FILES=()
 for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/alertmanager-slack.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
@@ -124,11 +125,12 @@ import_age_keys() {
   ok "verified: $AGE_KEY_FILE decrypts every $KEY_ENV secrets file"
 }
 
-# ensure_age_key KEY_ENV KEY_VAR: make keys.txt decrypt every file in ENC_FILES, adding
-# KEY_ENV's key from $KEY_VAR or a hidden prompt when it can't yet.
+# ensure_age_key KEY_ENV KEY_VAR [optional]: make keys.txt decrypt every file in ENC_FILES,
+# adding KEY_ENV's key from $KEY_VAR or a hidden prompt when it can't yet. With "optional", no
+# key (no terminal, or Enter at the prompt) returns 1 instead of stopping the bootstrap.
 ensure_age_key() {
   KEY_ENV="$1"
-  local key_var="$2" env_val raw_key
+  local key_var="$2" optional="${3:-}" env_val raw_key
   if [ -e "$AGE_KEY_FILE" ]; then
     { [ -r "$AGE_KEY_FILE" ] && [ -w "$AGE_KEY_FILE" ]; } \
       || die "$AGE_KEY_FILE is not readable and writable by $(id -un); fix its ownership and re-run"
@@ -156,17 +158,29 @@ ensure_age_key() {
     ok "using the key from \$$key_var"
     import_age_keys "$env_val"
   else
-    [ -t 0 ] || die "no terminal to prompt on; export $key_var=AGE-SECRET-KEY-1... and re-run"
+    if [ ! -t 0 ]; then
+      [ -n "$optional" ] || die "no terminal to prompt on; export $key_var=AGE-SECRET-KEY-1... and re-run"
+      warn "no terminal to prompt on and no \$$key_var; skipping the $KEY_ENV key"
+      return 1
+    fi
     echo "Tip: export $key_var=AGE-SECRET-KEY-1... to skip this prompt."
     echo
     echo "If you have the key on another machine, copy its AGE-SECRET-KEY-1... line from"
     echo "that machine's ~/.config/sops/age/keys.txt."
     echo
-    ask "Paste the AGE-SECRET-KEY-1... line (input is hidden), then press Enter:"
+    if [ -n "$optional" ]; then
+      ask "Paste the AGE-SECRET-KEY-1... line (input is hidden), or press Enter to skip:"
+    else
+      ask "Paste the AGE-SECRET-KEY-1... line (input is hidden), then press Enter:"
+    fi
     raw_key=""
     read -rs raw_key || true
     echo
-    [ -n "$raw_key" ] || die "no key provided; cannot decrypt secrets"
+    if [ -z "$raw_key" ]; then
+      [ -n "$optional" ] || die "no key provided; cannot decrypt secrets"
+      warn "skipped the $KEY_ENV key"
+      return 1
+    fi
     import_age_keys "$raw_key"
   fi
 }
@@ -180,20 +194,26 @@ else
   bash "$INSTALL_TOOLS" || die "install-tools.sh failed; fix the cause above and re-run"
 fi
 
-# Mirrors init-linux.sh: observability (step 7) runs whenever Flux does, unless opted out.
-WILL_OBSERVE="${WITH_FLUX:-false}"
+# The same decision init-linux.sh makes for step 7 (env vars, then flags, then --from), so the
+# pre-flight prepares exactly what that step will need.
+WILL_FLUX="${WITH_FLUX:-false}"
+WILL_OBSERVE="${WITH_OBSERVABILITY:-auto}"
+STEP_FROM="${FROM:-1}"
 PREV_ARG=""
 for a in ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; do
+  if [ "$PREV_ARG" = "--from" ]; then STEP_FROM="$a"; fi
   case "$a" in
-    --with-flux|--with-observability) WILL_OBSERVE=true ;;
+    --with-flux) WILL_FLUX=true ;;
+    --with-observability) WILL_OBSERVE=true ;;
+    --without-observability) WILL_OBSERVE=false ;;
   esac
-  if [ "$PREV_ARG" = "--from" ] && { [ "$a" = 6 ] || [ "$a" = 7 ]; }; then WILL_OBSERVE=true; fi
   PREV_ARG="$a"
 done
-for a in ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; do
-  if [ "$a" = "--without-observability" ]; then WILL_OBSERVE=false; fi
-done
-[ "${WITH_OBSERVABILITY:-auto}" != "false" ] || WILL_OBSERVE=false
+case "$STEP_FROM" in
+  6) WILL_FLUX=true ;;
+  7) WILL_FLUX=true; WILL_OBSERVE=true ;;
+esac
+[ "$WILL_OBSERVE" != "auto" ] || WILL_OBSERVE="$WILL_FLUX"
 
 log "Pre-flight: age key (SOPS decryption)"
 
@@ -203,12 +223,13 @@ else
   ensure_age_key "$ENV" "$ENV_KEY_VAR"
 fi
 
+TS_DECRYPTS=true
 if [ "$ENV" = "prod" ] && [ "$WILL_OBSERVE" = "true" ] && [ -f "$TS_FILE" ]; then
   log "Pre-flight: staging age key (Tailscale OAuth client)"
   echo "Every cluster, prod's included, uses staging's Tailscale OAuth client, so this prod machine"
   echo "also needs the staging age key to decrypt $TS_FILE."
   ENC_FILES=("$TS_FILE")
-  ensure_age_key staging SOPS_AGE_KEY_STAGING
+  ensure_age_key staging SOPS_AGE_KEY_STAGING optional || TS_DECRYPTS=false
 fi
 # The key is on disk now; installers, helm and kubectl run below never need it in their env.
 unset SOPS_AGE_KEY_STAGING SOPS_AGE_KEY_PROD
@@ -296,6 +317,9 @@ if [ "$WILL_OBSERVE" != "true" ]; then
   fi
 elif [ ! -f "$TS_FILE" ]; then
   warn "no $TS_FILE; Grafana and staging will not join the tailnet"
+elif [ "$TS_DECRYPTS" != "true" ]; then
+  warn "without the staging age key step 7 skips the Tailscale client, so Grafana and staging
+  stay off the tailnet. Add the key to $AGE_KEY_FILE, then: ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh"
 # Not grep -q: exiting at the first match could SIGPIPE sops, and pipefail would invert the result.
 elif ! sops --decrypt "$TS_FILE" | grep -E "$TS_EMPTY_RE" >/dev/null; then
   ok "$TS_FILE already holds an OAuth client"

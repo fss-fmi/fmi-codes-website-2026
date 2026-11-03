@@ -11,7 +11,7 @@ Unlike Grafana's password or the Slack webhooks, which client a cluster uses cha
 ## Decision
 
 - **There is one `tailscale-oauth.enc.yaml`, staging's** (`overlays/staging/secrets/`), and no prod copy or `.sops.yaml` rule. `deploy-observability.sh`, `tailscale-oauth.sh`, `rotate-secret.sh --tailscale` and the bootstrap pre-flight use it whatever `ENV` is, and label `tailscale/operator-oauth` as `staging`.
-- **A machine that runs prod needs the staging age key too.** `bootstrap.sh --env prod --with-flux` checks it the way it checks the env's own key (`SOPS_AGE_KEY_STAGING` or a hidden prompt).
+- **A machine that runs prod needs the staging age key too.** `bootstrap.sh --env prod --with-flux` checks it the way it checks the env's own key (`SOPS_AGE_KEY_STAGING` or a hidden prompt), but doesn't stop without it: prod still deploys, and `deploy-observability.sh` skips the Tailscale client with a warning. The file path lives in one place, `infra/k8s/scripts/lib/tailscale-client.sh`.
 - Grafana's admin password and the Slack webhooks keep their copy per environment.
 
 ## Consequences

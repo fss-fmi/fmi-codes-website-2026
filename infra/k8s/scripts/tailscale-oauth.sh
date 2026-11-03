@@ -49,7 +49,9 @@ esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-TS_FILE="${TAILSCALE_SECRET_ENC:-$K8S_DIR/overlays/staging/secrets/tailscale-oauth.enc.yaml}"
+# shellcheck source=lib/tailscale-client.sh
+. "$SCRIPT_DIR/lib/tailscale-client.sh"
+TS_FILE="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$TS_CLIENT_REL}"
 RUNBOOK="docs/runbook.md 'Move Grafana and staging to another cluster'"
 
 need_sops_file() {

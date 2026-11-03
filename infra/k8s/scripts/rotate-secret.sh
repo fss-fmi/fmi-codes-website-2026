@@ -45,7 +45,7 @@ and restart the workload so pods pick up the new value.
 
 The Grafana, Tailscale and Alertmanager Secrets are cluster-wide, so the script refuses to
 overwrite one that holds the other env's credentials (ALLOW_ENV_SWITCH=true
-switches on purpose).
+switches on purpose). The Tailscale one must hold staging's, whatever ENV is.
 
 The value is never taken as an argument (that leaks it into shell history and
 ps). Without --generate it is read from:
@@ -87,11 +87,6 @@ done
 TARGETS=0
 for flag in "$GRAFANA" "$TAILSCALE" "$ALERTMANAGER"; do [ "$flag" = "false" ] || TARGETS=$((TARGETS + 1)); done
 [ "$TARGETS" -le 1 ] || die "--grafana, --tailscale and --alertmanager target different secrets; pick one."
-# One OAuth client per tailnet name: every cluster uses staging's (see deploy-observability.sh).
-if [ "$TAILSCALE" = "true" ]; then
-  [ "$ENV" = "staging" ] || echo "Note: the Tailscale client is staging's on every cluster; using ENV=staging." >&2
-  ENV=staging
-fi
 
 case "$ENV" in
   prod)    DEFAULT_NAMESPACE="fmi-codes"; SECRETS_REL="secrets" ;;
@@ -100,16 +95,22 @@ case "$ENV" in
 esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# The env whose copy the Secret holds; only the Tailscale client differs from ENV.
+SECRET_ENV="$ENV"
 if [ "$GRAFANA" = "true" ]; then
   NAMESPACE="${NAMESPACE:-monitoring}"
   SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/grafana-secret.enc.yaml}"
   SECRET_NAME="${SECRET_NAME:-grafana-admin}"
   RESTART_TARGET="${RESTART_TARGET:-deployment/kps-grafana}"
 elif [ "$TAILSCALE" = "true" ]; then
+  # shellcheck source=lib/tailscale-client.sh
+  . "$SCRIPT_DIR/lib/tailscale-client.sh"
   NAMESPACE="${NAMESPACE:-tailscale}"
-  SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/tailscale-oauth.enc.yaml}"
+  SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$TS_CLIENT_REL}"
   SECRET_NAME="${SECRET_NAME:-operator-oauth}"
   RESTART_TARGET="${RESTART_TARGET:-deployment/operator}"
+  SECRET_ENV=staging
+  [ "$ENV" = "staging" ] || echo "Note: the Tailscale client is staging's on every cluster, so ENV=$ENV doesn't change which file is rotated." >&2
 elif [ "$ALERTMANAGER" = "true" ]; then
   NAMESPACE="${NAMESPACE:-monitoring}"
   SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/alertmanager-slack.enc.yaml}"
@@ -137,7 +138,7 @@ command -v python3 >/dev/null 2>&1 || die "python3 not found — sudo apt-get in
 [ -f "$SECRETS_ENC" ] || die "missing $SECRETS_ENC"
 
 sops --decrypt "$SECRETS_ENC" >/dev/null 2>&1 \
-  || die "cannot decrypt $SECRETS_ENC — is your age key at ~/.config/sops/age/keys.txt?"
+  || die "cannot decrypt $SECRETS_ENC — is the $SECRET_ENV age key in ~/.config/sops/age/keys.txt?"
 
 secret_ns="$(sops --decrypt "$SECRETS_ENC" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
 [ "$secret_ns" = "$NAMESPACE" ] \
@@ -155,7 +156,9 @@ if [ "$GRAFANA" = "true" ] || [ "$TAILSCALE" = "true" ] || [ "$ALERTMANAGER" = "
   live_env="$(kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" --ignore-not-found \
     -o go-template="{{index .metadata.labels \"$ENV_LABEL\"}}" 2>/dev/null || true)"
   live_env="${live_env#<no value>}"
-  if [ -n "$live_env" ] && [ "$live_env" != "$ENV" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ]; then
+  if [ -n "$live_env" ] && [ "$live_env" != "$SECRET_ENV" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ]; then
+    [ "$TAILSCALE" != "true" ] \
+      || die "$NAMESPACE/$SECRET_NAME is labelled $live_env, but it always comes from staging's file, whatever ENV is. Release it first (docs/runbook.md 'Move Grafana and staging to another cluster'), or set ALLOW_ENV_SWITCH=true to replace it in place."
     die "$NAMESPACE/$SECRET_NAME holds the $live_env credentials; refusing to replace them with $ENV's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose."
   fi
 fi
@@ -207,7 +210,7 @@ fi
 log "Applying updated secret from $SECRETS_ENC"
 sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
 if [ "$CLUSTER_WIDE" = "true" ]; then
-  kubectl -n "$NAMESPACE" label secret "$SECRET_NAME" "$ENV_LABEL=$ENV" --overwrite >/dev/null
+  kubectl -n "$NAMESPACE" label secret "$SECRET_NAME" "$ENV_LABEL=$SECRET_ENV" --overwrite >/dev/null
 fi
 
 if [ "$ALERTMANAGER" = "true" ]; then
