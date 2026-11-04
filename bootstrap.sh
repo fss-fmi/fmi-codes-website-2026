@@ -32,7 +32,8 @@ SECRETS_ENC="$SECRETS_DIR/secrets.enc.yaml"
 # Staging's on every cluster, so a prod run that sets up Tailscale needs the staging key too.
 TS_FILE="$SCRIPT_DIR/infra/k8s/$TS_CLIENT_REL"
 ENC_FILES=()
-for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/alertmanager-slack.enc.yaml"; do
+for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/alertmanager-slack.enc.yaml" \
+  "$SECRETS_DIR/flux-relay-slack.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
 done
 if [ "$ENV" = "staging" ] && [ -f "$TS_FILE" ]; then ENC_FILES+=("$TS_FILE"); fi

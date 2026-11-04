@@ -20,6 +20,7 @@ graph TD
     Prom["Prometheus"]
     AM["Alertmanager"]
     Flux["Flux controllers"]
+    Relay["Flux Relay"]
     Grafana["Grafana"]
     TS["Tailscale proxies<br/>(operator-managed)"]
     Dev["Developer device<br/>(Tailscale app)"]
@@ -36,6 +37,8 @@ graph TD
     Prom -->|firing alerts| AM
     AM -->|"cluster alerts (prod / staging channel)"| Slack
     Flux -->|"reconcile errors (prod / staging channel)"| Slack
+    Flux -->|"the same errors"| Relay
+    Relay -->|"recovered replies (bot token)"| Slack
     Dev -->|"HTTPS over the tailnet"| TS
     TS --> Grafana
     TS -->|"staging (HTTP)"| Ingress
@@ -122,7 +125,7 @@ The algorithm core (`_run_algorithm`) is pure and has no Flask or DB dependencie
 
 ## Observability
 
-`prometheus_flask_exporter` registers `/metrics` at the backend root. Prometheus scrapes it in-cluster through a ServiceMonitor; the public ingress deliberately does not route `/metrics`. Counters are per Gunicorn worker (not aggregated). Health probes: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready` (readiness: pooled `SELECT 1`, Redis reported but never gating). One kube-prometheus-stack serves both environments and depends on neither. Grafana is reachable only over the `fss-fmi` Tailscale tailnet: the Tailscale operator serves its Ingress as `https://grafana.<tailnet>.ts.net`, bypassing ingress-nginx ([ADR-008](adr/008-grafana-over-tailscale.md)). Alertmanager (in the same stack) and Flux's notification-controller post failures inside the cluster, such as crash-looping pods, failed Jobs, stuck rollouts and reconcile errors, to Slack through incoming webhooks: staging's namespace and Flux objects to `#cluster-alerts-staging`, everything else to the channel of the env the cluster serves (`#cluster-alerts-prod` on the server) ([ADR-010](adr/010-cluster-alerts-to-slack.md)). Details in the [runbook](runbook.md#7--observability-prometheus--grafana).
+`prometheus_flask_exporter` registers `/metrics` at the backend root. Prometheus scrapes it in-cluster through a ServiceMonitor; the public ingress deliberately does not route `/metrics`. Counters are per Gunicorn worker (not aggregated). Health probes: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready` (readiness: pooled `SELECT 1`, Redis reported but never gating). One kube-prometheus-stack serves both environments and depends on neither. Grafana is reachable only over the `fss-fmi` Tailscale tailnet: the Tailscale operator serves its Ingress as `https://grafana.<tailnet>.ts.net`, bypassing ingress-nginx ([ADR-008](adr/008-grafana-over-tailscale.md)). Alertmanager (in the same stack) and Flux's notification-controller post failures inside the cluster, such as crash-looping pods, failed Jobs, stuck rollouts and reconcile errors, to Slack through incoming webhooks: staging's namespace and Flux objects to `#cluster-alerts-staging`, everything else to the channel of the env the cluster serves (`#cluster-alerts-prod` on the server) ([ADR-010](adr/010-cluster-alerts-to-slack.md)). The Flux Relay in `flux-system` gets the same Flux errors, watches each failing object's `Ready` condition and, once it recovers, replies in the error's thread and reacts ✅ on every post of the incident ([ADR-012](adr/012-flux-recovery-replies.md)). Details in the [runbook](runbook.md#7--observability-prometheus--grafana).
 
 ## Testing approach
 
@@ -149,18 +152,19 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 - [ADR-009](adr/009-staging-over-tailscale.md): staging reached only over the tailnet, in front of its own ingress-nginx.
 - [ADR-010](adr/010-cluster-alerts-to-slack.md): Alertmanager and Flux post in-cluster failures to a prod and a staging Slack channel through webhooks.
 - [ADR-011](adr/011-one-tailscale-client-staging.md): every cluster, prod's included, uses staging's Tailscale OAuth client, so a prod machine needs the staging age key too.
+- [ADR-012](adr/012-flux-recovery-replies.md): a relay in `flux-system` replies "recovered" in the thread of a Flux error once the object is ready again, with its own Slack app and Secret.
 
 ## External dependencies
 
-| Dependency                    | Used for                                                           | Required                                  |
-| ----------------------------- | ------------------------------------------------------------------ | ----------------------------------------- |
-| PostgreSQL 16                 | All durable state                                                  | Yes                                       |
-| Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches                          | No (degrades)                             |
-| SMTP (Gmail by default)       | Password reset links, join-request emails to captains              | No (features silently fail)               |
-| Discord webhook               | Bug reports                                                        | No                                        |
-| Slack (webhooks + bot token)  | Bug reports, migration results, PR feed, CI alerts, cluster alerts | No                                        |
-| Docker Hub (`fssfmi/*`)       | Image registry                                                     | For deploys                               |
-| Tailscale (`fss-fmi` tailnet) | Developer access to Grafana and staging                            | No (both only via `kubectl port-forward`) |
+| Dependency                    | Used for                                                                                      | Required                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| PostgreSQL 16                 | All durable state                                                                             | Yes                                       |
+| Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches                                                     | No (degrades)                             |
+| SMTP (Gmail by default)       | Password reset links, join-request emails to captains                                         | No (features silently fail)               |
+| Discord webhook               | Bug reports                                                                                   | No                                        |
+| Slack (webhooks + bot tokens) | Bug reports, migration results, PR feed, CI alerts, cluster alerts and their recovery replies | No                                        |
+| Docker Hub (`fssfmi/*`)       | Image registry                                                                                | For deploys                               |
+| Tailscale (`fss-fmi` tailnet) | Developer access to Grafana and staging                                                       | No (both only via `kubectl port-forward`) |
 
 ## Known gaps
 

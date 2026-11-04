@@ -15,18 +15,19 @@ infra/k8s/
   scripts/       init-linux, init-windows, install-tools, bootstrap-k3s,
                  deploy-stateful, deploy-app, deploy-ingress, install-forward-services,
                  deploy-observability, tailscale-oauth, apply-config, rotate-secret
-                 scripts/lib/ shared helpers the scripts source (slack-webhooks)
+                 scripts/lib/ shared helpers the scripts source (slack-webhooks, flux-relay, tailscale-client)
   base/          environment-agnostic manifests
                    base/app/     namespace, backend, frontend
                    base/ingress/ security-headers, certificate, ingress
                    base/observability/ kube-prometheus-stack, Grafana tailnet Ingress, ServiceMonitor (shared)
                    base/tailscale/     Tailscale operator (shared)
+                   base/flux-relay/    replies "recovered" under Flux's Slack errors (shared, in flux-system)
   overlays/      per-env overlays layered on base
                    overlays/prod/     namespace fmi-codes, host fmicodes.com, Let's Encrypt
                    overlays/staging/  namespace fmi-codes-staging, any host, no TLS (Tailscale holds it)
                    overlays/staging/tailnet/ staging's Tailscale Ingress (namespace ingress-nginx-staging)
   helm-values/   Bitnami postgresql + redis values (prod)
-  secrets/       prod secrets, grafana-secret, alertmanager-slack .enc.yaml (SOPS);
+  secrets/       prod secrets, grafana-secret, alertmanager-slack, flux-relay-slack .enc.yaml (SOPS);
                  staging's live in overlays/staging/secrets/, with the only tailscale-oauth
   flux/          Flux GitOps — source, image-automation, notifications, self
 ```
@@ -115,6 +116,7 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | `grafana-admin` (SOPS, in git)      | `admin-user`, `admin-password`                                                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
 | `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | **staging's file only**, used by every cluster ([why](#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                    |
 | `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                        | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                            |
+| `flux-relay-slack` (SOPS, in git)   | `bot_token`, `cluster_channel`, `staging_channel` (the Flux Relay Slack app's token and the two channel IDs)                                                                               | committed **empty**; `deploy-observability.sh` applies it to `flux-system`. Until it's filled the relay idles and Flux errors get no "recovered" reply. Set them with `rotate-secret.sh --flux-relay <key>` ([Recovery replies](#recovery-replies))                                                |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -136,12 +138,13 @@ The pre-flight first installs `sops` and `age` if they're missing (so it can ver
 bare box), then handles three things:
 
 1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`,
-   `grafana-secret.enc.yaml` and `alertmanager-slack.enc.yaml`, plus `tailscale-oauth.enc.yaml`
-   on staging) with `~/.config/sops/age/keys.txt` (or `$SOPS_AGE_KEY_FILE`
-   if set). If that works it does nothing, whatever else is in the file and in whatever order.
-   Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or `SOPS_AGE_KEY_PROD`), falling
-   back to a hidden paste prompt, verifies the key decrypts those files **before** writing
-   anything, then **appends** it to `keys.txt` with a `# public key:` comment (`chmod 600`).
+   `grafana-secret.enc.yaml`, `alertmanager-slack.enc.yaml` and `flux-relay-slack.enc.yaml`,
+   plus `tailscale-oauth.enc.yaml` on staging) with `~/.config/sops/age/keys.txt` (or
+   `$SOPS_AGE_KEY_FILE` if set). If that works it does nothing, whatever else is in the file
+   and in whatever order. Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or
+   `SOPS_AGE_KEY_PROD`), falling back to a hidden paste prompt, verifies the key decrypts those
+   files **before** writing anything, then **appends** it to `keys.txt` with a `# public key:`
+   comment (`chmod 600`).
    Existing keys are never replaced or removed. A wrong key aborts with its public key next
    to the one the files are encrypted to, and leaves `keys.txt` untouched. To skip the prompt,
    export the key first as shown in [step 0](#0-prerequisites). A prod run with `--with-flux`
@@ -412,9 +415,10 @@ mkdir -p ~/.config/sops/age
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)
 
 # 2. In .sops.yaml, set the `age:` recipient of every rule for your env to that age1… value:
-#    secrets.enc.yaml, grafana-secret.enc.yaml and alertmanager-slack.enc.yaml, plus
-#    tailscale-oauth.enc.yaml for staging. That file has no prod copy: every cluster reads
-#    staging's, so a prod-only fork still has to replace it and use its staging key on prod.
+#    secrets.enc.yaml, grafana-secret.enc.yaml, alertmanager-slack.enc.yaml and
+#    flux-relay-slack.enc.yaml, plus tailscale-oauth.enc.yaml for staging. That file has no
+#    prod copy: every cluster reads staging's, so a prod-only fork still has to replace it and
+#    use its staging key on prod.
 
 # 3. Overwrite each of that env's .enc.yaml files with a plaintext Secret holding your values
 #    (same metadata and stringData keys as the committed file; those stay readable), then
@@ -423,10 +427,12 @@ sops --encrypt --in-place infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/flux-relay-slack.enc.yaml
 # (prod: the same files under infra/k8s/secrets/, minus tailscale-oauth). tailscale-oauth can
 # stay empty until your tailnet exists (Phase 7), alertmanager-slack until you have a Slack webhook
-# (Cluster alerts). Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key:
-# your https://staging.<tailnet>.ts.net, or "" until you know it.
+# (Cluster alerts), flux-relay-slack until you have the Flux Relay app (Recovery replies).
+# Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key: your
+# https://staging.<tailnet>.ts.net, or "" until you know it.
 
 # 4. Commit .sops.yaml + the encrypted files. Bootstrap checks keys by decrypting the files,
 #    so it accepts YOUR key with no script changes.
@@ -732,8 +738,9 @@ its own Kustomization, `fmi-codes-staging-tailnet` ([Phase 4](#4--ingress--tls))
 same operator.
 
 **One-time bootstrap: the secrets.** Flux never decrypts SOPS, so one script applies the
-Grafana admin secret, the Alertmanager webhook secret and the Tailscale OAuth secret, and
-copies the webhooks to `flux-system` for Flux. `bootstrap.sh --with-flux` runs it as
+Grafana admin secret, the Alertmanager webhook secret, the Flux Relay's Slack secret (to
+`flux-system`, skipped with a warning while Flux isn't installed) and the Tailscale OAuth
+secret, and copies the webhooks to `flux-system` for Flux. `bootstrap.sh --with-flux` runs it as
 step 7 (opt out with `--without-observability`, which also leaves staging without a tailnet
 address, since the operator never gets its client); by hand:
 
@@ -748,9 +755,9 @@ holds the name, and the [handover](#move-grafana-and-staging-to-another-cluster)
 It also warns when staging's `FRONTEND_ORIGIN` (in the live app secret) is not staging's
 address, and prints the `rotate-secret.sh` command that fixes it. None of this stops the script.
 
-These Secrets are cluster-wide (one monitoring stack, one operator). Grafana's and the Slack
-webhooks have an encrypted copy per env (`grafana-secret.enc.yaml`,
-`alertmanager-slack.enc.yaml`) under its age key. Pick
+These Secrets are cluster-wide (one monitoring stack, one operator, one Flux). Grafana's, the
+Slack webhooks and the Flux Relay's have an encrypted copy per env (`grafana-secret.enc.yaml`,
+`alertmanager-slack.enc.yaml`, `flux-relay-slack.enc.yaml`) under its age key. Pick
 the env the cluster belongs to: `prod` on the server, `staging` on a staging-only dev box. The
 script labels each Secret with that env and refuses to overwrite it with the other env's copy
 later (`ALLOW_ENV_SWITCH=true` switches on purpose, as when a staging-only box gets prod too:
@@ -761,7 +768,8 @@ While it still holds empty values the script skips it with a warning and the ope
 idle; fill it in once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet),
 step 6). An
 empty `alertmanager-slack.enc.yaml` is still applied, because the Alertmanager pod mounts it
-and can't start without it; only the copy for Flux is skipped, with a warning. If
+and can't start without it; only the copy for Flux is skipped, with a warning. An empty
+`flux-relay-slack.enc.yaml` is applied too, with a warning naming the empty keys. If
 `flux-bootstrap.sh` has not been run yet, apply the Flux objects once first:
 `kubectl apply -f infra/k8s/flux/source.yaml`.
 
@@ -815,7 +823,8 @@ bootstrapped before the label existed run `kubectl apply -f infra/k8s/flux/self.
 - **Flux** (`flux/notifications.yaml`) posts reconcile errors: a Kustomization that won't apply
   or fails its health check after a merge, a failed HelmRelease, a source or image scan that
   can't fetch, image automation that can't push its bump. Info events (successful applies,
-  "dependency not ready") are not posted.
+  "dependency not ready") are not posted. Once the failing object is healthy again, the
+  Flux Relay replies "recovered" in the error's thread ([Recovery replies](#recovery-replies)).
 
 The alerts most likely to matter:
 
@@ -933,6 +942,9 @@ ALLOW_ENV_SWITCH=true ENV=prod bash infra/k8s/scripts/deploy-observability.sh
 
 - `alertmanager-slack` becomes prod's copy (`cluster_url` = the prod webhook, `staging_url` =
   the staging webhook) and both Flux copies follow. Nothing restarts.
+- `flux-relay-slack` becomes prod's copy too (`cluster_channel` = the prod channel), so
+  recovery replies follow the errors into `#cluster-alerts-prod`. Incidents the relay already
+  tracks keep the channel they were posted in.
 - `grafana-admin` becomes prod's copy, but Grafana keeps the password it stored on its first
   start. To log in with prod's, run
   `ENV=prod bash infra/k8s/scripts/rotate-secret.sh --grafana admin-password` and enter it
@@ -1000,6 +1012,145 @@ spec:
 EOF
 kubectl -n flux-system delete kustomization alert-test
 ```
+
+With the [Flux Relay](#recovery-replies) set up, deleting it gets a 🗑️ reply in the error's
+thread within about 15 seconds.
+
+##### Recovery replies
+
+A Flux error stays in the channel, and the **Flux Relay** answers under it once the object is
+healthy again ([ADR-012](adr/012-flux-recovery-replies.md)):
+
+- one reply in the thread of the incident's first error,
+  `✅ Recovered <time> · <Ready message>`, with the time shown in each reader's own time zone;
+- a ✅ reaction on **every** error post of the incident. Flux reposts a lasting error about
+  every 5 minutes (notification-controller drops an identical event only for 5 minutes), so an
+  outage of 20 minutes leaves about four posts; all of them read as resolved at a glance;
+- `🗑️ … was deleted` instead, if the object is gone (like `alert-test` above).
+
+How it works:
+
+- `flux/notifications.yaml` has a `flux-relay` twin of each Slack Alert, with the same
+  sources and exclusions, sending the same errors to the relay
+  (`base/flux-relay`, Kustomization `fmi-codes-flux-relay`) at `/cluster` or `/staging`.
+  `tests/test_flux_relay.py` fails if a twin drifts from its Slack Alert.
+- The relay finds the error's post in that route's channel by the object (`kind/name.namespace`,
+  the post's author line) and the message, within 3 minutes. An error that never reached
+  Slack, because it was excluded or the webhook failed, gets no reply and no other traffic.
+- Every 15 seconds it reads each open incident's object. It is recovered when `Ready` is
+  `True` for the current generation and either went `True` after the error or was seen
+  `False` since. An error that never made the object unready (a Helm drift, a failed prune)
+  closes after 15 minutes with `Ready` and no new error post. Recovery comes from the object,
+  not from Flux's info events, because a HelmRelease that comes back in sync without a Helm
+  action sends none.
+- Open incidents live in the ConfigMap `flux-system/flux-relay-state`, so a restart (every WSL
+  boot) picks up where it left off. Flux creates it once and never resets it.
+- It only claims posts for errors its own notification-controller reported, so when two
+  clusters post to one channel (the prod server and a staging-only box both post to
+  `#cluster-alerts-staging`) neither closes the other's errors.
+- If the relay is down or has no token, errors still post exactly as before; only the reply is
+  missing. The relay never crash-loops for lack of a token, it idles and logs once.
+
+**Setup** (once per workspace, then per env file):
+
+1. The Slack app **Flux Relay**, separate from the CI bot so the cluster never holds a token
+   that can reach `#pr-updates` or `#actions-notifications`. At
+   [api.slack.com/apps](https://api.slack.com/apps): **Create New App → From a manifest**:
+
+   ```yaml
+   display_information:
+     name: Flux Relay
+   features:
+     bot_user:
+       display_name: Flux Relay
+       always_online: false
+   oauth_config:
+     scopes:
+       bot:
+         - channels:history
+         - chat:write
+         - reactions:write
+   settings:
+     org_deploy_enabled: false
+     socket_mode_enabled: false
+     token_rotation_enabled: false
+   ```
+
+   Add `groups:history` if an alert channel is private. **Install to Workspace**, then
+   `/invite @Flux Relay` in both `#cluster-alerts-prod` and `#cluster-alerts-staging`. The bot
+   token (`xoxb-…`) is on **OAuth & Permissions**; each channel's ID (`C…`) is at the bottom of
+   the channel's **About** tab.
+
+2. Store them (hidden prompt, typed twice; a value of the wrong shape is refused). The channel
+   keys mirror the webhook keys: `cluster_channel` is the channel `cluster_url` posts to,
+   `staging_channel` is `staging_url`'s:
+
+   ```bash
+   # prod's file (the server): cluster_channel = #cluster-alerts-prod
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --flux-relay bot_token
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --flux-relay cluster_channel
+   ENV=prod bash infra/k8s/scripts/rotate-secret.sh --flux-relay staging_channel
+   # staging's file (a staging-only box): both channel keys = #cluster-alerts-staging
+   ENV=staging bash infra/k8s/scripts/rotate-secret.sh --flux-relay bot_token
+   ENV=staging bash infra/k8s/scripts/rotate-secret.sh --flux-relay cluster_channel
+   ENV=staging bash infra/k8s/scripts/rotate-secret.sh --flux-relay staging_channel
+   ```
+
+   Each run writes the key, applies `flux-system/flux-relay-slack` and names the keys still
+   empty. Same env guard as `alertmanager-slack`; for an env whose cluster doesn't exist yet
+   use `sops infra/k8s/secrets/flux-relay-slack.enc.yaml`. Nothing restarts: the relay rereads
+   the mounted Secret, which the kubelet updates within a minute or two.
+
+3. Commit the changed `flux-relay-slack.enc.yaml` files.
+
+Check it: `kubectl -n flux-system logs deploy/flux-relay` says `No Slack bot token` until the
+token is set, `Tracking …` when it claims an error post and `Closed …` when it replies.
+
+**Test it.** A failure that recovers, like the clone timeout that started this. Neither test
+object applies anything; each fails, gets fixed and is deleted. A source with a branch that
+doesn't exist tests the `cluster` route:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: alert-test
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git
+  ref:
+    branch: does-not-exist
+  secretRef:
+    name: flux-git-auth
+EOF
+# wait for the error post in the cluster_url channel, then fix it:
+kubectl -n flux-system patch gitrepository alert-test --type merge -p '{"spec":{"ref":{"branch":"main"}}}'
+# within about a minute: "✅ Recovered …" in the error's thread and a ✅ on the post
+kubectl -n flux-system delete gitrepository alert-test
+```
+
+An image scan of a repository that doesn't exist tests the `staging` route the same way:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: alert-test
+  namespace: flux-system
+spec:
+  image: fssfmi/does-not-exist
+  interval: 1m
+EOF
+kubectl -n flux-system patch imagerepository alert-test --type merge -p '{"spec":{"image":"fssfmi/fmi-codes-backend"}}'
+kubectl -n flux-system delete imagerepository alert-test
+```
+
+Restart test: break one again, wait for the post, run `kubectl -n flux-system rollout restart
+deploy/flux-relay`, then fix it. The reply still comes, from the state ConfigMap. Leave it
+broken for 6 minutes or more to see a second post join the incident: one reply, ✅ on both.
 
 #### Access Grafana and staging
 
@@ -1366,6 +1517,7 @@ with the fix (reinstall the version `install-tools.sh` pins).
 | Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                       | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
 | Tailscale OAuth client         | `rotate-secret.sh --tailscale client_id`, then `client_secret` ([below](#tailscale-oauth-client)) | Nothing; the operator restarts and Grafana and staging keep their tailnet addresses.                                                     | It leaked; someone with cluster or admin-console access leaves                                                                                                                 |
 | Cluster alerts webhooks        | `rotate-secret.sh --alertmanager cluster_url` / `staging_url`                                     | Nothing; no restart.                                                                                                                     | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| Flux Relay bot token           | `rotate-secret.sh --flux-relay bot_token`                                                         | Nothing; no restart.                                                                                                                     | It leaked (it can read and post in both alert channels)                                                                                                                        |
 | `FRONTEND_ORIGIN` (staging)    | `ENV=staging rotate-secret.sh FRONTEND_ORIGIN`                                                    | New reset and verification emails link to the new address.                                                                               | Staging's tailnet address changed (new tailnet, or it joined as `staging-1`)                                                                                                   |
 | age private keys               | [manual, below](#rotate-an-age-key)                                                               | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
 | DB / Redis passwords           | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords))       |                                                                                                                                          |                                                                                                                                                                                |
@@ -1405,6 +1557,10 @@ Notes per secret:
   channel. The staging webhook sits in both envs' files, so rotate `staging_url` in each. The
   script also updates Flux's copy (`flux-system/flux-slack` or `flux-slack-staging`). The test in
   [Cluster alerts](#cluster-alerts) confirms it.
+- **Flux Relay bot token** (`--flux-relay bot_token`): on the Flux Relay app's **OAuth &
+  Permissions** page, revoke the token (**Revoke All OAuth Tokens**) and reinstall the app to
+  get a new one, then rotate it in both envs' files. If the bot left the alert channels,
+  `/invite @Flux Relay` again. The test in [Recovery replies](#recovery-replies) confirms it.
 - `--generate` is refused for `ADMIN_PASSWORD_HASH` (nobody would know the password), and an
   empty value is always refused. To clear an optional secret, edit the file with `sops`.
 
@@ -1453,25 +1609,26 @@ to overwrite a Secret that isn't labelled `staging`.
 
 Each environment's SOPS files are encrypted to one age key (`.sops.yaml`). Replace it when the
 private key may have leaked or when someone who holds it leaves. The example is for staging,
-which has four files. Prod has three (no `tailscale-oauth.enc.yaml`): use its three rules, the
-three `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
+which has five files. Prod has four (no `tailscale-oauth.enc.yaml`): use its four rules, the
+four `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
 
 ```bash
 # 1. New key pair, appended next to the old one (keep the old one until step 5).
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)   # prints "Public key: age1…"
 
-# 2. In .sops.yaml, replace the old age1… recipient in the four staging rules
+# 2. In .sops.yaml, replace the old age1… recipient in the five staging rules
 #    (secrets.enc.yaml, grafana-secret.enc.yaml, tailscale-oauth.enc.yaml,
-#    alertmanager-slack.enc.yaml) with the new one.
+#    alertmanager-slack.enc.yaml, flux-relay-slack.enc.yaml) with the new one.
 
-# 3. Re-wrap the four files to the new key (needs the old key, still in keys.txt):
+# 3. Re-wrap the five files to the new key (needs the old key, still in keys.txt):
 sops updatekeys -y infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
+sops updatekeys -y infra/k8s/overlays/staging/secrets/flux-relay-slack.enc.yaml
 grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new age1… is listed
 
-# 4. Commit and push .sops.yaml and the four files.
+# 4. Commit and push .sops.yaml and the five files.
 
 # 5. Hand out the new private key and retire the old one:
 #    Replace the old AGE-SECRET-KEY-1… line in the password manager with the new one. On every
@@ -1482,8 +1639,8 @@ grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new ag
 
 `updatekeys` changes who can decrypt, not the values. Anyone holding the **old** key can still
 decrypt every old version of these files from git history, so if the old key leaked, also
-rotate every secret of that environment from the table above, including Grafana's and, for the
-staging key, the Tailscale OAuth client.
+rotate every secret of that environment from the table above, including Grafana's, the Flux
+Relay bot token and, for the staging key, the Tailscale OAuth client.
 
 ### DB and Redis passwords
 
@@ -1615,8 +1772,9 @@ Run from `infra/k8s/` (the `-f` and `-k` paths below are relative to it):
 ```bash
 # Phase 6 — GitOps (delete self.yaml first so it stops reconciling flux/; prune:false means
 # the automation objects don't cascade-delete, so remove them explicitly). The Slack alerts
-# go first, so the teardown doesn't post its own errors; `flux uninstall` removes the
-# flux-slack Secrets with the namespace:
+# go first, so the teardown doesn't post its own errors. Deleting source.yaml prunes the Flux
+# Relay (its Kustomization has prune: true); `flux uninstall` removes the flux-slack and
+# flux-relay-slack Secrets and the relay's state ConfigMap with the namespace:
 kubectl -n flux-system delete -f flux/notifications.yaml
 kubectl -n flux-system delete -f flux/self.yaml
 kubectl -n flux-system delete -f flux/image-automation.yaml -f flux/source.yaml

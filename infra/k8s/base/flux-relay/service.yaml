@@ -1,0 +1,14 @@
+# Flux's allow-egress NetworkPolicy only admits traffic from pods in flux-system, so only
+# notification-controller (and Flux's other controllers) can reach it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: flux-relay
+  namespace: flux-system
+spec:
+  selector:
+    app: flux-relay
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

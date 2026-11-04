@@ -1,6 +1,10 @@
 # Two channels: the staging one, and the one for the env this cluster serves (prod on the
 # server, staging on a staging-only box), which also gets everything shared. The Kustomizations
 # in source.yaml and self.yaml carry `fmi-codes/alerts` so each Alert picks its own.
+#
+# Each Slack Alert has a flux-relay twin with the same sources and exclusions. The twin sends the
+# same errors to the relay (base/flux-relay), which replies "recovered" in the error's thread
+# once the object is healthy again. tests/test_flux_relay.py keeps each pair identical.
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
@@ -80,6 +84,86 @@ spec:
     - kind: ImageUpdateAutomation
       name: '*'
   # Same as the other Alert.
+  exclusionList:
+    - 'namespaces "fmi-codes(-staging)?" not found'
+    - 'dial tcp'
+    - 'i/o timeout'
+    - 'no such host'
+    - 'TLS handshake timeout'
+    - 'connection reset by peer'
+---
+# The relay posts nothing through these; it only learns which errors were posted, so it can
+# reply under them. If it's down, errors still post through the Providers above.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: flux-relay
+  namespace: flux-system
+spec:
+  type: generic
+  address: http://flux-relay.flux-system.svc.cluster.local:8000/cluster
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: flux-relay-staging
+  namespace: flux-system
+spec:
+  type: generic
+  address: http://flux-relay.flux-system.svc.cluster.local:8000/staging
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: flux-relay
+  namespace: flux-system
+spec:
+  providerRef:
+    name: flux-relay
+  eventSeverity: error
+  # Same as the slack Alert.
+  eventSources:
+    - kind: GitRepository
+      name: '*'
+    - kind: HelmRepository
+      name: '*'
+    - kind: HelmChart
+      name: '*'
+    - kind: HelmRelease
+      name: '*'
+    - kind: Kustomization
+      name: '*'
+      matchLabels:
+        fmi-codes/alerts: cluster
+  exclusionList:
+    - 'namespaces "fmi-codes(-staging)?" not found'
+    - 'dial tcp'
+    - 'i/o timeout'
+    - 'no such host'
+    - 'TLS handshake timeout'
+    - 'connection reset by peer'
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: flux-relay-staging
+  namespace: flux-system
+spec:
+  providerRef:
+    name: flux-relay-staging
+  eventSeverity: error
+  # Same as the slack-staging Alert.
+  eventSources:
+    - kind: Kustomization
+      name: '*'
+      matchLabels:
+        fmi-codes/alerts: staging
+    - kind: ImageRepository
+      name: '*'
+    - kind: ImagePolicy
+      name: '*'
+    - kind: ImageUpdateAutomation
+      name: '*'
   exclusionList:
     - 'namespaces "fmi-codes(-staging)?" not found'
     - 'dial tcp'

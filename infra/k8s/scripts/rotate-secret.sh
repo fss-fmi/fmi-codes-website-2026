@@ -6,6 +6,7 @@ ENV="${ENV:-staging}"
 GRAFANA=false
 TAILSCALE=false
 ALERTMANAGER=false
+FLUX_RELAY=false
 GENERATE=false
 KEY=""
 
@@ -14,7 +15,7 @@ log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--grafana|--tailscale|--alertmanager] KEY [--generate]
+Usage: $(basename "$0") [--grafana|--tailscale|--alertmanager|--flux-relay] KEY [--generate]
 
 Rotate a single key in a SOPS-encrypted secret, re-apply it to the cluster,
 and restart the workload so pods pick up the new value.
@@ -26,7 +27,8 @@ and restart the workload so pods pick up the new value.
               staging FRONTEND_ORIGIN, its tailnet URL),
               with --grafana: admin-password,
               with --tailscale: client_id or client_secret,
-              with --alertmanager: cluster_url or staging_url.
+              with --alertmanager: cluster_url or staging_url,
+              with --flux-relay: bot_token, cluster_channel or staging_channel.
   --generate  Use a strong random value (SECRET_KEY, JWT_SECRET_KEY).
   --grafana   Rotate the env's grafana-secret.enc.yaml (namespace monitoring,
               restarts deployment/kps-grafana). For admin-password it also
@@ -42,10 +44,16 @@ and restart the workload so pods pick up the new value.
               to flux-system/flux-slack, staging_url (the staging channel) to
               flux-system/flux-slack-staging. Nothing restarts: Alertmanager
               and Flux read them on every send.
+  --flux-relay
+              Set the Flux Relay's Slack bot token or a channel ID in the env's
+              flux-relay-slack.enc.yaml (namespace flux-system). cluster_channel
+              is the channel cluster_url posts to, staging_channel staging_url's.
+              Nothing restarts: the relay rereads the Secret.
 
-The Grafana, Tailscale and Alertmanager Secrets are cluster-wide, so the script refuses to
-overwrite one that holds the other env's credentials (ALLOW_ENV_SWITCH=true
-switches on purpose). The Tailscale one must hold staging's, whatever ENV is.
+The Grafana, Tailscale, Alertmanager and Flux Relay Secrets are cluster-wide, so the
+script refuses to overwrite one that holds the other env's credentials
+(ALLOW_ENV_SWITCH=true switches on purpose). The Tailscale one must hold staging's,
+whatever ENV is.
 
 The value is never taken as an argument (that leaks it into shell history and
 ps). Without --generate it is read from:
@@ -67,6 +75,7 @@ Examples:
   $(basename "$0") --tailscale client_secret
   ENV=prod $(basename "$0") --alertmanager cluster_url
   ENV=prod $(basename "$0") --alertmanager staging_url
+  ENV=prod $(basename "$0") --flux-relay bot_token
 EOF
 }
 
@@ -77,6 +86,7 @@ while [ $# -gt 0 ]; do
     --grafana) GRAFANA=true; shift ;;
     --tailscale) TAILSCALE=true; shift ;;
     --alertmanager) ALERTMANAGER=true; shift ;;
+    --flux-relay) FLUX_RELAY=true; shift ;;
     -*) die "unknown option '$1' (see --help)" ;;
     *)
       [ -z "$KEY" ] || die "unexpected argument after $KEY. Values are no longer accepted as arguments (they leak into shell history and ps); run without it to be prompted, or pipe it on stdin. See --help."
@@ -85,8 +95,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$KEY" ] || { usage; exit 1; }
 TARGETS=0
-for flag in "$GRAFANA" "$TAILSCALE" "$ALERTMANAGER"; do [ "$flag" = "false" ] || TARGETS=$((TARGETS + 1)); done
-[ "$TARGETS" -le 1 ] || die "--grafana, --tailscale and --alertmanager target different secrets; pick one."
+for flag in "$GRAFANA" "$TAILSCALE" "$ALERTMANAGER" "$FLUX_RELAY"; do [ "$flag" = "false" ] || TARGETS=$((TARGETS + 1)); done
+[ "$TARGETS" -le 1 ] || die "--grafana, --tailscale, --alertmanager and --flux-relay target different secrets; pick one."
 
 case "$ENV" in
   prod)    DEFAULT_NAMESPACE="fmi-codes"; SECRETS_REL="secrets" ;;
@@ -122,6 +132,17 @@ elif [ "$ALERTMANAGER" = "true" ]; then
   esac
   # shellcheck source=lib/slack-webhooks.sh
   . "$SCRIPT_DIR/lib/slack-webhooks.sh"
+elif [ "$FLUX_RELAY" = "true" ]; then
+  # shellcheck source=lib/flux-relay.sh
+  . "$SCRIPT_DIR/lib/flux-relay.sh"
+  NAMESPACE="${NAMESPACE:-flux-system}"
+  SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/flux-relay-slack.enc.yaml}"
+  SECRET_NAME="${SECRET_NAME:-$FLUX_RELAY_SLACK}"
+  RESTART_TARGET="${RESTART_TARGET:-}"
+  case " $FLUX_RELAY_KEYS " in
+    *" $KEY "*) ;;
+    *) die "--flux-relay takes bot_token, cluster_channel or staging_channel, got '$KEY'." ;;
+  esac
 else
   NAMESPACE="${NAMESPACE:-$DEFAULT_NAMESPACE}"
   SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/secrets.enc.yaml}"
@@ -151,7 +172,7 @@ sops --decrypt "$SECRETS_ENC" \
 # Same label and rule as deploy-observability.sh.
 ENV_LABEL="fmi-codes/secrets-env"
 CLUSTER_WIDE=false
-if [ "$GRAFANA" = "true" ] || [ "$TAILSCALE" = "true" ] || [ "$ALERTMANAGER" = "true" ]; then
+if [ "$GRAFANA" = "true" ] || [ "$TAILSCALE" = "true" ] || [ "$ALERTMANAGER" = "true" ] || [ "$FLUX_RELAY" = "true" ]; then
   CLUSTER_WIDE=true
   live_env="$(kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" --ignore-not-found \
     -o go-template="{{index .metadata.labels \"$ENV_LABEL\"}}" 2>/dev/null || true)"
@@ -181,6 +202,9 @@ fi
 [ -n "$VALUE" ] || die "empty value; nothing changed. Use --generate for a random one, or edit with: sops $SECRETS_ENC"
 if [ "$ALERTMANAGER" = "true" ] && [[ "$VALUE" != https://hooks.slack.com/services/* ]]; then
   die "that is not a Slack incoming webhook URL (https://hooks.slack.com/services/...); nothing changed."
+fi
+if [ "$FLUX_RELAY" = "true" ]; then
+  flux_relay_check_value "$KEY" "$VALUE" || die "nothing changed."
 fi
 
 if [ "$KEY" = "ADMIN_PASSWORD_HASH" ] && ! [[ "$VALUE" =~ ^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$ ]]; then
@@ -221,7 +245,18 @@ if [ "$ALERTMANAGER" = "true" ]; then
   fi
 fi
 
-if [ -z "$RESTART_TARGET" ]; then
+if [ "$FLUX_RELAY" = "true" ]; then
+  FLUX_RELAY_EMPTY="$(flux_relay_empty_keys "$SECRETS_ENC")"
+  if [ -n "$FLUX_RELAY_EMPTY" ]; then
+    echo "Still empty: $FLUX_RELAY_EMPTY. Until all three are set, errors get no \"recovered\" reply"
+    echo "(no token: none at all; no channel ID: none in that channel)."
+  fi
+fi
+
+if [ -z "$RESTART_TARGET" ] && [ "$FLUX_RELAY" = "true" ]; then
+  echo "No restart needed: the relay rereads its mounted Secret, which the kubelet updates within"
+  echo "a minute or two."
+elif [ -z "$RESTART_TARGET" ]; then
   echo "No restart needed: Alertmanager and Flux read the webhook on every send. The kubelet"
   echo "updates the mounted Secret within a minute or two."
 elif [ "$RESTART" = "true" ]; then

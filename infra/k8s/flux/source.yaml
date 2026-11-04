@@ -166,3 +166,22 @@ spec:
   path: ./infra/k8s/base/tailscale
   prune: true
   wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: fmi-codes-flux-relay
+  namespace: flux-system
+  labels:
+    fmi-codes/alerts: cluster
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fmi-codes
+  # Replies "recovered" under Flux's Slack errors (notifications.yaml); cluster-wide, like Flux.
+  path: ./infra/k8s/base/flux-relay
+  prune: true
+  wait: true

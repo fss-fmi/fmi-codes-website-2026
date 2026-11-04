@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flux-relay
+  namespace: flux-system
+  labels:
+    app: flux-relay
+spec:
+  replicas: 1
+  # One writer of the state ConfigMap at a time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: flux-relay
+  template:
+    metadata:
+      labels:
+        app: flux-relay
+    spec:
+      serviceAccountName: flux-relay
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          image: python:3.12.16-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
+          command: [python, -u, /app/relay.py]
+          env:
+            - name: PYTHONDONTWRITEBYTECODE
+              value: '1'
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 96Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+            - name: slack
+              mountPath: /etc/flux-relay/slack
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: flux-relay-script
+        # Optional: until the token is set the relay idles instead of failing to start. The
+        # kubelet refreshes the files when the Secret changes, and the relay rereads them.
+        - name: slack
+          secret:
+            secretName: flux-relay-slack
+            optional: true

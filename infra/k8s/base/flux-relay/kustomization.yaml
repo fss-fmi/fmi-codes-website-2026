@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - rbac.yaml
+  - state.yaml
+  - deployment.yaml
+  - service.yaml
+# The script ships as a ConfigMap on a stock python image, so there is no image to build. Its
+# name carries a content hash, so a change to relay.py rolls the pod.
+configMapGenerator:
+  - name: flux-relay-script
+    namespace: flux-system
+    files:
+      - relay.py

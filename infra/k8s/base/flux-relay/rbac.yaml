@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-relay
+  namespace: flux-system
+---
+# Read-only on the Flux objects it watches (all of them live in flux-system), and its own state.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flux-relay
+  namespace: flux-system
+rules:
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [get]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [get]
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [gitrepositories, helmrepositories, helmcharts]
+    verbs: [get]
+  - apiGroups: [image.toolkit.fluxcd.io]
+    resources: [imagerepositories, imagepolicies, imageupdateautomations]
+    verbs: [get]
+  - apiGroups: ['']
+    resources: [configmaps]
+    resourceNames: [flux-relay-state]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-relay
+  namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flux-relay
+subjects:
+  - kind: ServiceAccount
+    name: flux-relay
+    namespace: flux-system
