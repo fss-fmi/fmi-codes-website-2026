@@ -9,8 +9,10 @@ first post's thread and adds a reaction to every post of the incident.
 
 Recovery is read from the object, not from Flux's info events: a HelmRelease
 that comes back in sync without a Helm action emits none. The relay only acts
-on errors its own cluster reported, so two clusters posting to one channel
-never close each other's posts.
+on errors its own cluster reported and claims the matching post closest in
+time to each one. A Flux post doesn't say which cluster sent it, so when two
+clusters share a channel and the same object fails with the same message on
+both within seconds, they can still swap posts.
 
 Stdlib only: it runs from a ConfigMap on a stock python image.
 """
@@ -52,18 +54,36 @@ KINDS = {
 # Flux posts to Slack and to the relay in parallel, so the post may show up a little after
 # the event; notification-controller retries a failing webhook for about a minute more.
 FIND_WINDOW = 180
-CLOCK_SKEW = 60
+# How much earlier than the event's (whole-second) timestamp its post may be stamped, for clock
+# skew between the node and Slack.
+POST_EARLY = 30
 # An error that never made the object unready (a Helm drift, a failed prune) has no
 # transition to wait for. Flux reposts a lasting error every ~5 minutes, so this long
 # without a new post while Ready means it stopped.
 QUIET_AFTER = 900
+# Slack may cut a very long attachment and the relay keeps only MAX_MESSAGE characters of an
+# event, so texts this long that agree up to the shorter one count as the same.
+MATCH_PREFIX = 2000
+MAX_MESSAGE = 4000
+# Bounds on what the state ConfigMap (1 MiB) holds and on one tick's Slack calls.
+MAX_PENDING = 100
+MAX_POSTS = 200
+REACTIONS_PER_TICK = 20
 TICK = 15
+# A tick that waits out Slack rate limits is still alive; only one stuck this long is not.
+MAX_TICK = 600
 MAX_HISTORY_PAGES = 5
 MAX_RETRIES = 3
+# Errors that retrying won't fix: the incident's channel is gone or closed to the bot.
+CHANNEL_GONE = {"channel_not_found", "is_archived", "not_in_channel"}
+# The post itself was deleted.
+POST_GONE = {"thread_not_found", "message_not_found"}
 
 
 class SlackError(Exception):
-    pass
+    def __init__(self, message: str, code: str = ""):
+        super().__init__(message)
+        self.code = code
 
 
 class KubeError(Exception):
@@ -96,12 +116,18 @@ def slack_date(epoch: float) -> str:
     return f"<!date^{int(epoch)}^{{date_short_pretty}} {{time}}|{iso}>"
 
 
+def same_text(posted: str, text: str) -> bool:
+    if posted == text:
+        return True
+    n = min(len(posted), len(text))
+    return n >= MATCH_PREFIX and posted[:n] == text[:n]
+
+
 def post_matches(message: dict, author: str, text: str) -> bool:
     for attachment in message.get("attachments") or []:
-        if attachment.get("author_name") != author:
-            continue
-        posted = unescape(attachment.get("text") or "")
-        if posted == text or posted.split("\n")[0] == text.split("\n")[0]:
+        if attachment.get("author_name") == author and same_text(
+            unescape(attachment.get("text") or ""), text
+        ):
             return True
     return False
 
@@ -143,7 +169,7 @@ def parse_event(route: str, event) -> dict | None:
         "kind": kind,
         "name": name,
         "namespace": namespace,
-        "message": message,
+        "message": message[:MAX_MESSAGE],
         "time": parse_time(event.get("timestamp")),
     }
 
@@ -194,7 +220,8 @@ class Slack:
             except (urllib.error.URLError, TimeoutError) as e:
                 raise SlackError(f"{method}: {getattr(e, 'reason', e)}") from None
             if not data.get("ok"):
-                raise SlackError(f"{method}: {data.get('error', 'unknown error')}")
+                error = data.get("error", "unknown_error")
+                raise SlackError(f"{method}: {error}", error)
             return data
         raise SlackError(f"{method}: still rate limited after {MAX_RETRIES} retries")
 
@@ -229,7 +256,7 @@ class Slack:
         try:
             self.call("reactions.add", channel=channel, timestamp=ts, name=name)
         except SlackError as e:
-            if "already_reacted" not in str(e) and "message_not_found" not in str(e):
+            if e.code != "already_reacted" and e.code not in POST_GONE:
                 raise
 
 
@@ -293,6 +320,9 @@ def read_secrets(secret_dir: str) -> dict:
 
 
 class Relay:
+    """State: pending events waiting for their post, open incidents by object and closing
+    incidents (already replied to) whose posts still need a reaction."""
+
     def __init__(
         self, kube, namespace: str, state_name: str, secrets, slack_factory=Slack, clock=time.time
     ):
@@ -305,9 +335,11 @@ class Relay:
         self.inbox = queue.Queue()
         self.incidents = {}
         self.pending = []
+        self.closing = []
         self.loaded = False
         self.dirty = False
         self.last_tick = clock()
+        self.tick_started = None
         self._token = None
         self._slack = None
         self._warned = set()
@@ -338,24 +370,35 @@ class Relay:
             logger.error("State ConfigMap holds invalid JSON; starting empty")
             state = {}
         self.incidents = state.get("incidents") or {}
+        self.closing = state.get("closing") or []
         self.pending = (state.get("pending") or []) + self.pending
         self.loaded = True
 
     def save(self) -> None:
-        state = {"incidents": self.incidents, "pending": self.pending}
+        state = {"incidents": self.incidents, "pending": self.pending, "closing": self.closing}
         self.kube.patch_configmap(
             self.namespace, self.state_name, {"state.json": json.dumps(state, sort_keys=True)}
         )
         self.dirty = False
 
     def tick(self) -> None:
-        self.last_tick = self.clock()
+        self.tick_started = self.clock()
+        try:
+            self._tick()
+        finally:
+            self.tick_started = None
+            self.last_tick = self.clock()
+
+    def _tick(self) -> None:
         while True:
             try:
                 self.pending.append(self.inbox.get_nowait())
                 self.dirty = True
             except queue.Empty:
                 break
+        if len(self.pending) > MAX_PENDING:
+            logger.warning("Dropping %d waiting events", len(self.pending) - MAX_PENDING)
+            self.pending = self.pending[-MAX_PENDING:]
         try:
             if not self.loaded:
                 self.load()
@@ -368,6 +411,7 @@ class Relay:
             self._warn_once(
                 "token", "No Slack bot token in the flux-relay-slack Secret; idle until one is set"
             )
+            self._expire_pending()
             self._save_if_dirty()
             return
         if secrets["bot_token"] != self._token:
@@ -377,6 +421,7 @@ class Relay:
 
         self._match_pending(channels)
         self._check_incidents()
+        self._react_closing()
         self._save_if_dirty()
 
     def _save_if_dirty(self) -> None:
@@ -387,8 +432,17 @@ class Relay:
         except KubeError as e:
             logger.error("Cannot save the relay state: %s", e)
 
+    def _expire_pending(self) -> None:
+        now = self.clock()
+        keep = [e for e in self.pending if now - e["received"] < FIND_WINDOW]
+        if len(keep) != len(self.pending):
+            self.pending = keep
+            self.dirty = True
+
     def _claimed(self) -> set:
-        return {(p["channel"], p["ts"]) for inc in self.incidents.values() for p in inc["posts"]}
+        posts = [p for inc in self.incidents.values() for p in inc["posts"]]
+        posts += [p for c in self.closing for p in c["posts"]]
+        return {(p["channel"], p["ts"]) for p in posts}
 
     def _match_pending(self, channels: dict) -> None:
         if not self.pending:
@@ -404,14 +458,13 @@ class Relay:
                     f"No {event['route']}_channel in the flux-relay-slack Secret; "
                     f"{event['route']} errors get no recovery reply",
                 )
-                self.dirty = True
                 continue
             by_channel.setdefault(channel, []).append(event)
 
         claimed = self._claimed()
         for channel, events in by_channel.items():
             try:
-                history = self._slack.history(channel, min(e["time"] for e in events) - CLOCK_SKEW)
+                history = self._slack.history(channel, min(e["time"] for e in events) - POST_EARLY)
             except SlackError as e:
                 # not_in_channel and the like don't fix themselves, so the find window still applies.
                 logger.error("Cannot read channel %s: %s", channel, e)
@@ -419,18 +472,17 @@ class Relay:
                 continue
             for event in sorted(events, key=lambda e: e["time"]):
                 author = author_name(event["kind"], event["name"], event["namespace"])
-                found = sorted(
-                    (
-                        m
-                        for m in history
-                        if (channel, m.get("ts")) not in claimed
-                        and float(m.get("ts", 0)) >= event["time"] - CLOCK_SKEW
-                        and post_matches(m, author, event["message"])
-                    ),
-                    key=lambda m: float(m["ts"]),
-                )
-                if found:
-                    ts = found[0]["ts"]
+                candidates = [
+                    m
+                    for m in history
+                    if (channel, m.get("ts")) not in claimed
+                    and float(m.get("ts", 0)) >= event["time"] - POST_EARLY
+                    and post_matches(m, author, event["message"])
+                ]
+                if candidates:
+                    # The closest in time: a repeat of the same error, or another cluster's
+                    # identical post, is further away than this event's own post.
+                    ts = min(candidates, key=lambda m: abs(float(m["ts"]) - event["time"]))["ts"]
                     claimed.add((channel, ts))
                     self._add_post(event, channel, ts)
                 elif now - event["received"] < FIND_WINDOW:
@@ -450,12 +502,16 @@ class Relay:
                 "namespace": event["namespace"],
                 "name": event["name"],
                 "posts": [],
+                "unlisted": 0,
                 "start": event["time"],
                 "last": event["time"],
                 "seen_not_ready": False,
             }
             logger.info("Tracking %s from its error post %s", key, ts)
-        incident["posts"].append({"channel": channel, "ts": ts})
+        if len(incident["posts"]) < MAX_POSTS:
+            incident["posts"].append({"channel": channel, "ts": ts})
+        else:
+            incident["unlisted"] = incident.get("unlisted", 0) + 1
         incident["last"] = max(incident["last"], event["time"])
         self.dirty = True
 
@@ -492,33 +548,75 @@ class Relay:
                 text = f"✅ Recovered {slack_date(now)}"
                 if message:
                     text += f" · {escape(message)}"
-                if len(incident["posts"]) > 1:
-                    text += f" · {len(incident['posts'])} error posts in this incident"
+                count = len(incident["posts"]) + incident.get("unlisted", 0)
+                if count > 1:
+                    text += f" · {count} error posts in this incident"
                 self._close(key, incident, text)
 
     def _close(self, key: str, incident: dict, text: str) -> None:
+        """Reply under the first post, then hand the posts to _react_closing."""
         parent = incident["posts"][0]
         try:
-            replies = self._slack.replies(parent["channel"], parent["ts"])
-            if not any(
-                (m.get("metadata") or {}).get("event_type") == REPLY_EVENT_TYPE for m in replies
-            ):
-                self._slack.post(
-                    parent["channel"],
-                    text,
-                    parent["ts"],
-                    {"event_type": REPLY_EVENT_TYPE, "event_payload": {"object": key}},
-                )
-            for post in incident["posts"]:
-                self._slack.react(post["channel"], post["ts"], REACTION)
+            try:
+                replies = self._slack.replies(parent["channel"], parent["ts"])
+            except SlackError as e:
+                if e.code not in POST_GONE:
+                    raise
+                logger.info("The first post of %s was deleted; no reply, only reactions", key)
+            else:
+                if not any(
+                    (m.get("metadata") or {}).get("event_type") == REPLY_EVENT_TYPE for m in replies
+                ):
+                    self._slack.post(
+                        parent["channel"],
+                        text,
+                        parent["ts"],
+                        {"event_type": REPLY_EVENT_TYPE, "event_payload": {"object": key}},
+                    )
         except SlackError as e:
-            logger.error("Cannot close %s in Slack yet: %s", key, e)
+            if e.code in CHANNEL_GONE:
+                logger.warning("Giving up on %s: %s", key, e)
+                del self.incidents[key]
+                self.dirty = True
+            else:
+                logger.error("Cannot reply for %s yet: %s", key, e)
             return
-        logger.info("Closed %s", key)
+        logger.info("Replied for %s", key)
+        self.closing.append({"key": key, "posts": incident["posts"]})
         del self.incidents[key]
         self.dirty = True
 
+    def _react_closing(self) -> None:
+        """React to at most REACTIONS_PER_TICK posts, remembering which are done, so a long
+        incident under Slack's rate limit finishes over a few ticks instead of starting over."""
+        budget = REACTIONS_PER_TICK
+        for entry in list(self.closing):
+            try:
+                for post in entry["posts"]:
+                    if post.get("done"):
+                        continue
+                    if budget == 0:
+                        return
+                    self._slack.react(post["channel"], post["ts"], REACTION)
+                    post["done"] = True
+                    budget -= 1
+                    self.dirty = True
+            except SlackError as e:
+                if e.code in CHANNEL_GONE:
+                    logger.warning("Giving up on the reactions for %s: %s", entry["key"], e)
+                    self.closing.remove(entry)
+                    self.dirty = True
+                    continue
+                logger.error("Cannot react for %s yet: %s", entry["key"], e)
+                return
+            logger.info("Closed %s", entry["key"])
+            self.closing.remove(entry)
+            self.dirty = True
+
     def healthy(self) -> bool:
+        started = self.tick_started
+        if started is not None:
+            return self.clock() - started < MAX_TICK
         return self.clock() - self.last_tick < 5 * TICK + 60
 
 

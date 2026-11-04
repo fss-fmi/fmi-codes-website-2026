@@ -8,8 +8,6 @@ STAGING_INGRESS_NS="${STAGING_INGRESS_NS:-ingress-nginx-staging}"
 STAGING_APP_NS="${STAGING_APP_NS:-fmi-codes-staging}"
 TS_WAIT_SECONDS="${TS_WAIT_SECONDS:-600}"
 ENV_LABEL="fmi-codes/secrets-env"
-# Matched with grep -E >/dev/null, never -q: an early grep exit can SIGPIPE sops under pipefail.
-EMPTY_RE="^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$"
 
 die()  { echo "Error: $1" >&2; exit 1; }
 log()  { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
@@ -113,7 +111,7 @@ cmd_set() {
   store client_id "$id"
   store client_secret "$secret"
   unset id secret
-  if sops --decrypt "$TS_FILE" | grep -E "$EMPTY_RE" >/dev/null; then
+  if ts_client_incomplete "$TS_FILE"; then
     die "a value is still empty in $TS_FILE after writing; edit it with: sops $TS_FILE"
   fi
   echo "Stored. Commit $TS_FILE (it is encrypted), then deploy-observability.sh applies it."

@@ -96,9 +96,7 @@ if ! sops --decrypt "$TAILSCALE_SECRET_ENC" >/dev/null 2>&1; then
   this machine needs the staging age key too (docs/runbook.md 'One Tailscale client for every
   cluster'). The live tailscale/operator-oauth, if any, is left as it is. Add the key, then re-run:
     ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
-# Not grep -q: exiting at the first match could SIGPIPE sops, and pipefail would invert the result.
-elif sops --decrypt "$TAILSCALE_SECRET_ENC" \
-    | grep -E "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$" >/dev/null; then
+elif ts_client_incomplete "$TAILSCALE_SECRET_ENC"; then
   TAILSCALE_STATUS="skipped"
   warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana and staging have no tailnet address.
   Create the OAuth client (docs/runbook.md 'Phase 7'), then:

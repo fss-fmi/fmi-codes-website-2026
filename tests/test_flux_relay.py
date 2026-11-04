@@ -86,36 +86,47 @@ class FakeSlack:
         self.threads = {}
         self.reactions = set()
         self.posts = []
+        self.react_calls = 0
         self.fail = False
+        # method -> Slack error code it answers with
+        self.errors = {}
 
     def add(self, channel, message):
         self.channels[channel].append(message)
 
-    def _check(self):
+    def delete(self, channel, ts):
+        self.channels[channel] = [m for m in self.channels[channel] if m["ts"] != ts]
+
+    def _check(self, method):
         if self.fail:
-            raise relay.SlackError("chat.postMessage: internal_error")
+            raise relay.SlackError(f"{method}: internal_error", "internal_error")
+        if method in self.errors:
+            raise relay.SlackError(f"{method}: {self.errors[method]}", self.errors[method])
 
     def history(self, channel, oldest):
-        self._check()
+        self._check("history")
         return sorted(
             (m for m in self.channels[channel] if float(m["ts"]) >= oldest),
             key=lambda m: -float(m["ts"]),
         )
 
     def replies(self, channel, ts):
-        self._check()
-        parent = next(m for m in self.channels[channel] if m["ts"] == ts)
+        self._check("replies")
+        parent = next((m for m in self.channels[channel] if m["ts"] == ts), None)
+        if parent is None:
+            raise relay.SlackError("conversations.replies: thread_not_found", "thread_not_found")
         return [parent] + self.threads.get((channel, ts), [])
 
     def post(self, channel, text, thread_ts, metadata):
-        self._check()
+        self._check("post")
         reply = {"ts": f"{T0 + 10_000 + len(self.posts):.6f}", "text": text, "metadata": metadata}
         self.threads.setdefault((channel, thread_ts), []).append(reply)
         self.posts.append((channel, thread_ts, text))
         return reply["ts"]
 
     def react(self, channel, ts, name):
-        self._check()
+        self._check("react")
+        self.react_calls += 1
         self.reactions.add((channel, ts, name))
 
 
@@ -189,7 +200,7 @@ def test_transient_failure_gets_one_reply_and_a_reaction(env):
     assert text.startswith("✅ Recovered <!date^")
     assert "Applied revision: main@sha1:abc" in text
     assert slack.reactions == {(STAGING, f"{T0 + 1:.6f}", "white_check_mark")}
-    assert kube.state() == {"incidents": {}, "pending": []}
+    assert kube.state() == {"incidents": {}, "pending": [], "closing": []}
 
     clock.now = T0 + 90
     r.tick()
@@ -244,6 +255,20 @@ def test_identical_events_claim_different_posts(env, same_tick):
     r.tick()
     posts = kube.state()["incidents"]["Kustomization/flux-system/fmi-codes-staging"]["posts"]
     assert sorted(p["ts"] for p in posts) == [f"{T0 + 1:.6f}", f"{T0 + 31:.6f}"]
+
+
+def test_a_claimed_post_is_never_claimed_twice(env):
+    slack, kube, clock, _, make = env
+    r = make()
+    kube.objects[KEY] = flux_object(status="False", ltt=T0)
+    r.enqueue("staging", flux_event(at=T0))
+    r.enqueue("staging", flux_event(at=T0 + 2))
+    slack.add(STAGING, flux_post(T0 + 1))
+    slack.add(STAGING, flux_post(T0 + 40))
+    clock.now = T0 + 45
+    r.tick()
+    posts = kube.state()["incidents"]["Kustomization/flux-system/fmi-codes-staging"]["posts"]
+    assert sorted(p["ts"] for p in posts) == [f"{T0 + 1:.6f}", f"{T0 + 40:.6f}"]
 
 
 def test_post_from_before_the_event_is_not_claimed_in_a_shared_scan(env):
@@ -318,7 +343,7 @@ def test_error_that_never_reached_slack_gets_no_traffic(env):
     for now in (T0 + 15, T0 + 100, T0 + relay.FIND_WINDOW + 1):
         clock.now = now
         r.tick()
-    assert kube.state() == {"incidents": {}, "pending": []}
+    assert kube.state() == {"incidents": {}, "pending": [], "closing": []}
     kube.objects[KEY] = flux_object(status="True", ltt=T0 + 400)
     clock.now = T0 + 500
     r.tick()
@@ -393,7 +418,7 @@ def test_missing_channel_id_drops_that_routes_events(env):
     slack.add(STAGING, flux_post(T0 + 1))
     clock.now = T0 + 5
     r.tick()
-    assert kube.state() == {"incidents": {}, "pending": []}
+    assert kube.state() == {"incidents": {}, "pending": [], "closing": []}
 
 
 def test_another_clusters_post_is_never_claimed(env):
@@ -462,6 +487,168 @@ def test_unreadable_channel_retries_until_the_find_window_ends(env):
     slack.fail = False
     r.tick()
     assert kube.state()["incidents"] == {}
+
+
+def test_without_a_token_waiting_events_still_expire(env):
+    slack, kube, clock, secrets, make = env
+    secrets["bot_token"] = ""
+    r = make()
+    r.enqueue("staging", flux_event())
+    clock.now = T0 + 5
+    r.tick()
+    assert len(kube.state()["pending"]) == 1
+    clock.now = T0 + relay.FIND_WINDOW + 1
+    r.tick()
+    assert kube.state()["pending"] == []
+
+    secrets["bot_token"] = "xoxb-1"
+    slack.add(STAGING, flux_post(T0 + 1))
+    r.tick()
+    assert slack.posts == [] and kube.state()["incidents"] == {}
+
+
+def test_waiting_events_are_capped(env):
+    _, kube, clock, secrets, make = env
+    secrets["bot_token"] = ""
+    r = make()
+    for i in range(relay.MAX_PENDING + 25):
+        r.enqueue("staging", flux_event(message=f"failure {i}"))
+    clock.now = T0 + 5
+    r.tick()
+    pending = kube.state()["pending"]
+    assert len(pending) == relay.MAX_PENDING
+    assert pending[-1]["message"] == f"failure {relay.MAX_PENDING + 24}"
+
+
+def test_closest_post_wins_over_another_clusters_identical_one(env):
+    slack, kube, clock, _, make = env
+    r = make()
+    kube.objects[KEY] = flux_object(status="False", ltt=T0)
+    slack.add(STAGING, flux_post(T0 - 5))
+    slack.add(STAGING, flux_post(T0 + 1))
+    r.enqueue("staging", flux_event(at=T0))
+    clock.now = T0 + 5
+    r.tick()
+    posts = kube.state()["incidents"]["Kustomization/flux-system/fmi-codes-staging"]["posts"]
+    assert [p["ts"] for p in posts] == [f"{T0 + 1:.6f}"]
+
+
+@pytest.mark.parametrize("code", sorted(relay.CHANNEL_GONE))
+def test_channel_gone_gives_the_incident_up(env, code):
+    slack, kube, clock, _, make = env
+    r = make()
+    kube.objects[KEY] = flux_object(status="False", ltt=T0)
+    r.enqueue("staging", flux_event())
+    slack.add(STAGING, flux_post(T0 + 1))
+    clock.now = T0 + 5
+    r.tick()
+    kube.objects[KEY] = flux_object(status="True", ltt=T0 + 60)
+    slack.errors["replies"] = code
+    clock.now = T0 + 75
+    r.tick()
+    assert kube.state() == {"incidents": {}, "pending": [], "closing": []}
+    clock.now = T0 + 90
+    r.tick()
+    assert slack.posts == []
+
+
+def test_channel_gone_while_reacting_gives_the_reactions_up(env):
+    slack, kube, clock, _, make = env
+    r = make()
+    kube.objects[KEY] = flux_object(status="False", ltt=T0)
+    r.enqueue("staging", flux_event())
+    slack.add(STAGING, flux_post(T0 + 1))
+    clock.now = T0 + 5
+    r.tick()
+    kube.objects[KEY] = flux_object(status="True", ltt=T0 + 60)
+    slack.errors["react"] = "is_archived"
+    clock.now = T0 + 75
+    r.tick()
+    assert len(slack.posts) == 1
+    assert kube.state()["closing"] == []
+
+
+def test_deleted_first_post_still_gets_the_others_reacted(env):
+    slack, kube, clock, _, make = env
+    r = make()
+    kube.objects[KEY] = flux_object(status="False", ltt=T0)
+    for at in (T0, T0 + 300):
+        r.enqueue("staging", flux_event(at=at))
+        slack.add(STAGING, flux_post(at + 1))
+        clock.now = at + 5
+        r.tick()
+    slack.delete(STAGING, f"{T0 + 1:.6f}")
+    kube.objects[KEY] = flux_object(status="True", ltt=T0 + 400)
+    clock.now = T0 + 420
+    r.tick()
+    assert slack.posts == []
+    assert (STAGING, f"{T0 + 301:.6f}", "white_check_mark") in slack.reactions
+    assert kube.state()["incidents"] == {} and kube.state()["closing"] == []
+
+
+def test_reactions_spread_over_ticks_and_keep_their_progress(env):
+    slack, kube, clock, _, make = env
+    r = make()
+    kube.objects[KEY] = flux_object(status="False", ltt=T0)
+    n = relay.REACTIONS_PER_TICK * 2 + 5
+    for i in range(n):
+        at = T0 + i * 300
+        r.enqueue("staging", flux_event(at=at))
+        slack.add(STAGING, flux_post(at + 1))
+        clock.now = at + 5
+        r.tick()
+    kube.objects[KEY] = flux_object(status="True", ltt=clock.now + 10)
+    clock.now += 20
+    r.tick()
+    assert len(slack.posts) == 1 and slack.react_calls == relay.REACTIONS_PER_TICK
+    assert f"{n} error posts in this incident" in slack.posts[0][2]
+
+    slack.errors["react"] = "ratelimited"
+    clock.now += 15
+    r.tick()
+    del slack.errors["react"]
+    restarted = make()
+    for _ in range(2):
+        clock.now += 15
+        restarted.tick()
+    assert slack.react_calls == n
+    assert len(slack.reactions) == n and len(slack.posts) == 1
+    assert kube.state()["closing"] == []
+
+
+def test_posts_beyond_the_cap_are_counted_not_listed(env, monkeypatch):
+    slack, kube, clock, _, make = env
+    monkeypatch.setattr(relay, "MAX_POSTS", 2)
+    r = make()
+    kube.objects[KEY] = flux_object(status="False", ltt=T0)
+    for i in range(3):
+        at = T0 + i * 300
+        r.enqueue("staging", flux_event(at=at))
+        slack.add(STAGING, flux_post(at + 1))
+        clock.now = at + 5
+        r.tick()
+    incident = kube.state()["incidents"]["Kustomization/flux-system/fmi-codes-staging"]
+    assert len(incident["posts"]) == 2 and incident["unlisted"] == 1
+    kube.objects[KEY] = flux_object(status="True", ltt=clock.now + 10)
+    clock.now += 20
+    r.tick()
+    assert "3 error posts in this incident" in slack.posts[0][2]
+
+
+def test_health_follows_the_loop_not_one_slow_tick(env):
+    _, _, clock, _, make = env
+    r = make()
+    r.tick()
+    assert r.healthy()
+    r.tick_started = clock.now
+    clock.now += 5 * relay.TICK + 120
+    assert r.healthy()
+    clock.now = r.tick_started + relay.MAX_TICK
+    assert not r.healthy()
+    r.tick_started = None
+    r.last_tick = clock.now
+    clock.now += 5 * relay.TICK + 60
+    assert not r.healthy()
 
 
 def test_kube_failure_keeps_the_incident(env):
@@ -545,10 +732,25 @@ def test_post_matches_escaped_and_multiline_text(text):
     )
 
 
-def test_post_matches_first_line_when_slack_cut_the_rest():
-    post = flux_post(T0, text="apply failed\nfirst detail")
-    assert relay.post_matches(
-        post, "kustomization/fmi-codes-staging.flux-system", "apply failed\nother detail"
+def test_same_first_line_is_not_enough():
+    post = flux_post(T0, text="dry-run failed:\nConfigMap/a invalid")
+    assert not relay.post_matches(
+        post, "kustomization/fmi-codes-staging.flux-system", "dry-run failed:\nSecret/b invalid"
+    )
+
+
+def test_long_text_matches_when_either_side_was_cut():
+    full = "x" * (relay.MAX_MESSAGE + 500)
+    author = "kustomization/fmi-codes-staging.flux-system"
+    assert relay.post_matches(flux_post(T0, text=full), author, full[: relay.MAX_MESSAGE])
+    assert relay.post_matches(flux_post(T0, text=full[: relay.MATCH_PREFIX]), author, full)
+    assert not relay.post_matches(flux_post(T0, text=full[: relay.MATCH_PREFIX - 1]), author, full)
+
+
+def test_event_message_is_kept_short():
+    long_message = "y" * (relay.MAX_MESSAGE * 3)
+    assert len(relay.parse_event("staging", flux_event(message=long_message))["message"]) == (
+        relay.MAX_MESSAGE
     )
 
 

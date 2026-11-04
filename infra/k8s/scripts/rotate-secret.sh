@@ -139,10 +139,7 @@ elif [ "$FLUX_RELAY" = "true" ]; then
   SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/flux-relay-slack.enc.yaml}"
   SECRET_NAME="${SECRET_NAME:-$FLUX_RELAY_SLACK}"
   RESTART_TARGET="${RESTART_TARGET:-}"
-  case " $FLUX_RELAY_KEYS " in
-    *" $KEY "*) ;;
-    *) die "--flux-relay takes bot_token, cluster_channel or staging_channel, got '$KEY'." ;;
-  esac
+  flux_relay_check_key "$KEY" || exit 1
 else
   NAMESPACE="${NAMESPACE:-$DEFAULT_NAMESPACE}"
   SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL/secrets.enc.yaml}"
@@ -222,8 +219,7 @@ VALUE="$VALUE" python3 -c 'import json,os;print(json.dumps(os.environ["VALUE"]))
 
 # The OAuth client is a pair. Applying it half-filled would let the waiting operator pod start
 # with credentials that can't authenticate.
-if [ "$TAILSCALE" = "true" ] && sops --decrypt "$SECRETS_ENC" \
-    | grep -E "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$" >/dev/null; then
+if [ "$TAILSCALE" = "true" ] && ts_client_incomplete "$SECRETS_ENC"; then
   unset VALUE
   if [ "$KEY" = "client_id" ]; then OTHER_KEY="client_secret"; else OTHER_KEY="client_id"; fi
   log "Stored '$KEY' in $SECRETS_ENC. Not applied yet: '$OTHER_KEY' is still empty. Set it next:"

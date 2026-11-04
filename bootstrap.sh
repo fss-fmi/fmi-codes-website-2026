@@ -288,7 +288,6 @@ fi
 log "Pre-flight: Tailscale OAuth client (Grafana and staging access)"
 
 TS_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/tailscale-oauth.sh"
-TS_EMPTY_RE="^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$"
 NEW_CLIENT_STEPS="Create an OAuth client for THIS cluster in the Tailscale admin console
 (Settings -> OAuth clients, or Trust credentials):
   scopes: General -> Services, Devices -> Core, Keys -> Auth Keys (read + write each)
@@ -321,8 +320,7 @@ elif [ ! -f "$TS_FILE" ]; then
 elif [ "$TS_DECRYPTS" != "true" ]; then
   warn "without the staging age key step 7 skips the Tailscale client, so Grafana and staging
   stay off the tailnet. Add the key to $AGE_KEY_FILE, then: ENV=$ENV bash infra/k8s/scripts/deploy-observability.sh"
-# Not grep -q: exiting at the first match could SIGPIPE sops, and pipefail would invert the result.
-elif ! sops --decrypt "$TS_FILE" | grep -E "$TS_EMPTY_RE" >/dev/null; then
+elif ! ts_client_incomplete "$TS_FILE"; then
   ok "$TS_FILE already holds an OAuth client"
   if [ -t 0 ]; then
     ask "Is this cluster taking over Grafana and staging from another cluster (for example a new server)? [y/N]"

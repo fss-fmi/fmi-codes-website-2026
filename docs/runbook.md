@@ -1045,11 +1045,17 @@ How it works:
   action sends none.
 - Open incidents live in the ConfigMap `flux-system/flux-relay-state`, so a restart (every WSL
   boot) picks up where it left off. Flux creates it once and never resets it.
-- It only claims posts for errors its own notification-controller reported, so when two
-  clusters post to one channel (the prod server and a staging-only box both post to
-  `#cluster-alerts-staging`) neither closes the other's errors.
+- It only claims posts for errors its own notification-controller reported, taking the
+  matching post closest in time to each. When two clusters post to one channel (the prod server
+  and a staging-only box both post to `#cluster-alerts-staging`), they keep to their own posts
+  unless the same object fails with the same message on both within seconds: a Flux post
+  doesn't say which cluster sent it.
+- A long incident's reactions go out at most 20 a tick, with the progress saved, so Slack's
+  rate limits only slow them down. A channel that is gone, archived or closed to the bot ends
+  the incident without a reply; a deleted first post means reactions only.
 - If the relay is down or has no token, errors still post exactly as before; only the reply is
-  missing. The relay never crash-loops for lack of a token, it idles and logs once.
+  missing. The relay never crash-loops for lack of a token, it idles and logs once. Errors that
+  arrive while it has no token are dropped after 3 minutes.
 
 **Setup** (once per workspace, then per env file):
 
