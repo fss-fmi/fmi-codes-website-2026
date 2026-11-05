@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import queue
+import re
 import ssl
 import threading
 import time
@@ -74,6 +75,9 @@ TICK = 15
 MAX_TICK = 600
 MAX_HISTORY_PAGES = 5
 MAX_RETRIES = 3
+# Slack returns a URL in a post as <target> or <target|label>, while the Flux event has the
+# plain text. The classes exclude < and >, so no scan runs past the next bracket: linear time.
+SLACK_LINK = re.compile(r"<([^<>|]*)(?:\|([^<>]*))?>")
 # Errors that retrying won't fix: the incident's channel is gone or closed to the bot.
 CHANNEL_GONE = {"channel_not_found", "is_archived", "not_in_channel"}
 # The post itself was deleted.
@@ -116,6 +120,17 @@ def slack_date(epoch: float) -> str:
     return f"<!date^{int(epoch)}^{{date_short_pretty}} {{time}}|{iso}>"
 
 
+def plain_text(text: str) -> str:
+    """Text as a reader sees it: entities unescaped, link markup reduced to label or target.
+
+    Applied to both sides, so an event message whose own < and > Slack read as markup still
+    matches its post.
+    """
+    return SLACK_LINK.sub(
+        lambda m: m.group(1) if m.group(2) is None else m.group(2), unescape(text)
+    )
+
+
 def same_text(posted: str, text: str) -> bool:
     if posted == text:
         return True
@@ -124,9 +139,10 @@ def same_text(posted: str, text: str) -> bool:
 
 
 def post_matches(message: dict, author: str, text: str) -> bool:
+    text = plain_text(text)
     for attachment in message.get("attachments") or []:
         if attachment.get("author_name") == author and same_text(
-            unescape(attachment.get("text") or ""), text
+            plain_text(attachment.get("text") or ""), text
         ):
             return True
     return False

@@ -5,6 +5,7 @@ import json
 import re
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
@@ -44,16 +45,23 @@ def flux_event(
 
 
 def flux_post(
-    ts: float, kind="Kustomization", name="fmi-codes-staging", text="health check failed"
+    ts: float,
+    kind="Kustomization",
+    name="fmi-codes-staging",
+    text="health check failed",
+    stored=None,
 ):
-    """A message as Flux's Slack notifier posts it, as conversations.history returns it."""
+    """A message as Flux's Slack notifier posts it, as conversations.history returns it.
+
+    `stored` is the attachment text exactly as Slack returns it, when it isn't just `text`
+    escaped (Slack's link markup)."""
     author = f"{kind.lower()}/{name}.flux-system"
     return {
         "ts": f"{ts:.6f}",
         "attachments": [
             {
                 "author_name": author,
-                "text": relay.escape(text),
+                "text": relay.escape(text) if stored is None else stored,
                 "fallback": f"{author}: {text.splitlines()[0]}",
                 "color": "danger",
             }
@@ -759,6 +767,76 @@ def test_post_does_not_match_another_object():
     assert not relay.post_matches(
         post, "kustomization/fmi-codes-staging.flux-system", "health check failed"
     )
+
+
+GIT_KEY = ("GitRepository", "flux-system", "alert-test")
+GIT_AUTHOR = "gitrepository/alert-test.flux-system"
+LIVE_MESSAGE = (
+    "failed to checkout and determine revision: unable to clone "
+    "'ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git': "
+    'couldn\'t find remote ref "refs/heads/does-not-exist"'
+)
+# Flux's post of LIVE_MESSAGE as conversations.history returned it in the staging live test.
+LIVE_STORED = (
+    "failed to checkout and determine revision: unable to clone "
+    "'<ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git>': "
+    'couldn\'t find remote ref "refs/heads/does-not-exist"'
+)
+
+
+@pytest.mark.parametrize(
+    "message, stored",
+    [
+        (LIVE_MESSAGE, LIVE_STORED),
+        (
+            "GET https://index.docker.io/v2/fssfmi/x/tags/list: UNAUTHORIZED",
+            "GET <https://index.docker.io/v2/fssfmi/x/tags/list>: UNAUTHORIZED",
+        ),
+        ("cannot reach example.com", "cannot reach <http://example.com|example.com>"),
+        ("mail ops@example.com", "mail <mailto:ops@example.com|ops@example.com>"),
+        ("Deployment/backend <frontend> not ready", "Deployment/backend <frontend> not ready"),
+    ],
+    ids=["live-git-clone", "docker-url", "auto-link-label", "mailto", "unescaped-brackets"],
+)
+def test_post_matches_through_slack_link_markup(message, stored):
+    post = flux_post(T0, kind="GitRepository", name="alert-test", stored=stored)
+    assert relay.post_matches(post, GIT_AUTHOR, message)
+
+
+def test_link_markup_does_not_hide_a_different_url():
+    other = LIVE_STORED.replace("fss-fmi/", "someone-else/")
+    post = flux_post(T0, kind="GitRepository", name="alert-test", stored=other)
+    assert not relay.post_matches(post, GIT_AUTHOR, LIVE_MESSAGE)
+
+
+def test_error_with_a_url_is_tracked_and_replied_to(env):
+    slack, kube, clock, _, make = env
+    r = make()
+    kube.objects[GIT_KEY] = flux_object(status="False", ltt=T0)
+    event = flux_event(kind="GitRepository", name="alert-test", message=LIVE_MESSAGE)
+    assert r.enqueue("cluster", event)
+    slack.add(
+        CLUSTER, flux_post(T0 + 2, kind="GitRepository", name="alert-test", stored=LIVE_STORED)
+    )
+    clock.now = T0 + 5
+    r.tick()
+    assert "GitRepository/flux-system/alert-test" in kube.state()["incidents"]
+
+    kube.objects[GIT_KEY] = flux_object(status="True", ltt=T0 + 60)
+    clock.now = T0 + 75
+    r.tick()
+    assert [(channel, ts) for channel, ts, _ in slack.posts] == [(CLUSTER, f"{T0 + 2:.6f}")]
+    assert slack.reactions == {(CLUSTER, f"{T0 + 2:.6f}", "white_check_mark")}
+
+
+@pytest.mark.parametrize(
+    "unit, count", [("<", 200_000), ("<a|", 100_000), ("<a", 100_000), ("a", 200_000)]
+)
+def test_plain_text_stays_linear_on_hostile_brackets(unit, count):
+    text = unit * count if unit != "a" else "<" + unit * count
+    started = time.perf_counter()
+    relay.plain_text(text)
+    assert time.perf_counter() - started < 2
 
 
 def test_ready_condition_states():
