@@ -893,7 +893,8 @@ Not covered:
   timeout) or a 503 with no ready pod is not in it. Partly covered elsewhere: when every
   worker hangs, the scrape fails and `TargetDown` fires; with no ready pod,
   `KubePodNotReady` and the replica alerts fire. The ingress controllers export no metrics
-  today, so there is no user-side 5xx rate.
+  today, so there is no user-side 5xx rate. What to do about it is open for debate in
+  [issue #192](https://github.com/fss-fmi/fmi-codes-website-2026/issues/192).
 
 **Setup:**
 
