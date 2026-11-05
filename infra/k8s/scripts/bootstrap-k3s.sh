@@ -135,6 +135,55 @@ if ! sudo k3s kubectl wait --for=condition=Ready node --all --timeout="${NODE_TI
   exit 1
 fi
 
+# eth0 can fall back to the low MTU while the VM keeps running. k3s doesn't restart then, so the drop-in
+# above doesn't rerun. A poll rather than `ip monitor`: nothing to race at startup, and eth0 is
+# allowed to be missing at boot. Installed last so it can't change how a failed k3s install reports.
+if $WSL_MTU_PINNED; then
+  log "Keeping WSL2 eth0 at MTU $WSL_ETH0_MTU while k3s runs (wsl-eth0-mtu service)"
+  WSL_MTU_WATCHER=/usr/local/sbin/wsl-eth0-mtu
+  WSL_MTU_WATCHER_CONTENT="$(cat <<'WATCHER'
+#!/bin/sh
+while :; do
+  mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null)"
+  if [ -n "$mtu" ] && [ "$mtu" -lt "$WSL_ETH0_MTU" ] && ip link set dev eth0 mtu "$WSL_ETH0_MTU"; then
+    echo "eth0 MTU was $mtu, set to $WSL_ETH0_MTU"
+  fi
+  sleep 5
+done
+WATCHER
+)"
+  WSL_MTU_UNIT=/etc/systemd/system/wsl-eth0-mtu.service
+  WSL_MTU_UNIT_CONTENT="[Unit]
+Description=Keep WSL2 eth0 at MTU ${WSL_ETH0_MTU}
+
+[Service]
+Environment=WSL_ETH0_MTU=${WSL_ETH0_MTU}
+ExecStart=${WSL_MTU_WATCHER}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target"
+  WSL_MTU_WATCHER_CHANGED=false
+  if [ "$(cat "$WSL_MTU_WATCHER" 2>/dev/null)" != "$WSL_MTU_WATCHER_CONTENT" ]; then
+    printf '%s\n' "$WSL_MTU_WATCHER_CONTENT" | sudo tee "$WSL_MTU_WATCHER" >/dev/null
+    sudo chmod 755 "$WSL_MTU_WATCHER"
+    WSL_MTU_WATCHER_CHANGED=true
+  fi
+  if [ "$(cat "$WSL_MTU_UNIT" 2>/dev/null)" != "$WSL_MTU_UNIT_CONTENT" ]; then
+    printf '%s\n' "$WSL_MTU_UNIT_CONTENT" | sudo tee "$WSL_MTU_UNIT" >/dev/null
+    sudo chmod 644 "$WSL_MTU_UNIT"
+    WSL_MTU_WATCHER_CHANGED=true
+  fi
+  if $WSL_MTU_WATCHER_CHANGED; then
+    sudo systemctl daemon-reload
+  fi
+  sudo systemctl enable --now wsl-eth0-mtu.service
+  if $WSL_MTU_WATCHER_CHANGED; then
+    sudo systemctl restart wsl-eth0-mtu.service
+  fi
+fi
+
 # A k3s restart keeps the pod network it already built (cni0 and every veth), so a cluster first
 # started at the low MTU keeps it until that network is torn down and recreated. Reported at the
 # end, so it doesn't scroll away behind the tool installs.

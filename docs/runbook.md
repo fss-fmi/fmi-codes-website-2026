@@ -487,7 +487,7 @@ NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
 kubectl get --raw "/api/v1/nodes/$NODE/proxy/configz" | grep -o '"imageMaximumGCAge":"[^"]*"'
 ```
 
-**WSL2: eth0 is pinned to MTU 1500 before k3s starts.** In its default NAT networking mode,
+**WSL2: eth0 is held at MTU 1500.** In its default NAT networking mode,
 WSL2 gives `eth0` the lowest MTU of any Windows network adapter, so once Tailscale (or another
 VPN) is installed on Windows `eth0` boots at 1280. Flannel sizes every pod's network from `eth0`
 when k3s starts (1280 − 50 = 1230). That is too small for the WireGuard packets of the Tailscale
@@ -512,6 +512,17 @@ fix stops every pod, so the apps are down until they come back; data on the PVCs
 
 ```bash
 sudo /usr/local/bin/k3s-killall.sh && sudo systemctl start k3s
+```
+
+`eth0` can also drop back to 1280 while the VM keeps running, which hangs tailnet TLS the same way
+with `cni0` still at 1450. k3s doesn't restart then, so the drop-in doesn't rerun. `bootstrap-k3s.sh`
+therefore also installs a `wsl-eth0-mtu` systemd service that checks `eth0` every 5 seconds, raises
+it if it is below 1500 and logs the old value. An existing cluster gets the service by re-running
+the script, which doesn't restart k3s for it. With `cni0` at 1450 no pod network rebuild is needed:
+
+```bash
+systemctl is-active wsl-eth0-mtu             # active = watching
+journalctl -u wsl-eth0-mtu -n 20 --no-pager  # one "eth0 MTU was …" line per reset it repaired
 ```
 
 **k3s installs as a systemd service, so it survives reboot** — on a real Linux host. Default
@@ -1851,8 +1862,10 @@ kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=postgres
 kubectl -n fmi-codes delete pvc -l app.kubernetes.io/instance=redis
 kubectl -n fmi-codes delete secret fmi-codes-db fmi-codes-redis
 
-# Or nuke the whole cluster (on WSL2 also remove the eth0 MTU drop-in, which the uninstaller
-# leaves behind):
+# Or nuke the whole cluster (on WSL2 also remove the eth0 MTU drop-in and watcher, which the
+# uninstaller leaves behind):
 /usr/local/bin/k3s-uninstall.sh
-sudo rm -f /etc/systemd/system/k3s.service.d/wsl-mtu.conf && sudo systemctl daemon-reload
+sudo systemctl disable --now wsl-eth0-mtu
+sudo rm -f /etc/systemd/system/k3s.service.d/wsl-mtu.conf /etc/systemd/system/wsl-eth0-mtu.service /usr/local/sbin/wsl-eth0-mtu
+sudo systemctl daemon-reload
 ```
