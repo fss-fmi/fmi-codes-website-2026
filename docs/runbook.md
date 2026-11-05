@@ -271,18 +271,21 @@ that is ready for review to `#pr-updates`:
   comments are skipped (bot comments don't even start a job). State replies only post when
   the PR's state really changes, and review and comment replies carry the review or comment
   id, so a re-run never duplicates one.
-- **New commits**: each push adds one reply, `🔨 3 new commits by X · view changes`, then
-  one line per commit (short SHA + first line of the message, at most 72 characters), oldest
-  first. Past 5 commits the rest collapse into a `+N more` link. The list comes from the PR's
-  own commits, so "Update branch" shows as one merge commit, not everything pulled in from
-  `main`. A force push (rebase, amend) says `⚠️ force-pushed by X · old → new` instead. A PR
-  with over 250 commits gets a link without a list (the API limit).
+- **Commits**: the first reply, posted with the parent, lists the commits the PR was posted
+  with: `🔨 3 commits in this PR · view changes` (a link to its Files tab). After that, each
+  push adds one reply, `🔨 3 new commits by X · view changes`. Both list one line per commit
+  (short SHA + first line of the message, at most 72 characters), oldest first. Past 5
+  commits the rest collapse into a `+N more` link. The list comes from the PR's own commits,
+  so "Update branch" shows as one merge commit, not everything pulled in from `main`. A force
+  push (rebase, amend) says `⚠️ force-pushed by X · old → new` instead. A PR with over 250
+  commits gets a link without a list (the API limit).
 - **Drafts post nothing** until they are marked ready; while a PR is back in draft, reviews
   and pushes are not posted, and commits pushed while it was a draft are not listed later.
 - **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
   tags, re-rendered when Flux pushes newer tags to the open PR (which drops a `CI failed`
   that belonged to the old head) and edited to `merged ✅` when it auto-merges. No thread.
-- **CI results** (✅ passed, ❌ failed, ✅ green again) in the thread come from
+- **CI results** (`✅ CI pipeline passed successfully · abc1234`, `❌ … pipeline failed`,
+  `✅ … pipeline passed successfully again`) in the thread come from
   [Slack CI alerts](#slack-ci-alerts), not from this workflow.
 - **Only people who can push to the repo are posted.** The repo is public and
   `pull_request_target` runs for any PR without approval, so without this anyone on GitHub
@@ -303,13 +306,15 @@ Push runs for one PR share a concurrency group, so their replies post in order. 
 only the newest pending run in a group and cancels the others, so every push reply records
 the head it reached and the next push lists every commit after it, by ancestry rather than
 list position (GitHub sorts PR commits by date). The parent records the head it was posted
-at; a "ready"/"reopened" reply records the head at that moment and is posted before the
+at, and its opening list stops there, so the first push lists only what came after; a
+"ready"/"reopened" reply records the head at that moment and is posted before the
 parent turns open. Those runs are outside the push group, so a push run waits up to a minute
 for an open parent, which keeps a push right after "Ready for review" from listing the
 draft's commits. If the commit list has not caught up with the pushed head after about 10
-seconds the run fails; re-run it to post the push. Replies are keyed by both ends of the
-push, so re-runs and duplicate deliveries post nothing. The workflow
-never checks out PR code (it runs on `pull_request_target` and `issue_comment`, which have
+seconds the run fails; re-run it to post the commits. Push replies are keyed by both ends of
+the push and the opening list by the thread, so re-runs and duplicate deliveries post
+nothing twice; a re-run of the run that posted the parent finishes a list that failed. The
+workflow never checks out PR code (it runs on `pull_request_target` and `issue_comment`, which have
 secrets even for forks), and its `actions/checkout` is pinned to a commit SHA. GitHub always
 runs the default branch's copy of these workflows, so a change can only be tested after it
 merges.
@@ -360,9 +365,12 @@ listed in its `workflow_run.workflows` by its exact `name:`.
 - **Recovery:** when a run passes and the previous finished run of that workflow on the same
   branch failed (cancelled runs are skipped over; a re-run that passes after a failed attempt
   counts, re-running a run that already passed does not),
-  `✅ <workflow> is green again on <main | #PR>` in `#actions-notifications` plus a thread
-  reply; a Flux one-liner drops its `CI failed`.
-- **Other passing runs** post only a `✅ <workflow> passed` reply in the PR thread.
+  `✅ <workflow> pipeline passed successfully again on <main | #PR>` in
+  `#actions-notifications` plus a thread reply; a Flux one-liner drops its `CI failed`.
+- **Other passing runs** post only a `✅ <workflow> pipeline passed successfully · <commit>`
+  reply in the PR thread.
+- Every thread reply names the short commit SHA the run was on, so it lines up with the
+  PR feed's commit lists; a failure reads `❌ <workflow> pipeline failed · <commit> · details`.
 - Cancelled and skipped runs post nothing; draft PRs get no thread replies.
 - Runs on a PR count only when the PR's author passes the same push check as the
   [PR feed](#slack-pr-feed); runs with no PR count only from this repo's own branches. So a

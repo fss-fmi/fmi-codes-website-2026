@@ -18,6 +18,7 @@ REPO = "fss-fmi/fmi-codes-website-2026"
 ACTIONS = "C0ACTIONS"
 PRS = "C0PRFEED"
 REPO_URL = f"https://github.com/{REPO}"
+COMMIT = f"<{REPO_URL}/commit/abc1234def5678|abc1234>"
 
 FAILED_LOG = """\
 2026-10-12T23:45:17.0000000Z ##[group]Run actions/checkout@v4
@@ -280,7 +281,8 @@ class TestFailure:
         [alert] = slack.in_channel(ACTIONS)
         text = alert["text"]
         assert text.startswith(
-            f"❌ *<{REPO_URL}/actions/runs/900|CI>* failed on <{REPO_URL}/pull/7|#7 feat: add things>"
+            f"❌ *<{REPO_URL}/actions/runs/900|CI> pipeline* failed on "
+            f"<{REPO_URL}/pull/7|#7 feat: add things>"
         )
         assert "job `Unit &amp; E2E tests` · step `Run unit tests`" in text
         assert f"commit <{REPO_URL}/commit/abc1234def5678|abc1234>" in text
@@ -295,7 +297,7 @@ class TestFailure:
         [reply] = slack.replies()
         assert reply["thread_ts"] == parent["ts"]
         assert reply["text"] == (
-            f"❌ <{REPO_URL}/actions/runs/900|CI> failed · "
+            f"❌ <{REPO_URL}/actions/runs/900|CI> pipeline failed · {COMMIT} · "
             f"<https://slack.test/archives/{ACTIONS}/p{alert['ts']}|details>"
         )
 
@@ -417,7 +419,9 @@ class TestSuccess:
             make_run(conclusion="success")
         )
         assert slack.in_channel(ACTIONS) == []
-        assert slack.replies()[0]["text"] == f"✅ <{REPO_URL}/actions/runs/900|CI> passed"
+        assert slack.replies()[0]["text"] == (
+            f"✅ <{REPO_URL}/actions/runs/900|CI> pipeline passed successfully · {COMMIT}"
+        )
 
     def test_green_again_after_a_failed_run(self, slack):
         with_parent(slack)
@@ -425,21 +429,23 @@ class TestSuccess:
         alerts(slack, gh).handle(make_run(conclusion="success"))
         [ping] = slack.in_channel(ACTIONS)
         assert ping["text"] == (
-            f"✅ <{REPO_URL}/actions/runs/900|CI> is green again on "
+            f"✅ <{REPO_URL}/actions/runs/900|CI> pipeline passed successfully again on "
             f"<{REPO_URL}/pull/7|#7 feat: add things>"
         )
-        assert slack.replies()[0]["text"] == f"✅ <{REPO_URL}/actions/runs/900|CI> green again"
+        assert slack.replies()[0]["text"] == (
+            f"✅ <{REPO_URL}/actions/runs/900|CI> pipeline passed successfully again · {COMMIT}"
+        )
 
     def test_green_again_on_main(self, slack):
         run = make_run(conclusion="success", event="push", prs=[], head_branch="main")
         alerts(slack, FakeGitHub(previous=[prior("failure")])).handle(run)
-        assert slack.in_channel(ACTIONS)[0]["text"].endswith("is green again on `main`")
+        assert slack.in_channel(ACTIONS)[0]["text"].endswith("passed successfully again on `main`")
 
     def test_rerun_that_passes_is_a_recovery(self, slack):
         alerts(slack, FakeGitHub(attempts={1: "failure"})).handle(
             make_run(conclusion="success", attempt=2)
         )
-        assert "green again" in slack.in_channel(ACTIONS)[0]["text"]
+        assert "passed successfully again" in slack.in_channel(ACTIONS)[0]["text"]
 
     def test_recovery_posts_once(self, slack):
         gh = FakeGitHub(previous=[prior("failure")])
@@ -612,7 +618,10 @@ class TestReviewFixes:
         assert len(slack.in_channel(ACTIONS)) == 1
         alerts(slack, gh).handle(make_run(conclusion="success", attempt=2))
         assert len(slack.in_channel(ACTIONS)) == 1
-        assert [r["text"].split("|CI> ")[1] for r in slack.replies()] == ["green again", "passed"]
+        assert [r["text"].split("|CI> ")[1].split(" · ")[0] for r in slack.replies()] == [
+            "pipeline passed successfully again",
+            "pipeline passed successfully",
+        ]
 
     def test_rerun_finishes_a_thread_reply_that_failed(self, slack):
         with_parent(slack)

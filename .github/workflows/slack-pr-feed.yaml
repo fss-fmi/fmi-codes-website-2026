@@ -1,8 +1,8 @@
 name: Slack PR feed
 
-# Posts ready PRs to #pr-updates: one parent message per PR, later events (new
-# commits included) in its thread, Flux bumps as a single edited one-liner
-# (.github/scripts/pr_feed.py).
+# Posts ready PRs to #pr-updates: one parent message per PR, later events (its
+# opening commits and every push included) in its thread, Flux bumps as a single
+# edited one-liner (.github/scripts/pr_feed.py).
 #
 # pull_request_target runs with secrets even for fork PRs, so this workflow must
 # never check out or run PR code: it checks out the default branch's scripts only

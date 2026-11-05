@@ -6,9 +6,10 @@ GITHUB_EVENT_PATH and only calls the Slack and GitHub APIs; it never checks out
 or runs PR code.
 
 One parent message per ready PR, edited in place as its state changes; every
-later event is a one-line reply in its thread, and each push lists its new
-commits there (issue #171). Draft PRs post nothing until they are ready. Flux
-image-bump PRs get a single one-liner, edited in place, no thread.
+later event is a one-line reply in its thread. The first reply lists the commits
+the PR was posted with, and each later push lists its new ones (issue #171).
+Draft PRs post nothing until they are ready. Flux image-bump PRs get a single
+one-liner, edited in place, no thread.
 """
 
 import json
@@ -34,6 +35,7 @@ TITLE_PAIR_RE = re.compile(r"(\S+) -> (\S+)")
 CREATES_PARENT = {"opened", "ready_for_review", "reopened"}
 TRANSITIONS = {"ready_for_review", "converted_to_draft", "closed", "reopened"}
 STATUS_EMOJI = {"open": "🟢", "draft": "📝", "merged": "🟣", "closed": "🔴"}
+OPENING_KEY = "opening"
 COMMITS_SHOWN = 5
 # GET /pulls/{n}/commits returns at most this many, sorted by date.
 MAX_PR_COMMITS = 250
@@ -120,17 +122,31 @@ def changes_url(pr: dict, base: str, head: str) -> str:
     return f"{pr['html_url']}/files/{base}..{head}"
 
 
-def push_text(pr: dict, pusher: str, commits: list[dict], base: str, head: str) -> str:
-    """🔨 2 new commits by alice · view changes, then one line per commit, oldest first."""
-    changes = changes_url(pr, base, head)
-    noun = "commit" if len(commits) == 1 else "commits"
-    lines = [f"🔨 {len(commits)} new {noun} by {escape(pusher)} · {link(changes, 'view changes')}"]
+def commit_lines(pr: dict, commits: list[dict], changes: str) -> list[str]:
+    """One line per commit, oldest first; past COMMITS_SHOWN a "+N more" link to *changes*."""
+    lines = []
     for c in commits[:COMMITS_SHOWN]:
         url = f"{pr['html_url']}/commits/{c['sha']}"
         lines.append(f"• {link(url, c['sha'][:7])} {subject(c['commit']['message'])}")
     if len(commits) > COMMITS_SHOWN:
         lines.append(link(changes, f"+{len(commits) - COMMITS_SHOWN} more"))
-    return "\n".join(lines)
+    return lines
+
+
+def push_text(pr: dict, pusher: str, commits: list[dict], base: str, head: str) -> str:
+    """🔨 2 new commits by alice · view changes, then one line per commit, oldest first."""
+    changes = changes_url(pr, base, head)
+    noun = "commit" if len(commits) == 1 else "commits"
+    header = f"🔨 {len(commits)} new {noun} by {escape(pusher)} · {link(changes, 'view changes')}"
+    return "\n".join([header, *commit_lines(pr, commits, changes)])
+
+
+def opening_text(pr: dict, commits: list[dict]) -> str:
+    """🔨 3 commits in this PR · view changes, then one line per commit, oldest first."""
+    changes = f"{pr['html_url']}/files"
+    noun = "commit" if len(commits) == 1 else "commits"
+    header = f"🔨 {len(commits)} {noun} in this PR · {link(changes, 'view changes')}"
+    return "\n".join([header, *commit_lines(pr, commits, changes)])
 
 
 def force_push_text(pr: dict, pusher: str, old: str, new: str) -> str:
@@ -198,8 +214,8 @@ class Feed:
     def find(self, pr: dict):
         return self.slack.find_pr_message(self.channel, self.repo, pr["number"], self.oldest(pr))
 
-    def _post_parent(self, pr: dict, text: str, kind: str, head: str | None = None) -> None:
-        self.slack.post_unique(
+    def _post_parent(self, pr: dict, text: str, kind: str, head: str | None = None) -> str:
+        return self.slack.post_unique(
             self.channel,
             text,
             self._meta(pr, kind, head),
@@ -232,15 +248,11 @@ class Feed:
             metadata=reply_metadata(self.repo, pr["number"], key),
         )
 
-    def _upsert_parent(self, pr: dict, parent) -> None:
-        text = parent_text(pr, self.repo)
-        if parent:
-            # Keep the head the parent was posted at: this run is not ordered with
-            # push runs, so writing the current head here could skip their commits.
-            meta = self._meta(pr, "pr", meta_payload(parent).get("head"))
-            self.slack.update(self.channel, parent["ts"], text, metadata=meta)
-        else:
-            self._post_parent(pr, text, "pr", pr["head"].get("sha"))
+    def _update_parent(self, pr: dict, parent: dict) -> None:
+        # Keep the head the parent was posted at: this run is not ordered with
+        # push runs, so writing the current head here could skip their commits.
+        meta = self._meta(pr, "pr", meta_payload(parent).get("head"))
+        self.slack.update(self.channel, parent["ts"], parent_text(pr, self.repo), metadata=meta)
 
     def can_push(self, user: dict, pr: dict) -> bool:
         head_repo = (pr["head"].get("repo") or {}).get("full_name")
@@ -284,9 +296,15 @@ class Feed:
         new = pr_state(pr)
         if not parent:
             if action in CREATES_PARENT and new == "open":
-                self._upsert_parent(pr, None)
+                head = pr["head"].get("sha")
+                ts = self._post_parent(pr, parent_text(pr, self.repo), "pr", head)
+                self._post_opening_commits(pr, ts, head)
             return
         old = meta_payload(parent).get("state")
+        if action in CREATES_PARENT and old == new == "open":
+            # A re-run or duplicate of the event that posted the parent: finish its list.
+            self._post_opening_commits(pr, parent["ts"], meta_payload(parent).get("head"))
+            return
         renamed = action == "edited" and {"title", "base"} & set(event.get("changes") or {})
         # Replies only on a real state change, so re-runs and duplicate events stay silent.
         if action in TRANSITIONS and old != new:
@@ -299,7 +317,40 @@ class Feed:
             # Before the parent turns open: a waiting push run must find this head.
             self._reply(parent, transition_text(event, pr), metadata)
         if old != new or renamed:
-            self._upsert_parent(pr, parent)
+            self._update_parent(pr, parent)
+
+    def _post_opening_commits(self, pr: dict, parent_ts: str, head: str | None) -> None:
+        """List the commits the PR had when its parent was posted, up to the head it recorded.
+
+        The first push reply starts after that head, so the two never overlap.
+        """
+        if not head or not self.github:
+            return
+        if self.slack.find_reply(
+            self.channel,
+            parent_ts,
+            REPLY_EVENT_TYPE,
+            repo=self.repo,
+            pr_number=pr["number"],
+            key=OPENING_KEY,
+        ):
+            return
+        commits = self._commits_with(pr, head)
+        if commits is None:
+            return
+        by_sha = {c["sha"]: c for c in commits}
+        if head in by_sha:
+            shas = ancestors(head, by_sha)
+            text = opening_text(pr, [c for c in commits if c["sha"] in shas])
+        else:
+            files = f"{pr['html_url']}/files"
+            text = f"🔨 over {MAX_PR_COMMITS} commits in this PR · {link(files, 'view changes')}"
+        self.slack.post(
+            self.channel,
+            text,
+            thread_ts=parent_ts,
+            metadata=reply_metadata(self.repo, pr["number"], OPENING_KEY),
+        )
 
     def _handle_push(self, event: dict, pr: dict) -> None:
         """One reply per push listing its new commits, or saying it was a force push.
@@ -510,7 +561,7 @@ def main() -> int:
         logger.error("GitHub call failed: %s", e)
         return 1
     except CommitListLagError as e:
-        logger.error("%s; re-run this job to post the push", e)
+        logger.error("%s; re-run this job to post its commits", e)
         return 1
     return 0
 
