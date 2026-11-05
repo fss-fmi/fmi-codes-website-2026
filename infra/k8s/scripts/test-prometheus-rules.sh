@@ -11,6 +11,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 obs_dir="infra/k8s/base/observability"
 work="$(mktemp -d "$repo_root/.promtool-XXXXXX")"
 trap 'rm -rf "$work"' EXIT
+# mktemp makes it 0700, and the prometheus image runs as `nobody`.
+chmod 755 "$work"
 
 # Git Bash would rewrite the container paths below into Windows paths.
 export MSYS_NO_PATHCONV=1
