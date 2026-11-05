@@ -3,3 +3,7 @@
 
 def test_live_check():
     assert False, "deliberate failure"
+
+
+def test_second_commit():
+    assert True
