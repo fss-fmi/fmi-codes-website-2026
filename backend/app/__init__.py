@@ -46,7 +46,15 @@ def create_app(config_name="development"):
     )
     app.config.from_object(config)
 
-    PrometheusMetrics(app)
+    # Kubelet probes would swamp the request rate and dilute the 5xx share the alert reads.
+    # The exporter never counts its own /metrics endpoint.
+    excluded_paths = [r"^/api/health(/ready)?$"]
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        from prometheus_flask_exporter.multiprocess import GunicornInternalPrometheusMetrics
+
+        GunicornInternalPrometheusMetrics(app, excluded_paths=excluded_paths)
+    else:
+        PrometheusMetrics(app, excluded_paths=excluded_paths)
 
     # Resolve the rate-limit storage URI now that env/config is loaded, then
     # attach the limiter. build_limiter_storage_uri() returns a redis+sentinel://

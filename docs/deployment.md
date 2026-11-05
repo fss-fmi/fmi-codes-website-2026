@@ -55,10 +55,10 @@ Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub Ap
 
 ## Build artifacts
 
-| Image                       | Built from                                                                                                            | Runs                                                                                       |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `fssfmi/fmi-codes-backend`  | `backend/Dockerfile` (python:3.12-slim)                                                                               | `gunicorn --bind 0.0.0.0:5001 --workers 4 --threads 8 --timeout 120 wsgi:app` as UID 10001 |
-| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build with `npm ci` from the committed `package-lock.json`, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, proxies `/api` and `/static` to `backend:5001`      |
+| Image                       | Built from                                                                                                            | Runs                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `fssfmi/fmi-codes-backend`  | `backend/Dockerfile` (python:3.12-slim)                                                                               | `gunicorn --config gunicorn.conf.py wsgi:app` (:5001, 4 workers x 8 threads) as UID 10001 |
+| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build with `npm ci` from the committed `package-lock.json`, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, proxies `/api` and `/static` to `backend:5001`     |
 
 ## Configuration
 
@@ -126,7 +126,7 @@ After any deploy also confirm the two invariants from the runbook: a push to `ma
 
 ## Monitoring
 
-Self-hosted kube-prometheus-stack in the `monitoring` namespace scrapes both app namespaces with 14-day retention. Grafana provisions "FMI Production" and "FMI Staging" dashboards (request rate, latency percentiles, error rate) and is reachable only over the `fss-fmi` Tailscale tailnet (`kubectl -n monitoring get ingress grafana` shows its address). Logs: `kubectl -n fmi-codes logs -f deploy/backend`. Setup and access details: [runbook section 7](runbook.md#7--observability-prometheus--grafana).
+Self-hosted kube-prometheus-stack in the `monitoring` namespace scrapes both app namespaces with 14-day retention. Grafana provisions "FMI Production" and "FMI Staging" dashboards (request rate, latency percentiles, 5xx share) and is reachable only over the `fss-fmi` Tailscale tailnet (`kubectl -n monitoring get ingress grafana` shows its address). Logs: `kubectl -n fmi-codes logs -f deploy/backend`. Setup and access details: [runbook section 7](runbook.md#7--observability-prometheus--grafana).
 
 ## Local production-like run
 

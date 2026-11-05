@@ -169,6 +169,22 @@ spec:
                 annotations:
                   summary: Init container is crash looping.
                   description: '{{ $labels.namespace }}/{{ $labels.pod }} (init container {{ $labels.container }}) is in CrashLoopBackOff, so the pod never starts.'
+          - name: fmi-codes.backend
+            rules:
+              # Health probes aren't counted (excluded_paths in backend/app/__init__.py), so with
+              # no real traffic the ratio is 0/0 and never fires.
+              - alert: BackendHighErrorRate
+                expr: |-
+                  sum by (namespace) (rate(flask_http_request_total{status=~"5.."}[5m]))
+                  /
+                  sum by (namespace) (rate(flask_http_request_total[5m]))
+                  > 0.05
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Backend is answering with 5xx errors.
+                  description: '{{ $value | humanizePercentage }} of backend requests in {{ $labels.namespace }} returned a 5xx over the last 5 minutes.'
     grafana:
       admin:
         existingSecret: grafana-admin
@@ -227,8 +243,8 @@ spec:
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
                     "targets": [
                       {
-                        "expr": "rate(flask_http_request_total{namespace=\"fmi-codes\"}[5m])",
-                        "legendFormat": "{{method}} {{path}} {{status}}",
+                        "expr": "sum by (method, status) (rate(flask_http_request_total{namespace=\"fmi-codes\"}[5m]))",
+                        "legendFormat": "{{method}} {{status}}",
                         "refId": "A"
                       }
                     ],
@@ -260,17 +276,17 @@ spec:
                   },
                   {
                     "id": 3,
-                    "title": "Error Rate",
+                    "title": "5xx Share",
                     "type": "timeseries",
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
                     "targets": [
                       {
-                        "expr": "rate(flask_http_request_exceptions_total{namespace=\"fmi-codes\"}[5m])",
-                        "legendFormat": "{{method}} {{path}}",
+                        "expr": "sum(rate(flask_http_request_total{namespace=\"fmi-codes\", status=~\"5..\"}[5m])) / sum(rate(flask_http_request_total{namespace=\"fmi-codes\"}[5m]))",
+                        "legendFormat": "5xx share",
                         "refId": "A"
                       }
                     ],
-                    "fieldConfig": { "defaults": { "unit": "reqps" } }
+                    "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 } }
                   }
                 ]
               }
@@ -291,8 +307,8 @@ spec:
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
                     "targets": [
                       {
-                        "expr": "rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[5m])",
-                        "legendFormat": "{{method}} {{path}} {{status}}",
+                        "expr": "sum by (method, status) (rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[5m]))",
+                        "legendFormat": "{{method}} {{status}}",
                         "refId": "A"
                       }
                     ],
@@ -324,17 +340,17 @@ spec:
                   },
                   {
                     "id": 3,
-                    "title": "Error Rate",
+                    "title": "5xx Share",
                     "type": "timeseries",
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
                     "targets": [
                       {
-                        "expr": "rate(flask_http_request_exceptions_total{namespace=\"fmi-codes-staging\"}[5m])",
-                        "legendFormat": "{{method}} {{path}}",
+                        "expr": "sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\", status=~\"5..\"}[5m])) / sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[5m]))",
+                        "legendFormat": "5xx share",
                         "refId": "A"
                       }
                     ],
-                    "fieldConfig": { "defaults": { "unit": "reqps" } }
+                    "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 } }
                   }
                 ]
               }

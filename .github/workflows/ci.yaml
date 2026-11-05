@@ -102,6 +102,16 @@ jobs:
         working-directory: frontend
         run: npx tsc -p tsconfig.app.json --noEmit
 
+  prometheus-rules:
+    name: Prometheus rules
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: promtool test rules
+        run: bash infra/k8s/scripts/test-prometheus-rules.sh
+
   flux-validate:
     name: Flux kustomize build
     runs-on: ubuntu-latest

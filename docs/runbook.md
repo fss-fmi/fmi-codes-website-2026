@@ -848,6 +848,11 @@ The alerts most likely to matter:
 | `KubePersistentVolumeFillingUp`                                                                   | a PVC (Postgres, Prometheus, Grafana) is almost full, or will be within 4 days                                                | 1m / 1h |
 | `KubeNodeNotReady`                                                                                | the node is not ready                                                                                                         | 15m     |
 | `TargetDown`                                                                                      | a scrape target, like the backend's `/metrics`, is unreachable                                                                | 10m     |
+| `BackendHighErrorRate`                                                                            | over 5% of backend requests in a namespace return a 5xx (health probes not counted)                                           | 10m     |
+
+The custom rules (`additionalPrometheusRulesMap` in `base/observability/helmrelease.yaml`) have
+promtool unit tests in `base/observability/tests/`. CI runs them; locally, with Docker running:
+`bash infra/k8s/scripts/test-prometheus-rules.sh`.
 
 Kept quiet on purpose:
 
@@ -883,10 +888,6 @@ Not covered:
 - **The whole cluster down.** Nothing inside a cluster can report its own death. A dead
   cluster also takes the site down, which is noticed anyway, so there is no external dead
   man's switch.
-- **The backend's 5xx rate.** The app counters are per Gunicorn worker (the multiprocess
-  limitation in [Dashboards and checks](#dashboards-and-checks)): each scrape reads a random
-  worker, so a rate rule on them would fire on noise. Aggregating them across workers, and
-  then adding the rule, is [issue #169](https://github.com/fss-fmi/fmi-codes-website-2026/issues/169).
 
 **Setup:**
 
@@ -1430,10 +1431,11 @@ their support first if you plan to start over.
 #### Dashboards and checks
 
 **App-only dashboards:** Grafana → Dashboards → **FMI Codes** folder → **FMI Production** or
-**FMI Staging**. Each shows request rate, request duration (p50/p95/p99), and error rate for
-its namespace, hardcoded so there is no shared dropdown or data mixing between envs. They are
-provisioned from `grafana.dashboards` in the Helm values on every chart reconcile, so there is
-nothing to import. On a staging-only cluster **FMI Production** is simply empty.
+**FMI Staging**. Each shows request rate, request duration (p50/p95/p99), and the share of
+requests answered with a 5xx (what `BackendHighErrorRate` alerts on) for its namespace,
+hardcoded so there is no shared dropdown or data mixing between envs. They are provisioned
+from `grafana.dashboards` in the Helm values on every chart reconcile, so there is nothing to
+import. On a staging-only cluster **FMI Production** is simply empty.
 
 **The memory-per-pod leak graph:** Grafana → Dashboards → **"Kubernetes / Compute Resources /
 Pod"**, filter `namespace=fmi-codes-staging`, `pod=~backend.*`, the memory panel, set the range
@@ -1453,13 +1455,20 @@ kubectl -n monitoring port-forward svc/kps-prometheus 9090:9090
 > ingress. Do **not** "fix" this by adding an ingress route — it would expose app metrics
 > publicly for zero benefit.
 
-**Known limitation — multiprocess counters.** The backend runs multiple Gunicorn workers, and
-plain `PrometheusMetrics(app)` gives **per-worker** app counters (each scrape hits one random
-worker). This is accepted for the first pass: the PRIMARY deliverable — memory-per-pod — comes
-from cAdvisor/kube-state-metrics and is 100% independent of app counters. To get aggregated
-app counters later, switch to `GunicornPrometheusMetrics`, set `PROMETHEUS_MULTIPROC_DIR` to a
-tmpfs volume, and add a `child_exit` hook in the Gunicorn config — real complexity for marginal
-value on a hobby cluster.
+**Counters are per pod, not per worker.** Gunicorn's 4 workers write their metrics to shared
+files in `PROMETHEUS_MULTIPROC_DIR` (set by `backend/gunicorn.conf.py`, an in-memory `emptyDir`
+in `base/app/backend.yaml`), and whichever worker answers a scrape sums them all. So each pod
+has one series per label set, and a counter only goes down when the pod or its container
+restarts (the folder is emptied when Gunicorn starts). A worker that dies keeps its counts in
+the total. Two consequences:
+
+- The Python process series (`process_*`, `python_*`) are not exported. Memory per pod comes
+  from cAdvisor, which doesn't need them.
+- `/api/health` and `/api/health/ready` are not counted, so the kubelet's probes don't swamp
+  the request rate or dilute the 5xx share.
+
+To check it: `resets(flask_http_request_total[30m])` in Prometheus is 0 for every backend pod
+that wasn't restarted in that window.
 
 **Rotate the Grafana admin password:** `bash infra/k8s/scripts/rotate-secret.sh --grafana
 admin-password` (details and why it also resets Grafana's database in
