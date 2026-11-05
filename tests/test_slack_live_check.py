@@ -2,8 +2,8 @@
 
 
 def test_live_check():
-    assert False, "deliberate failure"
+    assert 1 + 1 == 2
 
 
 def test_second_commit():
-    assert True
+    assert "slack"
