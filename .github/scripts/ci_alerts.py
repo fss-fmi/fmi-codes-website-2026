@@ -6,9 +6,11 @@ handler for every finished run, so nothing else posts CI results:
 - failure: an alert in #actions-notifications (workflow, where, job, step,
   commit, a short log tail), then a reply in the PR's #pr-updates thread linking
   it. A Flux bump's one-liner is edited to "CI failed" instead.
-- success after a failure: "green again" in #actions-notifications and the thread
-  (a Flux one-liner drops its "CI failed").
+- success after a failure: "passed successfully again" in #actions-notifications
+  and the thread (a Flux one-liner drops its "CI failed").
 - other success: a one-line result in the PR thread only.
+
+Every line names the workflow as a pipeline and the commit it ran on.
 
 Cancelled and skipped runs post nothing. Draft PRs get no thread replies.
 """
@@ -223,7 +225,8 @@ class Alerts:
         alert = self.slack.permalink(self.actions_channel, ts)
         self._pr_note(
             pr,
-            f"❌ {link(run['html_url'], run['name'])} failed · {link(alert, 'details')}",
+            f"❌ {link(run['html_url'], run['name'])} pipeline failed"
+            f" · {commit_link(run)} · {link(alert, 'details')}",
             flux_suffix=f"CI failed ❌ ({link(alert, 'alert')})",
             key=_run_key(run, "failure"),
         )
@@ -255,7 +258,8 @@ class Alerts:
         if not self._previous_failed(run):
             self._pr_note(
                 pr,
-                f"✅ {link(run['html_url'], run['name'])} passed",
+                f"✅ {link(run['html_url'], run['name'])} pipeline passed successfully"
+                f" · {commit_link(run)}",
                 flux_suffix=None,
                 key=_run_key(run, "success"),
             )
@@ -263,12 +267,14 @@ class Alerts:
         if not self._posted_ts(run, "recovery"):
             self.slack.post(
                 self.actions_channel,
-                f"✅ {link(run['html_url'], run['name'])} is green again on {self.where(run, pr)}",
+                f"✅ {link(run['html_url'], run['name'])} pipeline passed successfully again"
+                f" on {self.where(run, pr)}",
                 metadata=alert_metadata(self.repo, run["id"], run["run_attempt"], "recovery"),
             )
         self._pr_note(
             pr,
-            f"✅ {link(run['html_url'], run['name'])} green again",
+            f"✅ {link(run['html_url'], run['name'])} pipeline passed successfully again"
+            f" · {commit_link(run)}",
             flux_suffix="",
             key=_run_key(run, "recovery"),
         )
@@ -352,15 +358,19 @@ def _run_key(run: dict, kind: str) -> str:
     return f"run:{run['id']}:{run['run_attempt']}:{kind}"
 
 
+def commit_link(run: dict) -> str:
+    url = f"{run['repository']['html_url']}/commit/{run['head_sha']}"
+    return link(url, run["head_sha"][:7])
+
+
 def alert_text(run: dict, where: str, job, step, tail: str) -> str:
-    lines = [f"❌ *{link(run['html_url'], run['name'])}* failed on {where}"]
+    lines = [f"❌ *{link(run['html_url'], run['name'])} pipeline* failed on {where}"]
     details = []
     if job:
         details.append(f"job `{escape(job['name'])}`")
     if step:
         details.append(f"step `{escape(step['name'])}`")
-    commit_url = f"{run['repository']['html_url']}/commit/{run['head_sha']}"
-    details.append(f"commit {link(commit_url, run['head_sha'][:7])}")
+    details.append(f"commit {commit_link(run)}")
     if run["event"] not in PR_EVENTS | {"push"}:
         actor = (run.get("triggering_actor") or run.get("actor") or {}).get("login", "unknown")
         details.append(f"{escape(run['event'])} by {escape(actor)}")

@@ -1,8 +1,8 @@
 name: Slack CI alerts
 
 # The one handler for finished runs (.github/scripts/ci_alerts.py): failure
-# alerts and "green again" pings in #actions-notifications, CI results in each
-# PR's #pr-updates thread, "CI failed" on Flux bump one-liners.
+# alerts and "passed successfully again" pings in #actions-notifications, CI
+# results in each PR's #pr-updates thread, "CI failed" on Flux bump one-liners.
 #
 # workflow_run has secrets even for runs on fork PRs, so this never checks out
 # or runs PR code: only the default branch's scripts, reading the run from the

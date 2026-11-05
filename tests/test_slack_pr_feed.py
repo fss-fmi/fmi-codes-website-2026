@@ -787,6 +787,9 @@ class TestPushes:
     def pfeed(self, slack, api, sleeps):
         f = pr_feed.Feed(slack, CHANNEL, REPO, github=api, sleep=sleeps.append)
         target(f, "opened", pr_at(1))
+        # TestOpeningCommits covers the opening list; these tests only count push replies.
+        [opening] = slack.replies
+        slack.messages.remove(opening)
         return f
 
     @staticmethod
@@ -1005,12 +1008,13 @@ class TestPushes:
 
     def test_over_the_api_limit_links_instead_of_listing(self, pfeed, slack, commits, api):
         commits += [commit(n) for n in range(2, 262)]
+        calls = len(api.calls)
         self.push(pfeed, 260, 261)
         assert slack.replies[0]["text"] == (
             f"🔨 new commits by alice · <{PR_URL}/files/{sha(260)}..{sha(261)}|view changes>"
             " (over 250 commits, not listed)"
         )
-        assert sum(c.endswith("/commits") for c in api.calls) == 3
+        assert sum(c.endswith("/commits") for c in api.calls[calls:]) == 3
 
     def test_no_parent_waits_then_posts_nothing(self, slack, api, commits, sleeps):
         f = pr_feed.Feed(slack, CHANNEL, REPO, github=api, sleep=sleeps.append)
@@ -1083,6 +1087,129 @@ class TestPushes:
 
         monkeypatch.setattr(pr_feed.Feed, "handle", lagging)
         assert pr_feed.main() == 1
+
+
+class TestOpeningCommits:
+    @pytest.fixture()
+    def commits(self):
+        return [commit(1), commit(2), commit(3, "fix: <!channel> & co")]
+
+    @pytest.fixture()
+    def api(self, commits):
+        return github_stub(commits=commits, pr=pr_at(3))
+
+    @pytest.fixture()
+    def ofeed(self, slack, api):
+        return pr_feed.Feed(slack, CHANNEL, REPO, github=api, sleep=lambda s: None)
+
+    def test_opened_pr_lists_its_commits(self, ofeed, slack):
+        target(ofeed, "opened", pr_at(3))
+        [reply] = slack.replies
+        assert reply["thread_ts"] == slack.parents[0]["ts"]
+        assert reply["text"] == "\n".join(
+            [
+                f"🔨 3 commits in this PR · <{PR_URL}/files|view changes>",
+                f"• <{PR_URL}/commits/{sha(1)}|sha0001> commit 1",
+                f"• <{PR_URL}/commits/{sha(2)}|sha0002> commit 2",
+                f"• <{PR_URL}/commits/{sha(3)}|sha0003> fix: &lt;!channel&gt; &amp; co",
+            ]
+        )
+        assert reply["metadata"]["event_payload"]["key"] == pr_feed.OPENING_KEY
+        assert "head" not in reply["metadata"]["event_payload"]
+
+    def test_one_commit_is_singular(self, ofeed, slack, commits, api):
+        commits[:] = [commit(1)]
+        api.pr["head"]["sha"] = sha(1)
+        target(ofeed, "opened", pr_at(1))
+        assert slack.replies[0]["text"].startswith("🔨 1 commit in this PR · ")
+
+    def test_more_than_five_collapse_into_the_files_tab(self, ofeed, slack, commits, api):
+        commits[:] = [commit(n) for n in range(1, 9)]
+        api.pr["head"]["sha"] = sha(8)
+        target(ofeed, "opened", pr_at(8))
+        lines = slack.replies[0]["text"].split("\n")
+        assert lines[0].startswith("🔨 8 commits in this PR")
+        assert len(lines) == 7
+        assert lines[6] == f"<{PR_URL}/files|+3 more>"
+
+    def test_draft_lists_nothing_until_ready_then_everything(self, ofeed, slack):
+        target(ofeed, "opened", pr_at(3, draft=True))
+        assert slack.messages == []
+        target(ofeed, "ready_for_review", pr_at(3))
+        assert slack.replies[0]["text"].startswith("🔨 3 commits in this PR")
+
+    def test_ready_again_does_not_list_them_again(self, ofeed, slack):
+        target(ofeed, "opened", pr_at(3))
+        target(ofeed, "converted_to_draft", pr_at(3, draft=True))
+        target(ofeed, "ready_for_review", pr_at(3))
+        assert [r["text"][0] for r in slack.replies] == ["🔨", "📝", "🟢"]
+
+    def test_only_commits_up_to_the_parents_head(self, ofeed, slack, commits):
+        # Commit 3 was pushed before this run read the list; its push run reports it.
+        target(ofeed, "opened", pr_at(2))
+        text = slack.replies[0]["text"]
+        assert text.startswith("🔨 2 commits in this PR") and "|sha0003>" not in text
+
+    def test_then_a_push_lists_only_what_came_after(self, ofeed, slack, commits, api):
+        commits.pop()
+        api.pr["head"]["sha"] = sha(2)
+        target(ofeed, "opened", pr_at(2))
+        commits.append(commit(3))
+        TestPushes.push(ofeed, 2, 3)
+        opening, push = (r["text"] for r in slack.replies)
+        assert "|sha0002>" in opening and "|sha0003>" not in opening
+        assert push.startswith("🔨 1 new commit") and "|sha0002>" not in push
+
+    def test_force_pushed_before_the_list_was_read_posts_no_list(self, ofeed, slack, commits):
+        commits[:] = [commit(101)]
+        ofeed.github.pr["head"]["sha"] = sha(101)
+        target(ofeed, "opened", pr_at(3))
+        assert len(slack.parents) == 1
+        assert slack.replies == []
+
+    def test_over_the_api_limit_links_instead_of_listing(self, ofeed, slack, commits, api):
+        commits[:] = [commit(n) for n in range(1, 262)]
+        api.pr["head"]["sha"] = sha(261)
+        target(ofeed, "opened", pr_at(261))
+        assert slack.replies[0]["text"] == (
+            f"🔨 over 250 commits in this PR · <{PR_URL}/files|view changes>"
+        )
+
+    def test_duplicate_delivery_lists_once(self, ofeed, slack, api):
+        for action in ("opened", "opened", "ready_for_review", "reopened"):
+            target(ofeed, action, pr_at(3))
+        assert len(slack.parents) == 1
+        assert len(slack.replies) == 1
+
+    def test_rerun_finishes_a_list_that_failed(self, ofeed, slack, commits, api):
+        def lagging(path, **params):
+            if path.endswith("/commits"):
+                return []
+            return github_stub(commits=commits, pr=pr_at(3))(path, **params)
+
+        ofeed.github = lagging
+        with pytest.raises(pr_feed.CommitListLagError):
+            target(ofeed, "opened", pr_at(3))
+        assert len(slack.parents) == 1 and slack.replies == []
+
+        ofeed.github = api
+        target(ofeed, "opened", pr_at(3))
+        assert len(slack.parents) == 1
+        assert slack.replies[0]["text"].startswith("🔨 3 commits in this PR")
+
+    def test_parents_without_a_recorded_head_list_nothing(self, ofeed, slack):
+        slack.post(
+            CHANNEL, "🟢 old parent", metadata=slack_notify.pr_metadata(REPO, 7, "pr", "open")
+        )
+        target(ofeed, "opened", pr_at(3))
+        assert slack.replies == []
+
+    def test_no_github_token_lists_nothing(self, slack):
+        pr = pr_at(3)
+        pr["user"] = {"login": "fmi-codes-bot[bot]", "type": "Bot"}
+        target(pr_feed.Feed(slack, CHANNEL, REPO), "opened", pr)
+        assert len(slack.parents) == 1
+        assert slack.replies == []
 
 
 class TestSlackReplies:
