@@ -1035,7 +1035,8 @@ How it works:
   (`base/flux-relay`, Kustomization `fmi-codes-flux-relay`) at `/cluster` or `/staging`.
   `tests/test_flux_relay.py` fails if a twin drifts from its Slack Alert.
 - The relay finds the error's post in that route's channel by the object (`kind/name.namespace`,
-  the post's author line) and the message, within 3 minutes. An error that never reached
+  the post's author line) and the message as a reader sees it (Slack stores a URL as
+  `<url>` link markup), within 3 minutes. An error that never reached
   Slack, because it was excluded or the webhook failed, gets no reply and no other traffic.
 - Every 15 seconds it reads each open incident's object. It is recovered when `Ready` is
   `True` for the current generation and either went `True` after the error or was seen
