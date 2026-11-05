@@ -137,6 +137,7 @@ backend/
   config.py        all settings, read from env
   run_server.py    dev entry point
   wsgi.py          Gunicorn entry point
+  gunicorn.conf.py Gunicorn settings (bind, workers, threads) and the multiprocess metrics hooks
 frontend/src/
   pages/           one folder per area (auth, teams, mentors, admin, rankings, regulations)
   components/      shared UI, grouped by area

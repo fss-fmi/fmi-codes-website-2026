@@ -281,7 +281,7 @@ spec:
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
                     "targets": [
                       {
-                        "expr": "sum(rate(flask_http_request_total{namespace=\"fmi-codes\", status=~\"5..\"}[5m])) / sum(rate(flask_http_request_total{namespace=\"fmi-codes\"}[5m]))",
+                        "expr": "(sum(rate(flask_http_request_total{namespace=\"fmi-codes\", status=~\"5..\"}[5m])) or vector(0)) / sum(rate(flask_http_request_total{namespace=\"fmi-codes\"}[5m]))",
                         "legendFormat": "5xx share",
                         "refId": "A"
                       }
@@ -345,7 +345,7 @@ spec:
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
                     "targets": [
                       {
-                        "expr": "sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\", status=~\"5..\"}[5m])) / sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[5m]))",
+                        "expr": "(sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\", status=~\"5..\"}[5m])) or vector(0)) / sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[5m]))",
                         "legendFormat": "5xx share",
                         "refId": "A"
                       }

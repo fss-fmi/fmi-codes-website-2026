@@ -46,15 +46,16 @@ def create_app(config_name="development"):
     )
     app.config.from_object(config)
 
+    # Under Gunicorn, PROMETHEUS_MULTIPROC_DIR (gunicorn.conf.py) makes prometheus_client keep
+    # values in shared files and the exporter's /metrics sum them across workers.
+    # url_rule, not the raw path, labels the latency histogram: every unknown URL a scanner
+    # tries would otherwise add series that the multiprocess files never drop.
     # Kubelet probes would swamp the request rate and dilute the 5xx share the alert reads.
-    # The exporter never counts its own /metrics endpoint.
-    excluded_paths = [r"^/api/health(/ready)?$"]
-    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
-        from prometheus_flask_exporter.multiprocess import GunicornInternalPrometheusMetrics
-
-        GunicornInternalPrometheusMetrics(app, excluded_paths=excluded_paths)
-    else:
-        PrometheusMetrics(app, excluded_paths=excluded_paths)
+    PrometheusMetrics(
+        app,
+        group_by="url_rule",
+        excluded_paths=[r"^/api/health(/ready)?$"],
+    )
 
     # Resolve the rate-limit storage URI now that env/config is loaded, then
     # attach the limiter. build_limiter_storage_uri() returns a redis+sentinel://

@@ -888,6 +888,12 @@ Not covered:
 - **The whole cluster down.** Nothing inside a cluster can report its own death. A dead
   cluster also takes the site down, which is noticed anyway, so there is no external dead
   man's switch.
+- **5xx answers Flask never produced.** `BackendHighErrorRate` counts only responses the
+  backend finished. A 502 or 504 from ingress-nginx (a worker stuck until Gunicorn's 120s
+  timeout) or a 503 with no ready pod is not in it. Partly covered elsewhere: when every
+  worker hangs, the scrape fails and `TargetDown` fires; with no ready pod,
+  `KubePodNotReady` and the replica alerts fire. The ingress controllers export no metrics
+  today, so there is no user-side 5xx rate.
 
 **Setup:**
 
@@ -1460,12 +1466,16 @@ files in `PROMETHEUS_MULTIPROC_DIR` (set by `backend/gunicorn.conf.py`, an in-me
 in `base/app/backend.yaml`), and whichever worker answers a scrape sums them all. So each pod
 has one series per label set, and a counter only goes down when the pod or its container
 restarts (the folder is emptied when Gunicorn starts). A worker that dies keeps its counts in
-the total. Two consequences:
+the total. Three consequences:
 
 - The Python process series (`process_*`, `python_*`) are not exported. Memory per pod comes
   from cAdvisor, which doesn't need them.
 - `/api/health` and `/api/health/ready` are not counted, so the kubelet's probes don't swamp
   the request rate or dilute the 5xx share.
+- The latency histogram is labelled by Flask route (`url_rule`, like
+  `/api/teams/<int:team_id>`), not the raw path, and every unknown URL shares
+  `url_rule="None"`. The shared files never drop a series, so raw paths from a scanner would
+  grow them until the 64Mi volume filled and the pod was evicted.
 
 To check it: `resets(flask_http_request_total[30m])` in Prometheus is 0 for every backend pod
 that wasn't restarted in that window.
