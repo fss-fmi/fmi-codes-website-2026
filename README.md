@@ -29,7 +29,7 @@ Preview the site locally with `pip install -r docs/requirements.txt` then `mkdoc
 
 ```
 backend/     Flask API — app/ (routes, services, utils), database/ (schema.sql, migrations, seeds),
-             config.py, run_server.py (dev), wsgi.py (gunicorn), Dockerfile
+             config.py, run_server.py (dev), wsgi.py + gunicorn.conf.py (gunicorn), Dockerfile
 frontend/    React + Vite SPA — src/, vite.config.ts, nginx.conf, Dockerfile
 infra/k8s/   Full cluster deployment — scripts/, base/, overlays/{prod,staging}, helm-values/, flux/
 docs/        All documentation (published to GitHub Pages via mkdocs.yml), incl. runbook.md

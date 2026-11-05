@@ -1,0 +1,71 @@
+# Unit tests for the `fmi-codes` group in helmrelease.yaml's additionalPrometheusRulesMap.
+# Run: bash infra/k8s/scripts/test-prometheus-rules.sh (it extracts the rules to rules.yaml).
+rule_files:
+  - rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # Prod at 1 error in 11 requests across two pods fires after the 10m hold; healthy staging doesn't.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="GET", status="200"}'
+        values: '0+50x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-b", method="GET", status="200"}'
+        values: '0+50x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="GET", status="500"}'
+        values: '0+10x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes-staging", pod="backend-c", method="GET", status="200"}'
+        values: '0+20x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BackendHighErrorRate
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: BackendHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: fmi-codes
+            exp_annotations:
+              summary: Backend is answering with 5xx errors.
+              description: '9.091% of backend requests in fmi-codes returned a 5xx over the last 5 minutes.'
+
+  # 2% errors stays under the 5% threshold.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="GET", status="200"}'
+        values: '0+98x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="POST", status="503"}'
+        values: '0+2x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: BackendHighErrorRate
+        exp_alerts: []
+
+  # A 3-minute burst of errors leaves the 5m window before the 10m hold is up.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="GET", status="200"}'
+        values: '0+100x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="GET", status="500"}'
+        values: '0x5 50+50x2 150x22'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: BackendHighErrorRate
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: BackendHighErrorRate
+        exp_alerts: []
+
+  # No traffic at all (probes aren't counted): 0/0 never fires, even after old errors.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes-staging", pod="backend-c", method="GET", status="200"}'
+        values: '40x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes-staging", pod="backend-c", method="GET", status="500"}'
+        values: '7x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: BackendHighErrorRate
+        exp_alerts: []

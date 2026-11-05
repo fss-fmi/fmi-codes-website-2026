@@ -63,7 +63,7 @@ Public. Feature flags for the SPA.
 
 ### GET /metrics
 
-Prometheus exposition from `prometheus_flask_exporter`, at the backend root (not under `/api`). Only reachable in-cluster; the public ingress sends `/metrics` to the frontend.
+Prometheus exposition from `prometheus_flask_exporter`, at the backend root (not under `/api`). Only reachable in-cluster; the public ingress sends `/metrics` to the frontend. Under Gunicorn the totals cover all workers of the pod. Requests to `/api/health` and `/api/health/ready` are not counted.
 
 ---
 
