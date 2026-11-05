@@ -88,6 +88,7 @@ nav:
           - ADR-009 Staging over Tailscale: adr/009-staging-over-tailscale.md
           - ADR-010 Cluster alerts to Slack: adr/010-cluster-alerts-to-slack.md
           - ADR-011 One Tailscale client: adr/011-one-tailscale-client-staging.md
+          - ADR-012 Flux recovery replies: adr/012-flux-recovery-replies.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

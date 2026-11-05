@@ -19,12 +19,16 @@ K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 . "$SCRIPT_DIR/lib/slack-webhooks.sh"
 # shellcheck source=lib/tailscale-client.sh
 . "$SCRIPT_DIR/lib/tailscale-client.sh"
+# shellcheck source=lib/flux-relay.sh
+. "$SCRIPT_DIR/lib/flux-relay.sh"
 GRAFANA_SECRET_ENC="${GRAFANA_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/grafana-secret.enc.yaml}"
 TAILSCALE_SECRET_ENC="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$TS_CLIENT_REL}"
 ALERTMANAGER_SECRET_ENC="${ALERTMANAGER_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/alertmanager-slack.enc.yaml}"
-# These Secrets are cluster-wide (one monitoring stack, one operator). Grafana's and the Slack
-# webhooks have a copy per env; the label records which env's copy is live so a second run
-# with the other ENV can't silently swap the credentials underneath the running stack.
+FLUX_RELAY_SECRET_ENC="${FLUX_RELAY_SECRET_ENC:-$K8S_DIR/$SECRETS_REL/flux-relay-slack.enc.yaml}"
+# These Secrets are cluster-wide (one monitoring stack, one operator, one Flux). Grafana's, the
+# Slack webhooks and the Flux Relay's have a copy per env; the label records which env's copy is
+# live so a second run with the other ENV can't silently swap the credentials underneath the
+# running stack.
 ENV_LABEL="fmi-codes/secrets-env"
 
 log()  { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
@@ -36,6 +40,7 @@ command -v sops    >/dev/null 2>&1 || die "sops not found — run install-tools.
 [ -f "$GRAFANA_SECRET_ENC" ]   || die "missing $GRAFANA_SECRET_ENC"
 [ -f "$TAILSCALE_SECRET_ENC" ] || die "missing $TAILSCALE_SECRET_ENC"
 [ -f "$ALERTMANAGER_SECRET_ENC" ] || die "missing $ALERTMANAGER_SECRET_ENC"
+[ -f "$FLUX_RELAY_SECRET_ENC" ] || die "missing $FLUX_RELAY_SECRET_ENC"
 
 kubectl cluster-info >/dev/null 2>&1 \
   || die "no reachable cluster — bootstrap it with bootstrap-k3s.sh first."
@@ -91,9 +96,7 @@ if ! sops --decrypt "$TAILSCALE_SECRET_ENC" >/dev/null 2>&1; then
   this machine needs the staging age key too (docs/runbook.md 'One Tailscale client for every
   cluster'). The live tailscale/operator-oauth, if any, is left as it is. Add the key, then re-run:
     ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
-# Not grep -q: exiting at the first match could SIGPIPE sops, and pipefail would invert the result.
-elif sops --decrypt "$TAILSCALE_SECRET_ENC" \
-    | grep -E "^[[:space:]]+client_(id|secret):[[:space:]]*(\"\"|'')?[[:space:]]*\$" >/dev/null; then
+elif ts_client_incomplete "$TAILSCALE_SECRET_ENC"; then
   TAILSCALE_STATUS="skipped"
   warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana and staging have no tailnet address.
   Create the OAuth client (docs/runbook.md 'Phase 7'), then:
@@ -101,8 +104,17 @@ elif sops --decrypt "$TAILSCALE_SECRET_ENC" \
     ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
 fi
 
+# The relay runs in Flux's namespace; without Flux there is nothing to apply it to.
+FLUX_RELAY_STATUS="applied"
+if ! kubectl get namespace "$FLUX_NS" >/dev/null 2>&1; then
+  FLUX_RELAY_STATUS="skipped (Flux not installed)"
+fi
+
 check_secret "$GRAFANA_SECRET_ENC" "$MONITORING_NS"
 check_secret "$ALERTMANAGER_SECRET_ENC" "$MONITORING_NS"
+if [ "$FLUX_RELAY_STATUS" = "applied" ]; then
+  check_secret "$FLUX_RELAY_SECRET_ENC" "$FLUX_NS"
+fi
 if [ "$TAILSCALE_STATUS" = "applied" ]; then
   check_secret "$TAILSCALE_SECRET_ENC" "$TAILSCALE_NS" staging
 fi
@@ -127,6 +139,21 @@ if [ -n "$SLACK_EMPTY_KEYS" ]; then
     ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --alertmanager <cluster_url|staging_url>"
 fi
 
+if [ "$FLUX_RELAY_STATUS" = "applied" ]; then
+  # Applied even while empty: the relay mounts it optionally and idles until the token is set.
+  apply_secret "$FLUX_RELAY_SECRET_ENC" "$FLUX_NS"
+  FLUX_RELAY_EMPTY="$(flux_relay_empty_keys "$FLUX_RELAY_SECRET_ENC")"
+  if [ -n "$FLUX_RELAY_EMPTY" ]; then
+    FLUX_RELAY_STATUS="applied, missing: $FLUX_RELAY_EMPTY"
+    warn "$FLUX_RELAY_SECRET_ENC has no value for: $FLUX_RELAY_EMPTY. Flux errors still post, but
+  get no \"recovered\" reply. Set up the Flux Relay app (docs/runbook.md 'Cluster alerts'), then for each key:
+    ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --flux-relay <bot_token|cluster_channel|staging_channel>"
+  fi
+else
+  warn "Flux isn't installed, so $FLUX_NS/$FLUX_RELAY_SLACK isn't applied. Once it is, re-run:
+    ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
+fi
+
 if [ "$TAILSCALE_STATUS" = "applied" ]; then
   apply_secret "$TAILSCALE_SECRET_ENC" "$TAILSCALE_NS" staging
 fi
@@ -134,6 +161,7 @@ fi
 cat <<EOF
 
 Grafana admin and Alertmanager secrets applied (Slack webhooks $SLACK_STATUS);
+Flux Relay secret $FLUX_RELAY_STATUS;
 Tailscale OAuth secret $TAILSCALE_STATUS.
 
 Flux installs kube-prometheus-stack and the Tailscale operator and reconciles the

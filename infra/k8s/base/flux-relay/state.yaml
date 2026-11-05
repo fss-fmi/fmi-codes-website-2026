@@ -1,0 +1,11 @@
+# The open incidents, written by the relay so they survive a restart (every WSL boot).
+# IfNotPresent: Flux creates it once and never resets what the relay wrote.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flux-relay-state
+  namespace: flux-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+data:
+  state.json: '{}'
