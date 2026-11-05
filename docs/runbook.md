@@ -1155,8 +1155,10 @@ kubectl -n flux-system patch imagerepository alert-test --type merge -p '{"spec"
 kubectl -n flux-system delete imagerepository alert-test
 ```
 
-Restart test: break one again, wait for the post, run `kubectl -n flux-system rollout restart
-deploy/flux-relay`, then fix it. The reply still comes, from the state ConfigMap. Leave it
+Restart test: break one again, wait for the post, run `kubectl -n flux-system delete pod -l
+app=flux-relay`, then fix it. The reply still comes, from the state ConfigMap. Delete the pod
+rather than `rollout restart` it: Flux undoes the restart annotation on its next apply of
+`fmi-codes-flux-relay` (within 5 minutes), which restarts the relay a second time. Leave it
 broken for 6 minutes or more to see a second post join the incident: one reply, ✅ on both.
 
 #### Access Grafana and staging
