@@ -135,55 +135,6 @@ if ! sudo k3s kubectl wait --for=condition=Ready node --all --timeout="${NODE_TI
   exit 1
 fi
 
-# eth0 can fall back to the low MTU while the VM keeps running. k3s doesn't restart then, so the drop-in
-# above doesn't rerun. A poll rather than `ip monitor`: nothing to race at startup, and eth0 is
-# allowed to be missing at boot. Installed last so it can't change how a failed k3s install reports.
-if $WSL_MTU_PINNED; then
-  log "Keeping WSL2 eth0 at MTU $WSL_ETH0_MTU while k3s runs (wsl-eth0-mtu service)"
-  WSL_MTU_WATCHER=/usr/local/sbin/wsl-eth0-mtu
-  WSL_MTU_WATCHER_CONTENT="$(cat <<'WATCHER'
-#!/bin/sh
-while :; do
-  mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null)"
-  if [ -n "$mtu" ] && [ "$mtu" -lt "$WSL_ETH0_MTU" ] && ip link set dev eth0 mtu "$WSL_ETH0_MTU"; then
-    echo "eth0 MTU was $mtu, set to $WSL_ETH0_MTU"
-  fi
-  sleep 5
-done
-WATCHER
-)"
-  WSL_MTU_UNIT=/etc/systemd/system/wsl-eth0-mtu.service
-  WSL_MTU_UNIT_CONTENT="[Unit]
-Description=Keep WSL2 eth0 at MTU ${WSL_ETH0_MTU}
-
-[Service]
-Environment=WSL_ETH0_MTU=${WSL_ETH0_MTU}
-ExecStart=${WSL_MTU_WATCHER}
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target"
-  WSL_MTU_WATCHER_CHANGED=false
-  if [ "$(cat "$WSL_MTU_WATCHER" 2>/dev/null)" != "$WSL_MTU_WATCHER_CONTENT" ]; then
-    printf '%s\n' "$WSL_MTU_WATCHER_CONTENT" | sudo tee "$WSL_MTU_WATCHER" >/dev/null
-    sudo chmod 755 "$WSL_MTU_WATCHER"
-    WSL_MTU_WATCHER_CHANGED=true
-  fi
-  if [ "$(cat "$WSL_MTU_UNIT" 2>/dev/null)" != "$WSL_MTU_UNIT_CONTENT" ]; then
-    printf '%s\n' "$WSL_MTU_UNIT_CONTENT" | sudo tee "$WSL_MTU_UNIT" >/dev/null
-    sudo chmod 644 "$WSL_MTU_UNIT"
-    WSL_MTU_WATCHER_CHANGED=true
-  fi
-  if $WSL_MTU_WATCHER_CHANGED; then
-    sudo systemctl daemon-reload
-  fi
-  sudo systemctl enable --now wsl-eth0-mtu.service
-  if $WSL_MTU_WATCHER_CHANGED; then
-    sudo systemctl restart wsl-eth0-mtu.service
-  fi
-fi
-
 # A k3s restart keeps the pod network it already built (cni0 and every veth), so a cluster first
 # started at the low MTU keeps it until that network is torn down and recreated. Reported at the
 # end, so it doesn't scroll away behind the tool installs.
@@ -243,6 +194,68 @@ else
     | kubectl apply -f -
 fi
 
+# eth0 can fall back to the low MTU while the VM keeps running. k3s doesn't restart then, so the
+# drop-in above doesn't rerun. A poll rather than `ip monitor`: nothing to race at startup, and eth0
+# may be missing at boot. Everything is rewritten and restarted on every run because the loop costs
+# nothing to restart, so a run that died halfway is repaired by the next one. Done last, and a
+# failure only warns: the cluster works without it, and the steps above must not depend on it.
+WSL_MTU_WATCHER=/usr/local/sbin/wsl-eth0-mtu
+WSL_MTU_UNIT=/etc/systemd/system/wsl-eth0-mtu.service
+
+install_wsl_mtu_watcher() {
+  local script='#!/bin/sh
+when="at service start"
+while :; do
+  mtu="$(cat /sys/class/net/eth0/mtu 2>/dev/null)"
+  if [ -n "$mtu" ]; then
+    if [ "$mtu" -lt "$WSL_ETH0_MTU" ]; then
+      if ! ip link set dev eth0 mtu "$WSL_ETH0_MTU"; then
+        echo "could not raise eth0 MTU from $mtu to $WSL_ETH0_MTU" >&2
+        exit 1
+      fi
+      echo "eth0 MTU was $mtu $when, set to $WSL_ETH0_MTU"
+    fi
+    when="while running"
+  fi
+  sleep 5
+done'
+  local unit="[Unit]
+Description=Keep WSL2 eth0 at MTU ${WSL_ETH0_MTU}
+Before=k3s.service
+PartOf=k3s.service
+
+[Service]
+Environment=WSL_ETH0_MTU=${WSL_ETH0_MTU}
+ExecStart=${WSL_MTU_WATCHER}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=k3s.service"
+  printf '%s\n' "$script" | sudo tee "$WSL_MTU_WATCHER" >/dev/null \
+    && sudo chmod 755 "$WSL_MTU_WATCHER" \
+    && printf '%s\n' "$unit" | sudo tee "$WSL_MTU_UNIT" >/dev/null \
+    && sudo chmod 644 "$WSL_MTU_UNIT" \
+    && sudo systemctl daemon-reload \
+    && sudo systemctl reenable wsl-eth0-mtu.service \
+    && sudo systemctl restart wsl-eth0-mtu.service
+}
+
+remove_wsl_mtu_watcher() {
+  sudo systemctl disable --now wsl-eth0-mtu.service \
+    && sudo rm -f "$WSL_MTU_UNIT" "$WSL_MTU_WATCHER" \
+    && sudo systemctl daemon-reload
+}
+
+WSL_MTU_WATCHER_FAILED=false
+if $WSL_MTU_PINNED; then
+  log "Keeping WSL2 eth0 at MTU $WSL_ETH0_MTU while k3s runs (wsl-eth0-mtu service)"
+  install_wsl_mtu_watcher || WSL_MTU_WATCHER_FAILED=true
+elif [ -e "$WSL_MTU_UNIT" ]; then
+  log "Removing the wsl-eth0-mtu service (this machine no longer runs WSL2 in NAT mode)"
+  remove_wsl_mtu_watcher || WSL_MTU_WATCHER_FAILED=true
+fi
+
 log "Done. Verifying cluster:"
 kubectl get nodes -o wide
 kubectl get namespace "$NAMESPACE"
@@ -262,5 +275,14 @@ $(printf '\033[1;33m')Warning: the pod network still runs at MTU $STALE_POD_MTU 
 Anything served over Tailscale will hang in the TLS handshake until it is rebuilt. Stop every
 pod and start k3s again (the apps are down until they come back; data on the PVCs is kept):
   sudo /usr/local/bin/k3s-killall.sh && sudo systemctl start k3s
+EOF
+fi
+
+if $WSL_MTU_WATCHER_FAILED; then
+  cat >&2 <<EOF
+
+$(printf '\033[1;33m')Warning: updating the wsl-eth0-mtu service failed; see the errors above.$(printf '\033[0m')
+The cluster is up, but the service may not be in the state this machine needs. Fix the cause
+(systemctl status wsl-eth0-mtu), then re-run this script.
 EOF
 fi
