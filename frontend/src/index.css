@@ -22,8 +22,9 @@
   --px-green: #4ecdc4;
   --px-amber: #f9a825;
   --px-danger: #e05252;
-  --px-focus-glow: 0 0 0 2px rgba(45, 212, 191, 0.35);
-  --px-focus-glow-salmon: 0 0 0 2px rgba(244, 132, 95, 0.35);
+  --px-focus-ring: 2px;
+  --px-focus-glow: 0 0 0 var(--px-focus-ring) rgba(45, 212, 191, 0.35);
+  --px-focus-glow-salmon: 0 0 0 var(--px-focus-ring) rgba(244, 132, 95, 0.35);
   --px-font: 'Press Start 2P', monospace;
   --px-mono: 'JetBrains Mono', ui-monospace, monospace;
   --px-ease: cubic-bezier(0.23, 1, 0.32, 1);
@@ -918,7 +919,9 @@ body.arcade-theme {
   box-shadow: var(--px-focus-glow);
 }
 .rulebook-nav {
+  position: sticky;
   top: var(--px-navbar-h, 0px);
+  z-index: 4;
 }
 .rulebook-nav-list {
   margin: 0;
@@ -932,11 +935,13 @@ body.arcade-theme {
   white-space: nowrap;
 }
 /* Phones: one scrolling row instead of four wrapped ones, so the stuck
-   chapter nav doesn't eat a third of the screen. */
+   chapter nav doesn't eat a third of the screen. A scroll container clips
+   box-shadows, so the padding leaves room for the focus ring. */
 @media (max-width: 768px) {
   .rulebook-nav-list {
     flex-wrap: nowrap;
     overflow-x: auto;
+    padding: var(--px-focus-ring);
   }
   .rulebook-nav-list > li {
     flex-shrink: 0;

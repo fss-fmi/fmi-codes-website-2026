@@ -49,7 +49,7 @@ export default function VariantARulebook() {
     const activeBox = active.getBoundingClientRect();
     list.scrollTo({
       left: list.scrollLeft + activeBox.left - listBox.left - (listBox.width - activeBox.width) / 2,
-      behavior: 'smooth',
+      behavior: scrollMotion(),
     });
   }, [activeKey]);
 
@@ -78,10 +78,7 @@ export default function VariantARulebook() {
 
   // The offset comes from the chapter's scroll-margin-top (navbar + chapter nav).
   const jumpTo = useCallback((key: string) => {
-    chapterRefs.current[key]?.scrollIntoView({
-      block: 'start',
-      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    });
+    chapterRefs.current[key]?.scrollIntoView({ block: 'start', behavior: scrollMotion() });
   }, []);
 
   return (
@@ -104,8 +101,6 @@ export default function VariantARulebook() {
           className="rulebook-nav"
           ref={navRef}
           style={{
-            position: 'sticky',
-            zIndex: 4,
             background: 'var(--px-bg)',
             padding: '12px 0',
             marginBottom: 'clamp(40px, 6vw, 64px)',
@@ -174,6 +169,10 @@ export default function VariantARulebook() {
       </div>
     </main>
   );
+}
+
+function scrollMotion(): ScrollBehavior {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }
 
 function RulebookChapter({
