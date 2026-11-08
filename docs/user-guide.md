@@ -112,7 +112,7 @@ Your account is created by the organizers. They will tell you your login email a
 ### Log in
 
 1. Click **LOGIN**.
-2. Select **MENTOR**.
+2. Select **MENTOR** (on a phone, pick it from the **SIGN IN AS** dropdown).
 3. Enter your email and password and click **SIGN IN**.
 
 You land on the **MENTOR DASHBOARD**. Change your initial password right away under **PROFILE → CHANGE PASSWORD**.

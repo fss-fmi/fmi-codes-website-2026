@@ -6,7 +6,7 @@ How the test suite is built and how to extend it. For setup and single-test comm
 
 - The backend carries almost all of the testing weight. The riskiest logic (registration queue under concurrency, matching, auth and revocation, data leakage) is covered through real HTTP calls against a real PostgreSQL database.
 - Pure logic with no I/O (the matching algorithm core, Redis helpers, JWT and bcrypt helpers) is unit tested directly.
-- The frontend has one component test file. UI behaviour is otherwise untested.
+- The frontend has four component test files (navbar height, login role picker, profile panels, Regulations chapter nav). Other UI behaviour is untested.
 - There is no coverage tool configured (no `pytest-cov`, no Vitest coverage) and no coverage threshold.
 - No browser end-to-end tests exist.
 
@@ -14,7 +14,7 @@ How the test suite is built and how to extend it. For setup and single-test comm
 | ----------------------- | ---------------------------- | ----- | ----------------------------------- |
 | Backend unit            | `tests/*.py`                 | 372   | Nothing (Redis optional)            |
 | Backend API integration | `tests/e2e/*.py`             | 188   | PostgreSQL test DB (Redis optional) |
-| Frontend component      | `frontend/src/**/*.test.tsx` | 6     | Node only                           |
+| Frontend component      | `frontend/src/**/*.test.tsx` | 19    | Node only                           |
 
 Counts are `def test_` occurrences, so parametrised tests run more cases than listed.
 
@@ -62,7 +62,7 @@ Add a test here for anything that touches SQL, transactions, locking, auth guard
 
 ### Frontend (`frontend/src`)
 
-Vitest with jsdom and Testing Library (`vite.config.ts` `test` block, setup in `src/test/setup.ts`). Today only `src/pages/auth/ProfilePage.test.tsx` exists. It renders `ProfileContent` with a hand-built `AuthContext` value for each role. Follow that pattern: render the inner content component (not the `RequireAuth` wrapper) inside `MemoryRouter` and supply contexts directly.
+Vitest with jsdom and Testing Library (`vite.config.ts` `test` block, setup in `src/test/setup.ts`). `src/pages/auth/ProfilePage.test.tsx` renders `ProfileContent` with a hand-built `AuthContext` value for each role. Follow that pattern: render the inner content component (not the `RequireAuth` wrapper) inside `MemoryRouter` and supply contexts directly. jsdom has no `matchMedia`, `ResizeObserver` or `IntersectionObserver`: stub them with `vi.stubGlobal`, as `LoginPage.test.tsx` does to flip the phone breakpoint mid-test and `VariantARulebook.test.tsx` does for reduced motion.
 
 ## Running tests
 
