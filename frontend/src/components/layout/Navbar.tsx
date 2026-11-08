@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useConfig } from '@/context/ConfigContext';
@@ -10,6 +10,24 @@ export default function Navbar() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+
+  // The bar's height changes with width, role and flags (its links wrap), so
+  // the spacer and every sticky element below it read it from --px-navbar-h.
+  // Not reset on unmount: the next page's Navbar overwrites it before paint.
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const publish = () =>
+      document.documentElement.style.setProperty(
+        '--px-navbar-h',
+        `${nav.getBoundingClientRect().height}px`,
+      );
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, []);
 
   // ESC closes the drawer, focus returns to the hamburger
   useEffect(() => {
@@ -85,33 +103,57 @@ export default function Navbar() {
 
   const desktopLinks = (
     <>
-      <NavLink to="/regulations" className={navLinkClass}>
+      <NavLink
+        to="/regulations"
+        className={navLinkClass}
+      >
         REGULATIONS
       </NavLink>
-      <NavLink to="/schedule" className={navLinkClass}>
+      <NavLink
+        to="/schedule"
+        className={navLinkClass}
+      >
         SCHEDULE
       </NavLink>
-      <NavLink to="/mentors" className={navLinkClass}>
+      <NavLink
+        to="/mentors"
+        className={navLinkClass}
+      >
         MENTORS
       </NavLink>
-      <NavLink to="/registeredTeams" className={navLinkClass}>
+      <NavLink
+        to="/registeredTeams"
+        className={navLinkClass}
+      >
         TEAMS
       </NavLink>
-      <NavLink to="/rankings" className={navLinkClass}>
+      <NavLink
+        to="/rankings"
+        className={navLinkClass}
+      >
         RANKINGS
       </NavLink>
       {role === 'participant' && (
-        <NavLink to="/team" className={navLinkClass}>
+        <NavLink
+          to="/team"
+          className={navLinkClass}
+        >
           MY TEAM
         </NavLink>
       )}
       {role === 'mentor' && (
-        <NavLink to="/mentorDashboard" className={navLinkClass}>
+        <NavLink
+          to="/mentorDashboard"
+          className={navLinkClass}
+        >
           DASHBOARD
         </NavLink>
       )}
       {role === 'admin' && (
-        <NavLink to="/admin/matching" className={navLinkClass}>
+        <NavLink
+          to="/admin/matching"
+          className={navLinkClass}
+        >
           ADMIN
         </NavLink>
       )}
@@ -120,7 +162,11 @@ export default function Navbar() {
 
   const desktopActions = user ? (
     <>
-      <Link to="/profile" className="px-nav-link" aria-label="Profile">
+      <Link
+        to="/profile"
+        className="px-nav-link"
+        aria-label="Profile"
+      >
         PROFILE
       </Link>
       <button
@@ -134,11 +180,17 @@ export default function Navbar() {
     </>
   ) : (
     <>
-      <Link to="/login" className="px-nav-link">
+      <Link
+        to="/login"
+        className="px-nav-link"
+      >
         LOGIN
       </Link>
       {REGISTRATION_OPEN && (
-        <Link to="/registration" className="px-nav-link register">
+        <Link
+          to="/registration"
+          className="px-nav-link register"
+        >
           REGISTER
         </Link>
       )}
@@ -147,9 +199,17 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="px-navbar" id="mainNavbar">
+      <nav
+        className="px-navbar"
+        id="mainNavbar"
+        ref={navRef}
+      >
         <div className="px-navbar-inner">
-          <Link to="/" className="px-logo" aria-label="Go to home">
+          <Link
+            to="/"
+            className="px-logo"
+            aria-label="Go to home"
+          >
             FMI <span>&#123;CODES&#125;</span> 2026
           </Link>
 
@@ -197,9 +257,7 @@ export default function Navbar() {
         >
           <div className="px-mobile-drawer__panel">
             <header className="px-mobile-drawer__header">
-              <span className="px-mobile-drawer__title">
-                &gt; NAVIGATION
-              </span>
+              <span className="px-mobile-drawer__title">&gt; NAVIGATION</span>
               <button
                 type="button"
                 className="px-mobile-drawer__close"

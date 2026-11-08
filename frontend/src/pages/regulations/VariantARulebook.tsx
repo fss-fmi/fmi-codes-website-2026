@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { useScrollReveal } from '@/hooks/useVisuals';
 import RegulationsHeader from './RegulationsHeader';
@@ -20,6 +20,38 @@ export default function VariantARulebook() {
   useScrollReveal('.rulebook-rule', data?.length);
   const [activeKey, setActiveKey] = useState<string>(CHAPTERS[0].key);
   const chapterRefs = useRef<Record<string, HTMLElement | null>>({});
+  const mainRef = useRef<HTMLElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const navListRef = useRef<HTMLUListElement>(null);
+
+  // The chapter nav's height depends on how its buttons wrap, so the rails
+  // and the jump offset read it from --rulebook-nav-h.
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    const nav = navRef.current;
+    if (!main || !nav) return;
+    const publish = () =>
+      main.style.setProperty('--rulebook-nav-h', `${nav.getBoundingClientRect().height}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, []);
+
+  // On phones the chapter list scrolls sideways; keep the active chapter in view.
+  // Scrolls only the list: scrollIntoView would also move the window and cut
+  // short a smooth chapter jump that is still running.
+  useEffect(() => {
+    const list = navListRef.current;
+    const active = list?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!list || !active || list.scrollWidth <= list.clientWidth) return;
+    const listBox = list.getBoundingClientRect();
+    const activeBox = active.getBoundingClientRect();
+    list.scrollTo({
+      left: list.scrollLeft + activeBox.left - listBox.left - (listBox.width - activeBox.width) / 2,
+      behavior: scrollMotion(),
+    });
+  }, [activeKey]);
 
   // Highlight the currently-visible chapter in the sticky nav
   useEffect(() => {
@@ -44,21 +76,14 @@ export default function VariantARulebook() {
     return () => observer.disconnect();
   }, [data]);
 
+  // The offset comes from the chapter's scroll-margin-top (navbar + chapter nav).
   const jumpTo = useCallback((key: string) => {
-    const el = chapterRefs.current[key];
-    if (!el) return;
-    const y = el.getBoundingClientRect().top + window.scrollY - 100;
-    window.scrollTo({
-      top: y,
-      behavior:
-        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-          ? 'auto'
-          : 'smooth',
-    });
+    chapterRefs.current[key]?.scrollIntoView({ block: 'start', behavior: scrollMotion() });
   }, []);
 
   return (
     <main
+      ref={mainRef}
       style={{
         background: 'var(--px-bg)',
         padding: 'clamp(48px, 8vw, 96px) 24px clamp(64px, 8vw, 96px)',
@@ -74,10 +99,8 @@ export default function VariantARulebook() {
         <nav
           aria-label="Chapters"
           className="rulebook-nav"
+          ref={navRef}
           style={{
-            position: 'sticky',
-            top: '84px',
-            zIndex: 4,
             background: 'var(--px-bg)',
             padding: '12px 0',
             marginBottom: 'clamp(40px, 6vw, 64px)',
@@ -86,14 +109,8 @@ export default function VariantARulebook() {
           }}
         >
           <ul
-            style={{
-              margin: 0,
-              padding: 0,
-              listStyle: 'none',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 'clamp(12px, 2vw, 24px)',
-            }}
+            className="rulebook-nav-list"
+            ref={navListRef}
           >
             {CHAPTERS.map((ch) => (
               <li key={ch.key}>
@@ -106,19 +123,14 @@ export default function VariantARulebook() {
                     fontFamily: 'var(--px-font)',
                     fontSize: '0.55rem',
                     letterSpacing: '0.12em',
-                    color:
-                      activeKey === ch.key
-                        ? 'var(--px-salmon)'
-                        : 'var(--px-muted-strong)',
+                    color: activeKey === ch.key ? 'var(--px-salmon)' : 'var(--px-muted-strong)',
                     background: 'transparent',
                     border: 'none',
                     padding: '8px 0',
                     cursor: 'pointer',
                     textTransform: 'uppercase',
                     borderBottom:
-                      activeKey === ch.key
-                        ? '2px solid var(--px-salmon)'
-                        : '2px solid transparent',
+                      activeKey === ch.key ? '2px solid var(--px-salmon)' : '2px solid transparent',
                     transition: 'color 160ms var(--px-ease), border-color 160ms var(--px-ease)',
                   }}
                 >
@@ -135,7 +147,10 @@ export default function VariantARulebook() {
           </div>
         )}
         {error && (
-          <p className="px-body" style={{ color: 'var(--px-danger)' }}>
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-danger)' }}
+          >
             &gt; ERROR: Failed to load regulations.
           </p>
         )}
@@ -156,6 +171,10 @@ export default function VariantARulebook() {
   );
 }
 
+function scrollMotion(): ScrollBehavior {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
+
 function RulebookChapter({
   chapter,
   rules,
@@ -173,14 +192,11 @@ function RulebookChapter({
       style={{
         padding: 'clamp(48px, 6vw, 80px) 0',
         borderBottom: '1px solid var(--px-teal-dim)',
-        scrollMarginTop: '100px',
       }}
       className="rulebook-chapter"
     >
       {/* Left rail — big number + chapter eyebrow */}
-      <div
-        className="rulebook-chapter-rail"
-      >
+      <div className="rulebook-chapter-rail">
         <div
           style={{
             fontFamily: 'var(--px-font)',
@@ -229,7 +245,9 @@ function RulebookChapter({
                 textWrap: 'balance',
               }}
             >
-              <span style={{ color: 'var(--px-teal)', marginRight: '10px', display: 'inline-block' }}>
+              <span
+                style={{ color: 'var(--px-teal)', marginRight: '10px', display: 'inline-block' }}
+              >
                 &gt;
               </span>
               {rule.question}

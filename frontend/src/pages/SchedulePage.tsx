@@ -83,18 +83,9 @@ export default function SchedulePage() {
           padding: '40px 24px 80px',
         }}
       >
-        {/* Grid bg */}
         <div
           aria-hidden="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundImage:
-              'linear-gradient(rgba(45,212,191,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(45,212,191,0.03) 1px, transparent 1px)',
-            backgroundSize: '40px 40px',
-            pointerEvents: 'none',
-            zIndex: 0,
-          }}
+          className="px-grid-bg"
         />
 
         <div
