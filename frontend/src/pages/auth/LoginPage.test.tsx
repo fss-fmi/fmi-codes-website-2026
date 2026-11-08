@@ -71,7 +71,7 @@ function renderLogin() {
 const roleSelect = () => screen.queryByRole('combobox', { name: /sign in as/i });
 const roleButtons = () => screen.queryByRole('group', { name: /sign in role/i });
 
-async function signIn() {
+function signIn() {
   fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
   fireEvent.change(screen.getByLabelText(/password/i), {
     target: { value: 'correct horse battery' },
@@ -118,7 +118,7 @@ test.each([
   });
   renderLogin();
   fireEvent.change(roleSelect()!, { target: { value: role } });
-  await signIn();
+  signIn();
   expect(await screen.findByText(landing)).toBeInTheDocument();
   expect(post).toHaveBeenCalledWith('/api/auth/login', {
     email: 'user@example.com',

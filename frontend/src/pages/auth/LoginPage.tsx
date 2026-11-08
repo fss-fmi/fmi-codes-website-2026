@@ -46,11 +46,6 @@ export default function LoginPage() {
   const [resetSuccess, setResetSuccess] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
-  function chooseRole(r: Role) {
-    setRole(r);
-    if (r === 'admin') setShowReset(false);
-  }
-
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -146,7 +141,7 @@ export default function LoginPage() {
                   >
                     <Select
                       value={role}
-                      onChange={(e) => chooseRole(e.target.value as Role)}
+                      onChange={(e) => setRole(e.target.value as Role)}
                     >
                       {ROLES.map((r) => (
                         <option
@@ -171,7 +166,7 @@ export default function LoginPage() {
                       type="button"
                       className="px-btn-secondary"
                       aria-pressed={role === r}
-                      onClick={() => chooseRole(r)}
+                      onClick={() => setRole(r)}
                       style={{ flex: '1 1 100px', minWidth: '100px' }}
                     >
                       {ROLE_LABEL[r]}
