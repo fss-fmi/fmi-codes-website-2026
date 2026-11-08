@@ -50,7 +50,7 @@ Readiness probe. Runs a pooled `SELECT 1`; Redis is reported but never fails the
 
 ### GET /api/config
 
-Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first three come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. 503 if the flags can't be read.
+Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first three come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. Exempt from rate limits, because every open page polls it and the limiter sees the ingress, not the visitor (one shared bucket). 503 if the flags can't be read.
 
 ```json
 {
@@ -617,7 +617,7 @@ Schedules a change; replaces any pending one (one per flag). No scheduler runs i
 { "value": true, "at": "2026-11-20T10:00:00+02:00" }
 ```
 
-400 if `value` is not a boolean, `at` is not ISO 8601 with a UTC offset (`Z` or `+02:00`), `at` is not in the future (`Scheduled time must be in the future`) or `value` is the current value (`The flag is already on` / `off`).
+400 if `value` is not a boolean, `at` is not ISO 8601 with a UTC offset (`Z` or `+02:00`), `at` is not in the future (`Scheduled time must be in the future`) or `value` is the current value (`The flag is already on` / `off`; when a schedule is pending the message adds that cancelling it keeps the current value).
 
 ### DELETE /api/admin/flags/{name}/schedule
 

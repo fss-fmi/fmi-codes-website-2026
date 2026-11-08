@@ -256,8 +256,11 @@ def _reset_caches():
             "cache:lookups:universities",
             "cache:lookups:specialties",
             "cache:teams:registered",
-            "cache:feature_flags",
         )
+        from app.services.feature_flag_service import invalidate_cache
+
+        # Versioned key: bump it, as a real switch does, rather than delete it.
+        invalidate_cache()
     except Exception:
         pass
 

@@ -160,12 +160,13 @@ class TestSwitch:
 
 class TestRedis:
     def test_switch_invalidates_a_cached_value(self, admin, client):
+        from app.services.feature_flag_service import _cache_key
         from app.services.redis_client import get_redis_client, redis_get
 
         if get_redis_client() is None:
             pytest.skip("Redis not configured (set REDIS_URL)")
         assert client.get("/api/config").get_json()["RANKINGS_LIVE"] is False
-        assert redis_get("cache:feature_flags") is not None
+        assert redis_get(_cache_key()) is not None
 
         admin.put("/api/admin/flags/rankings_live", json={"enabled": True})
         assert client.get("/api/config").get_json()["RANKINGS_LIVE"] is True
@@ -185,7 +186,8 @@ class TestRedis:
 
 class TestSchedule:
     def test_scheduled_change_applies_at_its_time(self, admin, client, notices):
-        at = datetime.now(UTC) + timedelta(seconds=2)
+        # Far enough ahead that a slow CI runner still schedules it in the future.
+        at = datetime.now(UTC) + timedelta(seconds=3)
         local = at.astimezone(datetime.now().astimezone().tzinfo).isoformat()
         rv = admin.put("/api/admin/flags/rankings_live/schedule", json={"value": True, "at": local})
         assert rv.status_code == 200, rv.get_json()
@@ -265,17 +267,34 @@ class TestSchedule:
         assert rv.get_json()["error"] == "The flag is already on"
 
     def test_cancel(self, admin, client):
-        future = (datetime.now(UTC) + timedelta(seconds=1)).isoformat()
-        admin.put(
-            "/api/admin/flags/registration_open/schedule", json={"value": False, "at": future}
+        at = datetime.now(UTC) + timedelta(seconds=3)
+        rv = admin.put(
+            "/api/admin/flags/registration_open/schedule",
+            json={"value": False, "at": at.isoformat()},
         )
+        assert rv.status_code == 200, rv.get_json()
         rv = admin.delete("/api/admin/flags/registration_open/schedule")
         assert rv.get_json() == {"success": True, "cancelled": True}
         rv = admin.delete("/api/admin/flags/registration_open/schedule")
         assert rv.get_json() == {"success": True, "cancelled": False}
 
-        time.sleep(1.5)
+        time.sleep(max(0.0, (at - datetime.now(UTC)).total_seconds()) + 0.5)
         assert client.get("/api/config").get_json()["REGISTRATION_OPEN"] is True
+
+    def test_current_value_with_a_pending_schedule_points_to_cancel(self, admin):
+        future = datetime.now(UTC) + timedelta(hours=1)
+        rv = admin.put(
+            "/api/admin/flags/rankings_live/schedule",
+            json={"value": True, "at": future.isoformat()},
+        )
+        assert rv.status_code == 200
+        rv = admin.put(
+            "/api/admin/flags/rankings_live/schedule",
+            json={"value": False, "at": (future + timedelta(hours=1)).isoformat()},
+        )
+        assert rv.status_code == 400
+        assert "cancel the pending schedule" in rv.get_json()["error"]
+        assert _flags(admin)["rankings_live"]["scheduled_value"] is True
 
     def test_new_schedule_replaces_the_pending_one(self, admin):
         first = datetime.now(UTC) + timedelta(hours=1)

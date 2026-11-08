@@ -8,6 +8,7 @@ schedule race needs real row locks and is covered in tests/e2e/test_feature_flag
 import json
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from app.services import event_notifier, feature_flag_service
@@ -38,7 +39,7 @@ class FakeRedis:
     def __init__(self, store=None):
         self.store = dict(store or {})
         self.set_calls = []
-        self.del_calls = []
+        self.bumps = 0
 
     def get(self, key, default=None):
         return self.store.get(key, default)
@@ -48,10 +49,9 @@ class FakeRedis:
         self.store[key] = value
         return True
 
-    def delete(self, *keys):
-        self.del_calls.append(keys)
-        for k in keys:
-            self.store.pop(k, None)
+    def incr(self, key):
+        self.bumps += 1
+        self.store[key] = str(int(self.store.get(key, "0")) + 1)
         return True
 
 
@@ -79,7 +79,7 @@ def fake_redis(monkeypatch):
     fake = FakeRedis()
     monkeypatch.setattr(feature_flag_service, "redis_get", fake.get)
     monkeypatch.setattr(feature_flag_service, "redis_set", fake.set)
-    monkeypatch.setattr(feature_flag_service, "redis_del", fake.delete)
+    monkeypatch.setattr(feature_flag_service, "redis_incr", fake.incr)
     return fake
 
 
@@ -117,7 +117,7 @@ def _db_rows(monkeypatch, *row_sets):
 
 def test_get_flags_cache_hit_skips_db(app_ctx, fake_redis, monkeypatch):
     cached = {"registration_open": True, "rankings_live": False, "mentors_stay_tuned": False}
-    fake_redis.store["cache:feature_flags"] = json.dumps(cached)
+    fake_redis.store["cache:feature_flags:v0"] = json.dumps(cached)
     monkeypatch.setattr(
         feature_flag_service, "execute_query", lambda *a, **k: pytest.fail("DB hit on cache hit")
     )
@@ -128,12 +128,12 @@ def test_get_flags_miss_reads_db_and_caches(app_ctx, fake_redis, monkeypatch):
     _db_rows(monkeypatch, _rows(registration_open=_row("registration_open", enabled=True)))
     flags = feature_flag_service.get_flags()
     assert flags == {"registration_open": True, "rankings_live": False, "mentors_stay_tuned": False}
-    assert fake_redis.set_calls == [("cache:feature_flags", json.dumps(flags), 10)]
+    assert fake_redis.set_calls == [("cache:feature_flags:v0", json.dumps(flags), 10)]
 
 
 @pytest.mark.parametrize("bad", ["not json", json.dumps({"registration_open": True}), "[]"])
 def test_get_flags_ignores_bad_cache_entry(app_ctx, fake_redis, monkeypatch, bad):
-    fake_redis.store["cache:feature_flags"] = bad
+    fake_redis.store["cache:feature_flags:v0"] = bad
     _db_rows(monkeypatch, _rows())
     assert feature_flag_service.get_flags()["registration_open"] is False
 
@@ -186,6 +186,21 @@ def test_due_schedule_is_applied_then_reread(app_ctx, fake_redis, notices, curso
     assert f"<!date^{int(past.timestamp())}^" in notices[0]
 
 
+def test_a_switch_during_a_read_cannot_leave_the_old_value_cached(app_ctx, fake_redis, monkeypatch):
+    old = {"registration_open": False, "rankings_live": False, "mentors_stay_tuned": False}
+    new = {**old, "registration_open": True}
+
+    def read_old_while_a_switch_commits():
+        feature_flag_service.invalidate_cache()
+        return dict(old), 10
+
+    monkeypatch.setattr(feature_flag_service, "_load", read_old_while_a_switch_commits)
+    assert feature_flag_service.get_flags() == old
+
+    monkeypatch.setattr(feature_flag_service, "_load", lambda: (dict(new), 10))
+    assert feature_flag_service.get_flags() == new
+
+
 def test_get_flags_raises_when_db_fails(app_ctx, fake_redis, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("db down")
@@ -206,7 +221,7 @@ def test_apply_due_with_nothing_due_leaves_cache_and_posts_nothing(
     feature_flag_service._apply_due()
     assert len(used[0].executed) == 1
     assert "FOR UPDATE" in used[0].executed[0][0]
-    assert fake_redis.del_calls == []
+    assert fake_redis.bumps == 0
     assert notices == []
 
 
@@ -233,7 +248,7 @@ def test_apply_due_same_value_clears_schedule_quietly(app_ctx, fake_redis, notic
         "UPDATE feature_flags SET scheduled_value = NULL, scheduled_at = NULL WHERE name = %s"
     )
     assert params == ("rankings_live",)
-    assert fake_redis.del_calls == [("cache:feature_flags",)]
+    assert fake_redis.bumps == 1
     assert notices == []
 
 
@@ -248,7 +263,7 @@ def test_set_flag_changes_value_and_announces(app_ctx, fake_redis, notices, curs
         "UPDATE feature_flags SET enabled = %s, updated_at = NOW() WHERE name = %s",
         (True, "rankings_live"),
     )
-    assert fake_redis.del_calls == [("cache:feature_flags",)]
+    assert fake_redis.bumps == 1
     assert notices == ["🚦 *Live rankings*: OFF → *ON* (switched by the admin)"]
 
 
@@ -257,7 +272,7 @@ def test_set_flag_same_value_is_a_quiet_no_op(app_ctx, fake_redis, notices, curs
     queue += [FakeCursor([[]]), FakeCursor([{"enabled": True}])]
     assert feature_flag_service.set_flag("rankings_live", True) is False
     assert len(used[1].executed) == 1
-    assert fake_redis.del_calls == []
+    assert fake_redis.bumps == 0
     assert notices == []
 
 
@@ -278,21 +293,39 @@ def test_schedule_flag_rejects_past_time(app_ctx, fake_redis, cursors):
 
 def test_schedule_flag_rejects_current_value(app_ctx, fake_redis, cursors):
     queue, _ = cursors
-    queue += [FakeCursor([[]]), FakeCursor([{"enabled": True, "is_past": False}])]
+    queue += [
+        FakeCursor([[]]),
+        FakeCursor([{"enabled": True, "is_past": False, "has_schedule": False}]),
+    ]
     error = feature_flag_service.schedule_flag("registration_open", True, NOW)
     assert error == "The flag is already on"
 
 
+def test_schedule_flag_current_value_with_a_pending_schedule_points_to_cancel(
+    app_ctx, fake_redis, cursors
+):
+    queue, _ = cursors
+    queue += [
+        FakeCursor([[]]),
+        FakeCursor([{"enabled": False, "is_past": False, "has_schedule": True}]),
+    ]
+    error = feature_flag_service.schedule_flag("registration_open", False, NOW)
+    assert error == "The flag is already off; cancel the pending schedule to keep it that way"
+
+
 def test_schedule_flag_stores_schedule(app_ctx, fake_redis, notices, cursors):
     queue, used = cursors
-    queue += [FakeCursor([[]]), FakeCursor([{"enabled": False, "is_past": False}, None])]
+    queue += [
+        FakeCursor([[]]),
+        FakeCursor([{"enabled": False, "is_past": False, "has_schedule": False}, None]),
+    ]
     at = NOW + timedelta(hours=1)
     assert feature_flag_service.schedule_flag("registration_open", True, at) is None
     assert used[1].executed[1] == (
         "UPDATE feature_flags SET scheduled_value = %s, scheduled_at = %s WHERE name = %s",
         (True, at, "registration_open"),
     )
-    assert fake_redis.del_calls == [("cache:feature_flags",)]
+    assert fake_redis.bumps == 1
     assert notices == []
 
 
@@ -373,6 +406,26 @@ def test_config_route_keeps_its_shape(client, monkeypatch):
         "RANKINGS_LIVE": False,
         "REQUIRE_EMAIL_VERIFICATION": False,
     }
+
+
+def test_config_route_is_not_rate_limited(monkeypatch):
+    """Behind the ingress every visitor shares one limiter key, and the SPA polls."""
+    for var in ("REDIS_SENTINELS", "REDIS_MASTER_NAME", "REDIS_URL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("SECRET_KEY", "x" * 40)
+    monkeypatch.setenv("JWT_SECRET_KEY", "y" * 40)
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "$2b$12$" + "a" * 22)
+    with patch("app.database.init_database"):
+        from app import create_app
+
+        limited_app = create_app("production")
+    monkeypatch.setattr(
+        feature_flag_service,
+        "get_flags",
+        lambda: dict.fromkeys(feature_flag_service.FLAG_NAMES, False),
+    )
+    c = limited_app.test_client()
+    assert {c.get("/api/config").status_code for _ in range(210)} == {200}
 
 
 def test_config_route_503_when_flags_unreadable(client, monkeypatch):

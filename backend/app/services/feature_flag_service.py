@@ -5,9 +5,12 @@ it. The apply locks the due rows (SELECT ... FOR UPDATE), so when several
 workers read at once only the first gets the rows back and posts the notice;
 the others wait for its commit, re-check, and find nothing due.
 
-Reads are cached in Redis for a few seconds and every write invalidates the
-cache after commit. While a schedule is pending the TTL never outlives it, so a
-cached value can't hide a change that has come due.
+Reads are cached in Redis for a few seconds under a versioned key, and every
+write bumps the version after commit. A reader that loaded the old value just
+before a write can then only refill the old key, which nobody reads any more;
+deleting a single key would let it put the old value back. While a schedule is
+pending the TTL never outlives it, so a cached value can't hide a change that
+has come due.
 """
 
 import json
@@ -18,7 +21,7 @@ from flask import current_app
 
 from app.database import execute_query, get_db_cursor
 from app.services import event_notifier
-from app.services.redis_client import redis_del, redis_get, redis_set
+from app.services.redis_client import redis_get, redis_incr, redis_set
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ _LABELS = {
     "mentors_stay_tuned": 'Mentors "coming soon" placeholder',
 }
 
-_CACHE_KEY = "cache:feature_flags"
+_CACHE_VERSION_KEY = "cache:feature_flags:version"
 _CACHE_TTL = 10
 
 _SELECT_ROWS = """
@@ -41,6 +44,15 @@ _SELECT_ROWS = """
 
 def _read_rows() -> list[dict]:
     return [dict(r) for r in execute_query(current_app, _SELECT_ROWS, fetch_all=True) or []]
+
+
+def _cache_key() -> str:
+    return f"cache:feature_flags:v{redis_get(_CACHE_VERSION_KEY, '0')}"
+
+
+def invalidate_cache() -> None:
+    """Point every reader at a fresh cache key. Call after a committed write."""
+    redis_incr(_CACHE_VERSION_KEY)
 
 
 def _any_due(rows: list[dict]) -> bool:
@@ -103,7 +115,7 @@ def _apply_due() -> None:
                 )
     if not due:
         return
-    redis_del(_CACHE_KEY)
+    invalidate_cache()
     for change in changes:
         _announce(*change)
 
@@ -127,7 +139,9 @@ def _load() -> tuple[dict[str, bool], int]:
 
 def get_flags() -> dict[str, bool]:
     """Effective value of every flag. Raises if the DB can't be read."""
-    cached = redis_get(_CACHE_KEY)
+    # The key is fixed before the DB read, so a write during the read retires it.
+    key = _cache_key()
+    cached = redis_get(key)
     if cached is not None:
         try:
             flags = json.loads(cached)
@@ -138,7 +152,7 @@ def get_flags() -> dict[str, bool]:
 
     flags, ttl = _load()
     if ttl > 0:
-        redis_set(_CACHE_KEY, json.dumps(flags), ttl)
+        redis_set(key, json.dumps(flags), ttl)
     return flags
 
 
@@ -189,7 +203,7 @@ def set_flag(name: str, enabled: bool) -> bool:
             "UPDATE feature_flags SET enabled = %s, updated_at = NOW() WHERE name = %s",
             (enabled, name),
         )
-    redis_del(_CACHE_KEY)
+    invalidate_cache()
     _announce(name, old, enabled, None)
     return True
 
@@ -203,7 +217,8 @@ def schedule_flag(name: str, value: bool, at: datetime) -> str | None:
     _apply_due()
     with get_db_cursor() as cursor:
         cursor.execute(
-            "SELECT enabled, %s::timestamptz <= NOW() AS is_past"
+            "SELECT enabled, %s::timestamptz <= NOW() AS is_past,"
+            " scheduled_at IS NOT NULL AS has_schedule"
             " FROM feature_flags WHERE name = %s FOR UPDATE",
             (at, name),
         )
@@ -213,12 +228,15 @@ def schedule_flag(name: str, value: bool, at: datetime) -> str | None:
         if row["is_past"]:
             return "Scheduled time must be in the future"
         if row["enabled"] == value:
-            return f"The flag is already {_on_off(value).lower()}"
+            message = f"The flag is already {_on_off(value).lower()}"
+            if row["has_schedule"]:
+                message += "; cancel the pending schedule to keep it that way"
+            return message
         cursor.execute(
             "UPDATE feature_flags SET scheduled_value = %s, scheduled_at = %s WHERE name = %s",
             (value, at, name),
         )
-    redis_del(_CACHE_KEY)
+    invalidate_cache()
     return None
 
 
@@ -236,5 +254,5 @@ def cancel_schedule(name: str) -> bool:
             cursor.execute("SELECT 1 FROM feature_flags WHERE name = %s", (name,))
             if cursor.fetchone() is None:
                 raise LookupError(name)
-    redis_del(_CACHE_KEY)
+    invalidate_cache()
     return cancelled

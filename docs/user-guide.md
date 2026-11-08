@@ -156,7 +156,7 @@ Opens and closes participant registration, publishes the rankings and shows or h
 | **MENTOR ROSTER**            | COMING SOON: the MENTORS page shows the placeholder | PUBLIC: the MENTORS page shows every mentor     |
 
 - **OPEN NOW**, **CLOSE NOW** (and the matching button on the other panels) switches immediately after you confirm. Visitors with the site already open see the change within 30 seconds.
-- To have it happen by itself, pick a date and time in your own time zone and click **SCHEDULE**, then confirm. At that minute the server makes the change, even if nobody has Mission Control open. Each panel holds one schedule: a new one replaces it, and **CANCEL SCHEDULE** drops it. To open registration at one time and close it at another, schedule the opening, then schedule the closing once registration is open.
+- To have it happen by itself, pick a date and time in your own time zone and click **SCHEDULE**, then confirm. The server makes the change on the first visit to the site after that minute (open pages check every 30 seconds), so anyone looking sees it on time, even if nobody has Mission Control open. Each panel holds one schedule: a new one replaces it, and **CANCEL SCHEDULE** drops it. To open registration at one time and close it at another, schedule the opening, then schedule the closing once registration is open.
 - Switching by hand does not cancel a schedule. If the schedule later asks for the state the site is already in, it is dropped quietly.
 - Every change, by hand or scheduled, is posted to the event feed in Slack (`#event-feed-prod`; staging posts to `#event-feed-staging`).
 

@@ -54,18 +54,23 @@ function formatLocal(iso: string): string {
   });
 }
 
+const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+
+/** A date as a `datetime-local` value (`YYYY-MM-DDTHH:mm`, the admin's local time). */
+function toLocalInput(date: Date): string {
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
 /** `datetime-local` value (the admin's local time) → ISO 8601 with the local UTC offset. */
 function localInputToIso(value: string): string | null {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   const offset = -date.getTimezoneOffset();
   const sign = offset >= 0 ? '+' : '-';
-  const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:00` +
-    `${sign}${pad(offset / 60)}:${pad(offset % 60)}`
-  );
+  return `${toLocalInput(date)}:00${sign}${pad(offset / 60)}:${pad(offset % 60)}`;
 }
 
 function FlagCard({
@@ -88,7 +93,9 @@ function FlagCard({
       title: `${nextVerb} NOW`,
       description: `${text.title}: ${flag.enabled ? text.onState : text.offState} → ${
         next ? text.onState : text.offState
-      }, right now. Open pages pick it up within 30 seconds and the event feed is notified.`,
+      }, right now. Open pages pick it up within 30 seconds and the event feed is notified.${
+        flag.scheduled_at ? ' The pending schedule stays; cancel it separately if needed.' : ''
+      }`,
       confirmLabel: nextVerb,
       dangerous: true,
       action: async () => {
@@ -212,6 +219,7 @@ function FlagCard({
               type="datetime-local"
               className="px-input-field"
               value={when}
+              min={toLocalInput(new Date())}
               onChange={(e) => setWhen(e.target.value)}
             />
           </label>

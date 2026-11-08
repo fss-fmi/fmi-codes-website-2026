@@ -14,7 +14,7 @@ import ScoresPanel from './panels/ScoresPanel';
 import SitePanel from './panels/SitePanel';
 
 function MatchingContent() {
-  const [tab, setTab] = useState<Tab>('registration');
+  const [tab, setTab] = useState<Tab>('site');
 
   const { data: regData } = useQuery<RegStatus>({
     queryKey: ['admin-reg-status'],
