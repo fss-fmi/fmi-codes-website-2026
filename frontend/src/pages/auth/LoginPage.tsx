@@ -4,13 +4,17 @@ import Navbar from '@/components/layout/Navbar';
 import Panel from '@/components/common/Panel';
 import Field from '@/components/common/Field';
 import Input from '@/components/common/Input';
+import Select from '@/components/common/Select';
 import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import api from '@/lib/api';
 import type { User } from '@/types/auth';
 
 type Role = 'participant' | 'mentor' | 'admin';
+
+const ROLES: Role[] = ['participant', 'mentor', 'admin'];
 
 const ROLE_DEFAULT: Record<Role, string> = {
   participant: '/team',
@@ -28,6 +32,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
+  const isMobile = useIsMobile();
 
   const [role, setRole] = useState<Role>('participant');
   const [email, setEmail] = useState('');
@@ -40,6 +45,11 @@ export default function LoginPage() {
   const [resetError, setResetError] = useState('');
   const [resetSuccess, setResetSuccess] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
+
+  function chooseRole(r: Role) {
+    setRole(r);
+    if (r === 'admin') setShowReset(false);
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -111,45 +121,78 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: '460px' }}>
           <Panel title={showReset ? 'RESET PASSWORD' : 'LOGIN'}>
             {!showReset ? (
-              <p className="px-body-sm" style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}>
+              <p
+                className="px-body-sm"
+                style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
+              >
                 Sign in to your FMI&#123;Codes&#125; account.
               </p>
             ) : (
-              <p className="px-body-sm" style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}>
+              <p
+                className="px-body-sm"
+                style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
+              >
                 Enter your email to receive a recovery link.
               </p>
             )}
 
-            {!showReset && (
-              <div
-                role="group"
-                aria-label="Sign in role"
-                style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}
-              >
-                {(['participant', 'mentor', 'admin'] as Role[]).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    className="px-btn-secondary"
-                    aria-pressed={role === r}
-                    onClick={() => {
-                      setRole(r);
-                      if (r === 'admin') setShowReset(false);
-                    }}
-                    style={{ flex: '1 1 100px', minWidth: '100px' }}
+            {!showReset &&
+              (isMobile ? (
+                // Three side-by-side buttons are too narrow for PARTICIPANT on phones (#200).
+                <div style={{ marginBottom: '24px' }}>
+                  <Field
+                    id="login-role"
+                    label="SIGN IN AS"
                   >
-                    {ROLE_LABEL[r]}
-                  </button>
-                ))}
-              </div>
-            )}
+                    <Select
+                      value={role}
+                      onChange={(e) => chooseRole(e.target.value as Role)}
+                    >
+                      {ROLES.map((r) => (
+                        <option
+                          key={r}
+                          value={r}
+                        >
+                          {ROLE_LABEL[r]}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              ) : (
+                <div
+                  role="group"
+                  aria-label="Sign in role"
+                  style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}
+                >
+                  {ROLES.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      className="px-btn-secondary"
+                      aria-pressed={role === r}
+                      onClick={() => chooseRole(r)}
+                      style={{ flex: '1 1 100px', minWidth: '100px' }}
+                    >
+                      {ROLE_LABEL[r]}
+                    </button>
+                  ))}
+                </div>
+              ))}
 
             {error && !showReset && <FormAlert kind="error">{error}</FormAlert>}
 
             {!showReset && (
-              <form onSubmit={handleLogin} noValidate>
+              <form
+                onSubmit={handleLogin}
+                noValidate
+              >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <Field id="login-email" label="EMAIL" required>
+                  <Field
+                    id="login-email"
+                    label="EMAIL"
+                    required
+                  >
                     <Input
                       type="email"
                       required
@@ -159,7 +202,11 @@ export default function LoginPage() {
                       autoComplete="email"
                     />
                   </Field>
-                  <Field id="login-password" label="PASSWORD" required>
+                  <Field
+                    id="login-password"
+                    label="PASSWORD"
+                    required
+                  >
                     <Input
                       type="password"
                       required
@@ -184,18 +231,31 @@ export default function LoginPage() {
             {showReset && (
               <div style={{ animation: 'fadeSlideUp 0.4s ease both' }}>
                 {resetError && (
-                  <FormAlert kind="error" style={{ marginBottom: '16px' }}>
+                  <FormAlert
+                    kind="error"
+                    style={{ marginBottom: '16px' }}
+                  >
                     {resetError}
                   </FormAlert>
                 )}
                 {resetSuccess && (
-                  <FormAlert kind="success" style={{ marginBottom: '16px' }}>
+                  <FormAlert
+                    kind="success"
+                    style={{ marginBottom: '16px' }}
+                  >
                     {resetSuccess}
                   </FormAlert>
                 )}
-                <form onSubmit={handleReset} noValidate>
+                <form
+                  onSubmit={handleReset}
+                  noValidate
+                >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <Field id="reset-email" label="EMAIL" required>
+                    <Field
+                      id="reset-email"
+                      label="EMAIL"
+                      required
+                    >
                       <Input
                         type="email"
                         required
