@@ -27,6 +27,14 @@
   --px-font: 'Press Start 2P', monospace;
   --px-mono: 'JetBrains Mono', ui-monospace, monospace;
   --px-ease: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* ── Layout ─────────────────────────────────────────── */
+  /* --px-navbar-h is not set here: Navbar measures the bar and sets it at runtime. */
+  --px-sticky-gap: 24px;
+  --px-grid-size: 40px;
+  --px-grid-lines:
+    linear-gradient(rgba(45, 212, 191, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 212, 191, 0.03) 1px, transparent 1px);
 }
 
 /* ════════════════════════════════════════════
@@ -132,7 +140,21 @@ body {
   display: flex;
   justify-content: center;
   padding: 10px 16px;
-  background: transparent;
+  background: var(--px-bg);
+}
+/* Fixed page grid (Schedule). The opaque bar would cut it off at its bottom
+   edge; both start at the viewport origin, so the lines continue unbroken. */
+.px-grid-bg {
+  position: fixed;
+  inset: 0;
+  background-image: var(--px-grid-lines);
+  background-size: var(--px-grid-size) var(--px-grid-size);
+  pointer-events: none;
+  z-index: 0;
+}
+body:has(.px-grid-bg) .px-navbar {
+  background-image: var(--px-grid-lines);
+  background-size: var(--px-grid-size) var(--px-grid-size);
 }
 .px-navbar-inner {
   display: flex;
@@ -209,7 +231,9 @@ body {
   margin-left: auto;
   min-height: 44px;
   min-width: 44px;
-  transition: background 160ms var(--px-ease), color 160ms var(--px-ease);
+  transition:
+    background 160ms var(--px-ease),
+    color 160ms var(--px-ease);
 }
 .px-mobile-toggle:hover {
   background: var(--px-bg-elevated);
@@ -314,7 +338,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 160ms var(--px-ease), color 160ms var(--px-ease);
+  transition:
+    background 160ms var(--px-ease),
+    color 160ms var(--px-ease);
 }
 .px-mobile-drawer__close:hover {
   background: var(--px-bg-elevated);
@@ -360,7 +386,10 @@ body {
   text-transform: uppercase;
   background: transparent;
   cursor: pointer;
-  transition: background 160ms var(--px-ease), color 160ms var(--px-ease), border-color 160ms var(--px-ease);
+  transition:
+    background 160ms var(--px-ease),
+    color 160ms var(--px-ease),
+    border-color 160ms var(--px-ease);
 }
 .px-mobile-drawer__link:hover {
   background: var(--px-bg-panel);
@@ -424,7 +453,9 @@ body {
   text-decoration: none;
   min-height: 48px;
   cursor: pointer;
-  transition: background 160ms var(--px-ease), color 160ms var(--px-ease);
+  transition:
+    background 160ms var(--px-ease),
+    color 160ms var(--px-ease);
 }
 .px-mobile-drawer__cta-secondary:hover {
   background: var(--px-bg-elevated);
@@ -443,7 +474,7 @@ body {
 }
 
 .px-spacer {
-  height: 70px;
+  height: var(--px-navbar-h, 0px);
 }
 
 /* Pixel button */
@@ -886,6 +917,31 @@ body.arcade-theme {
   outline: none;
   box-shadow: var(--px-focus-glow);
 }
+.rulebook-nav {
+  top: var(--px-navbar-h, 0px);
+}
+.rulebook-nav-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(12px, 2vw, 24px);
+}
+.rulebook-nav-btn {
+  white-space: nowrap;
+}
+/* Phones: one scrolling row instead of four wrapped ones, so the stuck
+   chapter nav doesn't eat a third of the screen. */
+@media (max-width: 768px) {
+  .rulebook-nav-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .rulebook-nav-list > li {
+    flex-shrink: 0;
+  }
+}
 
 /* ════════════════════════════════════════════
    REGULATIONS — responsive stacking
@@ -897,13 +953,14 @@ body.arcade-theme {
   display: grid;
   grid-template-columns: minmax(140px, 220px) 1fr;
   gap: clamp(24px, 4vw, 72px);
+  scroll-margin-top: calc(var(--px-navbar-h, 0px) + var(--rulebook-nav-h, 0px));
 }
 .rulebook-chapter-rail {
   display: flex;
   flex-direction: column;
   gap: 12px;
   position: sticky;
-  top: 160px;
+  top: calc(var(--px-navbar-h, 0px) + var(--rulebook-nav-h, 0px) + var(--px-sticky-gap));
   align-self: start;
 }
 .regulations-closer {
@@ -950,7 +1007,7 @@ body.arcade-theme {
   flex-direction: column;
   gap: 16px;
   position: sticky;
-  top: 100px;
+  top: calc(var(--px-navbar-h, 0px) + var(--px-sticky-gap));
   align-self: start;
 }
 @media (max-width: 900px) {
@@ -1456,18 +1513,24 @@ body.arcade-theme {
   align-items: center;
   justify-content: center;
   font-size: 1.4rem;
-  box-shadow: 0 4px 20px rgba(244, 132, 95, 0.35), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 4px 20px rgba(244, 132, 95, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.4);
   transition:
     transform 0.15s var(--px-ease),
     box-shadow 0.15s var(--px-ease);
 }
 .bug-bubble-btn:hover {
   transform: scale(1.08);
-  box-shadow: 0 6px 28px rgba(244, 132, 95, 0.5), 0 3px 10px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 6px 28px rgba(244, 132, 95, 0.5),
+    0 3px 10px rgba(0, 0, 0, 0.5);
 }
 .bug-bubble-btn:focus-visible {
   outline: none;
-  box-shadow: var(--px-focus-glow-salmon), 0 4px 20px rgba(244, 132, 95, 0.35);
+  box-shadow:
+    var(--px-focus-glow-salmon),
+    0 4px 20px rgba(244, 132, 95, 0.35);
 }
 @media (max-width: 768px) {
   .bug-bubble-btn {
