@@ -96,7 +96,7 @@ Runs the published `fssfmi/*:latest` images behind Nginx on port 80 with Redis S
 | Mentor      | Any email from `backend/database/seeds/mentors.json`, password `mentor123` |
 | Admin       | `ADMIN_EMAIL` with the plaintext you hashed into `ADMIN_PASSWORD_HASH`     |
 
-On the login page pick the role tab first; the role is part of the login request.
+On the login page pick the role first (the role buttons, or the **SIGN IN AS** dropdown at 768px wide and below); the role is part of the login request.
 
 ## Running tests
 

@@ -129,7 +129,7 @@ The algorithm core (`_run_algorithm`) is pure and has no Flask or DB dependencie
 
 ## Testing approach
 
-Two layers, both pytest, plus a single frontend component test file:
+Two layers, both pytest, plus a few frontend component tests:
 
 - **Unit** (`tests/*.py`): app created with `create_app("testing")` and the DB pool patched out; services tested with mocked DB helpers. The matching algorithm is tested directly through its pure core.
 - **API integration** (`tests/e2e/`): a real Flask app against a real PostgreSQL test database, driven through Flask's test client. Despite the folder name these are not browser tests.
