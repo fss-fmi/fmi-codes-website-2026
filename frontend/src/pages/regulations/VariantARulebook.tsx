@@ -76,9 +76,10 @@ export default function VariantARulebook() {
     return () => observer.disconnect();
   }, [data]);
 
-  // The offset comes from the chapter's scroll-margin-top (navbar + chapter nav).
+  // The offset comes from the chapter's scroll-margin-top (navbar + chapter nav),
+  // and smooth or instant from the page's scroll-behavior (reduced motion aware).
   const jumpTo = useCallback((key: string) => {
-    chapterRefs.current[key]?.scrollIntoView({ block: 'start', behavior: scrollMotion() });
+    chapterRefs.current[key]?.scrollIntoView({ block: 'start' });
   }, []);
 
   return (
@@ -171,6 +172,8 @@ export default function VariantARulebook() {
   );
 }
 
+// For the chapter row only: it is its own scroll container, so the page's
+// reduced-motion-aware scroll-behavior on <html> doesn't apply to it.
 function scrollMotion(): ScrollBehavior {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 }

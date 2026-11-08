@@ -47,6 +47,7 @@ beforeEach(() => {
     return { height: this.classList.contains('rulebook-nav') ? navHeight : 0 } as DOMRect;
   });
   Element.prototype.scrollIntoView = vi.fn();
+  Element.prototype.scrollTo = vi.fn();
 });
 
 afterEach(() => {
@@ -81,18 +82,40 @@ test('a chapter button scrolls its chapter to the top, offset by scroll-margin-t
   const scroll = vi.mocked(Element.prototype.scrollIntoView);
   expect(scroll).toHaveBeenCalledTimes(1);
   expect(scroll.mock.contexts[0]).toBe(document.getElementById(`chapter-${chapter.key}`));
-  expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
+  // No behavior: smooth or instant comes from the page's reduced-motion-aware CSS.
+  expect(scroll).toHaveBeenCalledWith({ block: 'start' });
 });
 
-test('a chapter jump does not animate when the user prefers reduced motion', async () => {
-  reducedMotion = true;
-  renderRulebook();
-  await screen.findByText('Question 1');
-  fireEvent.click(
-    screen.getByRole('button', { name: `${CHAPTERS[0].num} · ${CHAPTERS[0].title}` }),
-  );
-  expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-    block: 'start',
-    behavior: 'auto',
+describe('the chapter row on phones, when it overflows', () => {
+  beforeEach(() => {
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (this: Element) {
+      return this.classList.contains('rulebook-nav-list') ? 600 : 0;
+    });
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return this.classList.contains('rulebook-nav-list') ? 300 : 0;
+    });
+  });
+
+  const rowScroll = () => {
+    const list = document.querySelector('.rulebook-nav-list');
+    const scroll = vi.mocked(Element.prototype.scrollTo);
+    return scroll.mock.calls.filter((_, i) => scroll.mock.contexts[i] === list);
+  };
+
+  const expectOneRowScroll = (behavior: ScrollBehavior) => {
+    const calls = rowScroll();
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toMatchObject({ behavior });
+  };
+
+  test('slides the active chapter into view smoothly', () => {
+    renderRulebook();
+    expectOneRowScroll('smooth');
+  });
+
+  test('slides it instantly when the user prefers reduced motion', () => {
+    reducedMotion = true;
+    renderRulebook();
+    expectOneRowScroll('auto');
   });
 });
