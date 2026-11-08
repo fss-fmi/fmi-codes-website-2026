@@ -1,6 +1,6 @@
 """E2E tests for what anonymous and low-privilege callers can see or create.
 
-1. Scores stay hidden until RANKINGS_LIVE, even when the API is called directly
+1. Scores stay hidden until rankings_live, even when the API is called directly
 2. "Other" universities/specialties are created only through registration
 3. Bug reports are attributed to a valid session and anonymous otherwise
 """
@@ -30,15 +30,9 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.fixture()
-def rankings_live(flask_app):
-    """Yield a setter for RANKINGS_LIVE and restore it afterwards."""
-    original = flask_app.config.get("RANKINGS_LIVE")
-
-    def _set(value):
-        flask_app.config["RANKINGS_LIVE"] = value
-
-    yield _set
-    flask_app.config["RANKINGS_LIVE"] = original
+def rankings_live(set_flag):
+    """Return a setter for the rankings_live flag; clean_db resets it after the test."""
+    return lambda value: set_flag("rankings_live", value)
 
 
 def _scored_team(flask_app, client, seeds, score=77.5):

@@ -89,6 +89,7 @@ nav:
           - ADR-010 Cluster alerts to Slack: adr/010-cluster-alerts-to-slack.md
           - ADR-011 One Tailscale client: adr/011-one-tailscale-client-staging.md
           - ADR-012 Flux recovery replies: adr/012-flux-recovery-replies.md
+          - ADR-013 Feature flags in the database: adr/013-feature-flags-in-database.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

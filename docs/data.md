@@ -2,7 +2,7 @@
 
 ## Overview
 
-One PostgreSQL 16 database (`fmi_hackathon_2026` in prod, `fmi_hackathon_2026_staging` in staging, `fmi_hackathon_2026_dev` by default locally). Twelve tables, four views, three trigger functions and one data-quality function, all defined in `backend/database/schema.sql`. The backend talks to it with psycopg2 and hand-written SQL; there is no ORM.
+One PostgreSQL 16 database (`fmi_hackathon_2026` in prod, `fmi_hackathon_2026_staging` in staging, `fmi_hackathon_2026_dev` by default locally). Fourteen tables, four views, three trigger functions and one data-quality function, all defined in `backend/database/schema.sql`. The backend talks to it with psycopg2 and hand-written SQL; there is no ORM.
 
 Domains:
 
@@ -11,6 +11,7 @@ Domains:
 - **Matching**: `team_mentor_preferences`, `mentor_team_preferences`, `team_mentors`, `matching_state`.
 - **Lookups**: `universities`, `specialties`.
 - **Auth support**: `password_reset_tokens`, `email_verification_tokens`.
+- **Site switches**: `feature_flags`.
 - **Unused**: `hackathon_events` (seeded with one row, nothing references it from code).
 
 ## ER diagram
@@ -139,6 +140,10 @@ Matching output. Primary key (`team_id`, `mentor_id`), `is_active` (always true 
 
 A single row (`id = 1`, enforced by CHECK). `is_confirmed` flips to true when the admin confirms; every new matching run resets it.
 
+### feature_flags
+
+One row per flag, seeded false by migration 017 and `schema.sql`: `registration_open`, `rankings_live`, `mentors_stay_tuned` (the `name` primary key has a CHECK for exactly these). `enabled` is the live value and `updated_at` is when it last changed. `scheduled_value` and `scheduled_at` hold the one pending change, both set or both NULL (CHECK). Nothing runs a schedule on its own: the first read after `scheduled_at` locks the due rows (`SELECT ... FOR UPDATE`), applies them and clears the pair, so concurrent readers apply it once. Only the admin writes this table, through `/api/admin/flags*` ([ADR-013](adr/013-feature-flags-in-database.md)).
+
 ### password_reset_tokens
 
 `user_id` + `role` (`participant` or `mentor`), `token_hash` (SHA-256 hex of the emailed token; the raw token is never stored), `expires_at` (one hour), `used_at`. Requesting a new link deletes the user's unused tokens. Nothing prunes expired rows yet.
@@ -184,11 +189,12 @@ Read at request time (not stored in the DB):
 
 ## Schema management
 
-- `backend/database/schema.sql` is the authoritative, current schema. Fresh environments apply it directly: Postgres `initdb` runs it in Docker Compose and k3s (mounted as `01_schema.sql` / the `postgres-initdb` ConfigMap), and the e2e test fixture applies it once per session.
+- `backend/database/schema.sql` is the authoritative, current schema. Fresh environments apply it directly: Postgres `initdb` runs it in Docker Compose and k3s (mounted as `01_schema.sql` / the `postgres-initdb` ConfigMap), and the e2e test fixture applies it once per session, then replays every migration file so an older test database catches up.
 - `backend/database/migrations/NNN_name.sql` are deltas for databases created before those changes. `python -m database.migrate` (from `backend/`) applies every file not yet recorded in `schema_migrations`, in number order, each in its own transaction with its record ([ADR-007](adr/007-recorded-migrations-runner.md)). On k3s it runs automatically as the backend's initContainer on every rollout, and on demand through **Actions → Migrate database** (see [Deployment](deployment.md#database-migrations)).
 - Rules for a migration file: the next unused three-digit number, lowercase name (`017_add_x.sql`), safe to re-run (`IF NOT EXISTS`, `ON CONFLICT`, ...), and no `BEGIN`/`COMMIT`. `tests/test_migrate.py` enforces the naming and transaction rules; the e2e suite applies every file against a fresh `schema.sql` database.
-- `schema_migrations` (`filename` primary key, `applied_at`) is created by the runner, not by `schema.sql`. The first run on a database that predates it re-applies 012 to 016 as no-ops and records them.
+- `schema_migrations` (`filename` primary key, `applied_at`) is created by the runner, not by `schema.sql`. The first run on a database that predates it re-applies 012 to 017 as no-ops and records them.
 - `016_email_verification.sql` adds `participants.email_verified` with `DEFAULT TRUE` (so existing participants are grandfathered as verified) and then switches the default to false for new rows. It is safe to re-run, and `schema.sql` uses the same two statements.
+- `017_feature_flags.sql` creates `feature_flags` and inserts its three rows as false with `ON CONFLICT DO NOTHING`, so it never overwrites a value the admin has set. False matches the old `REGISTRATION_OPEN`, `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ConfigMap values in every environment, so deploying it changes nothing visible.
 - Most statements use `IF NOT EXISTS`, but the `CREATE TRIGGER` statements do not, so running `schema.sql` a second time against an existing database fails partway. Treat it as a create-once script.
 - On k3s the schema and DB password are baked into the Postgres PVC at first boot. Editing `schema.sql` does not migrate a running database.
 
@@ -197,6 +203,7 @@ Read at request time (not stored in the DB):
 - Every change to team membership or registration state runs inside one transaction that first takes `pg_advisory_xact_lock(1)`, then row-locks what it touches with `SELECT ... FOR UPDATE`.
 - Saving matching results takes `pg_advisory_xact_lock(2)`, a separate key so it never contends with team mutations.
 - Preference writes lock the owning team or mentor row so a double submit cannot interleave.
+- Flag writes and schedule applies lock the `feature_flags` row (`SELECT ... FOR UPDATE`); a reader that loses the race to apply a due schedule waits, re-checks and finds nothing due, so a scheduled change is applied and announced once.
 - UNIQUE constraints (email, faculty number, team name, join code, join request pair) are the final guard against races.
 
 ## Backups

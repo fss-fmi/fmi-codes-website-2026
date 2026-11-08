@@ -48,14 +48,16 @@ The university-issued student ID entered at registration (for example `1MI070012
 
 ### Feature flags
 
-Four booleans set in server config, not in an admin screen:
+Four booleans. Three live in the `feature_flags` table and are switched or scheduled by the admin on the **Mission Control** SITE tab; `/api/config` exposes them in upper case. The fourth is server config:
 
-| Flag                         | When true                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------- |
-| `REGISTRATION_OPEN`          | Participants can register                                                 |
-| `MENTORS_STAY_TUNED`         | The mentors page shows a "coming soon" placeholder                        |
-| `RANKINGS_LIVE`              | Scores are public: the live leaderboard and API                           |
-| `REQUIRE_EMAIL_VERIFICATION` | Unverified participants cannot create, join or apply to teams (see below) |
+| Flag                         | Where           | When true                                                                 |
+| ---------------------------- | --------------- | ------------------------------------------------------------------------- |
+| `registration_open`          | Mission Control | Participants can register                                                 |
+| `mentors_stay_tuned`         | Mission Control | The mentors page shows a "coming soon" placeholder                        |
+| `rankings_live`              | Mission Control | Scores are public: the live leaderboard and API                           |
+| `REQUIRE_EMAIL_VERIFICATION` | Server config   | Unverified participants cannot create, join or apply to teams (see below) |
+
+A flag holds at most one **scheduled change** (`scheduled_value` at `scheduled_at`), applied by the first request after its time. Every change is posted to the environment's event feed in Slack.
 
 ## G
 
@@ -102,7 +104,7 @@ A captain's ranking of exactly 3 distinct mentors, ranks 1 to 3 (`team_mentor_pr
 
 ### Mission Control
 
-The admin console at `/admin/matching`, with REGISTRATION, PREFERENCES, MATCHING and SCORES tabs.
+The admin console at `/admin/matching`, with SITE, REGISTRATION, PREFERENCES, MATCHING and SCORES tabs.
 
 ## P
 

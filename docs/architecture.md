@@ -32,7 +32,7 @@ graph TD
     API -->|rate limits, JWT blocklist, caches| Redis
     API -->|password reset, join-request mail| SMTP
     API -->|bug reports| Discord
-    API -->|"bug reports, migration results (initContainer, Job)"| Slack
+    API -->|"bug reports, event feed, migration results (initContainer, Job)"| Slack
     Prom -->|"scrape /metrics (in-cluster)"| API
     Prom -->|firing alerts| AM
     AM -->|"cluster alerts (prod / staging channel)"| Slack
@@ -49,18 +49,18 @@ In production the cluster ingress routes `/api` and `/static` straight to the ba
 
 ## Components
 
-**Frontend** (`frontend/`). React 19 + TypeScript on Vite, Tailwind v4, React Router 7. Client rendered only. TanStack Query owns server state (30 s stale time, no retries, no refetch on focus). Two React contexts hold global state: `AuthContext` (current user, hydrated from `GET /api/auth/me` on load) and `ConfigContext` (feature flags from `GET /api/config`). All requests go through `src/lib/api.ts`, a fetch wrapper that sends cookies and broadcasts an `auth:unauthorized` window event on any 401 so `AuthContext` can clear the session. Role-gated pages wrap themselves in `RequireAuth roles={[...]}`; the route table in `App.tsx` is flat and unguarded.
+**Frontend** (`frontend/`). React 19 + TypeScript on Vite, Tailwind v4, React Router 7. Client rendered only. TanStack Query owns server state (30 s stale time, no retries, no refetch on focus). Two React contexts hold global state: `AuthContext` (current user, hydrated from `GET /api/auth/me` on load) and `ConfigContext` (feature flags from `GET /api/config`, refetched every 30 s and on window focus so a switch in Mission Control reaches open pages). All requests go through `src/lib/api.ts`, a fetch wrapper that sends cookies and broadcasts an `auth:unauthorized` window event on any 401 so `AuthContext` can clear the session. Role-gated pages wrap themselves in `RequireAuth roles={[...]}`; the route table in `App.tsx` is flat and unguarded.
 
 **Backend** (`backend/`). Flask app factory in `app/__init__.py`. Layering is routes → services → database:
 
-- `app/routes/`: four blueprints. `auth.py` (register, login, logout, me, password change and reset, email verification), `teams.py` (team lifecycle and join requests), `mentors.py` (mentor listing and preferences), `api_routes.py` (health, config, lookups, rankings, admin console, bug reports). Handlers validate input and delegate.
-- `app/services/`: business logic. `team_service.py` (team mutations and the registration queue), `matching_service.py` (the matching algorithm), `mentor_selection_service.py` (preferences), `ranking_service.py`, `mentor_service.py` (mentor reads and JSON seed loaders), `auth_service.py` (bcrypt, JWT), `token_blocklist.py`, `redis_client.py`, `email_service.py`, `bug_report_service.py`, `regulations_service.py`.
+- `app/routes/`: four blueprints. `auth.py` (register, login, logout, me, password change and reset, email verification), `teams.py` (team lifecycle and join requests), `mentors.py` (mentor listing and preferences), `api_routes.py` (health, config, lookups, rankings, admin console including the feature flag switches, bug reports). Handlers validate input and delegate.
+- `app/services/`: business logic. `team_service.py` (team mutations and the registration queue), `matching_service.py` (the matching algorithm), `mentor_selection_service.py` (preferences), `ranking_service.py`, `mentor_service.py` (mentor reads and JSON seed loaders), `auth_service.py` (bcrypt, JWT), `token_blocklist.py`, `redis_client.py`, `email_service.py`, `bug_report_service.py`, `regulations_service.py`, `feature_flag_service.py` (registration, rankings and roster switches, with schedules), `event_notifier.py` (the Slack event feed).
 - `app/utils/auth_decorators.py`: `token_required`, `participant_required`, `mentor_required`, `captain_required`, `admin_required`.
 - `app/database.py`: a `ThreadedConnectionPool` per Gunicorn worker plus small helpers (`execute_query`, `execute_insert`, `get_db_cursor`). No ORM.
 
 **PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; numbered migrations bring existing databases up to date and are recorded in `schema_migrations`. See [Data Model](data.md).
 
-**Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and caches for hot public reads: seed universities and specialties (~1 h), mentor list (~30 min), team rankings (~60 s), registered teams (~30 s), regulations (~300 s) and the per-user revocation epoch (~45 s). Every cache that has a write path is invalidated by it after commit (seed loaders, mentor writes, score updates, and every team membership or registration change); the TTL is a safety net for missed or racing invalidations. `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
+**Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and caches for hot public reads: seed universities and specialties (~1 h), mentor list (~30 min), team rankings (~60 s), registered teams (~30 s), regulations (~300 s), the per-user revocation epoch (~45 s) and the feature flags (~10 s, never past a pending schedule's time). Every cache that has a write path is invalidated by it after commit (seed loaders, mentor writes, score updates, flag switches and schedules, and every team membership or registration change); the TTL is a safety net for missed or racing invalidations. `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
 
 **Startup seeding**. Both `run_server.py` (dev) and `wsgi.py` (Gunicorn) load `universities.json`, `specialties.json` and `mentors.json` from `backend/database/seeds/` on every start. The loaders insert with `ON CONFLICT DO NOTHING`, so reruns are safe.
 
@@ -120,7 +120,7 @@ The algorithm core (`_run_algorithm`) is pure and has no Flask or DB dependencie
 - Three roles in the JWT payload: `participant`, `mentor`, `admin`. Login takes the role explicitly; participants and mentors are separate tables (separate credential spaces). The admin is a single credential from config (`ADMIN_EMAIL` + bcrypt `ADMIN_PASSWORD_HASH`), with `user_id` 0 in the token.
 - Token transport: httpOnly `token` cookie, `SameSite=Lax`, `Secure` when `FLASK_ENV=production`. `Authorization: Bearer` is accepted as a fallback.
 - Revocation is layered. Logout and password change put the `jti` in Redis with a TTL equal to the token's remaining life. Password change and reset also set `tokens_valid_from`, rejecting every older token for that user. Both checks fail open if Redis is down.
-- Hardening present in code: bcrypt (12 rounds), timing-equalised login (a dummy hash runs when the account is missing), generic "already exists" registration errors, reset and email-verification tokens stored only as SHA-256 hashes (one-hour and 24-hour expiry), optional email-verification gate on team create/join/apply (`REQUIRE_EMAIL_VERIFICATION`), 12-character password minimum, HTML-injection characters rejected in name fields, 64 KB request body cap, per-route rate limits (register 10/min, login 15/min, reset request 5/h, default 200/min), production refuses to boot with weak or missing secrets, team scores withheld from the API until `RANKINGS_LIVE` is on.
+- Hardening present in code: bcrypt (12 rounds), timing-equalised login (a dummy hash runs when the account is missing), generic "already exists" registration errors, reset and email-verification tokens stored only as SHA-256 hashes (one-hour and 24-hour expiry), optional email-verification gate on team create/join/apply (`REQUIRE_EMAIL_VERIFICATION`), 12-character password minimum, HTML-injection characters rejected in name fields, 64 KB request body cap, per-route rate limits (register 10/min, login 15/min, reset request 5/h, default 200/min), production refuses to boot with weak or missing secrets, team scores withheld from the API until `rankings_live` is on.
 - Security headers are added at the ingress layer (`security-headers` ConfigMap), not by Flask.
 
 ## Observability
@@ -153,18 +153,19 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 - [ADR-010](adr/010-cluster-alerts-to-slack.md): Alertmanager and Flux post in-cluster failures to a prod and a staging Slack channel through webhooks.
 - [ADR-011](adr/011-one-tailscale-client-staging.md): every cluster, prod's included, uses staging's Tailscale OAuth client, so a prod machine needs the staging age key too.
 - [ADR-012](adr/012-flux-recovery-replies.md): a relay in `flux-system` replies "recovered" in the thread of a Flux error once the object is ready again, with its own Slack app and Secret.
+- [ADR-013](adr/013-feature-flags-in-database.md): registration, rankings and the mentor roster are rows in `feature_flags`, switched or scheduled from Mission Control with no restart, each change posted to the event feed.
 
 ## External dependencies
 
-| Dependency                    | Used for                                                                                      | Required                                  |
-| ----------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| PostgreSQL 16                 | All durable state                                                                             | Yes                                       |
-| Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches                                                     | No (degrades)                             |
-| SMTP (Gmail by default)       | Password reset links, join-request emails to captains                                         | No (features silently fail)               |
-| Discord webhook               | Bug reports                                                                                   | No                                        |
-| Slack (webhooks + bot tokens) | Bug reports, migration results, PR feed, CI alerts, cluster alerts and their recovery replies | No                                        |
-| Docker Hub (`fssfmi/*`)       | Image registry                                                                                | For deploys                               |
-| Tailscale (`fss-fmi` tailnet) | Developer access to Grafana and staging                                                       | No (both only via `kubectl port-forward`) |
+| Dependency                    | Used for                                                                                                  | Required                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| PostgreSQL 16                 | All durable state                                                                                         | Yes                                       |
+| Redis 7 (Sentinel in prod)    | Rate-limit storage, JWT blocklist, caches                                                                 | No (degrades)                             |
+| SMTP (Gmail by default)       | Password reset links, join-request emails to captains                                                     | No (features silently fail)               |
+| Discord webhook               | Bug reports                                                                                               | No                                        |
+| Slack (webhooks + bot tokens) | Bug reports, event feed, migration results, PR feed, CI alerts, cluster alerts and their recovery replies | No                                        |
+| Docker Hub (`fssfmi/*`)       | Image registry                                                                                            | For deploys                               |
+| Tailscale (`fss-fmi` tailnet) | Developer access to Grafana and staging                                                                   | No (both only via `kubectl port-forward`) |
 
 ## Known gaps
 

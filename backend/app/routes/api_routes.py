@@ -1,7 +1,7 @@
 """API routes — rankings, regulations, admin matching, lookup data, and bug reports"""
 
 import logging
-from datetime import UTC
+from datetime import UTC, datetime
 
 from flask import current_app, jsonify, request
 
@@ -9,6 +9,7 @@ from app import limiter
 from app.database import execute_query
 from app.routes import api_bp
 from app.services import (
+    feature_flag_service,
     matching_service,
     mentor_selection_service,
     mentor_service,
@@ -74,12 +75,18 @@ def get_config():
 
     No auth required — flags are read by the Navbar, Hero, Rankings routing, etc.
     SameSite=Lax cookies mean this endpoint is safe to call without CSRF tokens.
+    The SPA polls it, so a flag switched in Mission Control reaches open pages.
     """
+    try:
+        flags = feature_flag_service.get_flags()
+    except Exception as e:
+        logger.error(f"Error reading feature flags: {e}")
+        return jsonify({"success": False, "error": "Failed to read config"}), 503
     return jsonify(
         {
-            "REGISTRATION_OPEN": bool(current_app.config.get("REGISTRATION_OPEN")),
-            "MENTORS_STAY_TUNED": bool(current_app.config.get("MENTORS_STAY_TUNED")),
-            "RANKINGS_LIVE": bool(current_app.config.get("RANKINGS_LIVE")),
+            "REGISTRATION_OPEN": flags["registration_open"],
+            "MENTORS_STAY_TUNED": flags["mentors_stay_tuned"],
+            "RANKINGS_LIVE": flags["rankings_live"],
             "REQUIRE_EMAIL_VERIFICATION": bool(
                 current_app.config.get("REQUIRE_EMAIL_VERIFICATION")
             ),
@@ -215,8 +222,6 @@ def get_matching_results():
 @admin_required
 def matching_export():
     """Get matching results grouped by team, with constraint validation, for export"""
-    from datetime import datetime
-
     rows = [dict(r) for r in matching_service.get_matching_results()]
 
     teams: dict = {}
@@ -318,6 +323,88 @@ def admin_unregister_team(team_id):
     return jsonify({"success": False, "error": message}), 400
 
 
+# ── Admin feature flags ────────────────────────────────────────────
+
+
+def _unknown_flag(name):
+    if name in feature_flag_service.FLAG_NAMES:
+        return None
+    return jsonify({"success": False, "error": "Unknown flag"}), 404
+
+
+@api_bp.route("/admin/flags", methods=["GET"])
+@admin_required
+def admin_list_flags():
+    """Every feature flag with its value, last change and pending schedule."""
+    try:
+        return jsonify({"success": True, "flags": feature_flag_service.list_flags()}), 200
+    except Exception as e:
+        logger.error(f"Error listing feature flags: {e}")
+        return jsonify({"success": False, "error": "Failed to read flags"}), 500
+
+
+@api_bp.route("/admin/flags/<name>", methods=["PUT"])
+@admin_required
+def admin_set_flag(name):
+    """Switch a flag now. Body: {"enabled": true|false}. Idempotent."""
+    if (error := _unknown_flag(name)) is not None:
+        return error
+    enabled = (request.get_json(silent=True) or {}).get("enabled")
+    if not isinstance(enabled, bool):
+        return jsonify({"success": False, "error": "enabled must be true or false"}), 400
+    try:
+        changed = feature_flag_service.set_flag(name, enabled)
+    except Exception as e:
+        logger.error(f"Error setting feature flag {name}: {e}")
+        return jsonify({"success": False, "error": "Failed to update flag"}), 500
+    logger.info("Admin set feature flag %s to %s (changed=%s)", name, enabled, changed)
+    return jsonify({"success": True, "changed": changed}), 200
+
+
+@api_bp.route("/admin/flags/<name>/schedule", methods=["PUT"])
+@admin_required
+def admin_schedule_flag(name):
+    """Schedule a change. Body: {"value": true|false, "at": "<ISO 8601 with offset>"}."""
+    if (error := _unknown_flag(name)) is not None:
+        return error
+    data = request.get_json(silent=True) or {}
+    value = data.get("value")
+    if not isinstance(value, bool):
+        return jsonify({"success": False, "error": "value must be true or false"}), 400
+    try:
+        at = datetime.fromisoformat(data.get("at") or "")
+    except (TypeError, ValueError):
+        at = None
+    if at is None or at.tzinfo is None:
+        return jsonify(
+            {"success": False, "error": "at must be an ISO 8601 time with a UTC offset"}
+        ), 400
+    try:
+        error_message = feature_flag_service.schedule_flag(name, value, at)
+    except Exception as e:
+        logger.error(f"Error scheduling feature flag {name}: {e}")
+        return jsonify({"success": False, "error": "Failed to schedule flag"}), 500
+    if error_message:
+        return jsonify({"success": False, "error": error_message}), 400
+    logger.info("Admin scheduled feature flag %s to %s at %s", name, value, at.isoformat())
+    return jsonify({"success": True}), 200
+
+
+@api_bp.route("/admin/flags/<name>/schedule", methods=["DELETE"])
+@admin_required
+def admin_cancel_flag_schedule(name):
+    """Cancel a flag's pending schedule. Idempotent."""
+    if (error := _unknown_flag(name)) is not None:
+        return error
+    try:
+        cancelled = feature_flag_service.cancel_schedule(name)
+    except Exception as e:
+        logger.error(f"Error cancelling feature flag schedule {name}: {e}")
+        return jsonify({"success": False, "error": "Failed to cancel schedule"}), 500
+    logger.info("Admin cancelled feature flag %s schedule (existed=%s)", name, cancelled)
+    return jsonify({"success": True, "cancelled": cancelled}), 200
+
+
 # ── Bug Report ─────────────────────────────────────────────────────
 
 
@@ -405,12 +492,12 @@ def submit_bug_report():
 
 @api_bp.route("/teams/rankings", methods=["GET"])
 def get_team_rankings():
-    """Public once RANKINGS_LIVE is on: DB-backed team rankings sorted by score descending.
+    """Public once rankings_live is on: DB-backed team rankings sorted by score descending.
 
     The flag is enforced here and not only in the SPA, so scores entered before
     the reveal can't be read by calling the API directly.
     """
-    if not current_app.config.get("RANKINGS_LIVE"):
+    if not feature_flag_service.is_enabled("rankings_live"):
         return jsonify({"success": False, "error": "Rankings are not live yet"}), 403
     try:
         rankings = ranking_service.get_team_rankings()

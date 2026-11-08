@@ -49,8 +49,8 @@ Keep vitest and its `@vitest/*` companions on the same major version. On 2026-10
 Also check:
 
 - `DB_USER` defaults to `fmi_app` in `.env.example`. Either create that role or change it to `postgres`.
-- `REGISTRATION_OPEN=false` in `.env.example`. Set it to `true` or participant registration returns 403 and the register page shows "REGISTRATION CLOSED".
-- `MAIL_*`, `DISCORD_BUG_WEBHOOK_URL` and `SLACK_BUG_WEBHOOK_URL` are optional. Without them password-reset and verification mail and bug reports are dropped with a logged warning.
+- Participant registration starts closed on a new database (the `feature_flags` row is seeded false). Log in as admin and press **OPEN NOW** on Mission Control's SITE tab, or the register page shows "REGISTRATION CLOSED" and the API returns 403.
+- `MAIL_*`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL` and `SLACK_EVENTS_WEBHOOK_URL` are optional. Without them password-reset and verification mail and bug reports are dropped with a logged warning, and flag changes are only logged.
 - `REQUIRE_EMAIL_VERIFICATION=false` in `.env.example`. Leave it off locally unless `MAIL_*` works, or no participant can create or join a team.
 - Leave every `REDIS_*` blank to run without Redis (in-memory rate limiting, no token revocation).
 
@@ -92,7 +92,7 @@ Runs the published `fssfmi/*:latest` images behind Nginx on port 80 with Redis S
 
 | Role        | How                                                                        |
 | ----------- | -------------------------------------------------------------------------- |
-| Participant | Register at `/registration` (needs `REGISTRATION_OPEN=true`)               |
+| Participant | Register at `/registration` (open it first on Mission Control's SITE tab)  |
 | Mentor      | Any email from `backend/database/seeds/mentors.json`, password `mentor123` |
 | Admin       | `ADMIN_EMAIL` with the plaintext you hashed into `ADMIN_PASSWORD_HASH`     |
 
@@ -166,7 +166,7 @@ bootstrap.sh       one-shot cluster installer
 
 **Log says `Database schema not found. Please run schema.sql manually.`** The pool connected but there is no `teams` table. Load `backend/database/schema.sql` into the database.
 
-**Registration page says REGISTRATION CLOSED / API returns 403.** `REGISTRATION_OPEN` is false. Set it to `true` and restart the backend.
+**Registration page says REGISTRATION CLOSED / API returns 403.** The `registration_open` flag is off. Log in as admin and press **OPEN NOW** on Mission Control's SITE tab; no restart is needed.
 
 **Admin login returns 503 "Admin login not configured".** `ADMIN_PASSWORD_HASH` is empty.
 

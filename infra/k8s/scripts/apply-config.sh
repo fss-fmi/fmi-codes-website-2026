@@ -18,7 +18,7 @@ APP_OVERLAY="${APP_OVERLAY:-$K8S_DIR/overlays/$ENV}"
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
 
-SECRET_KEYS="SECRET_KEY JWT_SECRET_KEY ADMIN_PASSWORD_HASH MAIL_PASSWORD DISCORD_BUG_WEBHOOK_URL SLACK_BUG_WEBHOOK_URL SLACK_MIGRATIONS_WEBHOOK_URL DB_PASSWORD REDIS_PASSWORD"
+SECRET_KEYS="SECRET_KEY JWT_SECRET_KEY ADMIN_PASSWORD_HASH MAIL_PASSWORD DISCORD_BUG_WEBHOOK_URL SLACK_BUG_WEBHOOK_URL SLACK_MIGRATIONS_WEBHOOK_URL SLACK_EVENTS_WEBHOOK_URL DB_PASSWORD REDIS_PASSWORD"
 
 usage() {
   cat <<EOF
@@ -33,7 +33,7 @@ Apply a non-secret backend config change and roll the backend so pods pick it up
 
 Secrets do NOT belong here. To rotate SECRET_KEY / JWT_SECRET_KEY /
 ADMIN_PASSWORD_HASH / MAIL_PASSWORD / DISCORD_BUG_WEBHOOK_URL /
-SLACK_BUG_WEBHOOK_URL / SLACK_MIGRATIONS_WEBHOOK_URL use:
+SLACK_BUG_WEBHOOK_URL / SLACK_MIGRATIONS_WEBHOOK_URL / SLACK_EVENTS_WEBHOOK_URL use:
     bash $SCRIPT_DIR/rotate-secret.sh <KEY>      (prompts; --generate for a random one)
 DB / Redis passwords are PVC-coupled and managed by deploy-stateful.sh.
 
@@ -43,7 +43,7 @@ RESTART (true|false — skip the rollout restart when false).
 
 Examples:
   $(basename "$0") FRONTEND_ORIGIN https://fmicodes.com
-  $(basename "$0") REGISTRATION_OPEN true
+  $(basename "$0") REQUIRE_EMAIL_VERIFICATION true
   $(basename "$0")                       # re-apply manifests from disk
 EOF
 }
@@ -89,6 +89,10 @@ for s in $SECRET_KEYS; do
     die "'$KEY' is a secret — it does not belong in the ConfigMap. Use rotate-secret.sh (app secrets) or deploy-stateful.sh (DB/Redis)."
   fi
 done
+case "$KEY" in
+  REGISTRATION_OPEN|RANKINGS_LIVE|MENTORS_STAY_TUNED)
+    die "'$KEY' is no longer read from config: switch it in Mission Control (SITE tab). See docs/deployment.md." ;;
+esac
 # The staging backend reads it from the app secret, which overrides the ConfigMap.
 if [ "$ENV" = "staging" ] && [ "$KEY" = "FRONTEND_ORIGIN" ]; then
   die "staging's FRONTEND_ORIGIN lives in its SOPS app secret; a ConfigMap value would be ignored. Use: ENV=staging bash $SCRIPT_DIR/rotate-secret.sh FRONTEND_ORIGIN"

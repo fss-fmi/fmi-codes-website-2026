@@ -23,7 +23,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 **Rate limits.** Default 200 requests per minute per IP, shared across workers when Redis is configured. Tighter limits are listed per endpoint. Exceeding a limit returns 429.
 
-**Feature flags.** `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE` and `REQUIRE_EMAIL_VERIFICATION` come from server config. Three are enforced by the API: `REGISTRATION_OPEN` (registration returns 403 when closed), `RANKINGS_LIVE` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `MENTORS_STAY_TUNED` only changes what the SPA renders.
+**Feature flags.** `registration_open`, `rankings_live` and `mentors_stay_tuned` live in the `feature_flags` table; the admin switches or schedules them through `/api/admin/flags*` and every request reads the current value, so no restart is needed. `REQUIRE_EMAIL_VERIFICATION` comes from server config. Three are enforced by the API: `registration_open` (registration returns 403 when closed), `rankings_live` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `mentors_stay_tuned` only changes what the SPA renders.
 
 **Email verification.** While `REQUIRE_EMAIL_VERIFICATION` is on, `POST /api/teams`, `POST /api/teams/join` and `POST /api/teams/{team_id}/apply` return 403 `{"success": false, "error": "Verify your email address before creating or joining a team.", "code": "email_unverified"}` for a participant whose email is not verified.
 
@@ -50,7 +50,7 @@ Readiness probe. Runs a pooled `SELECT 1`; Redis is reported but never fails the
 
 ### GET /api/config
 
-Public. Feature flags for the SPA.
+Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first three come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. 503 if the flags can't be read.
 
 ```json
 {
@@ -71,7 +71,7 @@ Prometheus exposition from `prometheus_flask_exporter`, at the backend root (not
 
 ### POST /api/auth/register
 
-Public, 10/min. Creates a participant and logs them in (sets the `token` cookie). Returns 403 `Registration is closed` when `REGISTRATION_OPEN` is false. Also emails a 24-hour verification link to `<FRONTEND_ORIGIN>/verify-email?token=...` in the background; a failed send does not fail registration.
+Public, 10/min. Creates a participant and logs them in (sets the `token` cookie). Returns 403 `Registration is closed` when `registration_open` is off. Also emails a 24-hour verification link to `<FRONTEND_ORIGIN>/verify-email?token=...` in the background; a failed send does not fail registration.
 
 Request (all fields required):
 
@@ -283,7 +283,7 @@ Public. First and last names of a registered team's active members (captain firs
 
 ### GET /api/teams/{team_id}
 
-Any role. Team detail with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails and `join_code` are only included for team members and admins. `score` and `score_updated_at` are only included for the admin until `RANKINGS_LIVE` is on.
+Any role. Team detail with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails and `join_code` are only included for team members and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
 
 There is no public list of all teams. The admin gets every team from `GET /api/admin/teams/registration-status`.
 
@@ -441,7 +441,7 @@ Public. `{"success": true, "confirmed": false}`.
 
 ### GET /api/teams/rankings
 
-Public once `RANKINGS_LIVE` is on; until then 403 `Rankings are not live yet` for every caller, so scores entered before the reveal stay hidden (the admin reviews them through `GET /api/admin/teams/scores`). Registered teams by score, ties share a rank (`RANK()`), unscored teams last. Cached about 60 s and invalidated on every score change. The SPA polls it every 30 s when `RANKINGS_LIVE` is on.
+Public once `rankings_live` is on; until then 403 `Rankings are not live yet` for every caller, so scores entered before the reveal stay hidden (the admin reviews them through `GET /api/admin/teams/scores`). Registered teams by score, ties share a rank (`RANK()`), unscored teams last. Cached about 60 s and invalidated on every score change. The SPA polls it every 30 s when `rankings_live` is on.
 
 ```json
 {
@@ -577,3 +577,48 @@ Registered teams for the scoring UI: `team_id, team_name, score, score_updated_a
 ```
 
 Finite number from 0 to 100. Invalidates the public rankings cache. 400 for invalid scores, 404 for an unknown team.
+
+### GET /api/admin/flags
+
+Every feature flag with its value, when the value last changed and any pending schedule. Applies a schedule whose time has passed first.
+
+```json
+{
+  "success": true,
+  "flags": [
+    {
+      "name": "registration_open",
+      "enabled": false,
+      "updated_at": "2026-11-09T08:00:00+00:00",
+      "scheduled_value": true,
+      "scheduled_at": "2026-11-20T08:00:00+00:00"
+    }
+  ]
+}
+```
+
+Flags: `registration_open`, `rankings_live`, `mentors_stay_tuned`. Any other `{name}` in the routes below returns 404.
+
+### PUT /api/admin/flags/{name}
+
+Switches a flag now. Idempotent: setting the current value returns `changed: false` and posts nothing. A change is posted to the event feed (`SLACK_EVENTS_WEBHOOK_URL`). A pending schedule is kept; if it later sets the value the flag already has, it is cleared without a post.
+
+```json
+{ "enabled": true }
+```
+
+Response `{"success": true, "changed": true}`. 400 unless `enabled` is a JSON boolean.
+
+### PUT /api/admin/flags/{name}/schedule
+
+Schedules a change; replaces any pending one (one per flag). No scheduler runs it: the first read of the flags after `at` (any visitor's `GET /api/config`, a registration, the admin's list) applies it in a transaction that locks the row, so it is applied and posted to the event feed exactly once. The database clock decides when `at` has passed.
+
+```json
+{ "value": true, "at": "2026-11-20T10:00:00+02:00" }
+```
+
+400 if `value` is not a boolean, `at` is not ISO 8601 with a UTC offset (`Z` or `+02:00`), `at` is not in the future (`Scheduled time must be in the future`) or `value` is the current value (`The flag is already on` / `off`).
+
+### DELETE /api/admin/flags/{name}/schedule
+
+Drops the pending schedule. Idempotent: `{"success": true, "cancelled": false}` when there was none.

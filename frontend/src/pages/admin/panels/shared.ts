@@ -21,7 +21,17 @@ export interface TeamScore {
   score: number | null;
 }
 
-export type Tab = 'registration' | 'preferences' | 'matching' | 'scores';
+export type FlagName = 'registration_open' | 'rankings_live' | 'mentors_stay_tuned';
+
+export interface FeatureFlag {
+  name: FlagName;
+  enabled: boolean;
+  updated_at: string;
+  scheduled_value: boolean | null;
+  scheduled_at: string | null;
+}
+
+export type Tab = 'site' | 'registration' | 'preferences' | 'matching' | 'scores';
 
 /**
  * Single source of truth for the admin chart/status palette. Chart libraries

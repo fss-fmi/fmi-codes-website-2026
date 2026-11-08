@@ -11,7 +11,7 @@ Tests are organised by threat category:
 5. Injection & output encoding — SQL injection and XSS payloads must not
    trigger server errors or be reflected unescaped
 6. Input validation — numbers, bounds, and enumerable field values
-7. Feature-flag enforcement — REGISTRATION_OPEN controls access
+7. Feature-flag enforcement — registration_open controls access
 8. Business-logic abuse — duplicate actions, state transitions
 """
 
@@ -503,26 +503,18 @@ class TestInputValidation:
 
 
 class TestFeatureFlags:
-    def test_registration_closed_returns_403(self, flask_app, seeds):
-        flask_app.config["REGISTRATION_OPEN"] = False
-        try:
-            with flask_app.test_client() as c:
-                rv = register(c, 50, seeds)
-            assert rv.status_code == 403
-        finally:
-            flask_app.config["REGISTRATION_OPEN"] = True
+    def test_registration_closed_returns_403(self, client, seeds, set_flag):
+        set_flag("registration_open", False)
+        rv = register(client, 50, seeds)
+        assert rv.status_code == 403
 
-    def test_config_endpoint_reflects_registration_flag(self, flask_app):
-        with flask_app.test_client() as c:
-            flask_app.config["REGISTRATION_OPEN"] = True
-            rv = c.get("/api/config")
-            assert rv.get_json()["REGISTRATION_OPEN"] is True
+    def test_config_endpoint_reflects_registration_flag(self, client, set_flag):
+        rv = client.get("/api/config")
+        assert rv.get_json()["REGISTRATION_OPEN"] is True
 
-            flask_app.config["REGISTRATION_OPEN"] = False
-            rv = c.get("/api/config")
-            assert rv.get_json()["REGISTRATION_OPEN"] is False
-
-        flask_app.config["REGISTRATION_OPEN"] = True
+        set_flag("registration_open", False)
+        rv = client.get("/api/config")
+        assert rv.get_json()["REGISTRATION_OPEN"] is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════

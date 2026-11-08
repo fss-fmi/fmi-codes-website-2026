@@ -37,7 +37,7 @@ src/
 - **Server state** lives in TanStack Query. Defaults: 30 s stale time, no retries, no refetch on window focus.
 - **Auth** is an httpOnly cookie set by the backend; the SPA never touches the token. `AuthContext` hydrates the user from `GET /api/auth/me` on load.
 - **Role-gated pages** wrap themselves in `<RequireAuth roles={[...]}>`. The routes in `App.tsx` are not guarded, so a new protected page must add its own wrapper.
-- **Feature flags** (`REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE`) come from `useConfig()`.
+- **Feature flags** (`REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE`, `REQUIRE_EMAIL_VERIFICATION`) come from `useConfig()`. `ConfigContext` refetches `/api/config` every 30 s and on window focus, because the admin switches the first three live from Mission Control's SITE tab.
 - **Types** in `src/types/` are maintained by hand to match the backend. Update them with any API change.
 - Import from `src` with the `@/` alias.
 
