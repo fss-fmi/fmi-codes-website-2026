@@ -49,8 +49,12 @@
   padding: 0;
 }
 
-html {
-  scroll-behavior: smooth;
+/* Scripted scrolls with behavior 'auto' follow this, so users who prefer
+   reduced motion get instant jumps. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 body {
