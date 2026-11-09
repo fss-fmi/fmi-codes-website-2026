@@ -91,22 +91,22 @@ Trigger `trig_prevent_team_deletion` blocks deleting a team that still has activ
 
 ### participants
 
-| Column                          | Type                | Notes                                                                                       |
-| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------- |
-| `id`                            | bigserial PK        |                                                                                             |
-| `team_id`                       | bigint FK teams     | `ON DELETE RESTRICT`; null when teamless                                                    |
-| `first_name`, `last_name`       | varchar(100)        |                                                                                             |
-| `email`                         | varchar(255) unique | Stored lowercased                                                                           |
-| `phone_number`                  | varchar(20)         |                                                                                             |
-| `faculty_number`                | varchar(20) unique  |                                                                                             |
-| `course`                        | varchar(30)         | CHECK: `Bachelor 1st Year` .. `Bachelor 4th Year`, `Masters 1st Year` .. `Masters 6th Year` |
-| `specialty_id`, `university_id` | bigint FK           | `ON DELETE RESTRICT`                                                                        |
-| `password_hash`                 | varchar(255)        | bcrypt                                                                                      |
-| `is_captain`                    | bool                |                                                                                             |
-| `status`                        | varchar(20)         | `active`, `inactive`, `removed`. Only active participants can log in or count toward teams  |
-| `tokens_valid_from`             | timestamptz         | Session revocation epoch; any JWT with an earlier `iat` is rejected                         |
-| `email_verified`                | bool                | Default false for new rows. Rows that existed before migration 016 were set to true         |
-| `password_reset_requested_at`   | timestamptz         | Unused by current code                                                                      |
+| Column                          | Type                | Notes                                                                                      |
+| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------ |
+| `id`                            | bigserial PK        |                                                                                            |
+| `team_id`                       | bigint FK teams     | `ON DELETE RESTRICT`; null when teamless                                                   |
+| `first_name`, `last_name`       | varchar(100)        |                                                                                            |
+| `email`                         | varchar(255) unique | Stored lowercased                                                                          |
+| `phone_number`                  | varchar(20)         |                                                                                            |
+| `faculty_number`                | varchar(20) unique  |                                                                                            |
+| `course`                        | varchar(30)         | CHECK: `Bachelor 1st Year` .. `Bachelor 4th Year`, `Masters 1st Year`, `Masters 2nd Year`  |
+| `specialty_id`, `university_id` | bigint FK           | `ON DELETE RESTRICT`                                                                       |
+| `password_hash`                 | varchar(255)        | bcrypt                                                                                     |
+| `is_captain`                    | bool                |                                                                                            |
+| `status`                        | varchar(20)         | `active`, `inactive`, `removed`. Only active participants can log in or count toward teams |
+| `tokens_valid_from`             | timestamptz         | Session revocation epoch; any JWT with an earlier `iat` is rejected                        |
+| `email_verified`                | bool                | Default false for new rows. Rows that existed before migration 016 were set to true        |
+| `password_reset_requested_at`   | timestamptz         | Unused by current code                                                                     |
 
 ### mentors
 
@@ -192,9 +192,10 @@ Read at request time (not stored in the DB):
 - `backend/database/schema.sql` is the authoritative, current schema. Fresh environments apply it directly: Postgres `initdb` runs it in Docker Compose and k3s (mounted as `01_schema.sql` / the `postgres-initdb` ConfigMap), and the e2e test fixture applies it once per session, then replays every migration file so an older test database catches up.
 - `backend/database/migrations/NNN_name.sql` are deltas for databases created before those changes. `python -m database.migrate` (from `backend/`) applies every file not yet recorded in `schema_migrations`, in number order, each in its own transaction with its record ([ADR-007](adr/007-recorded-migrations-runner.md)). On k3s it runs automatically as the backend's initContainer on every rollout, and on demand through **Actions → Migrate database** (see [Deployment](deployment.md#database-migrations)).
 - Rules for a migration file: the next unused three-digit number, lowercase name (`017_add_x.sql`), safe to re-run (`IF NOT EXISTS`, `ON CONFLICT`, ...), and no `BEGIN`/`COMMIT`. `tests/test_migrate.py` enforces the naming and transaction rules; the e2e suite applies every file against a fresh `schema.sql` database.
-- `schema_migrations` (`filename` primary key, `applied_at`) is created by the runner, not by `schema.sql`. The first run on a database that predates it re-applies 012 to 017 as no-ops and records them.
+- `schema_migrations` (`filename` primary key, `applied_at`) is created by the runner, not by `schema.sql`. The first run on a database that predates it re-applies 012 to 018 as no-ops and records them.
 - `016_email_verification.sql` adds `participants.email_verified` with `DEFAULT TRUE` (so existing participants are grandfathered as verified) and then switches the default to false for new rows. It is safe to re-run, and `schema.sql` uses the same two statements.
 - `017_feature_flags.sql` creates `feature_flags` and inserts its three rows as false with `ON CONFLICT DO NOTHING`, so it never overwrites a value the admin has set. False matches the old `REGISTRATION_OPEN`, `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ConfigMap values in every environment, so deploying it changes nothing visible.
+- `018_masters_two_years.sql` replaces `participants_course_check` so a Masters course is only `Masters 1st Year` or `Masters 2nd Year`. It does not rewrite stored courses: if a participant already holds `Masters 3rd Year` to `Masters 6th Year`, the migration fails and the rollout stops until those rows are fixed by hand.
 - Most statements use `IF NOT EXISTS`, but the `CREATE TRIGGER` statements do not, so running `schema.sql` a second time against an existing database fails partway. Treat it as a create-once script.
 - On k3s the schema and DB password are baked into the Postgres PVC at first boot. Editing `schema.sql` does not migrate a running database.
 

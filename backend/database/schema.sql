@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS participants (
     faculty_number VARCHAR(20) NOT NULL UNIQUE,
     course VARCHAR(30) NOT NULL CHECK (course IN (
         'Bachelor 1st Year', 'Bachelor 2nd Year', 'Bachelor 3rd Year', 'Bachelor 4th Year',
-        'Masters 1st Year', 'Masters 2nd Year', 'Masters 3rd Year', 'Masters 4th Year', 'Masters 5th Year', 'Masters 6th Year'
+        'Masters 1st Year', 'Masters 2nd Year'
     )),
     specialty_id BIGINT NOT NULL REFERENCES specialties(id) ON DELETE RESTRICT,
     university_id BIGINT NOT NULL REFERENCES universities(id) ON DELETE RESTRICT,

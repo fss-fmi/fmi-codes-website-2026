@@ -89,7 +89,7 @@ Request (all fields required):
 }
 ```
 
-Rules: names may not contain `< > & ; " \`; email must look like an address (stored lowercased); `course` must be one of `Bachelor 1st Year` to `Bachelor 4th Year` or `Masters 1st Year` to `Masters 6th Year`; password at least 12 characters; email and faculty number must be unique.
+Rules: names may not contain `< > & ; " \`; email must look like an address (stored lowercased); `course` must be one of `Bachelor 1st Year` to `Bachelor 4th Year`, `Masters 1st Year` or `Masters 2nd Year`; password at least 12 characters; email and faculty number must be unique.
 
 **"Other" university or specialty.** Send `"university_id": "other"` with `university_other`, or `"specialty_id": "other"` with `specialty_other`:
 

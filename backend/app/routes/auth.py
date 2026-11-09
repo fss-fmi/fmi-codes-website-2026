@@ -228,10 +228,6 @@ def register_participant():
         "Bachelor 4th Year",
         "Masters 1st Year",
         "Masters 2nd Year",
-        "Masters 3rd Year",
-        "Masters 4th Year",
-        "Masters 5th Year",
-        "Masters 6th Year",
     }
     if course not in valid_courses:
         return jsonify({"success": False, "error": "Invalid course selection"}), 400

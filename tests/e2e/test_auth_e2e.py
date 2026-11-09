@@ -90,6 +90,16 @@ class TestRegistration:
         assert rv.status_code == 400
         assert "course" in rv.get_json()["error"].lower()
 
+    @pytest.mark.parametrize("year", ["3rd", "4th", "5th", "6th"])
+    def test_masters_beyond_second_year_returns_400(self, client, seeds, year):
+        rv = register(client, 1, seeds, course=f"Masters {year} Year")
+        assert rv.status_code == 400
+        assert "course" in rv.get_json()["error"].lower()
+
+    def test_masters_second_year_registers(self, client, seeds):
+        rv = register(client, 1, seeds, course="Masters 2nd Year")
+        assert rv.status_code == 201
+
     def test_duplicate_email_returns_409(self, client, seeds):
         register(client, 1, seeds)
         rv = register(client, 2, seeds, email="user1@e2e.test")
