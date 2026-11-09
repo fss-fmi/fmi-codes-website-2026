@@ -615,6 +615,17 @@ echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
 
 On the production server, set the `fmicodes.com` A-record in DNS instead.
 
+Prod's controller Service runs with `externalTrafficPolicy: Local`. With the default `Cluster`,
+k3s servicelb rewrites every visitor's source address to its own pod's (`10.42.x.x`), so the
+backend's per-client rate limits would see one client. `Local` keeps the real address and only
+sends traffic to a controller on the node it arrived at, which on a single node is always the
+case. To check it after a deploy, send 16 bad logins from one network and confirm another network
+can still log in, or read the client address in the controller's access log:
+
+```bash
+kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=5
+```
+
 **Staging** has no certificate, no cert-manager and no host ports. Its controller is a
 `ClusterIP` Service, and the script also applies `overlays/staging/tailnet`, a Tailscale Ingress
 in `ingress-nginx-staging` whose backend is that controller on port 80:
@@ -626,7 +637,10 @@ device → Tailscale proxy (TLS, https://staging.<tailnet>.ts.net) → ingress-n
 The proxy terminates TLS and forwards plain HTTP with the `ts.net` Host header kept, so the
 staging nginx Ingress matches any host, has no TLS block and turns `ssl-redirect` off (a
 host-less rule sits in nginx's catch-all server, which has the default certificate, so the
-redirect would loop). Flux reconciles the tailnet Ingress as `fmi-codes-staging-tailnet`. The
+redirect would loop). The controller sets `X-Forwarded-For` to its TCP peer, which on staging is
+the Tailscale proxy, so every staging visitor shares one rate-limit bucket. A staging rate-limit
+test says nothing about how prod buckets real clients. Flux reconciles the tailnet Ingress as
+`fmi-codes-staging-tailnet`. The
 address appears once the operator runs ([Phase 7](#7--observability-prometheus--grafana)); until
 then, or without Tailscale:
 

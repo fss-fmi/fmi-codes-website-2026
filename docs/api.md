@@ -21,7 +21,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 401 bodies: `Authentication required`, `Token expired`, `Invalid token`, `Token has been revoked`.
 
-**Rate limits.** Default 200 requests per minute per IP, shared across workers when Redis is configured. Tighter limits are listed per endpoint. Exceeding a limit returns 429.
+**Rate limits.** Default 200 requests per minute per client address, shared across workers when Redis is configured. Tighter limits are listed per endpoint. Exceeding a limit returns 429. The backend takes the address from the last `X-Forwarded-For` entry, the one its single trusted proxy sets (ingress-nginx in k3s, the frontend's nginx in Compose), so a client can't pick its own bucket by sending the header. Everyone behind one NAT shares a bucket, which is why the two polled reads, `GET /api/config` and `GET /api/teams/rankings`, are exempt: at the venue every phone is on the same Wi-Fi. On staging every visitor arrives through the Tailscale proxy, so they all share one bucket.
 
 **Feature flags.** `registration_open`, `rankings_live` and `mentors_stay_tuned` live in the `feature_flags` table; the admin switches or schedules them through `/api/admin/flags*` and every request reads the current value, so no restart is needed. `REQUIRE_EMAIL_VERIFICATION` comes from server config. Three are enforced by the API: `registration_open` (registration returns 403 when closed), `rankings_live` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `mentors_stay_tuned` only changes what the SPA renders.
 
@@ -50,7 +50,7 @@ Readiness probe. Runs a pooled `SELECT 1`; Redis is reported but never fails the
 
 ### GET /api/config
 
-Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first three come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. Exempt from rate limits, because every open page polls it and the limiter sees the ingress, not the visitor (one shared bucket). 503 if the flags can't be read.
+Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first three come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. Exempt from rate limits, because every open page polls it and a full venue shares one NAT address. 503 if the flags can't be read.
 
 ```json
 {
@@ -441,7 +441,7 @@ Public. `{"success": true, "confirmed": false}`.
 
 ### GET /api/teams/rankings
 
-Public once `rankings_live` is on; until then 403 `Rankings are not live yet` for every caller, so scores entered before the reveal stay hidden (the admin reviews them through `GET /api/admin/teams/scores`). Registered teams by score, ties share a rank (`RANK()`), unscored teams last. Cached about 60 s and invalidated on every score change. The SPA polls it every 30 s when `rankings_live` is on.
+Public once `rankings_live` is on; until then 403 `Rankings are not live yet` for every caller, so scores entered before the reveal stay hidden (the admin reviews them through `GET /api/admin/teams/scores`). Registered teams by score, ties share a rank (`RANK()`), unscored teams last. Cached about 60 s and invalidated on every score change. The SPA polls it every 30 s when `rankings_live` is on. Exempt from rate limits: results are revealed at the venue, where every open page polls from one NAT address.
 
 ```json
 {

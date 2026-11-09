@@ -409,7 +409,7 @@ def test_config_route_keeps_its_shape(client, monkeypatch):
 
 
 def test_config_route_is_not_rate_limited(monkeypatch):
-    """Behind the ingress every visitor shares one limiter key, and the SPA polls."""
+    """The venue Wi-Fi puts every phone behind one NAT address, and the SPA polls."""
     for var in ("REDIS_SENTINELS", "REDIS_MASTER_NAME", "REDIS_URL"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("SECRET_KEY", "x" * 40)

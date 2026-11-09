@@ -10,6 +10,7 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from prometheus_flask_exporter import PrometheusMetrics
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.services.redis_client import build_limiter_storage_uri
 
@@ -45,6 +46,11 @@ def create_app(config_name="development"):
         static_folder=str(config.STATIC_FOLDER),
     )
     app.config.from_object(config)
+
+    # The limiter keys on remote_addr, which is otherwise the proxy's address for every visitor.
+    # Exactly one hop sits in front in every deployment (ingress-nginx in k3s, the frontend's
+    # nginx in Compose). Trusting more would let a client pick its bucket with a forged header.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
     # Under Gunicorn, PROMETHEUS_MULTIPROC_DIR (gunicorn.conf.py) makes prometheus_client keep
     # values in shared files and the exporter's /metrics sum them across workers.
