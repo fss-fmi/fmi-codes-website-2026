@@ -239,7 +239,9 @@ def test_get_redis_client_sentinel_ping_failure_returns_none(clear_redis_env):
 
 
 def test_redact_url_strips_password():
-    assert redis_client._redact_url("redis://:secret@localhost:6379") == "redis://:***@localhost:6379"
+    assert (
+        redis_client._redact_url("redis://:secret@localhost:6379") == "redis://:***@localhost:6379"
+    )
 
 
 def test_redact_url_strips_user_and_password():
@@ -257,3 +259,23 @@ def test_redis_del_swallows_client_errors(clear_redis_env):
     fake_client.delete.side_effect = OSError("boom")
     with patch("redis.from_url", return_value=fake_client):
         assert redis_client.redis_del("k") is False
+
+
+def test_redis_incr_returns_false_when_client_none(clear_redis_env):
+    assert redis_client.redis_incr("k") is False
+
+
+def test_redis_incr_increments(clear_redis_env):
+    clear_redis_env.setenv("REDIS_URL", "redis://localhost:6379/0")
+    fake_client = MagicMock()
+    with patch("redis.from_url", return_value=fake_client):
+        assert redis_client.redis_incr("k") is True
+    fake_client.incr.assert_called_once_with("k")
+
+
+def test_redis_incr_swallows_client_errors(clear_redis_env):
+    clear_redis_env.setenv("REDIS_URL", "redis://localhost:6379/0")
+    fake_client = MagicMock()
+    fake_client.incr.side_effect = OSError("boom")
+    with patch("redis.from_url", return_value=fake_client):
+        assert redis_client.redis_incr("k") is False

@@ -6,6 +6,7 @@ from flask import current_app, g, jsonify, request
 
 from app.database import execute_query
 from app.routes import teams_bp
+from app.services import feature_flag_service
 from app.services.email_service import send_join_request_notification
 from app.services.team_service import MAX_TEAM_MEMBERS, TeamService
 from app.utils.auth_decorators import (
@@ -215,7 +216,7 @@ def get_team(team_id):
         team_dict.pop("join_code", None)
     team_dict.pop("password_hash", None)
 
-    if user["role"] != "admin" and not current_app.config.get("RANKINGS_LIVE"):
+    if user["role"] != "admin" and not feature_flag_service.is_enabled("rankings_live"):
         team_dict.pop("score", None)
         team_dict.pop("score_updated_at", None)
 

@@ -62,45 +62,55 @@ Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub Ap
 
 ## Configuration
 
-| Kind                                                                                                                                                                     | Where                                                                                                                             | Change it with                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, feature flags)                                                        | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>`, then commit the YAML too                                                                                                                           |
-| App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`) | SOPS-encrypted `infra/k8s/secrets/secrets.enc.yaml` (prod) and `infra/k8s/overlays/staging/secrets/secrets.enc.yaml`              | `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; see [Rotate a secret](runbook.md#rotate-a-secret)), then commit the `.enc.yaml`                                                    |
-| DB and Redis passwords                                                                                                                                                   | Generated in-cluster by `deploy-stateful.sh`, tied to the PVC                                                                     | `bash infra/k8s/scripts/rotate-datastore-password.sh <target>` with `db`, `db-admin` or `redis` ([how](runbook.md#db-and-redis-passwords)); never delete the Secret and PVC to rotate, that wipes the data |
+| Kind                                                                                                                                                                                                 | Where                                                                                                                             | Change it with                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, `REQUIRE_EMAIL_VERIFICATION`)                                                                     | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>`, then commit the YAML too                                                                                                                           |
+| App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`) | SOPS-encrypted `infra/k8s/secrets/secrets.enc.yaml` (prod) and `infra/k8s/overlays/staging/secrets/secrets.enc.yaml`              | `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; see [Rotate a secret](runbook.md#rotate-a-secret)), then commit the `.enc.yaml`                                                    |
+| DB and Redis passwords                                                                                                                                                                               | Generated in-cluster by `deploy-stateful.sh`, tied to the PVC                                                                     | `bash infra/k8s/scripts/rotate-datastore-password.sh <target>` with `db`, `db-admin` or `redis` ([how](runbook.md#db-and-redis-passwords)); never delete the Secret and PVC to rotate, that wipes the data |
 
 ### Feature flags during the event
 
-| Flag                         | Turn on when                   | Effect                                                                                                        |
-| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `REGISTRATION_OPEN`          | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                                                            |
-| `MENTORS_STAY_TUNED`         | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster                                                  |
-| `RANKINGS_LIVE`              | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder; API returns scores (admin-only until then) |
-| `REQUIRE_EMAIL_VERIFICATION` | SMTP is confirmed to deliver   | Unverified participants get 403 on create, join and apply to team                                             |
+Registration, the mentor roster and the rankings are switched by the admin in Mission Control (**SITE** tab, see the [User Guide](user-guide.md#site-tab)), with no deploy, config change or restart. Each can be switched now or scheduled for a time, and every change is posted to the environment's event feed in Slack (`SLACK_EVENTS_WEBHOOK_URL`: `#event-feed-prod` or `#event-feed-staging`). The values live in the `feature_flags` table ([Data Model](data.md#feature_flags), [ADR-013](adr/013-feature-flags-in-database.md)), so staging and prod are switched independently and a Flux reconcile never reverts them.
+
+| Flag                 | Turn on when                   | Effect                                                                                                        |
+| -------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `registration_open`  | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                                                            |
+| `mentors_stay_tuned` | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster                                                  |
+| `rankings_live`      | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder; API returns scores (admin-only until then) |
+
+The API enforces a change on the next request in every pod. Visitors who already have the site open see it within 30 seconds (the SPA polls `/api/config`). A scheduled change takes effect within a few seconds of its time, on the first request after it; the database clock decides.
+
+`REQUIRE_EMAIL_VERIFICATION` is still server config, because it depends on SMTP working rather than on an event moment:
+
+| Flag                         | Turn on when                 | Effect                                                            |
+| ---------------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| `REQUIRE_EMAIL_VERIFICATION` | SMTP is confirmed to deliver | Unverified participants get 403 on create, join and apply to team |
 
 ```bash
-ENV=prod bash infra/k8s/scripts/apply-config.sh RANKINGS_LIVE true
+ENV=prod bash infra/k8s/scripts/apply-config.sh REQUIRE_EMAIL_VERIFICATION true
 ```
 
 Before turning on `REQUIRE_EMAIL_VERIFICATION`, register a test account and confirm the verification email arrives. With SMTP broken nobody could verify, and so nobody could form a team. On an existing database, apply `backend/database/migrations/016_email_verification.sql` first.
 
-The script patches the ConfigMap and restarts the backend. Commit the matching change to the base or overlay YAML so Git and the cluster agree. Staging and prod are flipped independently (`ENV=staging` is the default).
+The script patches the ConfigMap and restarts the backend. Commit the matching change to the base or overlay YAML so Git and the cluster agree (on a Flux cluster the patch reverts to git within minutes otherwise). Staging and prod are flipped independently (`ENV=staging` is the default).
 
 ### Environment variables
 
 The complete list with defaults is `.env.example` (local) plus the ConfigMap and Secret above (cluster). Variables with no safe default:
 
-| Variable                                              | Required    | Notes                                                                                                    |
-| ----------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
-| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value                                              |
-| `JWT_SECRET_KEY`                                      | yes         | Same check                                                                                               |
-| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                                                      |
-| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                                                            |
-| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links                                        |
-| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped                                       |
-| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Discord webhook for bug reports                                                                          |
-| `SLACK_BUG_WEBHOOK_URL`                               | no          | Slack incoming webhook for bug reports, used alongside Discord; with neither set bug reports are dropped |
-| `SLACK_MIGRATIONS_WEBHOOK_URL`                        | no          | Slack incoming webhook for migration results; without it they are only logged                            |
-| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off                                     |
+| Variable                                              | Required    | Notes                                                                                                                             |
+| ----------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value                                                                       |
+| `JWT_SECRET_KEY`                                      | yes         | Same check                                                                                                                        |
+| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                                                                               |
+| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                                                                                     |
+| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links                                                                 |
+| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped                                                                |
+| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Discord webhook for bug reports                                                                                                   |
+| `SLACK_BUG_WEBHOOK_URL`                               | no          | Slack incoming webhook for bug reports, used alongside Discord; with neither set bug reports are dropped                          |
+| `SLACK_MIGRATIONS_WEBHOOK_URL`                        | no          | Slack incoming webhook for migration results; without it they are only logged                                                     |
+| `SLACK_EVENTS_WEBHOOK_URL`                            | no          | Slack incoming webhook for the event feed (feature flag changes), one channel per environment; without it changes are only logged |
+| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off                                                              |
 
 ## Health checks
 

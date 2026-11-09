@@ -17,9 +17,6 @@ data:
   REDIS_MASTER_NAME: "mymaster"
   REDIS_URL: ""
   FRONTEND_ORIGIN: "https://fmicodes.com"
-  MENTORS_STAY_TUNED: "false"
-  REGISTRATION_OPEN: "false"
-  RANKINGS_LIVE: "false"
   REQUIRE_EMAIL_VERIFICATION: "false"
 ---
 apiVersion: apps/v1
@@ -155,6 +152,13 @@ spec:
                 secretKeyRef:
                   name: fmi-codes-app
                   key: SLACK_BUG_WEBHOOK_URL
+                  optional: true
+            # Event feed (#event-feed-prod / #event-feed-staging); unset only logs the event.
+            - name: SLACK_EVENTS_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-app
+                  key: SLACK_EVENTS_WEBHOOK_URL
                   optional: true
           startupProbe:
             httpGet:

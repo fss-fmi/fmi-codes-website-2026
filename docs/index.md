@@ -26,12 +26,12 @@ graph LR
     Judge --> Board["Scores published<br/>to the live leaderboard"]
 ```
 
-1. **Registration.** Participants sign up while `REGISTRATION_OPEN` is on.
+1. **Registration.** Participants sign up while registration is open; the admin opens and closes it from Mission Control, now or at a scheduled time.
 2. **Teams.** The creator of a team becomes its captain and gets a join code. Others join with the code or apply through BROWSE TEAMS. A team becomes active at 3 members and caps at 6.
 3. **Slots and queue.** The first 18 active teams are registered automatically. Later teams wait in a numbered queue and are promoted when a registered team drops out.
 4. **Preferences.** Each captain ranks exactly 3 mentors and each mentor ranks exactly 3 registered teams.
 5. **Matching.** The admin runs a two-phase matching that gives every team 2 or 3 mentors, never more than 3, then confirms it so teams and mentors see their assignments.
-6. **Results.** After judging, the admin enters each team's score (0 to 100) and the rankings page shows the live leaderboard once `RANKINGS_LIVE` is on.
+6. **Results.** After judging, the admin enters each team's score (0 to 100) and the rankings page shows the live leaderboard once the admin publishes the rankings in Mission Control.
 
 ## Stack at a glance
 

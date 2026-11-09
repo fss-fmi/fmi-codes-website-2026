@@ -109,20 +109,21 @@ cd fmi-codes-website-2026
 
 Nothing to create by hand — the passwords split three ways and every one is handled for you:
 
-| Secret                              | Keys                                                                                                                                                                                       | How it's set                                                                                                                                                                                                                                                                                       |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fmi-codes-app` (SOPS, in git)      | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](#access-grafana-and-staging)) |
-| `fmi-codes-db`, `fmi-codes-redis`   | DB / Redis passwords                                                                                                                                                                       | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                           |
-| `grafana-admin` (SOPS, in git)      | `admin-user`, `admin-password`                                                                                                                                                             | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
-| `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                      | **staging's file only**, used by every cluster ([why](#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                    |
-| `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                        | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                            |
-| `flux-relay-slack` (SOPS, in git)   | `bot_token`, `cluster_channel`, `staging_channel` (the Flux Relay Slack app's token and the two channel IDs)                                                                               | committed **empty**; `deploy-observability.sh` applies it to `flux-system`. Until it's filled the relay idles and Flux errors get no "recovered" reply. Set them with `rotate-secret.sh --flux-relay <key>` ([Recovery replies](#recovery-replies))                                                |
+| Secret                              | Keys                                                                                                                                                                                                                   | How it's set                                                                                                                                                                                                                                                                                       |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fmi-codes-app` (SOPS, in git)      | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](#access-grafana-and-staging)) |
+| `fmi-codes-db`, `fmi-codes-redis`   | DB / Redis passwords                                                                                                                                                                                                   | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                           |
+| `grafana-admin` (SOPS, in git)      | `admin-user`, `admin-password`                                                                                                                                                                                         | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                       |
+| `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                                                  | **staging's file only**, used by every cluster ([why](#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                    |
+| `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                                                    | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                            |
+| `flux-relay-slack` (SOPS, in git)   | `bot_token`, `cluster_channel`, `staging_channel` (the Flux Relay Slack app's token and the two channel IDs)                                                                                                           | committed **empty**; `deploy-observability.sh` applies it to `flux-system`. Until it's filled the relay idles and Flux errors get no "recovered" reply. Set them with `rotate-secret.sh --flux-relay <key>` ([Recovery replies](#recovery-replies))                                                |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
-`SLACK_BUG_WEBHOOK_URL` / `SLACK_MIGRATIONS_WEBHOOK_URL` are optional; set them later with
-`rotate-secret.sh` (step 5) if you want password-reset mail, bug reports in Discord or Slack,
-or migration results in Slack.
+`SLACK_BUG_WEBHOOK_URL` / `SLACK_MIGRATIONS_WEBHOOK_URL` / `SLACK_EVENTS_WEBHOOK_URL` are
+optional; set them later with `rotate-secret.sh` (step 5) if you want password-reset mail, bug
+reports in Discord or Slack, migration results in Slack, or the event feed (feature flag
+changes) in Slack.
 
 ### 3. Run the bootstrap
 
@@ -197,15 +198,18 @@ bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD             # prompts (hid
 bash infra/k8s/scripts/rotate-secret.sh DISCORD_BUG_WEBHOOK_URL
 bash infra/k8s/scripts/rotate-secret.sh SLACK_BUG_WEBHOOK_URL
 bash infra/k8s/scripts/rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL
+bash infra/k8s/scripts/rotate-secret.sh SLACK_EVENTS_WEBHOOK_URL   # #event-feed-staging / #event-feed-prod
 ```
 
 Each prompts for the value, re-encrypts the one key, re-applies the secret, and restarts the
 backend. `ENV=staging` (default) or `ENV=prod`. Commit the `.enc.yaml` afterward. Every secret
 and how to rotate it: [Rotate a secret](#rotate-a-secret).
 
-The script only changes keys already in the file. If `SLACK_BUG_WEBHOOK_URL` or
-`SLACK_MIGRATIONS_WEBHOOK_URL` is missing (files encrypted before they were added), add it once
-with `sops <file>` first.
+The script only changes keys already in the file. If `SLACK_BUG_WEBHOOK_URL`,
+`SLACK_MIGRATIONS_WEBHOOK_URL` or `SLACK_EVENTS_WEBHOOK_URL` is missing (files encrypted before
+they were added), add it once with `sops <file>` first. Each environment's
+`SLACK_EVENTS_WEBHOOK_URL` is a webhook for its own channel, so staging's test flips never land
+in prod's feed.
 
 ### 6. (Optional) Enable GitOps auto-deploy — the Flux deploy key
 
@@ -577,7 +581,7 @@ the `app` service carries a `backend` alias) and k8s with no rebuild.
 Config split: non-secret env comes from the `fmi-codes-backend-config` ConfigMap via
 `envFrom`; passwords via `secretKeyRef` (`DB_PASSWORD`, `REDIS_PASSWORD` from Phase 2, and
 `SECRET_KEY`/`JWT_SECRET_KEY`/`ADMIN_PASSWORD_HASH`/`MAIL_PASSWORD`/`DISCORD_BUG_WEBHOOK_URL`
-and, optionally, `SLACK_BUG_WEBHOOK_URL` from `fmi-codes-app`; the `migrate` initContainer
+and, optionally, `SLACK_BUG_WEBHOOK_URL` and `SLACK_EVENTS_WEBHOOK_URL` from `fmi-codes-app`; the `migrate` initContainer
 reads `SLACK_MIGRATIONS_WEBHOOK_URL` from it, optionally). On staging, `FRONTEND_ORIGIN` comes
 from `fmi-codes-app` too (`overlays/staging/backend-origin-patch.yaml`, optional, so a secret
 without it never blocks a rollout; the backend then falls back to `http://localhost:5173` and
@@ -1565,6 +1569,7 @@ with the fix (reinstall the version `install-tools.sh` pins).
 | `DISCORD_BUG_WEBHOOK_URL`      | `rotate-secret.sh DISCORD_BUG_WEBHOOK_URL`                                                        | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | `SLACK_BUG_WEBHOOK_URL`        | `rotate-secret.sh SLACK_BUG_WEBHOOK_URL`                                                          | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | `SLACK_MIGRATIONS_WEBHOOK_URL` | `rotate-secret.sh SLACK_MIGRATIONS_WEBHOOK_URL`                                                   | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
+| `SLACK_EVENTS_WEBHOOK_URL`     | `rotate-secret.sh SLACK_EVENTS_WEBHOOK_URL`                                                       | Nothing.                                                                                                                                 | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
 | Grafana `admin-password`       | `rotate-secret.sh --grafana admin-password`                                                       | The Grafana admin logs in with the new password.                                                                                         | It leaked; someone with access leaves                                                                                                                                          |
 | Tailscale OAuth client         | `rotate-secret.sh --tailscale client_id`, then `client_secret` ([below](#tailscale-oauth-client)) | Nothing; the operator restarts and Grafana and staging keep their tailnet addresses.                                                     | It leaked; someone with cluster or admin-console access leaves                                                                                                                 |
 | Cluster alerts webhooks        | `rotate-secret.sh --alertmanager cluster_url` / `staging_url`                                     | Nothing; no restart.                                                                                                                     | It leaked (anyone with the URL can post to the channel)                                                                                                                        |
@@ -1601,9 +1606,10 @@ Notes per secret:
   revoke the old app password.
 - **`DISCORD_BUG_WEBHOOK_URL`**: create a new webhook in the Discord channel settings, rotate,
   send a test bug report, then delete the old webhook.
-- **`SLACK_BUG_WEBHOOK_URL`** and **`SLACK_MIGRATIONS_WEBHOOK_URL`**: add a new webhook for
-  the same channel under the Slack app's Incoming Webhooks, rotate, then remove the old one
-  there. A test bug report (or the next migration run) confirms it.
+- **`SLACK_BUG_WEBHOOK_URL`**, **`SLACK_MIGRATIONS_WEBHOOK_URL`** and
+  **`SLACK_EVENTS_WEBHOOK_URL`**: add a new webhook for the same channel under the Slack app's
+  Incoming Webhooks, rotate, then remove the old one there. A test bug report, the next
+  migration run or a flag switched off and on again on staging confirms it.
 - **Cluster alerts webhooks** (`--alertmanager cluster_url` or `staging_url`): same steps for that
   channel. The staging webhook sits in both envs' files, so rotate `staging_url` in each. The
   script also updates Flux's copy (`flux-system/flux-slack` or `flux-slack-staging`). The test in
@@ -1740,12 +1746,17 @@ throughout.
 
 ## Change a config value
 
-Non-secret backend setting (feature flags, `FRONTEND_ORIGIN`, DB/Redis coordinates):
+Non-secret backend setting (`REQUIRE_EMAIL_VERIFICATION`, `FRONTEND_ORIGIN`, DB/Redis
+coordinates):
 
 ```bash
-bash infra/k8s/scripts/apply-config.sh REGISTRATION_OPEN true
+bash infra/k8s/scripts/apply-config.sh REQUIRE_EMAIL_VERIFICATION true
 bash infra/k8s/scripts/apply-config.sh          # re-apply the overlay from disk, then roll
 ```
+
+Registration, rankings and the mentor roster are not config: the admin switches or schedules
+them in Mission Control (**SITE** tab), and the script refuses `REGISTRATION_OPEN`,
+`RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ([Deployment](deployment.md#feature-flags-during-the-event)).
 
 It patches the `fmi-codes-backend-config` ConfigMap and restarts the backend. Secrets are
 refused (use `rotate-secret.sh` / `deploy-stateful.sh`). A live patch drifts from git, so

@@ -60,6 +60,8 @@ class Config:
     DISCORD_BUG_WEBHOOK_URL = os.environ.get("DISCORD_BUG_WEBHOOK_URL", "")
     # Slack incoming webhook for the same reports; both are used when both are set
     SLACK_BUG_WEBHOOK_URL = os.environ.get("SLACK_BUG_WEBHOOK_URL", "")
+    # Slack incoming webhook for the event feed (flag changes); unset = log only
+    SLACK_EVENTS_WEBHOOK_URL = os.environ.get("SLACK_EVENTS_WEBHOOK_URL", "")
 
     # Social media / contact links
     DISCORD_URL = os.environ.get("DISCORD_URL", "")
@@ -69,9 +71,6 @@ class Config:
     CONTACT_PHONE = os.environ.get("CONTACT_PHONE", "")
 
     STATIC_FOLDER = BASE_DIR / "app" / "static"
-    MENTORS_STAY_TUNED = os.environ.get("MENTORS_STAY_TUNED", "false").lower() == "true"
-    REGISTRATION_OPEN = os.environ.get("REGISTRATION_OPEN", "false").lower() == "true"
-    RANKINGS_LIVE = os.environ.get("RANKINGS_LIVE", "false").lower() == "true"
     REQUIRE_EMAIL_VERIFICATION = (
         os.environ.get("REQUIRE_EMAIL_VERIFICATION", "false").lower() == "true"
     )

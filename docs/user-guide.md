@@ -145,6 +145,21 @@ Log in with **ADMIN** selected. Click **ADMIN** in the menu to open **MISSION CO
 
 <!-- screenshot: Mission Control KPI row and tabs -->
 
+### Site tab
+
+Opens and closes participant registration, publishes the rankings and shows or hides the mentor roster for everyone, straight away, with no help from whoever runs the server. Each switch has its own panel showing whether it is on, when it last changed and any pending schedule.
+
+| Panel                        | On                                                  | Off                                             |
+| ---------------------------- | --------------------------------------------------- | ----------------------------------------------- |
+| **PARTICIPANT REGISTRATION** | OPEN: sign-up and the REGISTER links work           | CLOSED: the registration page says it is closed |
+| **LIVE RANKINGS**            | LIVE: the leaderboard and team scores are public    | HIDDEN: only you see the scores                 |
+| **MENTOR ROSTER**            | COMING SOON: the MENTORS page shows the placeholder | PUBLIC: the MENTORS page shows every mentor     |
+
+- **OPEN NOW**, **CLOSE NOW** (and the matching button on the other panels) switches immediately after you confirm. Visitors with the site already open see the change within 30 seconds.
+- To have it happen by itself, pick a date and time in your own time zone and click **SCHEDULE**, then confirm. The server makes the change on the first visit to the site after that minute (open pages check every 30 seconds), so anyone looking sees it on time, even if nobody has Mission Control open. Each panel holds one schedule: a new one replaces it, and **CANCEL SCHEDULE** drops it. To open registration at one time and close it at another, schedule the opening, then schedule the closing once registration is open.
+- Switching by hand does not cancel a schedule. If the schedule later asks for the state the site is already in, it is dropped quietly.
+- Every change, by hand or scheduled, is posted to the event feed in Slack (`#event-feed-prod`; staging posts to `#event-feed-staging`).
+
 ### Registration tab
 
 - **REGISTRATION PROGRESS** shows how many of the 18 slots are used.
@@ -165,11 +180,11 @@ Note: although the confirm dialog says it cannot be undone, running the matching
 
 ### Scores tab
 
-After judging, type each team's total score (0 to 100) and click **SAVE**. Scores stay visible only to you until rankings are published (`RANKINGS_LIVE`); after that the public leaderboard picks up each change within 30 seconds. **SCORE OVERVIEW** charts the scores entered so far.
+After judging, type each team's total score (0 to 100) and click **SAVE**. Scores stay visible only to you until rankings are published (**LIVE RANKINGS** on the [Site tab](#site-tab)); after that the public leaderboard picks up each change within 30 seconds. **SCORE OVERVIEW** charts the scores entered so far.
 
 ### Switching parts of the site on and off
 
-Opening registration, showing the mentor roster and publishing the rankings are controlled by server settings, not by buttons in Mission Control. Ask whoever runs the server to change `REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE` or `REQUIRE_EMAIL_VERIFICATION` (see [Deployment](deployment.md#feature-flags-during-the-event)).
+Registration, the rankings and the mentor roster are on the [Site tab](#site-tab). Only requiring participants to verify their email before forming a team is a server setting: ask whoever runs the server to change `REQUIRE_EMAIL_VERIFICATION` (see [Deployment](deployment.md#feature-flags-during-the-event)).
 
 ### Known issues
 

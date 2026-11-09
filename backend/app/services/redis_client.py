@@ -272,6 +272,23 @@ def redis_del(*keys: str) -> bool:
         return False
 
 
+def redis_incr(key: str) -> bool:
+    """Fail-open INCR. Returns True if the increment was issued successfully.
+
+    Used to bump a cache version key; a failure leaves the old version in use
+    until its entries expire — logged, but never fatal.
+    """
+    client = get_redis_client()
+    if client is None:
+        return False
+    try:
+        client.incr(key)
+        return True
+    except Exception as exc:
+        logger.warning("Redis INCR %s failed — ignoring: %s", key, exc)
+        return False
+
+
 def build_limiter_storage_uri() -> str:
     """Build the Flask-Limiter storage_uri from the same Redis config.
 

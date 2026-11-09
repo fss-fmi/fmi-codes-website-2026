@@ -11,9 +11,10 @@ import RegistrationPanel from './panels/RegistrationPanel';
 import PreferencesPanel from './panels/PreferencesPanel';
 import MatchingPanel from './panels/MatchingPanel';
 import ScoresPanel from './panels/ScoresPanel';
+import SitePanel from './panels/SitePanel';
 
 function MatchingContent() {
-  const [tab, setTab] = useState<Tab>('registration');
+  const [tab, setTab] = useState<Tab>('site');
 
   const { data: regData } = useQuery<RegStatus>({
     queryKey: ['admin-reg-status'],
@@ -33,6 +34,7 @@ function MatchingContent() {
   const matchingLabel = matchData ? (matchData.confirmed ? 'CONFIRMED' : 'PENDING') : undefined;
 
   const tabs: { key: Tab; label: string; badge?: string | number }[] = [
+    { key: 'site', label: 'SITE' },
     {
       key: 'registration',
       label: 'REGISTRATION',
@@ -89,7 +91,10 @@ function MatchingContent() {
           label="MENTORS W/ PREFS"
           value={prefData ? `${prefData.mentors_submitted}/${prefData.mentors_total}` : '—'}
         />
-        <KPICard label="MATCHING STATE" value={matchingLabel ?? '—'} />
+        <KPICard
+          label="MATCHING STATE"
+          value={matchingLabel ?? '—'}
+        />
       </div>
 
       <div
@@ -117,8 +122,7 @@ function MatchingContent() {
               textTransform: 'uppercase',
               background: 'transparent',
               color: tab === t.key ? 'var(--px-teal)' : 'var(--px-muted-strong)',
-              borderBottom:
-                tab === t.key ? '2px solid var(--px-teal)' : '2px solid transparent',
+              borderBottom: tab === t.key ? '2px solid var(--px-teal)' : '2px solid transparent',
               marginBottom: -2,
               transition: 'color 0.2s',
             }}
@@ -143,6 +147,7 @@ function MatchingContent() {
         ))}
       </div>
 
+      {tab === 'site' && <SitePanel />}
       {tab === 'registration' && <RegistrationPanel />}
       {tab === 'preferences' && <PreferencesPanel />}
       {tab === 'matching' && <MatchingPanel />}

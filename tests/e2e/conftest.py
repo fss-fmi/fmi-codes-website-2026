@@ -34,6 +34,7 @@ _DEFAULT_TEST_DB = "postgresql://postgres:postgres@localhost:5432/fmi_hackathon_
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", _DEFAULT_TEST_DB)
 
 SCHEMA_PATH = BACKEND_DIR / "database" / "schema.sql"
+MIGRATIONS_DIR = BACKEND_DIR / "database" / "migrations"
 
 # ── Seed data used across all E2E tests ────────────────────────────────────
 _UNIV_NAME = "E2E Test University"
@@ -86,7 +87,8 @@ def db_conn(db_url):
 def _schema_applied(db_conn):
     """Apply the full schema SQL to the test database once per session.
 
-    Skips if the schema is already present (idempotent).
+    The schema is skipped if already present; the migrations always run (each is
+    safe to re-run), so a test database created before a migration catches up.
     """
     with db_conn.cursor() as cur:
         cur.execute(
@@ -95,10 +97,10 @@ def _schema_applied(db_conn):
             "  WHERE table_schema = 'public' AND table_name = 'participants'"
             ")"
         )
-        if cur.fetchone()["exists"]:
-            return  # schema already applied
-        sql = SCHEMA_PATH.read_text(encoding="utf-8")
-        cur.execute(sql)
+        if not cur.fetchone()["exists"]:
+            cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+        for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            cur.execute(path.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="session")
@@ -164,7 +166,7 @@ def flask_app(db_url, seeds):
         DATABASE_URL=db_url,
         ADMIN_EMAIL=ADMIN_EMAIL,
         ADMIN_PASSWORD_HASH=_hash_pw(ADMIN_PW),
-        REGISTRATION_OPEN=True,
+        SLACK_EVENTS_WEBHOOK_URL="",
         # Every registration sends a verification email; never let tests reach real SMTP.
         MAIL_PASSWORD="",
         # RATELIMIT_ENABLED already False via TestingConfig — set again to be safe
@@ -190,7 +192,8 @@ def clean_db(db_conn, flask_app):
 
     Universities, specialties, and mentors are deliberately preserved —
     they're seeded once per session.  The matching_state row is reset to
-    is_confirmed=FALSE.
+    is_confirmed=FALSE, and the feature flags to registration open, everything
+    else off, no schedules.
     """
     _wipe_entities(db_conn)
     _reset_caches()
@@ -229,6 +232,10 @@ def _wipe_entities(conn):
             "INSERT INTO matching_state (id, is_confirmed) VALUES (1, FALSE) "
             "ON CONFLICT (id) DO UPDATE SET is_confirmed = FALSE, confirmed_at = NULL"
         )
+        cur.execute(
+            "UPDATE feature_flags SET enabled = (name = 'registration_open'),"
+            " scheduled_value = NULL, scheduled_at = NULL"
+        )
 
 
 def _reset_caches():
@@ -250,8 +257,29 @@ def _reset_caches():
             "cache:lookups:specialties",
             "cache:teams:registered",
         )
+        from app.services.feature_flag_service import invalidate_cache
+
+        # Versioned key: bump it, as a real switch does, rather than delete it.
+        invalidate_cache()
     except Exception:
         pass
+
+
+@pytest.fixture()
+def set_flag(db_conn):
+    """Return a setter that writes a feature flag straight to the DB and drops the
+    flag cache. clean_db restores the defaults after the test."""
+
+    def _set(name, enabled):
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE feature_flags SET enabled = %s, updated_at = NOW() WHERE name = %s",
+                (enabled, name),
+            )
+            assert cur.rowcount == 1, name
+        _reset_caches()
+
+    return _set
 
 
 @pytest.fixture()

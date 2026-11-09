@@ -104,15 +104,11 @@ class TestRegistration:
         # M2: generic message — does not reveal which field caused the conflict
         assert "already exists" in rv.get_json()["error"].lower()
 
-    def test_registration_closed_returns_403(self, flask_app, seeds):
-        flask_app.config["REGISTRATION_OPEN"] = False
-        try:
-            with flask_app.test_client() as c:
-                rv = register(c, 99, seeds)
-            assert rv.status_code == 403
-            assert rv.get_json()["success"] is False
-        finally:
-            flask_app.config["REGISTRATION_OPEN"] = True
+    def test_registration_closed_returns_403(self, client, seeds, set_flag):
+        set_flag("registration_open", False)
+        rv = register(client, 99, seeds)
+        assert rv.status_code == 403
+        assert rv.get_json()["success"] is False
 
     def test_sql_injection_in_email_is_handled_safely(self, client, seeds):
         """SQL injection must not crash the server or produce a 5xx.

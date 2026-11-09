@@ -1,54 +1,47 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
-interface ConfigState {
+interface Flags {
   REGISTRATION_OPEN: boolean;
   MENTORS_STAY_TUNED: boolean;
   RANKINGS_LIVE: boolean;
   REQUIRE_EMAIL_VERIFICATION: boolean;
+}
+
+interface ConfigState extends Flags {
   isLoading: boolean;
 }
 
-const ConfigContext = createContext<ConfigState>({
+const CLOSED: Flags = {
   REGISTRATION_OPEN: false,
   MENTORS_STAY_TUNED: false,
   RANKINGS_LIVE: false,
   REQUIRE_EMAIL_VERIFICATION: false,
-  isLoading: true,
-});
+};
+
+const ConfigContext = createContext<ConfigState>({ ...CLOSED, isLoading: true });
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
-  const [config, setConfig] = useState<ConfigState>({
-    REGISTRATION_OPEN: false,
-    MENTORS_STAY_TUNED: false,
-    RANKINGS_LIVE: false,
-    REQUIRE_EMAIL_VERIFICATION: false,
-    isLoading: true,
+  // The admin switches flags live from Mission Control, so open pages poll for them.
+  const { data, isPending } = useQuery({
+    queryKey: ['config'],
+    queryFn: () => api.get<Flags>('/api/config'),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: 'always',
   });
 
-  useEffect(() => {
-    api
-      .get<{
-        REGISTRATION_OPEN: boolean;
-        MENTORS_STAY_TUNED: boolean;
-        RANKINGS_LIVE: boolean;
-        REQUIRE_EMAIL_VERIFICATION: boolean;
-      }>('/api/config')
-      .then((data) => {
-        setConfig({
-          REGISTRATION_OPEN: data.REGISTRATION_OPEN,
-          MENTORS_STAY_TUNED: data.MENTORS_STAY_TUNED,
-          RANKINGS_LIVE: data.RANKINGS_LIVE,
-          REQUIRE_EMAIL_VERIFICATION: data.REQUIRE_EMAIL_VERIFICATION,
-          isLoading: false,
-        });
-      })
-      .catch(() => {
-        setConfig((prev) => ({ ...prev, isLoading: false }));
-      });
-  }, []);
+  // A failed refetch keeps the last flags; a failed first load leaves everything closed.
+  const flags = data ?? CLOSED;
+  const value: ConfigState = {
+    REGISTRATION_OPEN: flags.REGISTRATION_OPEN,
+    MENTORS_STAY_TUNED: flags.MENTORS_STAY_TUNED,
+    RANKINGS_LIVE: flags.RANKINGS_LIVE,
+    REQUIRE_EMAIL_VERIFICATION: flags.REQUIRE_EMAIL_VERIFICATION,
+    isLoading: isPending,
+  };
 
-  return <ConfigContext.Provider value={config}>{children}</ConfigContext.Provider>;
+  return <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

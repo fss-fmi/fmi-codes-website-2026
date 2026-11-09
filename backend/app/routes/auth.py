@@ -14,6 +14,7 @@ from flask import current_app, g, jsonify, make_response, request
 from app import limiter
 from app.database import execute_query, get_db_cursor
 from app.routes import auth_bp
+from app.services import feature_flag_service
 from app.services.auth_service import generate_token, hash_password, verify_password
 from app.services.redis_client import redis_del
 from app.utils.auth_decorators import participant_required, token_required
@@ -188,7 +189,7 @@ def register_participant():
     - uniqueness checks + insert happen in a single pooled transaction
     - DB UNIQUE constraints are the real guard against races
     """
-    if not current_app.config.get("REGISTRATION_OPEN"):
+    if not feature_flag_service.is_enabled("registration_open"):
         return jsonify({"success": False, "error": "Registration is closed"}), 403
     data = request.get_json(silent=True) or {}
     required = [
