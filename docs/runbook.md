@@ -749,10 +749,18 @@ alone to `flux-image-updates`. `flux-auto-pr.yaml` therefore runs a gate
 
 The next scan bumps the second image, and that push's run opens or re-arms the PR. Runs share
 a concurrency group that never cancels a run in progress; each reads the live branch rather
-than the commit that started it, so the last run decides and an older one can't undo it.
+than the commit that started it, so the last run decides and an older one can't undo it. The
+gate only touches a PR from this repo's own `flux-image-updates` branch: `gh pr list --head`
+matches the branch name alone, so a fork's PR from a branch of the same name is skipped.
 
-If no bump PR opens within about 10 minutes of a merge to `main` and the last **Open PR for
-Flux image bump** run logged `holds part of a release`, the second image of that release was
+The gate protects `main` only when it runs. If an **Open PR for Flux image bump** run fails
+(the CI alert reports it) while the branch holds a half bump and the open bump PR still has
+auto-merge on, turn it off by hand until the next scan completes the release:
+`gh pr merge <number> --repo fss-fmi/fmi-codes-website-2026 --disable-auto`.
+
+If no bump PR opens within about 10 minutes of a merge that builds images (anything outside
+`infra/**` and the docs) and the last **Open PR for Flux image bump** run logged
+`holds part of a release`, the second image of that release was
 never pushed, almost always a failed frontend build in **Build and Push Docker Image** (the
 CI alert names it). That release does not deploy. Fix the build or run it again (**Actions →
 Build and Push Docker Image → Run workflow**): every run builds both images under a new tag,

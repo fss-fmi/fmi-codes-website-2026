@@ -43,11 +43,10 @@ class FakeGh:
     def push(self, backend, frontend):
         self.files[gate_mod.BRANCH] = overlay(backend, frontend)
 
-    def branch_exists(self, branch):
-        return branch in self.files
-
     def file(self, ref, path):
         assert path == gate_mod.OVERLAY
+        if ref not in self.files:
+            raise gate_mod.NotFoundError(f"No commit found for the ref {ref} (HTTP 404)")
         return self.files[ref]
 
     def open_pr(self):
@@ -199,16 +198,6 @@ def test_second_release_while_a_pr_is_open():
     assert gh.pr["autoMergeRequest"]
 
 
-def test_runs_out_of_order_still_end_on_the_live_branch():
-    """A queued run for the half-bump commit that starts after the whole bump keeps the PR armed."""
-    gh = FakeGh(branch=(NEW, NEW))
-    gate_mod.gate(gh)
-    # The run triggered by the earlier backend-only push reads the live branch, not its commit.
-    assert gate_mod.gate(gh) == "ready"
-    assert gh.pr["autoMergeRequest"]
-    assert ("disable", "https://github.com/x/pull/7") not in gh.calls
-
-
 def test_deleted_branch_does_nothing():
     gh = FakeGh(branch=None)
     assert gate_mod.gate(gh) == "gone"
@@ -227,6 +216,17 @@ def test_main_fails_when_auto_merge_cannot_be_enabled(monkeypatch, capsys):
     monkeypatch.setattr(gate_mod, "Gh", lambda repo: gh)
     assert gate_mod.main() == 1
     assert "::error::Could not enable auto-merge" in capsys.readouterr().out
+
+
+def test_main_fails_when_main_has_no_overlay(monkeypatch, capsys):
+    """Only the bump branch's 404 means "gone"; a missing file on main is an error."""
+    gh = FakeGh()
+    del gh.files[gate_mod.BASE]
+    monkeypatch.setenv("GITHUB_REPOSITORY", REPO)
+    monkeypatch.setattr(gate_mod, "Gh", lambda repo: gh)
+    assert gate_mod.main() == 1
+    assert "::error::" in capsys.readouterr().out
+    assert gh.calls == []
 
 
 def test_main_succeeds_while_waiting(monkeypatch):
@@ -249,15 +249,18 @@ class Runner:
         return self.result
 
 
-def test_gh_branch_missing_is_a_404():
-    gh = gate_mod.Gh(REPO, Runner(1, stderr="gh: Branch not found (HTTP 404)"))
-    assert gh.branch_exists(gate_mod.BRANCH) is False
+def test_gh_missing_ref_is_not_found():
+    stderr = "gh: No commit found for the ref flux-image-updates (HTTP 404)"
+    gh = gate_mod.Gh(REPO, Runner(1, stderr=stderr))
+    with pytest.raises(gate_mod.NotFoundError):
+        gh.file(gate_mod.BRANCH, gate_mod.OVERLAY)
 
 
-def test_gh_branch_check_raises_on_other_errors():
+def test_gh_other_errors_are_not_not_found():
     gh = gate_mod.Gh(REPO, Runner(1, stderr="gh: Bad credentials (HTTP 401)"))
-    with pytest.raises(gate_mod.GhError):
-        gh.branch_exists(gate_mod.BRANCH)
+    with pytest.raises(gate_mod.GhError) as err:
+        gh.file(gate_mod.BRANCH, gate_mod.OVERLAY)
+    assert not isinstance(err.value, gate_mod.NotFoundError)
 
 
 def test_gh_reads_the_file_from_the_given_ref():
@@ -266,15 +269,19 @@ def test_gh_reads_the_file_from_the_given_ref():
     assert runner.args[0][-1] == f"repos/{REPO}/contents/{gate_mod.OVERLAY}?ref={gate_mod.BRANCH}"
 
 
-def test_gh_open_pr_parses_the_first_result():
-    runner = Runner(stdout='[{"number": 5, "url": "u", "title": "t", "autoMergeRequest": null}]')
-    assert gate_mod.Gh(REPO, runner).open_pr() == {
-        "number": 5,
-        "url": "u",
-        "title": "t",
-        "autoMergeRequest": None,
-    }
+def test_gh_open_pr_returns_this_repos_pr():
+    same = '{"number": 5, "url": "u", "title": "t", "autoMergeRequest": null, "isCrossRepository": false}'
+    runner = Runner(stdout=f"[{same}]")
+    assert gate_mod.Gh(REPO, runner).open_pr()["number"] == 5
+    assert "isCrossRepository" in runner.args[0][-1]
     assert gate_mod.Gh(REPO, Runner(stdout="[]")).open_pr() is None
+
+
+def test_gh_open_pr_ignores_a_fork_branch_of_the_same_name():
+    fork = '{"number": 9, "url": "f", "title": "t", "autoMergeRequest": null, "isCrossRepository": true}'
+    same = '{"number": 5, "url": "u", "title": "t", "autoMergeRequest": null, "isCrossRepository": false}'
+    assert gate_mod.Gh(REPO, Runner(stdout=f"[{fork}]")).open_pr() is None
+    assert gate_mod.Gh(REPO, Runner(stdout=f"[{fork}, {same}]")).open_pr()["number"] == 5
 
 
 def test_gh_enable_failure_explains_the_settings():

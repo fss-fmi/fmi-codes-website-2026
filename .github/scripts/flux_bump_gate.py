@@ -44,6 +44,10 @@ class GhError(Exception):
     pass
 
 
+class NotFoundError(GhError):
+    pass
+
+
 class AutoMergeError(GhError):
     pass
 
@@ -80,17 +84,9 @@ class Gh:
     def _gh(self, *args: str) -> str:
         result = self._run(["gh", *args], capture_output=True, text=True)
         if result.returncode:
-            raise GhError(f"gh {' '.join(args[:2])} failed: {result.stderr.strip()}")
+            error = NotFoundError if "(HTTP 404)" in result.stderr else GhError
+            raise error(f"gh {' '.join(args[:2])} failed: {result.stderr.strip()}")
         return result.stdout
-
-    def branch_exists(self, branch: str) -> bool:
-        try:
-            self._gh("api", f"repos/{self.repo}/branches/{branch}", "--silent")
-        except GhError as e:
-            if "HTTP 404" in str(e):
-                return False
-            raise
-        return True
 
     def file(self, ref: str, path: str) -> str:
         return self._gh(
@@ -101,6 +97,11 @@ class Gh:
         )
 
     def open_pr(self) -> dict | None:
+        """The open bump PR from this repo's branch, never a fork's branch of the same name.
+
+        --head matches the branch name only, and the repo is public: arming a fork's PR
+        would merge outside code once a maintainer approves its workflows.
+        """
         prs = json.loads(
             self._gh(
                 "pr",
@@ -114,10 +115,10 @@ class Gh:
                 "--state",
                 "open",
                 "--json",
-                "number,url,title,autoMergeRequest",
+                "number,url,title,autoMergeRequest,isCrossRepository",
             )
         )
-        return prs[0] if prs else None
+        return next((pr for pr in prs if pr.get("isCrossRepository") is False), None)
 
     def create_pr(self, title: str) -> dict:
         url = self._gh(
@@ -153,10 +154,13 @@ class Gh:
 
 def gate(gh) -> str:
     """Bring the bump PR in line with the live branch. Returns what it found, for logs and tests."""
-    if not gh.branch_exists(BRANCH):
+    try:
+        branch_text = gh.file(BRANCH, OVERLAY)
+    except NotFoundError:
+        # The overlay path itself is checked by the unit tests, so a 404 here is the branch.
         logger.info("%s is gone (the last bump merged); nothing to do", BRANCH)
         return "gone"
-    new = overlay_tags(gh.file(BRANCH, OVERLAY))
+    new = overlay_tags(branch_text)
     pr = gh.open_pr()
     if len(set(new.values())) > 1:
         if pr and pr.get("autoMergeRequest"):
