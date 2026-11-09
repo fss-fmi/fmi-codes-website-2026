@@ -22,6 +22,7 @@ import app.services.auth_service as auth_service
 # Password hashing
 # ---------------------------------------------------------------------------
 
+
 class TestPasswordHashing:
     def test_hash_returns_string(self):
         hashed = auth_service.hash_password("hunter2")
@@ -60,6 +61,7 @@ class TestPasswordVerification:
 # JWT generation and decoding  (requires Flask app context)
 # ---------------------------------------------------------------------------
 
+
 class TestJWTGeneration:
     def test_generate_token_returns_string(self, app_ctx):
         token = auth_service.generate_token(42, "participant")
@@ -89,7 +91,11 @@ class TestJWTGeneration:
         exp = datetime.fromtimestamp(payload["exp"], tz=UTC)
         delta = exp - before
         # Allow ±5 s around the nominal 3-day expiry
-        assert timedelta(days=3) - timedelta(seconds=5) <= delta <= timedelta(days=3) + timedelta(seconds=5)
+        assert (
+            timedelta(days=3) - timedelta(seconds=5)
+            <= delta
+            <= timedelta(days=3) + timedelta(seconds=5)
+        )
 
 
 class TestJWTDecoding:
@@ -119,7 +125,7 @@ class TestJWTDecoding:
             "user_id": 1,
             "role": "participant",
             "iat": datetime.now(UTC) - timedelta(days=10),
-            "exp": datetime.now(UTC) - timedelta(days=7),   # already expired
+            "exp": datetime.now(UTC) - timedelta(days=7),  # already expired
         }
         expired_token = jwt.encode(payload, secret, algorithm="HS256")
         with pytest.raises(jwt.ExpiredSignatureError):

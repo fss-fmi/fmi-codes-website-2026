@@ -24,6 +24,7 @@ from app.services.team_service import (
 # generate_join_code
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateJoinCode:
     VALID_CHARS = set(string.ascii_uppercase + string.digits)
 
@@ -61,6 +62,7 @@ class TestGenerateJoinCode:
 # ---------------------------------------------------------------------------
 # Module-level business constants
 # ---------------------------------------------------------------------------
+
 
 class TestBusinessConstants:
     """Guard rails — if someone accidentally changes these thresholds the tests

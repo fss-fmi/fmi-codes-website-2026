@@ -387,7 +387,7 @@ listed in its `workflow_run.workflows` by its exact `name:`.
 
 The log tail is taken from the failed step only: the job stops there, so its error is the
 last `##[error]` line at or before that step finished. Earlier `##[error]` lines can come
-from `continue-on-error` steps (like the advisory `ruff format` check) and are skipped. The
+from `continue-on-error` steps and are skipped. The
 repo is public, so the excerpt stays short. GitHub masks registered secrets in logs, but not
 values derived from them or credentials a step prints that were never registered, so the
 excerpt is also redacted: token shapes (Slack, GitHub, AWS, Google, OpenAI, GitLab, Tailscale,

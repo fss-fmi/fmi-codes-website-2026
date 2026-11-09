@@ -76,14 +76,14 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install ruff
-        run: pip install ruff
+        # The pinned version: formatter style changes between ruff releases.
+        run: pip install "$(grep -E '^ruff==' backend/requirements.txt)"
 
       - name: Ruff lint
         run: ruff check .
 
-      - name: Ruff format check (advisory)
+      - name: Ruff format check
         run: ruff format --check .
-        continue-on-error: true
 
       - name: Set up Node
         uses: actions/setup-node@v4

@@ -22,6 +22,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 # App fixture — creates a Flask app with TESTING mode, no real DB
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def app():
     """Session-scoped minimal Flask app (no real DB pool)."""
@@ -57,6 +58,7 @@ def client(app):
 # ---------------------------------------------------------------------------
 # DB mock helper — patches execute_query / execute_insert / execute_update
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def mock_db():
