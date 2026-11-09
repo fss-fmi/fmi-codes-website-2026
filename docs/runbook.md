@@ -734,6 +734,46 @@ re-run (or `kubectl apply -f infra/k8s/flux/self.yaml`).
 > constraint this creates: build inputs (Dockerfiles, build scripts) must stay OUT of
 > `infra/`. Today they're in `./backend` and `./frontend` — keep them there.
 
+**A release reaches staging whole or not at all.** `docker-cd.yaml` pushes the backend image
+about a minute before the frontend, both with the same tag, and Flux scans each image
+repository every 5 minutes on its own timer. A scan in that gap commits a bump of the backend
+alone to `flux-image-updates`. `flux-auto-pr.yaml` therefore runs a gate
+(`.github/scripts/flux_bump_gate.py`) that reads the live branch and compares every
+`$imagepolicy` tag in the staging overlay:
+
+| Branch tags | What the gate does                                                                                                                  |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| differ      | Opens nothing, turns auto-merge off on an open bump PR, logs a notice that it is waiting for the other image. The run still passes. |
+| all match   | Opens the PR (or reuses the open one), titles it `deploy: bump <old> -> <new>` from the tags, enables auto-merge.                   |
+| match main  | Nothing to bump; opens nothing.                                                                                                     |
+
+The next scan bumps the second image, and that push's run opens or re-arms the PR. Runs share
+a concurrency group that never cancels a run in progress; each reads the live branch rather
+than the commit that started it, so the last run decides and an older one can't undo it. The
+gate only touches a PR from this repo's own `flux-image-updates` branch: `gh pr list --head`
+matches the branch name alone, so a fork's PR from a branch of the same name is skipped.
+
+**Known gap (accepted 2026-11-09): a failed gate run can let a half bump merge.** The gate
+protects `main` only when it runs. It takes three things at once: a bump PR is already open
+with auto-merge on (the previous release's CI hasn't finished), Flux pushes a half bump of the
+next release onto it, and that push's **Open PR for Flux image bump** run fails (a GitHub or
+bot token outage). Auto-merge then stays on, and the half bump merges once CI passes. Staging
+runs a mixed pair until the next scan bumps the second image a few minutes later, and a
+promote in that window would send the mixed pair to prod. When the CI alert reports a failed
+gate run, check the open bump PR's tags; if they differ, turn auto-merge off by hand until the
+next scan completes the release:
+`gh pr merge <number> --repo fss-fmi/fmi-codes-website-2026 --disable-auto`. Not closed in
+code on purpose: a required CI check that fails mismatched bump PRs would block it, but would
+also post a CI failure alert on every split release, which happens far more often than this.
+
+If no bump PR opens within about 10 minutes of a merge that builds images (anything outside
+`infra/**` and the docs) and the last **Open PR for Flux image bump** run logged
+`holds part of a release`, the second image of that release was
+never pushed, almost always a failed frontend build in **Build and Push Docker Image** (the
+CI alert names it). That release does not deploy. Fix the build or run it again (**Actions →
+Build and Push Docker Image → Run workflow**): every run builds both images under a new tag,
+which Flux picks up as one whole release.
+
 ### 7 — Observability (Prometheus + Grafana)
 
 Answers "is the backend leaking memory?" with a memory-per-pod graph over **days**, instead
