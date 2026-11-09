@@ -638,9 +638,12 @@ The proxy terminates TLS and forwards plain HTTP with the `ts.net` Host header k
 staging nginx Ingress matches any host, has no TLS block and turns `ssl-redirect` off (a
 host-less rule sits in nginx's catch-all server, which has the default certificate, so the
 redirect would loop). The controller sets `X-Forwarded-For` to its TCP peer, which on staging is
-the Tailscale proxy, so every staging visitor shares one rate-limit bucket. A staging rate-limit
-test says nothing about how prod buckets real clients. Flux reconciles the tailnet Ingress as
-`fmi-codes-staging-tailnet`. The address appears once the operator runs
+the Tailscale proxy, so every staging visitor shares one rate-limit bucket. That is why staging
+sets `RATELIMIT_MULTIPLIER: "10"` in `overlays/staging/backend-config-patch.yaml`: every limit is
+10 times prod's (login 150/min, default 2000/min). To test prod's exact limits, set it to `"1"`
+there and commit it (Flux reverts an `apply-config.sh` patch), then put it back. A staging
+rate-limit test still says nothing about how prod buckets real clients. Flux reconciles the
+tailnet Ingress as `fmi-codes-staging-tailnet`. The address appears once the operator runs
 ([Phase 7](#7--observability-prometheus--grafana)); until then, or without Tailscale:
 
 ```bash

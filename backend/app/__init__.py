@@ -13,6 +13,7 @@ from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.services.redis_client import build_limiter_storage_uri
+from app.utils.rate_limits import multiplier_from_env, scaled
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 # falls back to in-memory for local dev without Redis.
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per minute"],
+    default_limits=[scaled("200 per minute")],
 )
 
 
@@ -67,6 +68,7 @@ def create_app(config_name="development"):
     # attach the limiter. build_limiter_storage_uri() returns a redis+sentinel://
     # / redis:// / memory:// string depending on the Redis config present.
     app.config["RATELIMIT_STORAGE_URI"] = build_limiter_storage_uri()
+    app.config["RATELIMIT_MULTIPLIER"] = multiplier_from_env()
     limiter.init_app(app)
 
     # CORS — allow frontend origin with credentials (httpOnly cookies)

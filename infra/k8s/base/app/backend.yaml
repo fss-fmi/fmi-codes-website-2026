@@ -18,6 +18,7 @@ data:
   REDIS_URL: ""
   FRONTEND_ORIGIN: "https://fmicodes.com"
   REQUIRE_EMAIL_VERIFICATION: "false"
+  RATELIMIT_MULTIPLIER: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment

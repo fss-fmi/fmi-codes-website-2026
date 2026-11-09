@@ -19,6 +19,7 @@ from app.services import (
 from app.services.redis_client import get_redis_client
 from app.services.team_service import TeamService
 from app.utils.auth_decorators import admin_required, get_optional_user
+from app.utils.rate_limits import scaled
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +414,7 @@ def admin_cancel_flag_schedule(name):
 
 
 @api_bp.route("/bug-report", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(scaled("10 per minute"))
 def submit_bug_report():
     """Accept a bug report and post it to the Discord and Slack bug-report channels.
 

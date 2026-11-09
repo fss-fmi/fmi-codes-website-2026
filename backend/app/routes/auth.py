@@ -18,6 +18,7 @@ from app.services import feature_flag_service
 from app.services.auth_service import generate_token, hash_password, verify_password
 from app.services.redis_client import redis_del
 from app.utils.auth_decorators import participant_required, token_required
+from app.utils.rate_limits import scaled
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,7 @@ def _get_or_create_lookup(cursor, insert_sql, select_sql, values):
 
 
 @auth_bp.route("/api/auth/register", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(scaled("10 per minute"))
 def register_participant():
     """Register a new participant and return JWT.
 
@@ -333,7 +334,7 @@ def register_participant():
 
 
 @auth_bp.route("/api/auth/login", methods=["POST"])
-@limiter.limit("15 per minute")
+@limiter.limit(scaled("15 per minute"))
 def login():
     """Login for participants, mentors, or admin. Returns JWT.
 
@@ -452,7 +453,7 @@ def get_me():
 
 
 @auth_bp.route("/api/auth/change-password", methods=["PATCH"])
-@limiter.limit("10 per minute")
+@limiter.limit(scaled("10 per minute"))
 @token_required
 def change_password():
     """Change the current user's password. Requires current password verification."""
@@ -532,7 +533,7 @@ def change_password():
 
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
-@limiter.limit("5 per hour")
+@limiter.limit(scaled("5 per hour"))
 def reset_password():
     """C4: Initiate a secure password reset.
 
@@ -607,7 +608,7 @@ def reset_password():
 
 
 @auth_bp.route("/api/auth/reset-password/confirm", methods=["POST"])
-@limiter.limit("10 per hour")
+@limiter.limit(scaled("10 per hour"))
 def confirm_password_reset():
     """C4: Verify the reset token and set a new password.
 
@@ -696,7 +697,7 @@ def confirm_password_reset():
 
 
 @auth_bp.route("/api/auth/verify-email", methods=["POST"])
-@limiter.limit("20 per hour")
+@limiter.limit(scaled("20 per hour"))
 def verify_email():
     """Mark a participant's email verified from the emailed link's token.
 
@@ -745,7 +746,7 @@ def verify_email():
 
 
 @auth_bp.route("/api/auth/resend-verification", methods=["POST"])
-@limiter.limit("3 per hour")
+@limiter.limit(scaled("3 per hour"))
 @participant_required
 def resend_verification():
     """Send a fresh verification link to the logged-in participant."""
