@@ -753,10 +753,18 @@ than the commit that started it, so the last run decides and an older one can't 
 gate only touches a PR from this repo's own `flux-image-updates` branch: `gh pr list --head`
 matches the branch name alone, so a fork's PR from a branch of the same name is skipped.
 
-The gate protects `main` only when it runs. If an **Open PR for Flux image bump** run fails
-(the CI alert reports it) while the branch holds a half bump and the open bump PR still has
-auto-merge on, turn it off by hand until the next scan completes the release:
-`gh pr merge <number> --repo fss-fmi/fmi-codes-website-2026 --disable-auto`.
+**Known gap (accepted 2026-11-09): a failed gate run can let a half bump merge.** The gate
+protects `main` only when it runs. It takes three things at once: a bump PR is already open
+with auto-merge on (the previous release's CI hasn't finished), Flux pushes a half bump of the
+next release onto it, and that push's **Open PR for Flux image bump** run fails (a GitHub or
+bot token outage). Auto-merge then stays on, and the half bump merges once CI passes. Staging
+runs a mixed pair until the next scan bumps the second image a few minutes later, and a
+promote in that window would send the mixed pair to prod. When the CI alert reports a failed
+gate run, check the open bump PR's tags; if they differ, turn auto-merge off by hand until the
+next scan completes the release:
+`gh pr merge <number> --repo fss-fmi/fmi-codes-website-2026 --disable-auto`. Not closed in
+code on purpose: a required CI check that fails mismatched bump PRs would block it, but would
+also post a CI failure alert on every split release, which happens far more often than this.
 
 If no bump PR opens within about 10 minutes of a merge that builds images (anything outside
 `infra/**` and the docs) and the last **Open PR for Flux image bump** run logged
