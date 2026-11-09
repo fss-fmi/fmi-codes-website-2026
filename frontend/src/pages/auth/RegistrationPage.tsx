@@ -29,14 +29,7 @@ const COURSES = [
   },
   {
     group: 'Master',
-    values: [
-      'Masters 1st Year',
-      'Masters 2nd Year',
-      'Masters 3rd Year',
-      'Masters 4th Year',
-      'Masters 5th Year',
-      'Masters 6th Year',
-    ],
+    values: ['Masters 1st Year', 'Masters 2nd Year'],
   },
 ];
 

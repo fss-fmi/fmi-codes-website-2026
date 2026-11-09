@@ -13,7 +13,7 @@ How the test suite is built and how to extend it. For setup and single-test comm
 | Layer                   | Location                     | Tests | Needs                               |
 | ----------------------- | ---------------------------- | ----- | ----------------------------------- |
 | Backend unit            | `tests/*.py`                 | 409   | Nothing (Redis optional)            |
-| Backend API integration | `tests/e2e/*.py`             | 206   | PostgreSQL test DB (Redis optional) |
+| Backend API integration | `tests/e2e/*.py`             | 208   | PostgreSQL test DB (Redis optional) |
 | Frontend component      | `frontend/src/**/*.test.tsx` | 27    | Node only                           |
 
 Counts are `def test_` occurrences, so parametrised tests run more cases than listed.

@@ -32,7 +32,7 @@ The participant who created a team (`participants.is_captain`, `teams.captain_id
 
 ### Course
 
-A participant's study year. One of `Bachelor 1st Year` .. `Bachelor 4th Year` or `Masters 1st Year` .. `Masters 6th Year`, enforced by a database CHECK.
+A participant's study year. One of `Bachelor 1st Year` .. `Bachelor 4th Year`, `Masters 1st Year` or `Masters 2nd Year`, enforced by a database CHECK.
 
 ## D
 
