@@ -19,6 +19,7 @@ from app.services import (
 from app.services.redis_client import get_redis_client
 from app.services.team_service import TeamService
 from app.utils.auth_decorators import admin_required, get_optional_user
+from app.utils.rate_limits import scaled
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +78,8 @@ def get_config():
     No auth required — flags are read by the Navbar, Hero, Rankings routing, etc.
     SameSite=Lax cookies mean this endpoint is safe to call without CSRF tokens.
     The SPA polls it, so a flag switched in Mission Control reaches open pages.
-    Exempt from rate limits: behind the ingress every visitor shares one limiter
-    key, so the 200/min default would 429 the polls of a full venue, and a 429
+    Exempt from rate limits: the venue Wi-Fi puts every phone behind one NAT
+    address, so the 200/min default would 429 a full venue's polls, and a 429
     on the first load shows registration as closed. Reads are cached.
     """
     try:
@@ -413,7 +414,7 @@ def admin_cancel_flag_schedule(name):
 
 
 @api_bp.route("/bug-report", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit(scaled("10 per minute"))
 def submit_bug_report():
     """Accept a bug report and post it to the Discord and Slack bug-report channels.
 
@@ -495,11 +496,14 @@ def submit_bug_report():
 
 
 @api_bp.route("/teams/rankings", methods=["GET"])
+@limiter.exempt
 def get_team_rankings():
     """Public once rankings_live is on: DB-backed team rankings sorted by score descending.
 
     The flag is enforced here and not only in the SPA, so scores entered before
     the reveal can't be read by calling the API directly.
+    Exempt from rate limits: results are revealed at the venue, where every open
+    page polls every 30 s from behind one NAT address. Reads are cached.
     """
     if not feature_flag_service.is_enabled("rankings_live"):
         return jsonify({"success": False, "error": "Rankings are not live yet"}), 403

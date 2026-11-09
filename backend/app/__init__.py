@@ -10,8 +10,10 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from prometheus_flask_exporter import PrometheusMetrics
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.services.redis_client import build_limiter_storage_uri
+from app.utils.rate_limits import multiplier_from_env, scaled
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 # falls back to in-memory for local dev without Redis.
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per minute"],
+    default_limits=[scaled("200 per minute")],
 )
 
 
@@ -46,6 +48,11 @@ def create_app(config_name="development"):
     )
     app.config.from_object(config)
 
+    # The limiter keys on remote_addr, which is otherwise the proxy's address for every visitor.
+    # Exactly one hop sits in front in every deployment (ingress-nginx in k3s, the frontend's
+    # nginx in Compose). Trusting more would let a client pick its bucket with a forged header.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+
     # Under Gunicorn, PROMETHEUS_MULTIPROC_DIR (gunicorn.conf.py) makes prometheus_client keep
     # values in shared files and the exporter's /metrics sum them across workers.
     # url_rule, not the raw path, labels the latency histogram: every unknown URL a scanner
@@ -61,6 +68,7 @@ def create_app(config_name="development"):
     # attach the limiter. build_limiter_storage_uri() returns a redis+sentinel://
     # / redis:// / memory:// string depending on the Redis config present.
     app.config["RATELIMIT_STORAGE_URI"] = build_limiter_storage_uri()
+    app.config["RATELIMIT_MULTIPLIER"] = multiplier_from_env()
     limiter.init_app(app)
 
     # CORS — allow frontend origin with credentials (httpOnly cookies)

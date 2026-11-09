@@ -8,3 +8,6 @@ data:
   REDIS_SENTINELS: "redis.fmi-codes-staging.svc.cluster.local:26379"
   # Comes from the SOPS app secret instead (backend-origin-patch.yaml).
   FRONTEND_ORIGIN: null
+  # Every staging visitor shares one bucket behind the Tailscale proxy, and staging is for testing.
+  # Set "1" (in git: Flux reverts kubectl patches) to test prod's exact limits.
+  RATELIMIT_MULTIPLIER: "10"

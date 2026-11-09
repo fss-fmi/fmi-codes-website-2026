@@ -409,15 +409,18 @@ def test_config_route_keeps_its_shape(client, monkeypatch):
 
 
 def test_config_route_is_not_rate_limited(monkeypatch):
-    """Behind the ingress every visitor shares one limiter key, and the SPA polls."""
+    """The venue Wi-Fi puts every phone behind one NAT address, and the SPA polls."""
     for var in ("REDIS_SENTINELS", "REDIS_MASTER_NAME", "REDIS_URL"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("SECRET_KEY", "x" * 40)
     monkeypatch.setenv("JWT_SECRET_KEY", "y" * 40)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "$2b$12$" + "a" * 22)
-    with patch("app.database.init_database"):
-        from app import create_app
+    from app import create_app, limiter
 
+    # init_app keeps the limiter's previous state (off after any testing app) and then skips
+    # hooking into the app, so it has to be on first.
+    monkeypatch.setattr(limiter, "enabled", True)
+    with patch("app.database.init_database"):
         limited_app = create_app("production")
     monkeypatch.setattr(
         feature_flag_service,
