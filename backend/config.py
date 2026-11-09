@@ -22,10 +22,6 @@ class Config:
     # Request size guard — large bodies are fully parsed before any truncation otherwise
     MAX_CONTENT_LENGTH = 64 * 1024  # 64 KB hard limit
 
-    # Explicit because the limiter is module-level and init_app defaults it to whatever the
-    # previous app left, so a testing app would otherwise disable it for every later app.
-    RATELIMIT_ENABLED = True
-
     # PostgreSQL database configuration
     DB_HOST = os.environ.get("DB_HOST", "localhost")
     DB_PORT = os.environ.get("DB_PORT", 5432)

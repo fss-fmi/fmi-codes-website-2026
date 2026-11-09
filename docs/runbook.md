@@ -640,9 +640,8 @@ host-less rule sits in nginx's catch-all server, which has the default certifica
 redirect would loop). The controller sets `X-Forwarded-For` to its TCP peer, which on staging is
 the Tailscale proxy, so every staging visitor shares one rate-limit bucket. A staging rate-limit
 test says nothing about how prod buckets real clients. Flux reconciles the tailnet Ingress as
-`fmi-codes-staging-tailnet`. The
-address appears once the operator runs ([Phase 7](#7--observability-prometheus--grafana)); until
-then, or without Tailscale:
+`fmi-codes-staging-tailnet`. The address appears once the operator runs
+([Phase 7](#7--observability-prometheus--grafana)); until then, or without Tailscale:
 
 ```bash
 kubectl -n ingress-nginx-staging port-forward svc/ingress-nginx-staging-controller 8080:80

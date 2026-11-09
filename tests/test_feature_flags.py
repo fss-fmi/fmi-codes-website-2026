@@ -415,9 +415,12 @@ def test_config_route_is_not_rate_limited(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "x" * 40)
     monkeypatch.setenv("JWT_SECRET_KEY", "y" * 40)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "$2b$12$" + "a" * 22)
-    with patch("app.database.init_database"):
-        from app import create_app
+    from app import create_app, limiter
 
+    # init_app keeps the limiter's previous state (off after any testing app) and then skips
+    # hooking into the app, so it has to be on first.
+    monkeypatch.setattr(limiter, "enabled", True)
+    with patch("app.database.init_database"):
         limited_app = create_app("production")
     monkeypatch.setattr(
         feature_flag_service,

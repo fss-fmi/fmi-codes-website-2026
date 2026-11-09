@@ -1,8 +1,8 @@
 """Rate limits key on the visitor's address, not the proxy's (#207).
 
-Each test builds a production app with in-memory limiter storage, so the limiter is
-on and no Redis is needed. REMOTE_ADDR plays the one trusted proxy in front of the
-backend (ingress-nginx in k3s, the frontend's nginx in Compose).
+Each test builds a production app with in-memory limiter storage, so no Redis is
+needed. REMOTE_ADDR plays the one trusted proxy in front of the backend
+(ingress-nginx in k3s, the frontend's nginx in Compose).
 """
 
 from unittest.mock import patch
@@ -23,9 +23,13 @@ def limited_app(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "x" * 40)
     monkeypatch.setenv("JWT_SECRET_KEY", "y" * 40)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "$2b$12$" + "a" * 22)
-    with patch("app.database.init_database"):
-        from app import create_app, limiter
+    from app import create_app, limiter
 
+    # `enabled` lives on the one module-level limiter, and init_app keeps the value the previous
+    # app left (False after any testing app) and then skips hooking into the app. It has to be on
+    # before create_app; monkeypatch puts it back so later e2e tests don't run rate limited.
+    monkeypatch.setattr(limiter, "enabled", True)
+    with patch("app.database.init_database"):
         app = create_app("production")
 
     @limiter.limit("2 per minute")
