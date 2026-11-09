@@ -20,7 +20,7 @@ from app.database import execute_query, get_db_cursor
 
 logger = logging.getLogger(__name__)
 
-TEAM_CAPACITY = 3    # mentors per team
+TEAM_CAPACITY = 3  # mentors per team
 MENTOR_CAPACITY = 3  # teams per mentor
 
 
@@ -89,9 +89,7 @@ def run_gale_shapley():
     teams_without_prefs = [t for t in all_teams if t not in team_pref_ranks]
     mentors_without_prefs = [m for m in all_mentors if m not in mentor_pref_lists]
     if teams_without_prefs:
-        warnings.append(
-            f"{len(teams_without_prefs)} team(s) have not submitted mentor preferences"
-        )
+        warnings.append(f"{len(teams_without_prefs)} team(s) have not submitted mentor preferences")
     if mentors_without_prefs:
         warnings.append(
             f"{len(mentors_without_prefs)} mentor(s) have not submitted team preferences"
@@ -131,8 +129,8 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
 
     # ── Phase 1: Extended Gale-Shapley ───────────────────────────────────────
     mentor_proposal_idx = dict.fromkeys(all_mentors, 0)
-    mentor_assignments = {m: [] for m in all_mentors}   # mentor -> [team_ids]
-    team_assignments   = {t: [] for t in all_teams}     # team   -> [mentor_ids]
+    mentor_assignments = {m: [] for m in all_mentors}  # mentor -> [team_ids]
+    team_assignments = {t: [] for t in all_teams}  # team   -> [mentor_ids]
 
     queue = deque(all_mentors)
     in_queue = set(all_mentors)
@@ -174,9 +172,7 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
         else:
             # Team is full — displace the worst holder if this mentor is preferred
             mentor_rank = team_ranking.get(mentor_id, float("inf"))
-            worst_held = max(
-                current_holders, key=lambda m: team_ranking.get(m, float("inf"))
-            )
+            worst_held = max(current_holders, key=lambda m: team_ranking.get(m, float("inf")))
             worst_rank = team_ranking.get(worst_held, float("inf"))
 
             if mentor_rank < worst_rank:
@@ -241,7 +237,6 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
         )
 
     return assignments, warnings
-
 
 
 def save_matching_results(assignments):

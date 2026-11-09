@@ -118,12 +118,14 @@ The integration tests need an existing `fmi_hackathon_2026_test` database at `po
 | Check       | Command                                                | Gate               |
 | ----------- | ------------------------------------------------------ | ------------------ |
 | Ruff lint   | `ruff check .`                                         | CI fails on errors |
-| Ruff format | `ruff format .`                                        | CI reports only    |
+| Ruff format | `ruff format .`                                        | CI fails           |
 | ESLint      | `cd frontend && npx eslint .`                          | CI fails           |
 | Type check  | `cd frontend && npx tsc -p tsconfig.app.json --noEmit` | CI fails           |
 | Prettier    | `npm run format` (root)                                | pre-commit only    |
 
 The Husky pre-commit hook runs lint-staged: Prettier on html/js/json/css/md, ESLint + Prettier on frontend TS, `ruff check --fix` + `ruff format` on Python.
+
+Ruff is pinned to one exact version in `backend/requirements.txt` and CI installs that same version, because the formatter's style changes between releases. To upgrade, bump the pin, run `ruff format .` and commit the result in the same PR.
 
 ## Project structure
 

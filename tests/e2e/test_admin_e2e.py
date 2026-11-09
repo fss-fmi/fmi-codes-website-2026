@@ -31,6 +31,7 @@ pytestmark = pytest.mark.e2e
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
+
 def _create_team(client, token, name="Admin Test Team"):
     rv = client.post("/api/teams", json={"team_name": name}, headers=bearer(token))
     assert rv.status_code == 201, f"create team failed: {rv.get_data(as_text=True)}"
@@ -41,7 +42,7 @@ def _create_active_registered_team(client, token, flask_app, seeds, name="Admin 
     """Create a 3-member team that auto-activates and auto-registers."""
     rv = client.post("/api/teams", json={"team_name": name}, headers=bearer(token))
     assert rv.status_code == 201, f"create team failed: {rv.get_data(as_text=True)}"
-    team_id   = rv.get_json()["team"]["id"]
+    team_id = rv.get_json()["team"]["id"]
     join_code = rv.get_json()["team"]["join_code"]
     for _ in range(2):
         with flask_app.test_client() as cx:
@@ -51,20 +52,21 @@ def _create_active_registered_team(client, token, flask_app, seeds, name="Admin 
                 f"join failed: {rv_join.status_code} {rv_join.get_data(as_text=True)}"
             )
     # Verify the team is now active (auto-activated at 3 members)
-    team_status = client.get(f"/api/teams/{team_id}", headers=bearer(token)).get_json()["team"]["status"]
+    team_status = client.get(f"/api/teams/{team_id}", headers=bearer(token)).get_json()["team"][
+        "status"
+    ]
     assert team_status == "active", f"Expected active team, got status={team_status!r}"
     return team_id
 
 
 def _register_team(admin_client, team_id, adm_tok):
-    return admin_client.post(
-        f"/api/admin/teams/{team_id}/register", headers=bearer(adm_tok)
-    )
+    return admin_client.post(f"/api/admin/teams/{team_id}/register", headers=bearer(adm_tok))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Authentication on admin endpoints
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestAdminAuthentication:
     def test_admin_login_returns_200_with_admin_role(self, client):
@@ -94,6 +96,7 @@ class TestAdminAuthentication:
     def test_mentor_returns_403(self, flask_app, seeds):
         with flask_app.app_context():
             from app.services.auth_service import generate_token
+
             tok = generate_token(seeds["mentor_ids"][0], "mentor")
         with flask_app.test_client() as c:
             rv = c.get("/api/admin/preference-status", headers=bearer(tok))
@@ -103,6 +106,7 @@ class TestAdminAuthentication:
 # ═══════════════════════════════════════════════════════════════════════════
 # Registration status overview
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestRegistrationStatus:
     def test_registration_status_returns_expected_shape(self, flask_app, seeds, client):
@@ -137,6 +141,7 @@ class TestRegistrationStatus:
 # ═══════════════════════════════════════════════════════════════════════════
 # Team registration / unregistration
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestTeamRegistration:
     def test_admin_can_register_a_team(self, flask_app, seeds, client):
@@ -198,6 +203,7 @@ class TestTeamRegistration:
 # ═══════════════════════════════════════════════════════════════════════════
 # Scoring
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestTeamScoring:
     def test_admin_can_set_valid_score(self, flask_app, seeds, client):
@@ -288,6 +294,7 @@ class TestTeamScoring:
 # ═══════════════════════════════════════════════════════════════════════════
 # Matching pipeline
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestMatchingPipeline:
     def test_run_matching_with_no_eligible_teams_returns_400(self, flask_app):

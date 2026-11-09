@@ -177,7 +177,7 @@ The boundary sits at the database: anything whose correctness depends on SQL sem
 | Job                  | Steps                                                                                                                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Unit & E2E tests     | Python 3.12, Postgres 16 and Redis 7 service containers, `pytest tests/ --ignore=tests/e2e`, then `pytest tests/e2e/` with `TEST_DATABASE_URL` pointing at the service DB          |
-| Lint                 | `ruff check .` (blocking), `ruff format --check .` (advisory), `npm install`, `npx eslint .`, `npx tsc -p tsconfig.app.json --noEmit`                                              |
+| Lint                 | `ruff check .` (blocking), `ruff format --check .` (blocking), `npm install`, `npx eslint .`, `npx tsc -p tsconfig.app.json --noEmit`                                              |
 | Flux kustomize build | `kubectl kustomize infra/k8s/flux`                                                                                                                                                 |
 | Prometheus rules     | `bash infra/k8s/scripts/test-prometheus-rules.sh`: extracts the `fmi-codes` rules from the kps HelmRelease and runs `promtool test rules` on `infra/k8s/base/observability/tests/` |
 
