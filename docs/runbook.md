@@ -767,6 +767,12 @@ itself GitOps-managed: edits to `source.yaml`, `image-automation.yaml` and
 `notifications.yaml` self-reconcile within 5m; editing `self.yaml` needs a `flux-bootstrap.sh`
 re-run (or `kubectl apply -f infra/k8s/flux/self.yaml`).
 
+Between commits Flux only asks GitHub whether `main` moved; each new commit costs a full
+depth-1 clone, for the source and again for image automation. `source.yaml` gives both 5
+minutes. If they still fail with `unable to clone ... context deadline exceeded`, the link is
+slower than that clone: a `kubectl patch` of `spec.timeout` gets the new commit through once,
+but `flux-system-config` puts the git value back within 5 minutes, so raise it in git too.
+
 > `docker-cd.yaml` ignores `infra/**` on purpose: a bump commit is a push to `main`, and
 > without the guard it would re-fire the build, mint a newer tag, and loop forever. The
 > constraint this creates: build inputs (Dockerfiles, build scripts) must stay OUT of
