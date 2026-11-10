@@ -29,11 +29,17 @@ primary:
   persistence:
     enabled: true
     size: 8Gi
+  # Every backend pod's pools during a rollout, the migrate initContainer and backups must fit
+  # (tests/test_capacity_budget.py), and memory grows with connections. No CPU limit: team
+  # changes queue on one advisory lock, so a throttled Postgres slows every queued request.
+  # Re-run deploy-stateful.sh to apply; it restarts Postgres, so not during registration (#219).
+  extendedConfiguration: |
+    max_connections = 250
   resources:
     requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
+      cpu: "1"
       memory: 512Mi
+    limits:
+      memory: 2Gi
 
 architecture: standalone

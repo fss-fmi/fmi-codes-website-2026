@@ -29,11 +29,15 @@ primary:
   persistence:
     enabled: true
     size: 8Gi
+  # Staging's 2 backend pods during a rollout need 138 of these (tests/test_capacity_budget.py).
+  # Re-run deploy-stateful.sh to apply; it restarts Postgres.
+  extendedConfiguration: |
+    max_connections = 150
   resources:
     requests:
       cpu: 100m
       memory: 256Mi
     limits:
-      memory: 512Mi
+      memory: 1Gi
 
 architecture: standalone
