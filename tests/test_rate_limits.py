@@ -18,8 +18,17 @@ from app import limiter
 from app.routes import auth as auth_routes
 from app.services import feature_flag_service, ranking_service
 from app.services.auth_service import generate_token
-from app.utils.rate_limits import account_key, identity_key, multiplier_from_env, scaled
+from app.utils import auth_decorators
+from app.utils.rate_limits import (
+    LOGIN_ACCOUNT_LIMIT,
+    identity_key,
+    login_account_key,
+    multiplier_from_env,
+    reset_account_key,
+    scaled,
+)
 from flask import request
+from limits import parse
 
 PROXY = "10.42.0.7"
 CLIENT_A = "203.0.113.5"
@@ -63,7 +72,8 @@ def make_app(monkeypatch):
         app.config["SECRET_KEY"] = "x" * 40
         app.add_url_rule("/test/whoami", "test_whoami", whoami)
         app.add_url_rule("/test/scaled", "test_scaled", scaled_route)
-        app.add_url_rule("/test/default", "test_default", lambda: "ok")
+        for name in ("default", "default2", "default3"):
+            app.add_url_rule(f"/test/{name}", f"test_{name}", lambda: "ok")
         return app
 
     return build
@@ -153,24 +163,33 @@ def test_identity_falls_back_to_the_address(limited_app, kind):
         assert identity_key() == f"ip:{CLIENT_A}"
 
 
-def test_account_key_hides_the_email_and_ignores_case(limited_app):
-    def key(body):
-        with limited_app.test_request_context(method="POST", json=body):
-            return account_key()
+def _key(app, key_func, body):
+    with app.test_request_context(method="POST", json=body, environ_base={"REMOTE_ADDR": CLIENT_A}):
+        return key_func()
 
-    a = key({"email": " ANA@example.com ", "role": "participant"})
+
+def test_account_key_hides_the_email_and_ignores_case(limited_app):
+    a = _key(limited_app, login_account_key, {"email": " ANA@example.com ", "role": "participant"})
     assert a.startswith("account:") and "ana" not in a.lower()
-    assert key({"email": "ana@example.com"}) == a
-    assert key({"email": "ana@example.com", "role": "mentor"}) != a
-    assert key({"email": "bo@example.com"}) != a
+    assert _key(limited_app, login_account_key, {"email": "ana@example.com"}) == a
+    assert (
+        _key(limited_app, reset_account_key, {"email": "ana@example.com", "role": "participant"})
+        == a
+    )
+    assert _key(limited_app, login_account_key, {"email": "ana@example.com", "role": "mentor"}) != a
+    assert _key(limited_app, login_account_key, {"email": "bo@example.com"}) != a
 
 
 @pytest.mark.parametrize("body", [None, [], {"email": ""}, {"email": 5}, {"role": "mentor"}])
 def test_account_key_without_an_email_is_the_address(limited_app, body):
-    with limited_app.test_request_context(
-        method="POST", json=body, environ_base={"REMOTE_ADDR": CLIENT_A}
-    ):
-        assert account_key() == f"ip:{CLIENT_A}"
+    assert _key(limited_app, login_account_key, body) == f"ip:{CLIENT_A}"
+
+
+@pytest.mark.parametrize("role", [None, "admin", "nobody"])
+def test_a_reset_the_route_rejects_never_counts_against_the_account(limited_app, role):
+    """Reset answers these with a 400 and sends nothing, so they must not fill a victim's bucket."""
+    body = {"email": "ana@example.com"} | ({"role": role} if role else {})
+    assert _key(limited_app, reset_account_key, body) == f"ip:{CLIENT_A}"
 
 
 # --- Default limit ---
@@ -192,6 +211,24 @@ def test_anonymous_default_is_per_address(limited_app):
     assert _get(c, CLIENT_B, "/test/default").status_code == 200
 
 
+def test_one_anonymous_address_is_capped_across_routes(limited_app):
+    c = limited_app.test_client()
+    for path in ("/test/default", "/test/default2"):
+        assert {_get(c, CLIENT_A, path).status_code for _ in range(3000)} == {200}
+    assert _get(c, CLIENT_A, "/test/default3").status_code == 429
+    assert _get(c, CLIENT_A, "/test/default3", _token(limited_app, 1)).status_code == 200
+    assert _get(c, CLIENT_B, "/test/default3").status_code == 200
+
+
+def test_429_says_why(limited_app):
+    c = limited_app.test_client()
+    for _ in range(2):
+        _get(c, CLIENT_A)
+    response = _get(c, CLIENT_A)
+    assert response.status_code == 429
+    assert response.get_json()["error"].startswith("Too many requests")
+
+
 def test_default_limit_is_scaled(make_app):
     app = make_app("2")
     c = app.test_client()
@@ -205,17 +242,26 @@ def test_default_limit_is_scaled(make_app):
 
 @pytest.fixture()
 def login_app(limited_app, monkeypatch):
+    remaining = []
+
     def lookup(app, query, params, fetch_one=False):
+        window = limiter.limiter.get_window_stats(
+            parse(LOGIN_ACCOUNT_LIMIT), login_account_key(), "auth.login"
+        )
+        remaining.append(window.remaining)
         return {"id": 7, "password_hash": FAST_HASH} if params[0] == "ana@example.com" else None
 
     monkeypatch.setattr(auth_routes, "execute_query", lookup)
     monkeypatch.setattr(auth_routes, "_DUMMY_HASH", FAST_HASH)
     monkeypatch.setattr(auth_routes, "_fetch_user_profile", lambda *a, **k: {})
+    limited_app.config["ADMIN_EMAIL"] = "admin@example.com"
+    limited_app.config["ADMIN_PASSWORD_HASH"] = FAST_HASH
+    limited_app.remaining_during_login = remaining
     return limited_app
 
 
-def _login(client, email, password, forwarded_for=CLIENT_A):
-    body = {"email": email, "password": password, "role": "participant"}
+def _login(client, email, password, forwarded_for=CLIENT_A, role="participant"):
+    body = {"email": email, "password": password, "role": role}
     return _post(client, "/api/auth/login", body, forwarded_for)
 
 
@@ -227,9 +273,30 @@ def test_failed_logins_lock_only_that_account(login_app):
     assert _login(c, "bo@example.com", "wrong") == 401
 
 
-def test_successful_logins_do_not_count(login_app):
+def test_an_attempt_counts_before_bcrypt_runs(login_app):
+    """Counting after the response would let parallel guesses all pass the check first."""
+    _login(login_app.test_client(), "ana@example.com", "wrong")
+    assert login_app.remaining_during_login == [14]
+
+
+def test_a_successful_login_clears_the_failures(login_app):
+    c = login_app.test_client()
+    assert [_login(c, "ana@example.com", "wrong") for _ in range(14)] == [401] * 14
+    assert _login(c, "ana@example.com", RIGHT_GUESS) == 200
+    assert [_login(c, "ana@example.com", "wrong") for _ in range(15)] == [401] * 15
+    assert _login(c, "ana@example.com", "wrong") == 429
+
+
+def test_successful_logins_never_block(login_app):
     c = login_app.test_client()
     assert {_login(c, "ana@example.com", RIGHT_GUESS) for _ in range(30)} == {200}
+
+
+def test_the_admin_cannot_be_locked_out(login_app):
+    c = login_app.test_client()
+    wrong = [_login(c, "admin@example.com", "wrong", role="admin") for _ in range(20)]
+    assert wrong == [401] * 20
+    assert _login(c, "admin@example.com", RIGHT_GUESS, role="admin") == 200
 
 
 def test_login_has_a_per_address_ceiling(login_app):
@@ -277,6 +344,36 @@ def test_token_routes_have_a_per_address_ceiling(limited_app, path, ceiling):
     statuses = [_post(c, path, {}) for _ in range(ceiling + 1)]
     assert statuses == [400] * ceiling + [429]
     assert _post(c, path, {}, CLIENT_B) == 400
+
+
+# --- Routes limited per user with a per-address ceiling ---
+
+
+def _post_as(client, path, token):
+    return client.post(
+        path,
+        json={},
+        headers={"X-Forwarded-For": CLIENT_A, "Authorization": f"Bearer {token}"},
+        environ_base={"REMOTE_ADDR": PROXY},
+    ).status_code
+
+
+def test_bug_reports_from_many_accounts_hit_the_address_ceiling(limited_app):
+    """Accounts are cheap, so the per-user limit alone would let one address flood the webhooks."""
+    c = limited_app.test_client()
+    tokens = [_token(limited_app, i) for i in range(4)]
+    statuses = [_post_as(c, "/api/bug-report", t) for t in tokens for _ in range(10)]
+    assert statuses == [400] * 30 + [429] * 10
+
+
+def test_resends_from_many_accounts_hit_the_address_ceiling(limited_app, monkeypatch):
+    monkeypatch.setattr(auth_decorators, "_token_predates_revocation_epoch", lambda p: False)
+    monkeypatch.setattr("app.services.token_blocklist.is_revoked", lambda jti: False)
+    monkeypatch.setattr(auth_routes, "execute_query", lambda *a, **k: None)
+    c = limited_app.test_client()
+    tokens = [_token(limited_app, i) for i in range(11)]
+    statuses = [_post_as(c, "/api/auth/resend-verification", t) for t in tokens for _ in range(3)]
+    assert statuses == [404] * 30 + [429] * 3
 
 
 # --- Multiplier ---

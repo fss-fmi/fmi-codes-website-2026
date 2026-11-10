@@ -640,7 +640,7 @@ host-less rule sits in nginx's catch-all server, which has the default certifica
 redirect would loop). The controller sets `X-Forwarded-For` to its TCP peer, which on staging is
 the Tailscale proxy, so every anonymous staging visitor shares one address bucket. That is why
 staging sets `RATELIMIT_MULTIPLIER: "10"` in `overlays/staging/backend-config-patch.yaml`: every
-limit is 10 times prod's (150 failed logins per account a minute, anonymous default 30000/min).
+limit is 10 times prod's (150 login attempts per account a minute, anonymous default 30000/min).
 To test prod's exact limits, set it to `"1"` there and commit it (Flux reverts an
 `apply-config.sh` patch), then put it back. A staging rate-limit test still says nothing about
 how prod buckets real clients. Flux reconciles the
