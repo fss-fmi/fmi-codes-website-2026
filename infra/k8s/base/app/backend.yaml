@@ -13,9 +13,10 @@ data:
   DB_PORT: "5432"
   DB_NAME: "fmi_hackathon_2026"
   DB_USER: "fmi_app"
-  # Per Gunicorn worker. Pods x 4 workers x this, plus a rollout's surge pod, must stay under
-  # Postgres max_connections (tests/test_capacity_budget.py). Bcrypt runs without a connection.
-  DB_POOL_MAX: "5"
+  # Per Gunicorn worker, and at least its 8 threads: a thread that finds the pool empty waits
+  # DB_POOL_TIMEOUT and fails, and team changes hold a connection while queued on the global
+  # advisory lock. All pods' pools must fit Postgres max_connections (tests/test_capacity_budget.py).
+  DB_POOL_MAX: "8"
   REDIS_SENTINELS: "redis.fmi-codes.svc.cluster.local:26379"
   REDIS_MASTER_NAME: "mymaster"
   REDIS_URL: ""
@@ -172,8 +173,9 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 30
           # Under a registration rush every Gunicorn thread can be busy hashing passwords, so a
-          # probe waits in line. Liveness must not restart a busy pod (about 60 s of silence
-          # first), and readiness must not drop one, or the others take its load and fall too.
+          # probe waits in line for one. Each gets 10 s. Readiness drops a pod after 30 s of
+          # misses, so a busy one stays and a broken one goes; liveness restarts after a minute
+          # (Gunicorn's own 120 s worker timeout handles a single hung worker).
           livenessProbe:
             httpGet:
               path: /api/health
@@ -189,7 +191,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 10
-            failureThreshold: 6
+            failureThreshold: 3
           resources:
             requests:
               cpu: 100m

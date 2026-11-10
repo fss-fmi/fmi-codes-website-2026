@@ -29,17 +29,17 @@ primary:
   persistence:
     enabled: true
     size: 8Gi
-  # The backend's pools (DB_POOL_MAX per worker) plus a rollout's surge pod, the migrate
-  # initContainer and backups must fit (tests/test_capacity_budget.py). Re-run
-  # deploy-stateful.sh to apply; it restarts Postgres, so not during registration (#219).
+  # Every backend pod's pools during a rollout, the migrate initContainer and backups must fit
+  # (tests/test_capacity_budget.py), and memory grows with connections. No CPU limit: team
+  # changes queue on one advisory lock, so a throttled Postgres slows every queued request.
+  # Re-run deploy-stateful.sh to apply; it restarts Postgres, so not during registration (#219).
   extendedConfiguration: |
-    max_connections = 150
+    max_connections = 250
   resources:
     requests:
-      cpu: 100m
-      memory: 256Mi
+      cpu: "1"
+      memory: 512Mi
     limits:
-      cpu: "2"
-      memory: 1Gi
+      memory: 2Gi
 
 architecture: standalone

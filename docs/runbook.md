@@ -47,10 +47,11 @@ infra/k8s/
 | deploy             | manual promote (human-merged PR)                     | auto on every push to `main`                                                        |
 
 Everything else (probes, the frontend, feature-flag defaults, `FLASK_ENV`) is identical by
-design: staging mirrors prod so it catches problems before prod does. Two exceptions are
-deliberate: prod's backend runs 4 pods at 1 CPU requested and up to 3 for the registration
-rush (`overlays/prod/backend-capacity-patch.yaml`), staging 2 pods at 100m and 500m, and
-staging multiplies every rate limit by 10 (`RATELIMIT_MULTIPLIER`). The
+design: staging mirrors prod so it catches problems before prod does. The exceptions are
+deliberate. Prod is sized for the registration rush: its backend runs 4 pods at 1 CPU
+requested and up to 3 (`overlays/prod/backend-capacity-patch.yaml`; staging 2 pods at 100m
+and 500m), its Postgres allows 250 connections (staging 150) and its ingress controller
+requests 500m CPU. Staging multiplies every rate limit by 10 (`RATELIMIT_MULTIPLIER`). The
 two ingress controllers are fully independent, so a staging deploy never touches prod's
 routing or headers. Staging's Tailscale proxy forwards to the staging controller, not to the
 app, so staging still exercises prod's `security-headers` and `/api` / `/static` routing
@@ -553,13 +554,16 @@ in-cluster Secrets with random passwords — `fmi-codes-db` and `fmi-codes-redis
 charts consume them via `existingSecret`. Re-runs leave them untouched. `schema.sql` is
 loaded into the `postgres-initdb` ConfigMap and run once by Postgres `initdb`.
 
-Prod's Postgres runs with `max_connections = 150` and limits of 2 CPU and 1Gi
-(`helm-values/postgresql-values.yaml`). The backend's pools have to fit under it: pods (plus
-one surge pod during a rollout) x 4 Gunicorn workers x `DB_POOL_MAX` (5, in the backend
-ConfigMap), plus room for the migrate initContainer, backups and an operator;
-`tests/test_capacity_budget.py` fails when they don't. Staging keeps the default 100. A
-change to these values reaches a running database only by re-running this script, which
-restarts the Postgres pod for a few seconds, so do it well before registration opens.
+Prod's Postgres runs with `max_connections = 250`, a 1-CPU request, no CPU limit and a 2Gi
+memory limit (`helm-values/postgresql-values.yaml`); staging's with 150 and 1Gi. The
+backend's pools have to fit: each Gunicorn worker keeps up to `DB_POOL_MAX` connections (8,
+one per thread, in the backend ConfigMap), 4 workers a pod, and a rollout can briefly run
+the surge pods on top of old ones still shutting down, plus the migrate initContainer,
+backups and an operator. That is 202 on prod and 138 on staging, and
+`tests/test_capacity_budget.py` fails when the pods outgrow `max_connections` or the pool
+drops below the thread count. A change to these values reaches a running database only by
+re-running this script, which restarts the Postgres pod for a few seconds, so do it well
+before registration opens.
 
 In-cluster addresses the app tier uses: `postgres.<ns>.svc.cluster.local:5432` and
 `redis.<ns>.svc.cluster.local:26379`.
@@ -602,9 +606,10 @@ without it never blocks a rollout; the backend then falls back to `http://localh
 
 Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready`
 (readiness — pooled `SELECT 1` + Redis ping; Postgres gates readiness, Redis is fail-open).
-Both probes give a request 10 s and act only after 6 misses in a row (a minute), so a pod
-whose threads are all hashing passwords during the rush is neither restarted nor dropped
-from the Service.
+Both probes give a request 10 s, since during the rush a probe can wait for a thread that is
+hashing a password. Readiness drops a pod from the Service after 3 misses (30 s), liveness
+restarts it after 6 (a minute); Gunicorn's own 120 s worker timeout replaces a single hung
+worker inside a pod.
 
 ### 4 — Ingress + TLS
 
