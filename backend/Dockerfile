@@ -11,11 +11,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Use an explicit numeric UID/GID so Kubernetes' runAsNonRoot can verify the
 # user is non-root at admission (it cannot verify a username alone).
 RUN addgroup --system --gid 10001 app \
-    && adduser --system --uid 10001 --ingroup app app
+    && adduser --system --uid 10001 --ingroup app app \
+    && chown app:app /app
 
-# Copy the rest of the app and hand ownership over to the app user
-COPY . .
-RUN chown -R app:app /app
+# Copy the rest of the app owned by the app user
+COPY --chown=app:app . .
 
 USER 10001
 

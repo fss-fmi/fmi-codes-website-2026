@@ -43,8 +43,9 @@ jobs:
           tags: |
             fssfmi/fmi-codes-backend:latest
             fssfmi/fmi-codes-backend:${{ steps.tag.outputs.value }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          no-cache: ${{ github.event_name == 'schedule' }}
 
       - name: Build and push frontend
         uses: docker/build-push-action@v5
@@ -54,5 +55,6 @@ jobs:
           tags: |
             fssfmi/fmi-codes-frontend:latest
             fssfmi/fmi-codes-frontend:${{ steps.tag.outputs.value }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          no-cache: ${{ github.event_name == 'schedule' }}

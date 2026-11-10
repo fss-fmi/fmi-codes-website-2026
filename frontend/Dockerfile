@@ -13,9 +13,6 @@ RUN npm run build
 # Stage 2: serve with nginx
 FROM nginx:alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
 # H4: Grant the nginx user write access to the dirs it needs at runtime,
 # then drop root.  nginx:alpine ships with a 'nginx' user (UID 101) for exactly
 # this.  Reference the user by its numeric UID so Kubernetes' runAsNonRoot can
@@ -25,6 +22,9 @@ RUN chown -R nginx:nginx /usr/share/nginx/html \
     && chown -R nginx:nginx /var/log/nginx \
     && touch /var/run/nginx.pid \
     && chown nginx:nginx /var/run/nginx.pid
+
+COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 USER 101
 

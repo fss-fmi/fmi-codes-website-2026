@@ -784,6 +784,23 @@ within 5 minutes and stays. A patch made before the merge doesn't last: `flux-sy
 puts the old value back, and the merge commit is a new clone that times out again, so patch
 once more after it lands.
 
+Each new tag is also an image pull on the node. A new pod still pulling after 10 minutes (the
+Deployment's default `progressDeadlineSeconds`) marks the Deployment
+`ProgressDeadlineExceeded`, and the env's Kustomization fails its health check with
+`stalled resources: [Deployment/<namespace>/<name> status: 'Failed']`. The old pods keep
+serving; once the pull finishes the rollout completes and the Kustomization turns Ready on its
+next retry. The pull time shows which case it is:
+
+```bash
+kubectl -n fmi-codes-staging get events --sort-by=.lastTimestamp | grep -E 'Pulling|Pulled'
+```
+
+A deploy should pull only the layer holding the changed app files. Both Dockerfiles copy with
+`COPY --chown`, because a `chown -R` after a `COPY` stores every file a second time, and each
+image has its own build cache scope, because a shared one makes the builds overwrite each
+other's cache and the backend reinstalls its dependencies into a new layer every time.
+`tests/test_docker_images.py` checks both.
+
 > `docker-cd.yaml` ignores `infra/**` on purpose: a bump commit is a push to `main`, and
 > without the guard it would re-fire the build, mint a newer tag, and loop forever. The
 > constraint this creates: build inputs (Dockerfiles, build scripts) must stay OUT of
