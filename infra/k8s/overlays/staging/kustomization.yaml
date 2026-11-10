@@ -16,7 +16,7 @@ patches:
 images:
   - name: fssfmi/fmi-codes-backend
     newName: fssfmi/fmi-codes-backend
-    newTag: 1794336880-7a119a3 # {"$imagepolicy": "flux-system:fmi-codes-backend-staging:tag"}
+    newTag: 1794342523-bf57a7a # {"$imagepolicy": "flux-system:fmi-codes-backend-staging:tag"}
   - name: fssfmi/fmi-codes-frontend
     newName: fssfmi/fmi-codes-frontend
-    newTag: 1794336880-7a119a3 # {"$imagepolicy": "flux-system:fmi-codes-frontend-staging:tag"}
+    newTag: 1794342523-bf57a7a # {"$imagepolicy": "flux-system:fmi-codes-frontend-staging:tag"}
