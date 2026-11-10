@@ -3,6 +3,11 @@ kind: Kustomization
 namespace: fmi-codes
 resources:
 - ../../base/app
+patches:
+- path: backend-capacity-patch.yaml
+  target:
+    kind: Deployment
+    name: backend
 images:
 - name: fssfmi/fmi-codes-backend
   newName: fssfmi/fmi-codes-backend

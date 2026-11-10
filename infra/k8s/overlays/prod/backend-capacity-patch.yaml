@@ -1,0 +1,18 @@
+# Sized for the registration rush on the prod machine (20 cores, shared with staging; #219).
+# Register and login each hash a password, about 0.42 CPU-seconds on staging; 4 pods that can
+# burst to 3 cores give about 12 cores of hashing. The request keeps 1 core each reserved.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 4
+  template:
+    spec:
+      containers:
+        - name: backend
+          resources:
+            requests:
+              cpu: "1"
+            limits:
+              cpu: "3"

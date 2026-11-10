@@ -46,8 +46,11 @@ infra/k8s/
 | SOPS secret        | `secrets/secrets.enc.yaml`                           | `overlays/staging/secrets/secrets.enc.yaml` (separate age key)                      |
 | deploy             | manual promote (human-merged PR)                     | auto on every push to `main`                                                        |
 
-Everything else — replicas, probes, resource limits, feature-flag defaults, `FLASK_ENV` —
-is identical by design: staging mirrors prod so it catches problems before prod does. The
+Everything else (probes, the frontend, feature-flag defaults, `FLASK_ENV`) is identical by
+design: staging mirrors prod so it catches problems before prod does. Two exceptions are
+deliberate: prod's backend runs 4 pods at 1 CPU requested and up to 3 for the registration
+rush (`overlays/prod/backend-capacity-patch.yaml`), staging 2 pods at 100m and 500m, and
+staging multiplies every rate limit by 10 (`RATELIMIT_MULTIPLIER`). The
 two ingress controllers are fully independent, so a staging deploy never touches prod's
 routing or headers. Staging's Tailscale proxy forwards to the staging controller, not to the
 app, so staging still exercises prod's `security-headers` and `/api` / `/static` routing
@@ -550,6 +553,14 @@ in-cluster Secrets with random passwords — `fmi-codes-db` and `fmi-codes-redis
 charts consume them via `existingSecret`. Re-runs leave them untouched. `schema.sql` is
 loaded into the `postgres-initdb` ConfigMap and run once by Postgres `initdb`.
 
+Prod's Postgres runs with `max_connections = 150` and limits of 2 CPU and 1Gi
+(`helm-values/postgresql-values.yaml`). The backend's pools have to fit under it: pods (plus
+one surge pod during a rollout) x 4 Gunicorn workers x `DB_POOL_MAX` (5, in the backend
+ConfigMap), plus room for the migrate initContainer, backups and an operator;
+`tests/test_capacity_budget.py` fails when they don't. Staging keeps the default 100. A
+change to these values reaches a running database only by re-running this script, which
+restarts the Postgres pod for a few seconds, so do it well before registration opens.
+
 In-cluster addresses the app tier uses: `postgres.<ns>.svc.cluster.local:5432` and
 `redis.<ns>.svc.cluster.local:26379`.
 
@@ -572,7 +583,8 @@ To change a password without wiping data, use
 bash infra/k8s/scripts/deploy-app.sh   # ENV=prod|staging
 ```
 
-Two `Deployment`s (2 replicas each) behind `ClusterIP` Services: `backend`
+Two `Deployment`s behind `ClusterIP` Services (the frontend runs 2 replicas, the backend 2 on
+staging and 4 on prod): `backend`
 (`fssfmi/fmi-codes-backend`, :5001) and `frontend` (`fssfmi/fmi-codes-frontend`, :80). The
 backend Service is named `backend` because the frontend image's `nginx.conf` proxies
 `/api/` and `/static/` to `http://backend:5001` — the same image works under compose (where
@@ -590,6 +602,9 @@ without it never blocks a rollout; the backend then falls back to `http://localh
 
 Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready`
 (readiness — pooled `SELECT 1` + Redis ping; Postgres gates readiness, Redis is fail-open).
+Both probes give a request 10 s and act only after 6 misses in a row (a minute), so a pod
+whose threads are all hashing passwords during the rush is neither restarted nor dropped
+from the Service.
 
 ### 4 — Ingress + TLS
 
@@ -613,7 +628,8 @@ INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
 echo "$INGRESS_IP fmicodes.com" | sudo tee -a /etc/hosts
 ```
 
-On the production server, set the `fmicodes.com` A-record in DNS instead.
+On the production server, set the `fmicodes.com` A-record in DNS instead. Prod's controller
+requests 500m CPU, so TLS and proxying keep their share during the registration rush.
 
 Prod's controller Service runs with `externalTrafficPolicy: Local`. With the default `Cluster`,
 k3s servicelb rewrites every visitor's source address to its own pod's (`10.42.x.x`), so the

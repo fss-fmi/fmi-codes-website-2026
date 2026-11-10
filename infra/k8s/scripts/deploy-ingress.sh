@@ -15,11 +15,13 @@ case "$ENV" in
     TAILNET_OVERLAY=""
     # With the default Cluster policy, k3s servicelb rewrites every visitor's source address to
     # its own pod's, so the backend's per-client rate limits would collapse into one bucket.
+    # The CPU request keeps half a core reserved for TLS and proxying during the rush (#219).
     HELM_SET_ARGS=(
       --set "controller.config.add-headers=$NAMESPACE/$HEADERS_CONFIGMAP"
       --set "controller.config.allow-snippet-annotations=true"
       --set "controller.config.annotations-risk-level=Critical"
       --set "controller.service.externalTrafficPolicy=Local"
+      --set "controller.resources.requests.cpu=500m"
     )
     ;;
   staging)
