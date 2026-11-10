@@ -10,6 +10,11 @@ timeout = 120
 # Only Gunicorn gets multiprocess metrics; run_server.py and the tests keep the plain registry.
 os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", "/tmp/prometheus-multiproc")
 
+# Imported here, not in child_exit: Gunicorn calls child_exit from its SIGCHLD handler, which can
+# re-enter it while the first call is still importing, and a half-imported module has no
+# mark_process_dead yet.
+from prometheus_client import multiprocess  # noqa: E402
+
 
 def on_starting(server):
     # In k8s this is an emptyDir, which survives a container restart; PIDs restart from 1, so a
@@ -22,6 +27,4 @@ def on_starting(server):
 
 
 def child_exit(server, worker):
-    from prometheus_client import multiprocess
-
     multiprocess.mark_process_dead(worker.pid)

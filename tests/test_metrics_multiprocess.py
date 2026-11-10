@@ -149,3 +149,16 @@ def test_child_exit_marks_the_worker_dead(tmp_path):
         _load_conf()["child_exit"](None, SimpleNamespace(pid=4242))
 
     mark_dead.assert_called_once_with(4242)
+
+
+def test_child_exit_imports_nothing(tmp_path):
+    """Gunicorn's SIGCHLD handler can re-enter child_exit while a first call is mid-import."""
+    with patch.dict(os.environ, {"PROMETHEUS_MULTIPROC_DIR": str(tmp_path)}):
+        child_exit = _load_conf()["child_exit"]
+    with (
+        patch.object(prom_multiprocess, "mark_process_dead") as mark_dead,
+        patch("builtins.__import__", side_effect=AssertionError("child_exit imported a module")),
+    ):
+        child_exit(None, SimpleNamespace(pid=4242))
+
+    mark_dead.assert_called_once_with(4242)
