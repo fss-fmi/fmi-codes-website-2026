@@ -21,7 +21,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 401 bodies: `Authentication required`, `Token expired`, `Invalid token`, `Token has been revoked`.
 
-**Rate limits.** Default 200 requests per minute per client address, shared across workers when Redis is configured. Tighter limits are listed per endpoint. Exceeding a limit returns 429. The backend takes the address from the last `X-Forwarded-For` entry, the one its single trusted proxy sets (ingress-nginx in k3s, the frontend's nginx in Compose), so a client can't pick its own bucket by sending the header. Everyone behind one NAT shares a bucket, which is why the two polled reads, `GET /api/config` and `GET /api/teams/rankings`, are exempt: at the venue every phone is on the same Wi-Fi. On staging every visitor arrives through the Tailscale proxy and shares one bucket, so staging multiplies every limit listed here by 10 (`RATELIMIT_MULTIPLIER`).
+**Rate limits.** Each limit keys on what it protects ([ADR-014](adr/014-rate-limits-keyed-on-account-and-user.md)). The default is 200 requests per minute per signed-in user (from a token with a valid signature) and 3000 per minute per client address for anonymous requests. Login and password reset also key on the account the request names, and a few public routes key on the address alone; each endpoint lists its own. Counters are shared across workers when Redis is configured. Exceeding a limit returns 429. The backend takes the address from the last `X-Forwarded-For` entry, the one its single trusted proxy sets (ingress-nginx in k3s, the frontend's nginx in Compose), so a client can't pick its own bucket by sending the header. Everyone behind one NAT shares an address, which is why address limits are sized for a whole venue and the two polled reads, `GET /api/config` and `GET /api/teams/rankings`, are exempt: at the venue every phone is on the same Wi-Fi. On staging every visitor arrives through the Tailscale proxy and shares one address, so staging multiplies every limit listed here by 10 (`RATELIMIT_MULTIPLIER`).
 
 **Feature flags.** `registration_open`, `rankings_live` and `mentors_stay_tuned` live in the `feature_flags` table; the admin switches or schedules them through `/api/admin/flags*` and every request reads the current value, so no restart is needed. `REQUIRE_EMAIL_VERIFICATION` comes from server config. Three are enforced by the API: `registration_open` (registration returns 403 when closed), `rankings_live` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `mentors_stay_tuned` only changes what the SPA renders.
 
@@ -71,7 +71,7 @@ Prometheus exposition from `prometheus_flask_exporter`, at the backend root (not
 
 ### POST /api/auth/register
 
-Public, 10/min. Creates a participant and logs them in (sets the `token` cookie). Returns 403 `Registration is closed` when `registration_open` is off. Also emails a 24-hour verification link to `<FRONTEND_ORIGIN>/verify-email?token=...` in the background; a failed send does not fail registration.
+Public, 300/min per address. Creates a participant and logs them in (sets the `token` cookie). Returns 403 `Registration is closed` when `registration_open` is off. Also emails a 24-hour verification link to `<FRONTEND_ORIGIN>/verify-email?token=...` in the background; a failed send does not fail registration.
 
 Request (all fields required):
 
@@ -115,7 +115,7 @@ The `user` profile shape is the same as `GET /api/auth/me`.
 
 ### POST /api/auth/login
 
-Public, 15/min.
+Public. 15 failed attempts per minute per account (email and role; successful logins don't count, and the account stays blocked from every address until the minute ends) and 300 attempts per minute per address.
 
 ```json
 { "email": "ivan@example.com", "password": "...", "role": "participant" }
@@ -168,7 +168,7 @@ Mentor: `id, first_name, last_name, email, phone_number, company_name, bio, stat
 
 ### PATCH /api/auth/change-password
 
-Participant or mentor, 10/min.
+Participant or mentor, 10/min per user.
 
 ```json
 { "current_password": "...", "new_password": "at-least-12-chars" }
@@ -185,7 +185,7 @@ Revokes the current token, invalidates every other session for the user and sets
 
 ### POST /api/auth/reset-password
 
-Public, 5/hour. Emails a one-hour reset link to `<FRONTEND_ORIGIN>/reset-password?token=...&role=...`.
+Public, 5/hour per email and role, 100/hour per address. Emails a one-hour reset link to `<FRONTEND_ORIGIN>/reset-password?token=...&role=...`.
 
 ```json
 { "email": "ivan@example.com", "role": "participant" }
@@ -195,7 +195,7 @@ Always 200 with the same generic message whether or not the account exists. 400 
 
 ### POST /api/auth/reset-password/confirm
 
-Public, 10/hour.
+Public, 100/hour per address.
 
 ```json
 { "token": "<from the link>", "role": "participant", "new_password": "at-least-12-chars" }
@@ -208,7 +208,7 @@ Public, 10/hour.
 
 ### POST /api/auth/verify-email
 
-Public, 20/hour. No login needed, so the link works on any device. The SPA's `/verify-email` page sends the token from the emailed link.
+Public, 300/hour per address. No login needed, so the link works on any device. The SPA's `/verify-email` page sends the token from the emailed link.
 
 ```json
 { "token": "<from the link>" }
@@ -221,7 +221,7 @@ Public, 20/hour. No login needed, so the link works on any device. The SPA's `/v
 
 ### POST /api/auth/resend-verification
 
-Participant, 3/hour. Emails a fresh link and invalidates the previous unused one.
+Participant, 3/hour per user. Emails a fresh link and invalidates the previous unused one.
 
 | Code | Meaning                                                   |
 | ---- | --------------------------------------------------------- |
@@ -473,7 +473,7 @@ Public. FAQ-style rulebook from `backend/database/seeds/regulations.json`, cache
 
 ### POST /api/bug-report
 
-Public, optional auth, 10/min. Queues a post to each configured bug-report webhook (Discord `DISCORD_BUG_WEBHOOK_URL`, Slack `SLACK_BUG_WEBHOOK_URL`) and returns immediately.
+Public, optional auth, 10/min per user, or per address when anonymous. Queues a post to each configured bug-report webhook (Discord `DISCORD_BUG_WEBHOOK_URL`, Slack `SLACK_BUG_WEBHOOK_URL`) and returns immediately.
 
 ```json
 { "what_did": "...", "what_happened": "...", "page": "https://fmicodes.com/team" }
