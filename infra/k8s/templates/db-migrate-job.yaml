@@ -97,6 +97,11 @@ spec:
                 secretKeyRef:
                   name: fmi-codes-db
                   key: password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-redis
+                  key: redis-password
             - name: SLACK_MIGRATIONS_WEBHOOK_URL
               valueFrom:
                 secretKeyRef:
