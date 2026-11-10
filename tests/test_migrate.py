@@ -51,6 +51,12 @@ class TestRepositoryMigrations:
 
 
 class TestMain:
+    @pytest.fixture(autouse=True)
+    def cleared(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(migrate, "clear_caches", lambda: calls.append(1) or 3)
+        return calls
+
     @pytest.fixture()
     def posted(self, monkeypatch):
         messages = []
@@ -130,6 +136,91 @@ class TestMain:
         monkeypatch.setattr(migrate, "apply_pending", self._unreachable)
         assert migrate.main(["--notify", "never"]) == 1
         assert posted == []
+
+    def test_caches_cleared_after_applying(self, monkeypatch, posted, cleared, caplog):
+        caplog.set_level("INFO", logger="migrate")
+        monkeypatch.setattr(migrate, "apply_pending", lambda params: ["019_x.sql"])
+        assert migrate.main([]) == 0
+        assert cleared == [1]
+        assert "Cleared 3 Redis cache key(s)" in caplog.text
+
+    def test_caches_kept_when_nothing_applied(self, monkeypatch, posted, cleared):
+        monkeypatch.setattr(migrate, "apply_pending", lambda params: [])
+        assert migrate.main([]) == 0
+        assert cleared == []
+
+    def test_caches_cleared_when_a_later_file_fails(self, monkeypatch, posted, cleared):
+        def fail(params):
+            raise migrate.MigrationError("020_bad.sql", ["019_ok.sql"], RuntimeError("boom"))
+
+        monkeypatch.setattr(migrate, "apply_pending", fail)
+        assert migrate.main([]) == 1
+        assert cleared == [1]
+
+    def test_caches_kept_when_the_first_file_fails(self, monkeypatch, posted, cleared):
+        def fail(params):
+            raise migrate.MigrationError("019_bad.sql", [], RuntimeError("boom"))
+
+        monkeypatch.setattr(migrate, "apply_pending", fail)
+        assert migrate.main([]) == 1
+        assert cleared == []
+
+
+class _FakeRedis:
+    def __init__(self, keys, fail=False):
+        self.keys = set(keys)
+        self.fail = fail
+        self.scan_patterns = []
+
+    def scan_iter(self, match, count):
+        if self.fail:
+            raise ConnectionError("Redis down")
+        self.scan_patterns.append(match)
+        return iter([k for k in sorted(self.keys) if k.startswith(match.rstrip("*"))])
+
+    def delete(self, *keys):
+        self.keys -= set(keys)
+
+
+class TestClearCaches:
+    def test_deletes_cache_keys_and_keeps_everything_else(self, monkeypatch):
+        fake = _FakeRedis(
+            {
+                "cache:mentors:all",
+                "cache:epoch:participant:7",
+                "cache:feature_flags:v4",
+                "cache:feature_flags:version",
+                "jti:blocked:abc",
+                "LIMITS:LIMITER/10.42.0.5/api.login/15/1/minute",
+            }
+        )
+        monkeypatch.setattr(migrate, "_redis_client", lambda: fake)
+        assert migrate.clear_caches() == 3
+        assert fake.scan_patterns == ["cache:*"]
+        assert fake.keys == {
+            "cache:feature_flags:version",
+            "jti:blocked:abc",
+            "LIMITS:LIMITER/10.42.0.5/api.login/15/1/minute",
+        }
+
+    def test_deletes_in_batches(self, monkeypatch):
+        fake = _FakeRedis({f"cache:k{i}" for i in range(1201)})
+        batches = []
+        real_delete = fake.delete
+        monkeypatch.setattr(fake, "delete", lambda *k: batches.append(len(k)) or real_delete(*k))
+        monkeypatch.setattr(migrate, "_redis_client", lambda: fake)
+        assert migrate.clear_caches() == 1201
+        assert batches == [500, 500, 201]
+        assert fake.keys == set()
+
+    def test_redis_off(self, monkeypatch):
+        monkeypatch.setattr(migrate, "_redis_client", lambda: None)
+        assert migrate.clear_caches() is None
+
+    def test_redis_down_is_logged_not_raised(self, monkeypatch, caplog):
+        monkeypatch.setattr(migrate, "_redis_client", lambda: _FakeRedis(set(), fail=True))
+        assert migrate.clear_caches() is None
+        assert "expire on their TTLs" in caplog.text
 
 
 class TestApplyPending:
