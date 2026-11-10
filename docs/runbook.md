@@ -638,10 +638,10 @@ requests 500m CPU, so TLS and proxying keep their share during the registration 
 
 Prod's controller Service runs with `externalTrafficPolicy: Local`. With the default `Cluster`,
 k3s servicelb rewrites every visitor's source address to its own pod's (`10.42.x.x`), so the
-backend's per-client rate limits would see one client. `Local` keeps the real address and only
+backend's per-address rate limits would see one client. `Local` keeps the real address and only
 sends traffic to a controller on the node it arrived at, which on a single node is always the
-case. To check it after a deploy, send 16 bad logins from one network and confirm another network
-can still log in, or read the client address in the controller's access log:
+case. To check it after a deploy, read the client address in the controller's access log: it
+must be the visitor's public address, not `10.42.x.x`.
 
 ```bash
 kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=5
@@ -659,11 +659,12 @@ The proxy terminates TLS and forwards plain HTTP with the `ts.net` Host header k
 staging nginx Ingress matches any host, has no TLS block and turns `ssl-redirect` off (a
 host-less rule sits in nginx's catch-all server, which has the default certificate, so the
 redirect would loop). The controller sets `X-Forwarded-For` to its TCP peer, which on staging is
-the Tailscale proxy, so every staging visitor shares one rate-limit bucket. That is why staging
-sets `RATELIMIT_MULTIPLIER: "10"` in `overlays/staging/backend-config-patch.yaml`: every limit is
-10 times prod's (login 150/min, default 2000/min). To test prod's exact limits, set it to `"1"`
-there and commit it (Flux reverts an `apply-config.sh` patch), then put it back. A staging
-rate-limit test still says nothing about how prod buckets real clients. Flux reconciles the
+the Tailscale proxy, so every anonymous staging visitor shares one address bucket. That is why
+staging sets `RATELIMIT_MULTIPLIER: "10"` in `overlays/staging/backend-config-patch.yaml`: every
+limit is 10 times prod's (150 login attempts per account a minute, anonymous default 30000/min).
+To test prod's exact limits, set it to `"1"` there and commit it (Flux reverts an
+`apply-config.sh` patch), then put it back. A staging rate-limit test still says nothing about
+how prod buckets real clients. Flux reconciles the
 tailnet Ingress as `fmi-codes-staging-tailnet`. The address appears once the operator runs
 ([Phase 7](#7--observability-prometheus--grafana)); until then, or without Tailscale:
 
@@ -1869,7 +1870,7 @@ Confirm that on a live database with
 ## Verify a running deployment
 
 ```bash
-kubectl -n fmi-codes get pods                                  # 2 backend, 2 frontend, Postgres, Redis
+kubectl -n fmi-codes get pods                                  # 4 backend, 2 frontend, Postgres, Redis
 curl https://fmicodes.com/api/health                           # backend 200
 curl https://staging.<tailnet>.ts.net/api/health/ready         # from a tailnet device: {"db":"ok","redis":"ok"}
 flux get kustomizations -n flux-system                         # prod + staging Ready (if Flux is up)

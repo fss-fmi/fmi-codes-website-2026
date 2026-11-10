@@ -5,7 +5,7 @@ import hmac
 import logging
 import os
 import secrets
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import psycopg2
@@ -18,9 +18,20 @@ from app.services import feature_flag_service
 from app.services.auth_service import generate_token, hash_password, verify_password
 from app.services.redis_client import redis_del
 from app.utils.auth_decorators import participant_required, token_required
-from app.utils.rate_limits import scaled
+from app.utils.rate_limits import (
+    LOGIN_ACCOUNT_LIMIT,
+    address_key,
+    forget_login_attempts,
+    login_account_key,
+    reset_account_key,
+    scaled,
+)
 
 logger = logging.getLogger(__name__)
+
+# Bounded: registration allows 300/min per address, and a thread per sign-up would grow
+# without limit while SMTP is slow. Queued sends wait instead.
+_verification_mail = ThreadPoolExecutor(max_workers=4, thread_name_prefix="verification-mail")
 
 _COOKIE_MAX_AGE = 3 * 24 * 60 * 60  # 3 days, matches JWT expiry
 # Bcrypt hash generated once at startup and used as a timing equaliser when
@@ -181,7 +192,7 @@ def _get_or_create_lookup(cursor, insert_sql, select_sql, values):
 
 
 @auth_bp.route("/api/auth/register", methods=["POST"])
-@limiter.limit(scaled("10 per minute"))
+@limiter.limit(scaled("300 per minute"), key_func=address_key)
 def register_participant():
     """Register a new participant and return JWT.
 
@@ -315,11 +326,9 @@ def register_participant():
         from app.services.email_service import send_verification_email
 
         verify_url = _issue_verification_link(pid)
-        threading.Thread(
-            target=send_verification_email,
-            args=(dict(current_app.config), email, verify_url),
-            daemon=True,
-        ).start()
+        _verification_mail.submit(
+            send_verification_email, dict(current_app.config), email, verify_url
+        )
     except Exception as e:
         logger.error("Could not issue verification email for participant %s: %s", pid, e)
 
@@ -334,7 +343,8 @@ def register_participant():
 
 
 @auth_bp.route("/api/auth/login", methods=["POST"])
-@limiter.limit(scaled("15 per minute"))
+@limiter.limit(scaled(LOGIN_ACCOUNT_LIMIT), key_func=login_account_key)
+@limiter.limit(scaled("300 per minute"), key_func=address_key)
 def login():
     """Login for participants, mentors, or admin. Returns JWT.
 
@@ -359,6 +369,7 @@ def login():
         if hmac.compare_digest(email.encode(), admin_email.encode()) and verify_password(
             password, admin_password_hash
         ):
+            forget_login_attempts()
             token = generate_token(0, "admin")
             resp = make_response(
                 jsonify(
@@ -397,6 +408,7 @@ def login():
     if not user or not user.get("password_hash") or not password_valid:
         return jsonify({"success": False, "error": "Invalid email or password"}), 401
 
+    forget_login_attempts()
     token = generate_token(user["id"], role)
     user_profile = _fetch_user_profile(current_app, user["id"], role)
     resp = make_response(
@@ -533,7 +545,8 @@ def change_password():
 
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
-@limiter.limit(scaled("5 per hour"))
+@limiter.limit(scaled("5 per hour"), key_func=reset_account_key)
+@limiter.limit(scaled("100 per minute"), key_func=address_key)
 def reset_password():
     """C4: Initiate a secure password reset.
 
@@ -608,7 +621,7 @@ def reset_password():
 
 
 @auth_bp.route("/api/auth/reset-password/confirm", methods=["POST"])
-@limiter.limit(scaled("10 per hour"))
+@limiter.limit(scaled("100 per minute"), key_func=address_key)
 def confirm_password_reset():
     """C4: Verify the reset token and set a new password.
 
@@ -697,7 +710,7 @@ def confirm_password_reset():
 
 
 @auth_bp.route("/api/auth/verify-email", methods=["POST"])
-@limiter.limit(scaled("20 per hour"))
+@limiter.limit(scaled("300 per minute"), key_func=address_key)
 def verify_email():
     """Mark a participant's email verified from the emailed link's token.
 
@@ -747,6 +760,7 @@ def verify_email():
 
 @auth_bp.route("/api/auth/resend-verification", methods=["POST"])
 @limiter.limit(scaled("3 per hour"))
+@limiter.limit(scaled("30 per minute"), key_func=address_key)
 @participant_required
 def resend_verification():
     """Send a fresh verification link to the logged-in participant."""

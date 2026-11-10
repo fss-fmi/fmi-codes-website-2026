@@ -19,7 +19,7 @@ from app.services import (
 from app.services.redis_client import get_redis_client
 from app.services.team_service import TeamService
 from app.utils.auth_decorators import admin_required, get_optional_user
-from app.utils.rate_limits import scaled
+from app.utils.rate_limits import address_key, scaled
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +79,8 @@ def get_config():
     SameSite=Lax cookies mean this endpoint is safe to call without CSRF tokens.
     The SPA polls it, so a flag switched in Mission Control reaches open pages.
     Exempt from rate limits: the venue Wi-Fi puts every phone behind one NAT
-    address, so the 200/min default would 429 a full venue's polls, and a 429
-    on the first load shows registration as closed. Reads are cached.
+    address, where anonymous polls share one per-address bucket, and a 429 on
+    the first load shows registration as closed. Reads are cached.
     """
     try:
         flags = feature_flag_service.get_flags()
@@ -415,6 +415,7 @@ def admin_cancel_flag_schedule(name):
 
 @api_bp.route("/bug-report", methods=["POST"])
 @limiter.limit(scaled("10 per minute"))
+@limiter.limit(scaled("30 per minute"), key_func=address_key)
 def submit_bug_report():
     """Accept a bug report and post it to the Discord and Slack bug-report channels.
 
