@@ -5,15 +5,20 @@ import os
 from importlib import import_module
 
 from config import get_config
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.services.redis_client import build_limiter_storage_uri
-from app.utils.rate_limits import multiplier_from_env, scaled
+from app.utils.rate_limits import (
+    identity_key,
+    is_signed_in,
+    multiplier_from_env,
+    per_identity,
+    scaled,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,9 +30,13 @@ logger = logging.getLogger(__name__)
 # RATELIMIT_STORAGE_URI below), so it transparently supports Sentinel mode
 # (REDIS_SENTINELS + REDIS_MASTER_NAME) or single-instance (REDIS_URL), and
 # falls back to in-memory for local dev without Redis.
+# The default is per route; the application limit caps one anonymous address across all
+# routes, so a scraper can't take 3000/min from every public route at once.
 limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[scaled("200 per minute")],
+    key_func=identity_key,
+    default_limits=[per_identity("200 per minute", "3000 per minute")],
+    application_limits=[scaled("6000 per minute")],
+    application_limits_exempt_when=is_signed_in,
 )
 
 
@@ -48,7 +57,7 @@ def create_app(config_name="development"):
     )
     app.config.from_object(config)
 
-    # The limiter keys on remote_addr, which is otherwise the proxy's address for every visitor.
+    # Address-keyed limits read remote_addr, otherwise the proxy's address for every visitor.
     # Exactly one hop sits in front in every deployment (ingress-nginx in k3s, the frontend's
     # nginx in Compose). Trusting more would let a client pick its bucket with a forged header.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
@@ -70,6 +79,13 @@ def create_app(config_name="development"):
     app.config["RATELIMIT_STORAGE_URI"] = build_limiter_storage_uri()
     app.config["RATELIMIT_MULTIPLIER"] = multiplier_from_env()
     limiter.init_app(app)
+
+    # The SPA shows a response's `error` field; without one a 429 reads "HTTP 429".
+    @app.errorhandler(429)
+    def too_many_requests(_e):
+        return jsonify(
+            {"success": False, "error": "Too many requests. Wait a moment and try again."}
+        ), 429
 
     # CORS — allow frontend origin with credentials (httpOnly cookies)
     frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
