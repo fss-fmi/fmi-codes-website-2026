@@ -364,7 +364,7 @@ Public. Active mentors, cached about 30 min and invalidated when mentors are add
       "bio": "...",
       "status": "active",
       "technologies": ["Python", "Kubernetes"],
-      "picture_url": "/static/mentorPictures/maria.jpg",
+      "picture_url": "/mentorPictures/maria.webp",
       "picture_filename": "maria.jpg",
       "availability_text": "...",
       "created_at": "..."
@@ -377,7 +377,7 @@ Note: this public response includes mentor email and phone number.
 
 ### GET /api/mentors/{mentor_id}/picture
 
-Public. Intended to stream the mentor photo. Known bug: `picture_url` holds a path string, which this handler cannot wrap, so it returns 500 for seeded mentors. The SPA's mentor cards use `picture_url` directly instead (served from `/static/mentorPictures/`).
+Public. Intended to stream the mentor photo. Known bug: `picture_url` holds a path string, which this handler cannot wrap, so it returns 500 for seeded mentors. The SPA's mentor cards use `picture_url` directly instead (served by the frontend from `/mentorPictures/`).
 
 ### GET /api/teams/{team_id}/available-mentors
 

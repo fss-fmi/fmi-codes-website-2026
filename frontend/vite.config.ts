@@ -16,10 +16,6 @@ export default defineConfig({
         target: process.env.BACKEND_URL ?? 'http://localhost:5001',
         changeOrigin: true,
       },
-      '/static': {
-        target: process.env.BACKEND_URL ?? 'http://localhost:5001',
-        changeOrigin: true,
-      },
     },
   },
   test: {

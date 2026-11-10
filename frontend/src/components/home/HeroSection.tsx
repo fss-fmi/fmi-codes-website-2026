@@ -42,7 +42,7 @@ export default function HeroSection() {
             }}
           >
             <img
-              src="/castle.jpg"
+              src="/castle.webp"
               alt="Castle"
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
@@ -139,7 +139,7 @@ export default function HeroSection() {
             }}
           >
             <img
-              src="/castle.jpg"
+              src="/castle.webp"
               alt=""
               style={{
                 width: '160px',

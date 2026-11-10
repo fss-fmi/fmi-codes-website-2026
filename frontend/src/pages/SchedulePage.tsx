@@ -132,7 +132,7 @@ export default function SchedulePage() {
                 }}
               >
                 <img
-                  src="/castle.jpg"
+                  src="/castle.webp"
                   alt="Castle"
                   style={{ width: '100%', height: '340px', objectFit: 'cover', display: 'block' }}
                 />

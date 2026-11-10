@@ -22,7 +22,7 @@ export default function RegulationsCloser() {
       className="regulations-closer"
     >
       <img
-        src="/castle.jpg"
+        src="/castle.webp"
         alt=""
         style={{
           width: '100%',
@@ -77,8 +77,7 @@ export default function RegulationsCloser() {
             maxWidth: '52ch',
           }}
         >
-          Read the rules, know the timeline, then lock your team in before
-          the 18-team cap fills up.
+          Read the rules, know the timeline, then lock your team in before the 18-team cap fills up.
         </p>
         <Link
           to="/registration"

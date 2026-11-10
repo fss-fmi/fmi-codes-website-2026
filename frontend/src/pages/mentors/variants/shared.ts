@@ -9,9 +9,7 @@ export function useMentors(enabled = true) {
   return useQuery<Mentor[]>({
     queryKey: ['mentors'],
     queryFn: () =>
-      api
-        .get<{ success: boolean; mentors: Mentor[] }>('/api/mentors')
-        .then((r) => r.mentors),
+      api.get<{ success: boolean; mentors: Mentor[] }>('/api/mentors').then((r) => r.mentors),
     staleTime: 5 * 60_000,
     enabled,
   });
@@ -48,8 +46,8 @@ export function mentorNumber(index: number): string {
 
 /**
  * Resolve a mentor's picture source. Prefers inline base64 picture_data, then
- * picture_url (absolute /static paths are used as-is, bare filenames are
- * prefixed), then picture_filename. Falls back to null so the caller can
+ * picture_url (absolute paths are used as-is, bare filenames are prefixed),
+ * then picture_filename. Falls back to null so the caller can
  * render initials. Accepts any object carrying a subset of the picture fields
  * so both the Mentor shape and the selected-mentors shape can use it.
  */
@@ -64,10 +62,10 @@ export function pictureFor(mentor: {
   if (mentor.picture_url) {
     return mentor.picture_url.startsWith('/')
       ? mentor.picture_url
-      : `/static/mentorPictures/${mentor.picture_url}`;
+      : `/mentorPictures/${mentor.picture_url}`;
   }
   if (mentor.picture_filename) {
-    return `/static/mentorPictures/${mentor.picture_filename}`;
+    return `/mentorPictures/${mentor.picture_filename}`;
   }
   return null;
 }
@@ -104,7 +102,10 @@ export const AVAILABILITY_COLORS: Record<AvailabilityStatus, string> = {
 /**
  * Cap technologies at N and return {shown, more} for a "+3 more" ellipsis.
  */
-export function capTechs(techs: string[] | undefined, cap = 8): {
+export function capTechs(
+  techs: string[] | undefined,
+  cap = 8,
+): {
   shown: string[];
   more: number;
 } {

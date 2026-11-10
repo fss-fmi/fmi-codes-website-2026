@@ -110,19 +110,19 @@ Trigger `trig_prevent_team_deletion` blocks deleting a team that still has activ
 
 ### mentors
 
-| Column                                    | Type                | Notes                                                                                             |
-| ----------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------- |
-| `id`                                      | bigserial PK        |                                                                                                   |
-| `first_name`, `last_name`, `company_name` | varchar             | Unique together (`uidx_mentors_identity`), used as the seed upsert key                            |
-| `email`                                   | varchar(255) unique |                                                                                                   |
-| `phone_number`                            | varchar(20)         |                                                                                                   |
-| `bio`, `availability_text`                | text                |                                                                                                   |
-| `technologies`                            | text[]              | GIN indexed                                                                                       |
-| `picture_url`                             | varchar(500)        | A path such as `/static/mentorPictures/alice.jpg` (files in `backend/app/static/mentorPictures/`) |
-| `picture_filename`                        | varchar(255)        |                                                                                                   |
-| `password_hash`                           | varchar(255)        | bcrypt                                                                                            |
-| `status`                                  | varchar(20)         | `active`, `inactive`, `archived`. Only active mentors appear, log in or get matched               |
-| `tokens_valid_from`                       | timestamptz         | Same meaning as for participants                                                                  |
+| Column                                    | Type                | Notes                                                                                                            |
+| ----------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `id`                                      | bigserial PK        |                                                                                                                  |
+| `first_name`, `last_name`, `company_name` | varchar             | Unique together (`uidx_mentors_identity`), used as the seed upsert key                                           |
+| `email`                                   | varchar(255) unique |                                                                                                                  |
+| `phone_number`                            | varchar(20)         |                                                                                                                  |
+| `bio`, `availability_text`                | text                |                                                                                                                  |
+| `technologies`                            | text[]              | GIN indexed                                                                                                      |
+| `picture_url`                             | varchar(500)        | A path such as `/mentorPictures/alice.webp` (files in `frontend/public/mentorPictures/`, served by the frontend) |
+| `picture_filename`                        | varchar(255)        |                                                                                                                  |
+| `password_hash`                           | varchar(255)        | bcrypt                                                                                                           |
+| `status`                                  | varchar(20)         | `active`, `inactive`, `archived`. Only active mentors appear, log in or get matched                              |
+| `tokens_valid_from`                       | timestamptz         | Same meaning as for participants                                                                                 |
 
 ### team_join_requests
 
@@ -172,11 +172,11 @@ None of these are used by the application; they are for manual SQL inspection.
 
 Loaded by both `run_server.py` and `wsgi.py` on every start (idempotent, `ON CONFLICT DO NOTHING`):
 
-| File                                       | Rows | Loaded into                                                                                                                       |
-| ------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/database/seeds/universities.json` | 41   | `universities` (`is_seed = true`)                                                                                                 |
-| `backend/database/seeds/specialties.json`  | 18   | `specialties` (`is_seed = true`)                                                                                                  |
-| `backend/database/seeds/mentors.json`      | 20   | `mentors`. Password defaults to `mentor123` when an entry has none; bare picture filenames become `/static/mentorPictures/<file>` |
+| File                                       | Rows | Loaded into                                                                                                                |
+| ------------------------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| `backend/database/seeds/universities.json` | 41   | `universities` (`is_seed = true`)                                                                                          |
+| `backend/database/seeds/specialties.json`  | 18   | `specialties` (`is_seed = true`)                                                                                           |
+| `backend/database/seeds/mentors.json`      | 20   | `mentors`. Password defaults to `mentor123` when an entry has none; bare picture filenames become `/mentorPictures/<file>` |
 
 Read at request time (not stored in the DB):
 
@@ -196,6 +196,7 @@ Read at request time (not stored in the DB):
 - `016_email_verification.sql` adds `participants.email_verified` with `DEFAULT TRUE` (so existing participants are grandfathered as verified) and then switches the default to false for new rows. It is safe to re-run, and `schema.sql` uses the same two statements.
 - `017_feature_flags.sql` creates `feature_flags` and inserts its three rows as false with `ON CONFLICT DO NOTHING`, so it never overwrites a value the admin has set. False matches the old `REGISTRATION_OPEN`, `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ConfigMap values in every environment, so deploying it changes nothing visible.
 - `018_masters_two_years.sql` replaces `participants_course_check` so a Masters course is only `Masters 1st Year` or `Masters 2nd Year`. It does not rewrite stored courses: if a participant already holds `Masters 3rd Year` to `Masters 6th Year`, the migration fails and the rollout stops until those rows are fixed by hand.
+- `019_mentor_pictures_webp.sql` points seeded mentors at the WebP photos the frontend serves: `picture_url` `/static/mentorPictures/<name>.jpg|jpeg|png` becomes `/mentorPictures/<name>.webp` and `picture_filename` follows. Other paths and URLs are left alone, so it is safe to re-run.
 - Most statements use `IF NOT EXISTS`, but the `CREATE TRIGGER` statements do not, so running `schema.sql` a second time against an existing database fails partway. Treat it as a create-once script.
 - On k3s the schema and DB password are baked into the Postgres PVC at first boot. Editing `schema.sql` does not migrate a running database.
 

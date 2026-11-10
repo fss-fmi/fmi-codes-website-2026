@@ -27,7 +27,7 @@ graph TD
 
     Browser -->|"HTTPS (prod)"| Ingress
     Ingress -->|"/ (static)"| Nginx
-    Ingress -->|"/api, /static"| API
+    Ingress -->|"/api"| API
     API -->|psycopg2 pool, raw SQL| PG
     API -->|rate limits, JWT blocklist, caches| Redis
     API -->|password reset, join-request mail| SMTP
@@ -45,11 +45,11 @@ graph TD
     Grafana --> Prom
 ```
 
-In production the cluster ingress routes `/api` and `/static` straight to the backend Service and everything else to the frontend. Staging has its own ingress-nginx controller with the same routing and security headers, but no public entry: it is reached only over the `fss-fmi` tailnet, where a Tailscale proxy terminates TLS for `https://staging.<tailnet>.ts.net` and forwards to that controller ([ADR-009](adr/009-staging-over-tailscale.md)). The frontend image's own `nginx.conf` also proxies `/api` and `/static` to `http://backend:5001`, which is how the Docker Compose stack works with the same image.
+In production the cluster ingress routes `/api` straight to the backend Service and everything else, images included, to the frontend. Staging has its own ingress-nginx controller with the same routing and security headers, but no public entry: it is reached only over the `fss-fmi` tailnet, where a Tailscale proxy terminates TLS for `https://staging.<tailnet>.ts.net` and forwards to that controller ([ADR-009](adr/009-staging-over-tailscale.md)). The frontend image's own `nginx.conf` also proxies `/api` to `http://backend:5001`, which is how the Docker Compose stack works with the same image.
 
 ## Components
 
-**Frontend** (`frontend/`). React 19 + TypeScript on Vite, Tailwind v4, React Router 7. Client rendered only. TanStack Query owns server state (30 s stale time, no retries, no refetch on focus). Two React contexts hold global state: `AuthContext` (current user, hydrated from `GET /api/auth/me` on load) and `ConfigContext` (feature flags from `GET /api/config`, refetched every 30 s and on window focus so a switch in Mission Control reaches open pages). All requests go through `src/lib/api.ts`, a fetch wrapper that sends cookies and broadcasts an `auth:unauthorized` window event on any 401 so `AuthContext` can clear the session. Role-gated pages wrap themselves in `RequireAuth roles={[...]}`; the route table in `App.tsx` is flat and unguarded.
+**Frontend** (`frontend/`). React 19 + TypeScript on Vite, Tailwind v4, React Router 7. Client rendered only. TanStack Query owns server state (30 s stale time, no retries, no refetch on focus). Two React contexts hold global state: `AuthContext` (current user, hydrated from `GET /api/auth/me` on load) and `ConfigContext` (feature flags from `GET /api/config`, refetched every 30 s and on window focus so a switch in Mission Control reaches open pages). All requests go through `src/lib/api.ts`, a fetch wrapper that sends cookies and broadcasts an `auth:unauthorized` window event on any 401 so `AuthContext` can clear the session. Role-gated pages wrap themselves in `RequireAuth roles={[...]}`; the route table in `App.tsx` is flat and unguarded. Every image, mentor photos included, lives in `frontend/public/` (photos and logos as WebP, the rest as SVG) and the frontend's nginx serves it, gzipping SVG, JS, CSS and JSON; `tests/test_site_images.py` holds each file to a size budget and fails on missing or unused images.
 
 **Backend** (`backend/`). Flask app factory in `app/__init__.py`. Layering is routes → services → database:
 

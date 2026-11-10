@@ -5,7 +5,7 @@
     "email": "agalabov@asteasolutions.com",
     "phone_number": "0885929213",
     "company_name": "Astea Solutions",
-    "picture_url": "/static/mentorPictures/Alexander_Galabov.jpg",
+    "picture_url": "/mentorPictures/Alexander_Galabov.webp",
     "picture_filename": "Alexander_Galabov.jpg",
     "bio": "Senior Software Engineer",
     "technologies": [
@@ -48,7 +48,7 @@
     "email": "smilen.kouzmanov@avenga.com",
     "phone_number": "+359887251092",
     "company_name": "Avenga EAD",
-    "picture_url": "/static/mentorPictures/Smilen_Kouzmanov.jpg",
+    "picture_url": "/mentorPictures/Smilen_Kouzmanov.webp",
     "picture_filename": "Smilen_Kouzmanov.jpg",
     "bio": "Senior Engineering Manager",
     "technologies": [
@@ -113,7 +113,7 @@
     "email": "s.e.hristov99@gmail.com",
     "phone_number": "+359 894 701 222",
     "company_name": "Experian",
-    "picture_url": "/static/mentorPictures/Simeon_Hristov.jpg",
+    "picture_url": "/mentorPictures/Simeon_Hristov.webp",
     "picture_filename": "Simeon_Hristov.jpg",
     "bio": "Специалист внедряване на машинно самообучение",
     "technologies": [
@@ -170,7 +170,7 @@
     "email": "ipetkov@asteasolutions.com",
     "phone_number": "+359883302880",
     "company_name": "Astea Solutions",
-    "picture_url": "/static/mentorPictures/Ivaylo_Petkov.png",
+    "picture_url": "/mentorPictures/Ivaylo_Petkov.webp",
     "picture_filename": "Ivaylo_Petkov.png",
     "bio": "Senior Software Engineer",
     "technologies": [
@@ -205,7 +205,7 @@
     "email": "vladislav.ivanov@chaos.com",
     "phone_number": "0876420325",
     "company_name": "Chaos Software",
-    "picture_url": "/static/mentorPictures/Vladislav_Ivanov.png",
+    "picture_url": "/mentorPictures/Vladislav_Ivanov.webp",
     "picture_filename": "Vladislav_Ivanov.png",
     "bio": "Software Developer Team GPU\n\nNotes:\nGPU DX121 compute shaders",
     "technologies": [
@@ -240,7 +240,7 @@
     "email": "tsvetelin.takiev@experian.com",
     "phone_number": "0883552282",
     "company_name": "Experian",
-    "picture_url": "/static/mentorPictures/Tsvetelin_Takiev.jpg",
+    "picture_url": "/mentorPictures/Tsvetelin_Takiev.webp",
     "picture_filename": "Tsvetelin_Takiev.jpg",
     "bio": "Software Engineer II & Security Champion",
     "technologies": [
@@ -279,7 +279,7 @@
     "email": "yol@milestone.dk",
     "phone_number": "0887788179",
     "company_name": "Milestone Systems",
-    "picture_url": "/static/mentorPictures/Yordan_Lukanov.jpg",
+    "picture_url": "/mentorPictures/Yordan_Lukanov.webp",
     "picture_filename": "Yordan_Lukanov.jpg",
     "bio": "Engineering Manager",
     "technologies": [
@@ -308,7 +308,7 @@
     "email": "ahmed.znaty@gmail.com",
     "phone_number": "0877725783",
     "company_name": "Avenga EAD",
-    "picture_url": "/static/mentorPictures/Ahmed_Zanaty.jpeg",
+    "picture_url": "/mentorPictures/Ahmed_Zanaty.webp",
     "picture_filename": "Ahmed_Zanaty.jpeg",
     "bio": "Software Development Manager",
     "technologies": [
@@ -355,7 +355,7 @@
     "email": "doychin.atanasov@chaos.com",
     "phone_number": "+359888841815",
     "company_name": "Chaos Software",
-    "picture_url": "/static/mentorPictures/Doychin_Atanasov.jpeg",
+    "picture_url": "/mentorPictures/Doychin_Atanasov.webp",
     "picture_filename": "Doychin_Atanasov.jpeg",
     "bio": "Software Developer\nИмам силен интерес към GTK еко системата за правене на графични приложение, както и mobile Linux (phosh, phoc, etc.)",
     "technologies": [
@@ -413,7 +413,7 @@
     "email": "ayon@milestone.dk",
     "phone_number": "+359895462171",
     "company_name": "Milestone Systems",
-    "picture_url": "/static/mentorPictures/Александър_Йончев.jpeg",
+    "picture_url": "/mentorPictures/Александър_Йончев.webp",
     "picture_filename": "Александър_Йончев.jpeg",
     "bio": "Software Engineer",
     "technologies": [
@@ -457,7 +457,7 @@
     "email": "lachezar.peshterliev@dreamix.eu",
     "phone_number": "0893429667",
     "company_name": "Dreamix",
-    "picture_url": "/static/mentorPictures/Lachezar_Peshterliev.jpg",
+    "picture_url": "/mentorPictures/Lachezar_Peshterliev.webp",
     "picture_filename": "Lachezar_Peshterliev.jpg",
     "bio": "Senior Software Engineer",
     "technologies": [
@@ -491,7 +491,7 @@
     "email": "prdenkov@gmail.com",
     "phone_number": "0899411015",
     "company_name": "Gameloft Bulgaria",
-    "picture_url": "/static/mentorPictures/Pavel_Denkov.jpg",
+    "picture_url": "/mentorPictures/Pavel_Denkov.webp",
     "picture_filename": "Pavel_Denkov.jpg",
     "bio": "Game Developer\n\nNotes:\nАудио технологии: Ableton DAW, MPC DAW, Reaper.",
     "technologies": [
@@ -517,7 +517,7 @@
     "email": "martingerov24@gmail.com",
     "phone_number": "0889788803",
     "company_name": "EnuroSat",
-    "picture_url": "/static/mentorPictures/Мартин_Геров.jpeg",
+    "picture_url": "/mentorPictures/Мартин_Геров.webp",
     "picture_filename": "Мартин_Геров.jpeg",
     "bio": "Software Engineer",
     "technologies": [
@@ -556,7 +556,7 @@
     "email": "velizar.stoianov@gmail.com",
     "phone_number": "0897882917",
     "company_name": "SAP Labs Bulgaria",
-    "picture_url": "/static/mentorPictures/Velizar_Stoyanov.jpeg",
+    "picture_url": "/mentorPictures/Velizar_Stoyanov.webp",
     "picture_filename": "Velizar_Stoyanov.jpeg",
     "bio": "AI Developer",
     "technologies": [
@@ -618,7 +618,7 @@
     "email": "radoslavcvetanov5@gmail.com",
     "phone_number": "0884336595",
     "company_name": "Engineer Access",
-    "picture_url": "/static/mentorPictures/Radoslav_Tsvetanov.jpg",
+    "picture_url": "/mentorPictures/Radoslav_Tsvetanov.webp",
     "picture_filename": "Radoslav_Tsvetanov.jpg",
     "bio": "Software Enginner",
     "technologies": [
@@ -688,7 +688,7 @@
     "email": "cvetannikolovofc@gmail.com",
     "phone_number": "0894810633",
     "company_name": "EnduroSat",
-    "picture_url": "/static/mentorPictures/Cvetan_Nikolov.jpg",
+    "picture_url": "/mentorPictures/Cvetan_Nikolov.webp",
     "picture_filename": "Cvetan_Nikolov.jpg",
     "bio": "Software Engineer",
     "technologies": [
@@ -725,7 +725,7 @@
     "email": "stoyan.ivanov@dreamix.eu",
     "phone_number": "0886284104",
     "company_name": "Dreamix",
-    "picture_url": "/static/mentorPictures/Stoyan_Ivanov.jpg",
+    "picture_url": "/mentorPictures/Stoyan_Ivanov.webp",
     "picture_filename": "Stoyan_Ivanov.jpg",
     "bio": "Lead Developer",
     "technologies": [
@@ -769,7 +769,7 @@
     "email": "andondenkov@gmail.com",
     "phone_number": "0892781620",
     "company_name": "Gameloft Bulgaria",
-    "picture_url": "/static/mentorPictures/Andon_Denkov.png",
+    "picture_url": "/mentorPictures/Andon_Denkov.webp",
     "picture_filename": "Andon_Denkov.png",
     "bio": "Програмист на игри",
     "technologies": [
@@ -796,7 +796,7 @@
     "email": "rangel.ivanov33@gmail.com",
     "phone_number": "0878457040",
     "company_name": "SAP Labs Bulgaria",
-    "picture_url": "/static/mentorPictures/Rangel_Ivanov.jpeg",
+    "picture_url": "/mentorPictures/Rangel_Ivanov.webp",
     "picture_filename": "Rangel_Ivanov.jpeg",
     "bio": "Senior Developer",
     "technologies": [
@@ -869,7 +869,7 @@
     "email": "emiltsanev2001@gmail.com",
     "phone_number": "0876788005",
     "company_name": "Raven",
-    "picture_url": "/static/mentorPictures/Emil_Tsanev.jpeg",
+    "picture_url": "/mentorPictures/Emil_Tsanev.webp",
     "picture_filename": "Emil_Tsanev.jpeg",
     "bio": "Software Engineer\nHFT ориентиран програмист",
     "technologies": [

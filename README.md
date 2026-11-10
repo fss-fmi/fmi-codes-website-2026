@@ -59,7 +59,7 @@ Fill in `SECRET_KEY`, `JWT_SECRET_KEY`, `DB_PASSWORD`, and `ADMIN_PASSWORD_HASH`
 | `docker compose up --build`                  | The whole stack in Docker — Postgres + single Redis + backend + frontend, all hot-reloading. Only needs Docker.                                                                                            |
 | `docker compose -f docker-compose.yml up -d` | Prod-like stack with the Redis Sentinel topology (1 master + 2 replicas + 3 sentinels). Use it to rehearse a failover: `docker kill fmi-codes-redis-master` and watch the app follow the promoted replica. |
 
-API → **http://localhost:5001** (JSON only, every route lives under `/api`), SPA dev server → **http://localhost:5173** (proxies `/api` and `/static` to the backend). Seed data (universities, specialties, mentors) loads automatically on first backend start.
+API → **http://localhost:5001** (JSON only, every route lives under `/api`), SPA dev server → **http://localhost:5173** (proxies `/api` to the backend). Seed data (universities, specialties, mentors) loads automatically on first backend start.
 
 **Database (for `python dev.py`)** — create it once and apply the authoritative schema; `schema.sql` already folds in every migration, so a fresh setup needs nothing from `database/migrations/`:
 

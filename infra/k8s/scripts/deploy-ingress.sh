@@ -156,7 +156,6 @@ if [ "$ENV" = "staging" ]; then
 Networking is up (Phase 4). Staging is reachable only over the tailnet:
   https://$TAILNET_HOST -> Tailscale proxy (TLS) -> ${INGRESS_RELEASE}-controller:80
     /api/    -> backend:5001
-    /static/ -> backend:5001
     /        -> frontend:80
 
 The address appears once the Tailscale operator runs with its OAuth client (Flux installs it,
@@ -183,7 +182,6 @@ cat <<EOF
 
 Networking is up (Phase 4). The ingress terminates TLS and routes:
   /api/    -> backend:5001
-  /static/ -> backend:5001
   /        -> frontend:80
 
 For local testing, add the host to /etc/hosts:

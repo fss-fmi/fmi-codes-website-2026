@@ -58,7 +58,7 @@ Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub Ap
 | Image                       | Built from                                                                                                            | Runs                                                                                      |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `fssfmi/fmi-codes-backend`  | `backend/Dockerfile` (python:3.12-slim)                                                                               | `gunicorn --config gunicorn.conf.py wsgi:app` (:5001, 4 workers x 8 threads) as UID 10001 |
-| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build with `npm ci` from the committed `package-lock.json`, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, proxies `/api` and `/static` to `backend:5001`     |
+| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build with `npm ci` from the committed `package-lock.json`, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, gzip, proxies `/api` to `backend:5001`             |
 
 ## Configuration
 

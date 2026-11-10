@@ -70,7 +70,6 @@ class Config:
     CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
     CONTACT_PHONE = os.environ.get("CONTACT_PHONE", "")
 
-    STATIC_FOLDER = BASE_DIR / "app" / "static"
     REQUIRE_EMAIL_VERIFICATION = (
         os.environ.get("REQUIRE_EMAIL_VERIFICATION", "false").lower() == "true"
     )
