@@ -14,7 +14,7 @@ Each limit keys on what it protects (`backend/app/utils/rate_limits.py`):
 
 - **The account a request names**, for login (15 failed attempts per minute; successful logins don't count) and password reset requests (5 per hour). The key is an HMAC of role and email with `SECRET_KEY`, so Redis never holds an email and a list of known addresses can't be hashed to find one.
 - **The signed-in user**, read from a token with a valid signature and expiry, for the 200/min default, change-password, resend-verification and bug reports. The blocklist and revocation epoch are not checked here: a revoked token still belongs to its owner, and minting one needs the secret.
-- **The client address**, only as a ceiling sized for a whole venue behind one NAT address: register and login 300/min, the anonymous default 3000/min, reset requests 100/h, reset confirm 100/h, verify-email 300/h. The tokens behind reset confirm and verify-email are 256-bit, so guessing them is hopeless either way.
+- **The client address**, only as a ceiling sized for a whole venue behind one NAT address: register and login 300/min, the anonymous default 3000/min, reset requests and reset confirm 100/min, verify-email 300/min. The tokens behind reset confirm and verify-email are 256-bit, so guessing them is hopeless either way. These windows are a minute, not an hour, because on a shared address the risk is one person exhausting the bucket for everyone: a minute caps that outage at a minute, while the per-email limit already stops a flood of one inbox.
 - `RATELIMIT_MULTIPLIER` still scales every limit, and `/api/config`, `/api/teams/rankings` and the health probes stay exempt.
 
 ## Consequences

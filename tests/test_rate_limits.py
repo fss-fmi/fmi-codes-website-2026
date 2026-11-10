@@ -267,6 +267,18 @@ def test_reset_has_a_per_address_ceiling(limited_app, monkeypatch):
     assert statuses == [200] * 100 + [429]
 
 
+@pytest.mark.parametrize(
+    ("path", "ceiling"),
+    [("/api/auth/reset-password/confirm", 100), ("/api/auth/verify-email", 300)],
+)
+def test_token_routes_have_a_per_address_ceiling(limited_app, path, ceiling):
+    """Empty bodies are 400s that count, the same as guessed tokens."""
+    c = limited_app.test_client()
+    statuses = [_post(c, path, {}) for _ in range(ceiling + 1)]
+    assert statuses == [400] * ceiling + [429]
+    assert _post(c, path, {}, CLIENT_B) == 400
+
+
 # --- Multiplier ---
 
 

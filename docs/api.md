@@ -185,7 +185,7 @@ Revokes the current token, invalidates every other session for the user and sets
 
 ### POST /api/auth/reset-password
 
-Public, 5/hour per email and role, 100/hour per address. Emails a one-hour reset link to `<FRONTEND_ORIGIN>/reset-password?token=...&role=...`.
+Public, 5/hour per email and role, 100/min per address. Emails a one-hour reset link to `<FRONTEND_ORIGIN>/reset-password?token=...&role=...`.
 
 ```json
 { "email": "ivan@example.com", "role": "participant" }
@@ -195,7 +195,7 @@ Always 200 with the same generic message whether or not the account exists. 400 
 
 ### POST /api/auth/reset-password/confirm
 
-Public, 100/hour per address.
+Public, 100/min per address.
 
 ```json
 { "token": "<from the link>", "role": "participant", "new_password": "at-least-12-chars" }
@@ -208,7 +208,7 @@ Public, 100/hour per address.
 
 ### POST /api/auth/verify-email
 
-Public, 300/hour per address. No login needed, so the link works on any device. The SPA's `/verify-email` page sends the token from the emailed link.
+Public, 300/min per address. No login needed, so the link works on any device. The SPA's `/verify-email` page sends the token from the emailed link.
 
 ```json
 { "token": "<from the link>" }

@@ -535,7 +535,7 @@ def change_password():
 
 @auth_bp.route("/api/auth/reset-password", methods=["POST"])
 @limiter.limit(scaled("5 per hour"), key_func=account_key)
-@limiter.limit(scaled("100 per hour"), key_func=address_key)
+@limiter.limit(scaled("100 per minute"), key_func=address_key)
 def reset_password():
     """C4: Initiate a secure password reset.
 
@@ -610,7 +610,7 @@ def reset_password():
 
 
 @auth_bp.route("/api/auth/reset-password/confirm", methods=["POST"])
-@limiter.limit(scaled("100 per hour"), key_func=address_key)
+@limiter.limit(scaled("100 per minute"), key_func=address_key)
 def confirm_password_reset():
     """C4: Verify the reset token and set a new password.
 
@@ -699,7 +699,7 @@ def confirm_password_reset():
 
 
 @auth_bp.route("/api/auth/verify-email", methods=["POST"])
-@limiter.limit(scaled("300 per hour"), key_func=address_key)
+@limiter.limit(scaled("300 per minute"), key_func=address_key)
 def verify_email():
     """Mark a participant's email verified from the emailed link's token.
 
