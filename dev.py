@@ -8,7 +8,7 @@ Usage:
 Press Ctrl+C to stop both servers.
 
 Backend  → http://localhost:5001
-Frontend → http://localhost:5173  (proxies /api and /static to backend)
+Frontend → http://localhost:5173  (proxies /api to backend)
 """
 
 import os

@@ -72,7 +72,7 @@ python dev.py
 ```
 
 - Backend: http://localhost:5001 (Flask with reload, bound to 127.0.0.1)
-- Frontend: http://localhost:5173 (Vite HMR, proxies `/api` and `/static` to the backend)
+- Frontend: http://localhost:5173 (Vite HMR, proxies `/api` to the backend)
 
 Open the frontend URL. Seed universities, specialties and mentors load on backend start. Ctrl+C stops both.
 
@@ -134,7 +134,6 @@ backend/
   app/routes/      HTTP layer (auth, teams, mentors, api_routes)
   app/services/    business logic: teams and queue, matching, auth, Redis, mail
   app/utils/       auth decorators, input validation
-  app/static/      mentorPictures/ served at /static
   database/        schema.sql (authoritative), migrations/ (deltas), seeds/ (JSON)
   config.py        all settings, read from env
   run_server.py    dev entry point
@@ -145,6 +144,7 @@ frontend/src/
   components/      shared UI, grouped by area
   context/         AuthContext, ConfigContext
   lib/api.ts       the only fetch wrapper
+frontend/public/   images (mentor photos, logos) served as-is; size budgets in tests/test_site_images.py
 tests/             backend unit tests; tests/e2e/ = API integration tests
 infra/k8s/         cluster manifests and scripts
 docs/              this documentation (published to GitHub Pages by mkdocs.yml)

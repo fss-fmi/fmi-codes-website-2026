@@ -6,14 +6,14 @@ Project-wide docs live in [`docs/`](../docs/) and at https://fss-fmi.github.io/f
 
 ## Scripts
 
-| Command           | What it does                                                                                                               |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `npm install`     | Install dependencies from the committed `package-lock.json`                                                                |
-| `npm run dev`     | Vite dev server on http://localhost:5173, proxying `/api` and `/static` to `BACKEND_URL` (default `http://localhost:5001`) |
-| `npm run build`   | Type-check (`tsc -b`) and build to `dist/`                                                                                 |
-| `npm run preview` | Serve the production build locally                                                                                         |
-| `npm run lint`    | ESLint                                                                                                                     |
-| `npm test`        | Vitest (jsdom + Testing Library)                                                                                           |
+| Command           | What it does                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `npm install`     | Install dependencies from the committed `package-lock.json`                                                  |
+| `npm run dev`     | Vite dev server on http://localhost:5173, proxying `/api` to `BACKEND_URL` (default `http://localhost:5001`) |
+| `npm run build`   | Type-check (`tsc -b`) and build to `dist/`                                                                   |
+| `npm run preview` | Serve the production build locally                                                                           |
+| `npm run lint`    | ESLint                                                                                                       |
+| `npm test`        | Vitest (jsdom + Testing Library)                                                                             |
 
 From the repo root, `python dev.py` starts this dev server together with the backend.
 
@@ -43,4 +43,4 @@ src/
 
 ## Production build
 
-`Dockerfile` builds the app with Node 22 and serves `dist/` from Nginx (`nginx.conf`) as a non-root user. Nginx falls back to `index.html` for client routes and proxies `/api/` and `/static/` to `http://backend:5001`.
+`Dockerfile` builds the app with Node 22 and serves `dist/` from Nginx (`nginx.conf`) as a non-root user. Nginx falls back to `index.html` for client routes and proxies `/api/` to `http://backend:5001`.
