@@ -213,8 +213,8 @@ def load_mentors_from_file(json_path: Path) -> int:
         if mentor_exists(first_name, last_name, company_name, email=email):
             continue
 
-        # picture_url is stored as a URL string (e.g. /static/mentorPictures/alice.jpg)
-        # If the value is a bare filename, normalise it to the expected static path.
+        # picture_url is stored as a URL string (e.g. /mentorPictures/alice.webp), served by
+        # the frontend from frontend/public. A bare filename is normalised to that path.
         picture_data = None
         picture_filename = None
         if picture_path:
@@ -222,7 +222,7 @@ def load_mentors_from_file(json_path: Path) -> int:
             if p.startswith(("http://", "https://", "/")):
                 picture_data = p  # already a full URL or absolute path
             else:
-                picture_data = f"/static/mentorPictures/{p}"
+                picture_data = f"/mentorPictures/{p}"
             picture_filename = Path(p).name
 
         phone_number = str(mentor.get("phone_number", "")).strip() or None

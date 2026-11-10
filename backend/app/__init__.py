@@ -51,10 +51,7 @@ def create_app(config_name="development"):
 
         validate_production_secrets()
 
-    app = Flask(
-        __name__,
-        static_folder=str(config.STATIC_FOLDER),
-    )
+    app = Flask(__name__, static_folder=None)
     app.config.from_object(config)
 
     # Address-keyed limits read remote_addr, otherwise the proxy's address for every visitor.

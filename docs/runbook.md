@@ -54,7 +54,7 @@ and 500m), its Postgres allows 250 connections (staging 150) and its ingress con
 requests 500m CPU. Staging multiplies every rate limit by 10 (`RATELIMIT_MULTIPLIER`). The
 two ingress controllers are fully independent, so a staging deploy never touches prod's
 routing or headers. Staging's Tailscale proxy forwards to the staging controller, not to the
-app, so staging still exercises prod's `security-headers` and `/api` / `/static` routing
+app, so staging still exercises prod's `security-headers` and `/api` routing
 ([ADR-009](adr/009-staging-over-tailscale.md)). Verify an overlay renders with
 `kubectl kustomize infra/k8s/overlays/<env>`.
 
@@ -591,7 +591,7 @@ Two `Deployment`s behind `ClusterIP` Services (the frontend runs 2 replicas, the
 staging and 4 on prod): `backend`
 (`fssfmi/fmi-codes-backend`, :5001) and `frontend` (`fssfmi/fmi-codes-frontend`, :80). The
 backend Service is named `backend` because the frontend image's `nginx.conf` proxies
-`/api/` and `/static/` to `http://backend:5001` — the same image works under compose (where
+`/api/` to `http://backend:5001` — the same image works under compose (where
 the `app` service carries a `backend` alias) and k8s with no rebuild.
 
 Config split: non-secret env comes from the `fmi-codes-backend-config` ConfigMap via
@@ -618,7 +618,7 @@ bash infra/k8s/scripts/deploy-ingress.sh   # ENV=prod|staging
 ```
 
 `helm upgrade --install`s the env's ingress-nginx controller and applies the Ingress. Path
-routing: `/api` and `/static` → `backend:5001`, everything else → `frontend:80`. Security
+routing: `/api` → `backend:5001`, everything else → `frontend:80`. Security
 headers live in the `security-headers` ConfigMap wired into the controller via `add-headers`,
 so **every** response through the Ingress carries them (the backend routes shipped naked
 before).
@@ -1586,7 +1586,7 @@ kubectl -n monitoring port-forward svc/kps-prometheus 9090:9090
 ```
 
 > **The app `/metrics` gotcha.** The exporter registers `/metrics` at the backend ROOT, but the
-> ingress routes `/`→frontend and only `/api`+`/static`→backend. So `/metrics` through the
+> ingress routes `/`→frontend and only `/api`→backend. So `/metrics` through the
 > **public ingress** hits the frontend, not the backend — and that's FINE. Prometheus scrapes
 > **in-cluster** via the ServiceMonitor at `backend.<ns>.svc:5001/metrics`, never through the
 > ingress. Do **not** "fix" this by adding an ingress route — it would expose app metrics

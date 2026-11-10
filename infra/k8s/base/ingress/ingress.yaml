@@ -66,13 +66,6 @@ spec:
                 name: backend
                 port:
                   number: 5001
-          - path: /static
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 5001
           - path: /
             pathType: Prefix
             backend:

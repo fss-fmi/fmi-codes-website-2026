@@ -19,20 +19,20 @@ export interface Sponsor {
 
 export const PREMIUM_SPONSORS: readonly Sponsor[] = [
   { file: 'avenga.svg', alt: 'Avenga' },
-  { file: 'gameloft.png', alt: 'Gameloft' },
+  { file: 'gameloft.webp', alt: 'Gameloft' },
   { file: 'EnduroSat.png', alt: 'EnduroSat' },
-  { file: 'waracle.png', alt: 'Waracle', scale: 1.2 },
-  { file: 'SAP.png', alt: 'SAP' },
-  { file: 'Milestone.png', alt: 'Milestone', scale: 1.5 },
+  { file: 'waracle.webp', alt: 'Waracle', scale: 1.2 },
+  { file: 'SAP.webp', alt: 'SAP' },
+  { file: 'Milestone.webp', alt: 'Milestone', scale: 1.5 },
 ] as const;
 
 export const SUPPORTING_SPONSORS: readonly Sponsor[] = [
   { file: 'astea.svg', alt: 'Astea', scale: 1.2 },
-  { file: 'chaos.jpg', alt: 'Chaos' },
-  { file: 'Dreamix.png', alt: 'Dreamix', scale: 1.4 },
-  { file: 'engineerAcces.png', alt: 'Engineer Access', scale: 1.15 },
+  { file: 'chaos.webp', alt: 'Chaos' },
+  { file: 'Dreamix.webp', alt: 'Dreamix', scale: 1.4 },
+  { file: 'engineerAcces.webp', alt: 'Engineer Access', scale: 1.15 },
   { file: 'raven.svg', alt: 'Raven', scale: 1.25 },
-  { file: 'Experian.jpg', alt: 'Experian', scale: 1.2 },
+  { file: 'Experian.webp', alt: 'Experian', scale: 1.2 },
 ] as const;
 
 export interface ContactChannel {

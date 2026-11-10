@@ -43,6 +43,7 @@ graph LR
 Pending migrations ship inside the backend image and are applied two ways ([ADR-007](adr/007-recorded-migrations-runner.md)):
 
 - **Automatically on every rollout.** The backend Deployment's `migrate` initContainer runs `python -m database.migrate` before the new pods start. It posts to Slack only when it applied something or failed. If a migration fails, the new pods stay in `Init` and the old ones keep serving. It also runs whenever a backend pod restarts (node reboot, k3s restart), so it waits up to 60 s for Postgres to accept connections. If Postgres stays unreachable for that minute, the initContainer only logs it and exits, and the pod goes into `CrashLoopBackOff` (`kubectl -n <namespace> logs <pod> -c migrate`); it does not post, because every replica and every restart would post the same error. A "migration run failed" message from a rollout therefore means a real error after connecting. The manual Job below still posts every result, an unreachable database included.
+- **Caches after a migration.** Either way, once a run applies anything the runner deletes every `cache:*` key in Redis (the logout blocklist, rate-limit keys and the feature-flag version counter stay), so the next request reads the migrated rows. The log says `Cleared N Redis cache key(s)`. Both get `REDIS_PASSWORD` from the `fmi-codes-redis` Secret; if Redis is down the migration still succeeds and the caches expire on their TTLs (the mentor list after up to about 30 minutes).
 - **On demand, with a backup.** Run **Actions → Migrate database** with:
   - `environment`: `staging` or `prod`.
   - `image_tag`: the backend image whose migrations to apply. Blank means the tag live in staging, which is what the next promote would ship.
@@ -58,7 +59,7 @@ Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub Ap
 | Image                       | Built from                                                                                                            | Runs                                                                                      |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `fssfmi/fmi-codes-backend`  | `backend/Dockerfile` (python:3.12-slim)                                                                               | `gunicorn --config gunicorn.conf.py wsgi:app` (:5001, 4 workers x 8 threads) as UID 10001 |
-| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build with `npm ci` from the committed `package-lock.json`, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, proxies `/api` and `/static` to `backend:5001`     |
+| `fssfmi/fmi-codes-frontend` | `frontend/Dockerfile` (node:22-alpine build with `npm ci` from the committed `package-lock.json`, nginx:alpine serve) | Nginx on :80 as UID 101, SPA fallback, gzip, proxies `/api` to `backend:5001`             |
 
 ## Configuration
 

@@ -16,6 +16,11 @@ initContainer starts alongside Postgres. Results go to the Slack incoming
 webhook in SLACK_MIGRATIONS_WEBHOOK_URL when set, labelled with MIGRATION_ENV.
 --notify changes (the initContainer) only logs an unreachable database: every
 replica and every restart hits the same error, and CrashLoopBackOff shows it.
+
+When a run applies anything, it deletes the app's Redis caches (cache:*) so no
+pod keeps serving rows from before the migration until a TTL runs out. Redis
+comes from the backend's own variables; when it is off or down the run still
+succeeds and the caches expire on their TTLs.
 """
 
 import argparse
@@ -140,6 +145,43 @@ def apply_pending(params: str | dict, directory: Path = MIGRATIONS_DIR) -> list[
     return applied
 
 
+def _redis_client():
+    # Imported late: the app package calls logging.basicConfig on import, which
+    # would win over main()'s format if it ran first.
+    from app.services.redis_client import get_redis_client
+
+    return get_redis_client()
+
+
+def clear_caches() -> int | None:
+    """Delete every cache:* key; return how many, or None when Redis is off or failed.
+
+    Version counters (cache:*:version) stay: resetting one to 0 would let a later
+    bump land on a version whose old entry is still cached.
+    """
+    client = _redis_client()
+    if client is None:
+        return None
+    try:
+        keys = [
+            k for k in client.scan_iter(match="cache:*", count=500) if not k.endswith(":version")
+        ]
+        for start in range(0, len(keys), 500):
+            client.delete(*keys[start : start + 500])
+    except Exception as e:
+        logger.warning("Could not clear Redis caches; they expire on their TTLs: %s", e)
+        return None
+    return len(keys)
+
+
+def _clear_caches_after(applied: list[str]) -> None:
+    if not applied:
+        return
+    cleared = clear_caches()
+    if cleared is not None:
+        logger.info("Cleared %d Redis cache key(s)", cleared)
+
+
 def _slack_escape(text: str) -> str:
     # Slack reads <...> as links/mentions; Postgres errors can contain all three.
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -186,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         applied = apply_pending(_connection_params())
     except MigrationError as e:
         logger.error("Migration failed: %s", e)
+        _clear_caches_after(e.applied)
         done = ", ".join(e.applied) or "none"
         if args.notify != "never":
             notify(
@@ -209,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if applied:
         logger.info("Applied %d migration(s): %s", len(applied), ", ".join(applied))
+        _clear_caches_after(applied)
     else:
         logger.info("No pending migrations")
 

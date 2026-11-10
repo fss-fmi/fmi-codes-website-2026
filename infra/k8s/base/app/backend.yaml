@@ -78,6 +78,11 @@ spec:
                 secretKeyRef:
                   name: fmi-codes-db
                   key: password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fmi-codes-redis
+                  key: redis-password
             # Optional so a missing key can never block a rollout; unset just skips the message.
             - name: SLACK_MIGRATIONS_WEBHOOK_URL
               valueFrom:

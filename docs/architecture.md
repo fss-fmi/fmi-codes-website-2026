@@ -27,7 +27,7 @@ graph TD
 
     Browser -->|"HTTPS (prod)"| Ingress
     Ingress -->|"/ (static)"| Nginx
-    Ingress -->|"/api, /static"| API
+    Ingress -->|"/api"| API
     API -->|psycopg2 pool, raw SQL| PG
     API -->|rate limits, JWT blocklist, caches| Redis
     API -->|password reset, join-request mail| SMTP
@@ -45,11 +45,11 @@ graph TD
     Grafana --> Prom
 ```
 
-In production the cluster ingress routes `/api` and `/static` straight to the backend Service and everything else to the frontend. Staging has its own ingress-nginx controller with the same routing and security headers, but no public entry: it is reached only over the `fss-fmi` tailnet, where a Tailscale proxy terminates TLS for `https://staging.<tailnet>.ts.net` and forwards to that controller ([ADR-009](adr/009-staging-over-tailscale.md)). The frontend image's own `nginx.conf` also proxies `/api` and `/static` to `http://backend:5001`, which is how the Docker Compose stack works with the same image.
+In production the cluster ingress routes `/api` straight to the backend Service and everything else, images included, to the frontend. Staging has its own ingress-nginx controller with the same routing and security headers, but no public entry: it is reached only over the `fss-fmi` tailnet, where a Tailscale proxy terminates TLS for `https://staging.<tailnet>.ts.net` and forwards to that controller ([ADR-009](adr/009-staging-over-tailscale.md)). The frontend image's own `nginx.conf` also proxies `/api` to `http://backend:5001`, which is how the Docker Compose stack works with the same image.
 
 ## Components
 
-**Frontend** (`frontend/`). React 19 + TypeScript on Vite, Tailwind v4, React Router 7. Client rendered only. TanStack Query owns server state (30 s stale time, no retries, no refetch on focus). Two React contexts hold global state: `AuthContext` (current user, hydrated from `GET /api/auth/me` on load) and `ConfigContext` (feature flags from `GET /api/config`, refetched every 30 s and on window focus so a switch in Mission Control reaches open pages). All requests go through `src/lib/api.ts`, a fetch wrapper that sends cookies and broadcasts an `auth:unauthorized` window event on any 401 so `AuthContext` can clear the session. Role-gated pages wrap themselves in `RequireAuth roles={[...]}`; the route table in `App.tsx` is flat and unguarded.
+**Frontend** (`frontend/`). React 19 + TypeScript on Vite, Tailwind v4, React Router 7. Client rendered only. TanStack Query owns server state (30 s stale time, no retries, no refetch on focus). Two React contexts hold global state: `AuthContext` (current user, hydrated from `GET /api/auth/me` on load) and `ConfigContext` (feature flags from `GET /api/config`, refetched every 30 s and on window focus so a switch in Mission Control reaches open pages). All requests go through `src/lib/api.ts`, a fetch wrapper that sends cookies and broadcasts an `auth:unauthorized` window event on any 401 so `AuthContext` can clear the session. Role-gated pages wrap themselves in `RequireAuth roles={[...]}`; the route table in `App.tsx` is flat and unguarded. Every image, mentor photos included, lives in `frontend/public/` (photos and logos as WebP, the rest as SVG) and the frontend's nginx serves it, gzipping SVG, JS, CSS and JSON; `tests/test_site_images.py` holds each file to a size budget and fails on missing or unused images.
 
 **Backend** (`backend/`). Flask app factory in `app/__init__.py`. Layering is routes → services → database:
 
@@ -60,7 +60,7 @@ In production the cluster ingress routes `/api` and `/static` straight to the ba
 
 **PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; numbered migrations bring existing databases up to date and are recorded in `schema_migrations`. See [Data Model](data.md).
 
-**Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and caches for hot public reads: seed universities and specialties (~1 h), mentor list (~30 min), team rankings (~60 s), registered teams (~30 s), regulations (~300 s), the per-user revocation epoch (~45 s) and the feature flags (~10 s under a versioned key that every switch bumps, never past a pending schedule's time). Every cache that has a write path is invalidated by it after commit (seed loaders, mentor writes, score updates, flag switches and schedules, and every team membership or registration change); the TTL is a safety net for missed or racing invalidations. `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
+**Redis**. Optional everywhere. Used for Flask-Limiter storage (shared across workers), the JWT `jti` blocklist, and caches for hot public reads: seed universities and specialties (~1 h), mentor list (~30 min), team rankings (~60 s), registered teams (~30 s), regulations (~300 s), the per-user revocation epoch (~45 s) and the feature flags (~10 s under a versioned key that every switch bumps, never past a pending schedule's time). Every cache that has a write path is invalidated by it after commit (seed loaders, mentor writes, score updates, flag switches and schedules, and every team membership or registration change), and the migration runner deletes every `cache:*` key after it applies anything; the TTL is a safety net for missed or racing invalidations. `redis_client.py` picks Sentinel mode (`REDIS_SENTINELS` + `REDIS_MASTER_NAME`) over single-instance mode (`REDIS_URL`); with neither set Redis is disabled.
 
 **Startup seeding**. Both `run_server.py` (dev) and `wsgi.py` (Gunicorn) load `universities.json`, `specialties.json` and `mentors.json` from `backend/database/seeds/` on every start. The loaders insert with `ON CONFLICT DO NOTHING`, so reruns are safe.
 
