@@ -292,11 +292,23 @@ def test_successful_logins_never_block(login_app):
     assert {_login(c, "ana@example.com", RIGHT_GUESS) for _ in range(30)} == {200}
 
 
-def test_the_admin_cannot_be_locked_out(login_app):
+def _admin(client, password, forwarded_for=CLIENT_A):
+    return _login(client, "admin@example.com", password, forwarded_for, role="admin")
+
+
+def test_the_admin_is_limited_per_account_like_anyone(login_app):
     c = login_app.test_client()
-    wrong = [_login(c, "admin@example.com", "wrong", role="admin") for _ in range(20)]
-    assert wrong == [401] * 20
-    assert _login(c, "admin@example.com", RIGHT_GUESS, role="admin") == 200
+    assert [_admin(c, "wrong") for _ in range(15)] == [401] * 15
+    assert _admin(c, RIGHT_GUESS) == 429
+    assert _admin(c, RIGHT_GUESS, CLIENT_B) == 429
+
+
+def test_a_successful_admin_login_clears_the_failures(login_app):
+    c = login_app.test_client()
+    assert [_admin(c, "wrong") for _ in range(14)] == [401] * 14
+    assert _admin(c, RIGHT_GUESS) == 200
+    assert [_admin(c, "wrong") for _ in range(15)] == [401] * 15
+    assert _admin(c, "wrong") == 429
 
 
 def test_login_has_a_per_address_ceiling(login_app):

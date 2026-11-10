@@ -115,7 +115,7 @@ The `user` profile shape is the same as `GET /api/auth/me`.
 
 ### POST /api/auth/login
 
-Public. 15 attempts per minute per account (email and role), counted when each arrives, so parallel guesses can't slip past; a successful login clears the count, and a blocked account stays blocked from every address until the minute ends. The admin account is exempt from this one. Plus 300 attempts per minute per address.
+Public. 15 attempts per minute per account (email and role), counted when each arrives, so parallel guesses can't slip past; a successful login clears the count, and a blocked account stays blocked from every address until the minute ends. The admin account is limited the same way. Plus 300 attempts per minute per address.
 
 ```json
 { "email": "ivan@example.com", "password": "...", "role": "participant" }

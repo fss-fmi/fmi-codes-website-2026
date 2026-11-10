@@ -132,12 +132,6 @@ def reset_account_key() -> str:
     return _account_key(role if role in ("participant", "mentor") else None)
 
 
-def is_admin_login() -> bool:
-    """The admin is one strong config secret, and locking the organiser out during the
-    event costs more than the per-account limit protects; the address ceiling still applies."""
-    return _role("participant") == "admin"
-
-
 def forget_login_attempts() -> None:
     """Clear the account's attempts after a successful login.
 

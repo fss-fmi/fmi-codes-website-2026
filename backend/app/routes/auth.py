@@ -22,7 +22,6 @@ from app.utils.rate_limits import (
     LOGIN_ACCOUNT_LIMIT,
     address_key,
     forget_login_attempts,
-    is_admin_login,
     login_account_key,
     reset_account_key,
     scaled,
@@ -344,7 +343,7 @@ def register_participant():
 
 
 @auth_bp.route("/api/auth/login", methods=["POST"])
-@limiter.limit(scaled(LOGIN_ACCOUNT_LIMIT), key_func=login_account_key, exempt_when=is_admin_login)
+@limiter.limit(scaled(LOGIN_ACCOUNT_LIMIT), key_func=login_account_key)
 @limiter.limit(scaled("300 per minute"), key_func=address_key)
 def login():
     """Login for participants, mentors, or admin. Returns JWT.
@@ -370,6 +369,7 @@ def login():
         if hmac.compare_digest(email.encode(), admin_email.encode()) and verify_password(
             password, admin_password_hash
         ):
+            forget_login_attempts()
             token = generate_token(0, "admin")
             resp = make_response(
                 jsonify(
