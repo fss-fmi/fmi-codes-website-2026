@@ -5,8 +5,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  # Every new commit on main means a full clone, and image automation clones with this timeout
-  # too. The 60 s default failed on a 4 Mbit/s home link, where main took 121 s.
   timeout: 5m
   url: ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git
   ref:
