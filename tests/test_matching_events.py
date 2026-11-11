@@ -279,7 +279,7 @@ ASSIGNMENTS = [(t, m) for t in TEAM_IDS for m in MENTOR_IDS]
 @pytest.mark.parametrize("was_confirmed", [False, True])
 def test_saved_run_posts_counts_only(app_ctx, cursor_for, notices, was_confirmed):
     cursor_for(matching_service, FakeCursor([None, {"is_confirmed": was_confirmed}]))
-    matching_service.save_matching_results(ASSIGNMENTS, ["1 mentor(s) have not submitted"])
+    matching_service.save_matching_results(ASSIGNMENTS, ["1 mentor(s) have not submitted"], 3)
     assert len(notices) == 1
     text = notices[0]
     assert "*9* assignments for *3* teams" in text
@@ -291,8 +291,25 @@ def test_saved_run_posts_counts_only(app_ctx, cursor_for, notices, was_confirmed
 def test_failed_save_raises_and_posts_nothing(app_ctx, cursor_for, notices):
     cursor_for(matching_service, FakeCursor([None, {"is_confirmed": False}]), fail_at_commit=True)
     with pytest.raises(RuntimeError):
-        matching_service.save_matching_results(ASSIGNMENTS, [])
+        matching_service.save_matching_results(ASSIGNMENTS, [], 3)
     assert notices == []
+
+
+def test_run_counts_teams_left_without_a_mentor(app_ctx, cursor_for, notices, monkeypatch):
+    """One mentor covers at most 3 teams, so the fourth team gets none. The run
+    still matched 4 teams, and the feed must say 4, not the 3 in the pairs."""
+    teams = [{"id": t} for t in (*TEAM_IDS, 7104)]
+    rows = iter([teams, [{"id": MENTOR_IDS[0]}], [], []])
+    monkeypatch.setattr(matching_service, "execute_query", lambda *a, **k: next(rows))
+    ok, _, assignments, warnings, team_count = matching_service.run_gale_shapley()
+    assert ok
+    assert len({t for t, _ in assignments}) == 3
+    assert team_count == 4
+
+    cursor_for(matching_service, FakeCursor([None, {"is_confirmed": False}]))
+    matching_service.save_matching_results(assignments, warnings, team_count)
+    assert "*3* assignments for *4* teams" in notices[0]
+    assert "• 4 team(s) received fewer than 3 mentors" in notices[0]
 
 
 @pytest.mark.parametrize(("rowcount", "posted"), [(1, True), (0, False)])

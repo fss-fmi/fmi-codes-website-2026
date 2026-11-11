@@ -11,10 +11,11 @@ import Button from '@/components/common/Button';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import type { Mentor, Preference } from '@/types/mentor';
+import type { Team } from '@/types/team';
 
 type Step = 'select' | 'rank' | 'done' | 'confirmed';
 
-function ChooseMentorContent() {
+export function ChooseMentorContent() {
   const { user } = useAuth();
   const teamId = user?.team_id;
   const isCaptain = user?.is_captain;
@@ -38,6 +39,14 @@ function ChooseMentorContent() {
     enabled: !!teamId,
   });
 
+  // Same key as the team page, so coming from there costs no request.
+  const { data: teamData, isError: teamIsError } = useQuery<{ team: Team }>({
+    queryKey: ['team', teamId],
+    queryFn: () => api.get(`/api/teams/${teamId}`),
+    enabled: !!teamId,
+  });
+  const registered = teamData?.team.is_registered;
+
   const serverPrefs = prefData?.preferences ?? [];
   const isConfirmed = matchingStatus?.confirmed ?? false;
   const step: Step = isConfirmed
@@ -50,7 +59,7 @@ function ChooseMentorContent() {
   const { data: mentorsData, isLoading } = useQuery<{ mentors: Mentor[] }>({
     queryKey: ['available-mentors', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/available-mentors`),
-    enabled: !!teamId && !!isCaptain && step === 'select',
+    enabled: !!teamId && !!isCaptain && step === 'select' && (registered === true || teamIsError),
   });
 
   const mentors = mentorsData?.mentors ?? [];
@@ -91,10 +100,16 @@ function ChooseMentorContent() {
     return (
       <main style={{ padding: '100px 24px', maxWidth: 480, margin: '0 auto' }}>
         <Panel title="NO TEAM">
-          <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: '0 0 20px 0' }}>
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 20px 0' }}
+          >
             &gt; You must be on a team first.
           </p>
-          <Button variant="primary" href="/team">
+          <Button
+            variant="primary"
+            href="/team"
+          >
             GO TO TEAM PAGE
           </Button>
         </Panel>
@@ -106,9 +121,38 @@ function ChooseMentorContent() {
     return (
       <main style={{ padding: '100px 24px', maxWidth: 480, margin: '0 auto' }}>
         <Panel title="ACCESS DENIED">
-          <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: 0 }}
+          >
             &gt; Only the team captain can select mentors.
           </p>
+        </Panel>
+      </main>
+    );
+  }
+
+  // If the team can't be loaded, carry on: the server still refuses a ranking
+  // from a team that isn't registered, and the form shows its error.
+  if (!teamData && !teamIsError) return <LoadingSpinner fullPage />;
+
+  if (registered === false) {
+    return (
+      <main style={{ padding: '100px 24px', maxWidth: 480, margin: '0 auto' }}>
+        <Panel title="NOT REGISTERED">
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 20px 0' }}
+          >
+            &gt; Only registered teams take part in mentor matching. Your team can rank mentors once
+            it holds one of the event slots.
+          </p>
+          <Button
+            variant="primary"
+            href="/team"
+          >
+            GO TO TEAM PAGE
+          </Button>
         </Panel>
       </main>
     );
@@ -155,10 +199,16 @@ function ChooseMentorContent() {
 
       {step === 'confirmed' && (
         <Panel title="> MATCHING CONFIRMED">
-          <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}>
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}
+          >
             &gt; The admin has confirmed the matching results.
           </p>
-          <Button variant="primary" href="/team">
+          <Button
+            variant="primary"
+            href="/team"
+          >
             GO TO TEAM PAGE
           </Button>
         </Panel>
@@ -166,39 +216,41 @@ function ChooseMentorContent() {
 
       {step === 'done' && (
         <Panel title="YOUR PREFERENCES">
-          {[...submitted].sort((a, b) => a.rank - b.rank).map((p, i) => (
-            <div
-              key={p.mentor_id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 16,
-                padding: '12px 0',
-                borderBottom: '1px solid var(--px-teal-dim)',
-              }}
-            >
-              <span
-                className="px-label"
+          {[...submitted]
+            .sort((a, b) => a.rank - b.rank)
+            .map((p, i) => (
+              <div
+                key={p.mentor_id}
                 style={{
-                  color: 'var(--px-teal)',
-                  minWidth: 36,
-                  textAlign: 'center',
-                  fontSize: '0.6rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  padding: '12px 0',
+                  borderBottom: '1px solid var(--px-teal-dim)',
                 }}
               >
-                {RANK_LABELS[i]}
-              </span>
-              <span
-                style={{
-                  fontFamily: 'var(--px-mono)',
-                  fontWeight: 700,
-                  color: 'var(--px-white)',
-                }}
-              >
-                {p.mentor_name ?? `Mentor #${p.mentor_id}`}
-              </span>
-            </div>
-          ))}
+                <span
+                  className="px-label"
+                  style={{
+                    color: 'var(--px-teal)',
+                    minWidth: 36,
+                    textAlign: 'center',
+                    fontSize: '0.6rem',
+                  }}
+                >
+                  {RANK_LABELS[i]}
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--px-mono)',
+                    fontWeight: 700,
+                    color: 'var(--px-white)',
+                  }}
+                >
+                  {p.mentor_name ?? `Mentor #${p.mentor_id}`}
+                </span>
+              </div>
+            ))}
           <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -221,7 +273,10 @@ function ChooseMentorContent() {
             >
               CHANGE PREFERENCES
             </button>
-            <Button variant="primary" href="/team">
+            <Button
+              variant="primary"
+              href="/team"
+            >
               GO TO TEAM PAGE
             </Button>
           </div>
@@ -310,7 +365,10 @@ function ChooseMentorContent() {
 
       {step === 'rank' && (
         <Panel title="RANK YOUR MENTORS">
-          <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}>
+          <p
+            className="px-body-sm"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}
+          >
             &gt; Drag or use Space + arrow keys to reorder. Top-ranked is your first choice.
           </p>
           <DragRankSlots

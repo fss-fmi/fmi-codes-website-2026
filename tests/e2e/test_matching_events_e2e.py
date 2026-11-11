@@ -167,16 +167,27 @@ class TestMentorRanking:
         for text in notices:
             assert not any(name in text for name in team_names)
 
-    def test_refused_ranking_posts_nothing(self, flask_app, notices):
-        token = mentor_token_for(flask_app, 999_999)
-        with flask_app.test_client() as c:
-            rv = c.post(
-                "/api/mentors/team-preferences",
-                json=_team_ranking([1, 2, 3]),
-                headers=bearer(token),
-            )
-        assert rv.status_code in (400, 401)
+    def test_mentor_deactivated_after_login_cannot_rank(self, flask_app, seeds, db_conn, notices):
+        team_ids = [t for t, _ in _registered_teams(flask_app, seeds, ["T1", "T2", "T3"])]
+        notices.clear()
+        mentor_id = seeds["mentor_ids"][0]
+        token = mentor_token_for(flask_app, mentor_id)
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE mentors SET status = 'inactive' WHERE id = %s", (mentor_id,))
+        try:
+            with flask_app.test_client() as c:
+                rv = c.post(
+                    "/api/mentors/team-preferences",
+                    json=_team_ranking(team_ids),
+                    headers=bearer(token),
+                )
+        finally:
+            with db_conn.cursor() as cur:
+                cur.execute("UPDATE mentors SET status = 'active' WHERE id = %s", (mentor_id,))
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "Mentor not found or inactive"
         assert notices == []
+        assert _status(flask_app)["mentors_submitted"] == 0
 
 
 class TestMatching:
@@ -191,10 +202,9 @@ class TestMatching:
             run = rv.get_json()
             assert len(notices) == 1
             first = notices[0]
-            teams_matched = len(run["assignments"])
             assert first.startswith(
                 "🧩 Mentor matching ran (Gale-Shapley, then greedy fill):"
-                f" *{run['assignment_count']}* assignments for *{teams_matched}* teams."
+                f" *{run['assignment_count']}* assignments for *2* teams."
             )
             for warning in run["warnings"]:
                 assert f"• {warning}" in first

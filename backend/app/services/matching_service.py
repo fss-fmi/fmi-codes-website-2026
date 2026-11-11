@@ -29,8 +29,10 @@ def run_gale_shapley():
     """Run the matching algorithm.
 
     Returns:
-        (success, message, assignments, warnings) where assignments is a list of
-        (team_id, mentor_id) tuples and warnings is a list of advisory strings.
+        (success, message, assignments, warnings, team_count) where assignments is
+        a list of (team_id, mentor_id) tuples, warnings is a list of advisory
+        strings and team_count is how many teams the run matched, those left
+        without a mentor included.
 
     Always attempts to run — incomplete preference submissions produce warnings
     rather than an outright failure. Phase 2 greedy fill covers the gaps.
@@ -58,9 +60,9 @@ def run_gale_shapley():
     all_mentors = [r["id"] for r in all_mentor_rows]
 
     if not all_teams:
-        return False, "No active registered teams found", [], []
+        return False, "No active registered teams found", [], [], 0
     if not all_mentors:
-        return False, "No active mentors found", [], []
+        return False, "No active mentors found", [], [], 0
 
     mentor_prefs_rows = (
         execute_query(
@@ -105,7 +107,7 @@ def run_gale_shapley():
         f" across {len(all_teams)} teams and {len(all_mentors)} mentors"
     )
     logger.info(msg)
-    return True, msg, assignments, warnings
+    return True, msg, assignments, warnings, len(all_teams)
 
 
 def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, warnings=None):
@@ -240,7 +242,7 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
     return assignments, warnings
 
 
-def save_matching_results(assignments, warnings=()):
+def save_matching_results(assignments, warnings, team_count):
     """Clear existing team_mentors and write new assignments.
 
     Also resets the admin confirmation flag so teams/mentors continue seeing
@@ -250,6 +252,8 @@ def save_matching_results(assignments, warnings=()):
     Args:
         assignments: list of (team_id, mentor_id) tuples
         warnings: the run's advisory strings, posted with it
+        team_count: teams in the run, from run_gale_shapley(); counting the
+            teams in *assignments* would miss any left without a mentor
     """
     try:
         with get_db_cursor(current_app) as cursor:
@@ -274,18 +278,19 @@ def save_matching_results(assignments, warnings=()):
     except Exception as e:
         logger.error(f"Error saving matching results: {e}")
         raise
-    _announce_matching_run(assignments, warnings, bool(state and state["is_confirmed"]))
+    _announce_matching_run(
+        len(assignments), team_count, warnings, bool(state and state["is_confirmed"])
+    )
 
 
-def _announce_matching_run(assignments, warnings, confirmation_cleared: bool) -> None:
+def _announce_matching_run(
+    assignment_count: int, team_count: int, warnings, confirmation_cleared: bool
+) -> None:
     """Post a saved matching run to the event feed: counts only, never the pairs."""
     try:
         event_notifier.notify(
             matching_events.matching_run_text(
-                len(assignments),
-                len({team_id for team_id, _ in assignments}),
-                warnings,
-                confirmation_cleared,
+                assignment_count, team_count, warnings, confirmation_cleared
             )
         )
     except Exception:
