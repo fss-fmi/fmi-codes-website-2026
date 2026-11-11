@@ -1,8 +1,9 @@
 """Wrongly typed JSON bodies and fields are client errors: 400, never 500 (issue #224).
 
 Every request here is malformed, so a route must refuse it before any query of its own.
-Only the auth decorators read the database, through a patched execute_query; a route that
-reached a real query would fail on the missing pool and answer 500.
+Only the auth decorators read the database, through a patched execute_query; there is no
+pool behind anything else. Each case asserts the validator's own message, because some
+services turn a failed query into a 400 too and a bare status would pass without the fix.
 """
 
 import pytest
@@ -167,34 +168,41 @@ def _prefs(id_key, ids=(1, 2, 3), ranks=(1, 2, 3)):
 
 
 BAD_PREFERENCES = [
-    5,
-    "abc",
-    {"a": 1},
-    [1, 2, 3],
-    ["a", "b", "c"],
-    lambda k: _prefs(k, ids=("1", "2", "3")),
-    lambda k: _prefs(k, ids=([1], [2], [3])),
-    lambda k: _prefs(k, ids=(1.0, 2.0, 3.0)),
-    lambda k: _prefs(k, ids=(True, 2, 3)),
-    lambda k: _prefs(k, ids=(2**31, 2, 3)),
-    lambda k: _prefs(k, ranks=("1", 2, 3)),
-    lambda k: _prefs(k, ranks=(True, 2, 3)),
-    lambda k: _prefs(k, ranks=(1, 2, None)),
-    lambda k: [{"rank": 1}, {"rank": 2}, {"rank": 3}],
-    lambda k: _prefs(k, ranks=(1, 1, 2)),
-    lambda k: _prefs(k, ids=(1, 1, 2)),
+    (5, "count"),
+    ("abc", "count"),
+    ({"a": 1}, "count"),
+    (None, "count"),
+    ([1, 2, 3], "shape"),
+    (["a", "b", "c"], "shape"),
+    (lambda k: _prefs(k, ids=("1", "2", "3")), "shape"),
+    (lambda k: _prefs(k, ids=([1], [2], [3])), "shape"),
+    (lambda k: _prefs(k, ids=(1.0, 2.0, 3.0)), "shape"),
+    (lambda k: _prefs(k, ids=(True, 2, 3)), "shape"),
+    (lambda k: _prefs(k, ids=(2**31, 2, 3)), "shape"),
+    (lambda k: _prefs(k, ranks=("1", 2, 3)), "shape"),
+    (lambda k: _prefs(k, ranks=(True, 2, 3)), "shape"),
+    (lambda k: _prefs(k, ranks=(1, 2, None)), "shape"),
+    (lambda k: [{"rank": 1}, {"rank": 2}, {"rank": 3}], "shape"),
+    (lambda k: _prefs(k, ranks=(1, 1, 2)), "ranks"),
+    (lambda k: _prefs(k, ids=(1, 1, 2)), "distinct"),
 ]
 
 
 @pytest.mark.parametrize(
-    ("route", "id_key"),
-    [("team_preferences", "mentor_id"), ("mentor_preferences", "team_id")],
+    ("route", "id_key", "noun"),
+    [("team_preferences", "mentor_id", "mentors"), ("mentor_preferences", "team_id", "teams")],
 )
-@pytest.mark.parametrize("preferences", BAD_PREFERENCES)
-def test_malformed_preferences_are_400(call, route, id_key, preferences):
+@pytest.mark.parametrize(("preferences", "kind"), BAD_PREFERENCES)
+def test_malformed_preferences_are_400(call, route, id_key, noun, preferences, kind):
     if callable(preferences):
         preferences = preferences(id_key)
-    _expect_400(call(route, {"preferences": preferences}))
+    error = {
+        "count": f"You must rank exactly 3 {noun}",
+        "shape": f"Each preference needs a whole-number {id_key} and rank",
+        "ranks": "Ranks must be exactly 1, 2, and 3",
+        "distinct": f"All three {noun} must be different",
+    }[kind]
+    _expect_400(call(route, {"preferences": preferences}), error)
 
 
 @pytest.mark.parametrize("value", [v for v in WRONG_TYPES if v is not True] + ["true"])
@@ -203,17 +211,56 @@ def test_flag_switch_of_wrong_type_is_400(call, value):
 
 
 @pytest.mark.parametrize(
-    "body",
+    ("body", "error"),
     [
-        {"value": "true", "at": "2026-12-01T10:00:00+02:00"},
-        {"value": True, "at": 5},
-        {"value": True, "at": ["2026-12-01T10:00:00+02:00"]},
+        ({"value": "true", "at": "2026-12-01T10:00:00+02:00"}, "value must be true or false"),
+        ({"value": True, "at": 5}, "at must be an ISO 8601 time with a UTC offset"),
+        ({"value": True, "at": ["2026-12-01"]}, "at must be an ISO 8601 time with a UTC offset"),
     ],
 )
-def test_flag_schedule_of_wrong_type_is_400(call, body):
-    _expect_400(call("schedule_flag", body))
+def test_flag_schedule_of_wrong_type_is_400(call, body, error):
+    _expect_400(call("schedule_flag", body), error)
 
 
-@pytest.mark.parametrize("score", [["x"], {"a": 1}, "abc"])
+@pytest.mark.parametrize("score", [["x"], {"a": 1}, "abc", True])
 def test_score_of_wrong_type_is_400(call, score):
-    _expect_400(call("score", {"score": score}))
+    _expect_400(call("score", {"score": score}), "Score must be a number")
+
+
+# A lone surrogate is valid JSON but can't be encoded to UTF-8; Postgres can't store a NUL.
+INVALID_TEXT = ["\ud800", "a\udfffb", "a\x00b"]
+
+
+@pytest.mark.parametrize(("route", "field"), STRING_FIELDS)
+@pytest.mark.parametrize("value", INVALID_TEXT)
+def test_text_that_cannot_be_stored_is_400(call, route, field, value):
+    body = {**ROUTES[route][3], field: value}
+    _expect_400(call(route, body), f"{field} contains an invalid character")
+
+
+@pytest.mark.parametrize(
+    ("route", "field", "size"),
+    [
+        ("register", "first_name", 100),
+        ("register", "last_name", 100),
+        ("register", "email", 255),
+        ("register", "phone_number", 20),
+        ("register", "faculty_number", 20),
+        ("create_team", "team_name", 100),
+    ],
+)
+def test_text_longer_than_its_column_is_400(call, route, field, size):
+    body = {**ROUTES[route][3], field: "a" * (size + 1)}
+    _expect_400(call(route, body), f"{field} must be at most {size} characters")
+
+
+@pytest.mark.parametrize("value", [5, ["x"], {"a": "b"}, "\ud800", "a\x00b"])
+def test_other_university_field_of_wrong_type_or_text_is_400(call, value):
+    body = {
+        **ROUTES["register"][3],
+        "university_id": "other",
+        "university_other": {"name": value, "city": "Sofia", "country": "Bulgaria"},
+    }
+    response = call("register", body)
+    _expect_400(response)
+    assert response.get_json()["error"].startswith("university_other.name ")

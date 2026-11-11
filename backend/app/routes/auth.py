@@ -134,15 +134,16 @@ _OTHER_UNIVERSITY_FIELDS = (
     ("country", "University country", 100),
 )
 _OTHER_SPECIALTY_FIELDS = (("name", "Specialty name", 200),)
-_REGISTER_TEXT = (
-    "first_name",
-    "last_name",
-    "email",
-    "password",
-    "phone_number",
-    "faculty_number",
-    "course",
-)
+# Text fields and their column sizes; course is checked against its fixed list instead.
+_REGISTER_TEXT = {
+    "first_name": 100,
+    "last_name": 100,
+    "email": 255,
+    "password": None,
+    "phone_number": 20,
+    "faculty_number": 20,
+    "course": None,
+}
 
 # Names match case-insensitively so "sofia university" reuses "Sofia University"
 # (a seeded row wins over a typed one). The unique constraint is on the exact
@@ -184,8 +185,8 @@ def _parse_lookup_choice(data, id_key, other_key, fields):
         details = {}
     values = []
     for key, label, max_len in fields:
-        raw = details.get(key)
-        ok, result = validate_name_field(raw if isinstance(raw, str) else "", label)
+        text = string_field(details, key, label=f"{other_key}.{key}")
+        ok, result = validate_name_field(text, label)
         if not ok:
             return result, None, None
         values.append(result[:max_len])
@@ -218,7 +219,10 @@ def register_participant():
     if not feature_flag_service.is_enabled("registration_open"):
         return jsonify({"success": False, "error": "Registration is closed"}), 403
     data = json_object()
-    fields = {key: string_field(data, key, strip=key != "password") for key in _REGISTER_TEXT}
+    fields = {
+        key: string_field(data, key, strip=key != "password", max_length=size)
+        for key, size in _REGISTER_TEXT.items()
+    }
     fields["specialty_id"] = data.get("specialty_id")
     fields["university_id"] = data.get("university_id")
     missing = [key for key, value in fields.items() if not value]

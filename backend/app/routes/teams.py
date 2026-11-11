@@ -125,7 +125,7 @@ def get_team_members_public(team_id):
 @verified_email_required
 def create_team():
     """Create a new team. The authenticated participant becomes captain."""
-    team_name = string_field(json_object(), "team_name")
+    team_name = string_field(json_object(), "team_name", max_length=100)
     if not team_name:
         return jsonify({"success": False, "error": "Team name is required"}), 400
 

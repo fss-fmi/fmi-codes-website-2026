@@ -153,6 +153,8 @@ def validate_score(value) -> tuple:
     """Validate a score value. Returns (is_valid, parsed_float_or_error_msg)."""
     if value is None:
         return False, "Score is required"
+    if isinstance(value, bool):
+        return False, "Score must be a number"
     try:
         score = float(value)
     except (TypeError, ValueError):

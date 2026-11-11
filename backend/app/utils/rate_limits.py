@@ -20,6 +20,8 @@ from flask import current_app, request
 from flask_limiter.util import get_remote_address
 from limits import parse
 
+from app.utils.request_json import is_valid_text
+
 logger = logging.getLogger(__name__)
 
 _IDENTITY = "fmi.rate_limit_identity"
@@ -108,9 +110,14 @@ def _role(default: str | None) -> str | None:
 
 def _account_key(role: str | None) -> str:
     """HMAC of role and email, so Redis never holds the address and a list of known
-    addresses can't be hashed to find one. No usable email or role means the address."""
+    addresses can't be hashed to find one. No usable email or role means the address,
+    as does an email the route rejects as invalid text (it can't be encoded to hash)."""
     email = _body().get("email")
-    if role not in ("participant", "mentor", "admin") or not isinstance(email, str):
+    if (
+        role not in ("participant", "mentor", "admin")
+        or not isinstance(email, str)
+        or not is_valid_text(email)
+    ):
         return address_key()
     email = email.strip().lower()
     if not email:
