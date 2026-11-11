@@ -3,7 +3,7 @@
 import logging
 from datetime import UTC, datetime
 
-from flask import current_app, jsonify, request
+from flask import current_app, jsonify
 
 from app import limiter
 from app.database import execute_query
@@ -20,6 +20,7 @@ from app.services.redis_client import get_redis_client
 from app.services.team_service import TeamService
 from app.utils.auth_decorators import admin_required, get_optional_user
 from app.utils.rate_limits import address_key, scaled
+from app.utils.request_json import json_object, string_field
 
 logger = logging.getLogger(__name__)
 
@@ -354,7 +355,7 @@ def admin_set_flag(name):
     """Switch a flag now. Body: {"enabled": true|false}. Idempotent."""
     if (error := _unknown_flag(name)) is not None:
         return error
-    enabled = (request.get_json(silent=True) or {}).get("enabled")
+    enabled = json_object().get("enabled")
     if not isinstance(enabled, bool):
         return jsonify({"success": False, "error": "enabled must be true or false"}), 400
     try:
@@ -372,7 +373,7 @@ def admin_schedule_flag(name):
     """Schedule a change. Body: {"value": true|false, "at": "<ISO 8601 with offset>"}."""
     if (error := _unknown_flag(name)) is not None:
         return error
-    data = request.get_json(silent=True) or {}
+    data = json_object()
     value = data.get("value")
     if not isinstance(value, bool):
         return jsonify({"success": False, "error": "value must be true or false"}), 400
@@ -431,12 +432,12 @@ def submit_bug_report():
     """
     from app.services.bug_report_service import submit_bug_report_async
 
-    data = request.get_json(silent=True) or {}
+    data = json_object()
 
     # Clamp fields to reasonable lengths to prevent oversized payloads
-    what_did = (data.get("what_did") or "").strip()[:2000]
-    what_happened = (data.get("what_happened") or "").strip()[:2000]
-    page_url = (data.get("page") or "").strip()[:500]
+    what_did = string_field(data, "what_did")[:2000]
+    what_happened = string_field(data, "what_happened")[:2000]
+    page_url = string_field(data, "page")[:500]
 
     if not what_did and not what_happened:
         return jsonify({"success": False, "error": "Please describe the issue."}), 400
@@ -520,8 +521,7 @@ def get_team_rankings():
 @admin_required
 def set_team_score(team_id):
     """Admin: set the score for a single team."""
-    data = request.get_json(silent=True) or {}
-    valid, result = ranking_service.validate_score(data.get("score"))
+    valid, result = ranking_service.validate_score(json_object().get("score"))
     if not valid:
         return jsonify({"success": False, "error": result}), 400
 

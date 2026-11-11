@@ -26,6 +26,7 @@ from app.utils.rate_limits import (
     reset_account_key,
     scaled,
 )
+from app.utils.request_json import is_row_id, json_object, string_field
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,15 @@ _OTHER_UNIVERSITY_FIELDS = (
     ("country", "University country", 100),
 )
 _OTHER_SPECIALTY_FIELDS = (("name", "Specialty name", 200),)
+_REGISTER_TEXT = (
+    "first_name",
+    "last_name",
+    "email",
+    "password",
+    "phone_number",
+    "faculty_number",
+    "course",
+)
 
 # Names match case-insensitively so "sofia university" reuses "Sofia University"
 # (a seeded row wins over a typed one). The unique constraint is on the exact
@@ -159,11 +169,15 @@ def _parse_lookup_choice(data, id_key, other_key, fields):
     """
     from app.utils import validate_name_field
 
-    if data[id_key] != "other":
+    choice = data[id_key]
+    if choice != "other":
         try:
-            return None, int(data[id_key]), None
-        except (TypeError, ValueError):
+            lookup_id = int(choice) if isinstance(choice, str) else choice
+        except ValueError:
+            lookup_id = None
+        if not is_row_id(lookup_id):
             return f"Invalid {id_key}", None, None
+        return None, lookup_id, None
 
     details = data.get(other_key)
     if not isinstance(details, dict):
@@ -203,19 +217,11 @@ def register_participant():
     """
     if not feature_flag_service.is_enabled("registration_open"):
         return jsonify({"success": False, "error": "Registration is closed"}), 403
-    data = request.get_json(silent=True) or {}
-    required = [
-        "first_name",
-        "last_name",
-        "email",
-        "password",
-        "phone_number",
-        "faculty_number",
-        "course",
-        "specialty_id",
-        "university_id",
-    ]
-    missing = [f for f in required if not data.get(f)]
+    data = json_object()
+    fields = {key: string_field(data, key, strip=key != "password") for key in _REGISTER_TEXT}
+    fields["specialty_id"] = data.get("specialty_id")
+    fields["university_id"] = data.get("university_id")
+    missing = [key for key, value in fields.items() if not value]
     if missing:
         return jsonify({"success": False, "error": f"Missing fields: {', '.join(missing)}"}), 400
 
@@ -223,16 +229,16 @@ def register_participant():
     from app.utils import validate_email, validate_name_field
 
     for field_key, label in (("first_name", "First name"), ("last_name", "Last name")):
-        ok, result = validate_name_field(data[field_key], label)
+        ok, result = validate_name_field(fields[field_key], label)
         if not ok:
             return jsonify({"success": False, "error": result}), 400
 
-    email = data["email"].strip().lower()
+    email = fields["email"].lower()
     if not validate_email(email):
         return jsonify({"success": False, "error": "Invalid email address"}), 400
-    fac = data["faculty_number"].strip()
+    fac = fields["faculty_number"]
 
-    course = data["course"].strip()
+    course = fields["course"]
     valid_courses = {
         "Bachelor 1st Year",
         "Bachelor 2nd Year",
@@ -245,7 +251,7 @@ def register_participant():
         return jsonify({"success": False, "error": "Invalid course selection"}), 400
 
     # M4: Enforce minimum password length
-    if len(data["password"]) < 12:
+    if len(fields["password"]) < 12:
         return jsonify({"success": False, "error": "Password must be at least 12 characters"}), 400
 
     error, university_id, new_university = _parse_lookup_choice(
@@ -260,7 +266,7 @@ def register_participant():
         return jsonify({"success": False, "error": error}), 400
 
     # CPU-heavy work first — no DB connection held, doesn't block the pool
-    pw_hash = hash_password(data["password"])
+    pw_hash = hash_password(fields["password"])
 
     try:
         with get_db_cursor() as cursor:
@@ -298,10 +304,10 @@ def register_participant():
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active')
                    RETURNING id""",
                 (
-                    data["first_name"].strip(),
-                    data["last_name"].strip(),
+                    fields["first_name"],
+                    fields["last_name"],
                     email,
-                    data["phone_number"].strip(),
+                    fields["phone_number"],
                     fac,
                     course,
                     specialty_id,
@@ -350,10 +356,10 @@ def login():
 
     Optimised: DB connection is released BEFORE bcrypt.checkpw runs (~300ms CPU).
     """
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
-    password = data.get("password", "")
-    role = (data.get("role") or "participant").strip().lower()
+    data = json_object()
+    email = string_field(data, "email").lower()
+    password = string_field(data, "password", strip=False)
+    role = (string_field(data, "role") or "participant").lower()
 
     if not email or not password:
         return jsonify({"success": False, "error": "Email and password are required"}), 400
@@ -473,9 +479,9 @@ def change_password():
     if user["role"] == "admin":
         return jsonify({"success": False, "error": "Admin password cannot be changed here"}), 403
 
-    data = request.get_json(silent=True) or {}
-    current_password = data.get("current_password", "")
-    new_password = data.get("new_password", "")
+    data = json_object()
+    current_password = string_field(data, "current_password", strip=False)
+    new_password = string_field(data, "new_password", strip=False)
 
     if not current_password or not new_password:
         return jsonify(
@@ -560,9 +566,9 @@ def reset_password():
     """
     from app.services.email_service import send_password_reset_link_email
 
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
-    role = (data.get("role") or "").strip().lower()
+    data = json_object()
+    email = string_field(data, "email").lower()
+    role = string_field(data, "role").lower()
 
     if not email:
         return jsonify({"success": False, "error": "Email is required"}), 400
@@ -628,10 +634,10 @@ def confirm_password_reset():
     The raw token from the email link is hashed with SHA-256 and looked up in DB.
     On success, the token is marked used and the user's password is updated.
     """
-    data = request.get_json(silent=True) or {}
-    raw_token = (data.get("token") or "").strip()
-    new_password = data.get("new_password", "")
-    role = (data.get("role") or "").strip().lower()
+    data = json_object()
+    raw_token = string_field(data, "token")
+    new_password = string_field(data, "new_password", strip=False)
+    role = string_field(data, "role").lower()
 
     if not raw_token or not new_password or role not in ("participant", "mentor"):
         return jsonify(
@@ -717,8 +723,7 @@ def verify_email():
     No login needed, so the link works on any device. Tokens are single-use
     and expire after 24 hours.
     """
-    data = request.get_json(silent=True) or {}
-    raw_token = (data.get("token") or "").strip()
+    raw_token = string_field(json_object(), "token")
     if not raw_token:
         return jsonify({"success": False, "error": "Verification token is required"}), 400
 
