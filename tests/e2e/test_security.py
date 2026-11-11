@@ -562,10 +562,9 @@ class TestBusinessLogicAbuse:
             rv = adm.post(f"/api/admin/teams/{team_id}/register", headers=bearer(adm_tok))
         assert rv.status_code in (400, 409)
 
-    def test_mentor_preferences_accept_valid_format_from_any_captain(self, client, seeds):
-        """Any captain (including pending teams) can set preferences with the correct format.
-        The app does not enforce active team status before accepting preferences.
-        """
+    def test_pending_team_captain_cannot_set_mentor_preferences(self, client, seeds):
+        """A well-formed ranking from a team that isn't registered is refused:
+        matching only takes registered teams."""
         token = register_and_token(client, 1, seeds)
         rv_c = client.post("/api/teams", json={"team_name": "PendingPref"}, headers=bearer(token))
         team_id = rv_c.get_json()["team"]["id"]
@@ -581,7 +580,8 @@ class TestBusinessLogicAbuse:
             },
             headers=bearer(token),
         )
-        assert rv.status_code == 200
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "Only registered teams can rank mentors"
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────

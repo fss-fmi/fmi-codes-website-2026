@@ -5,9 +5,33 @@ import logging
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
+from app.services import event_notifier, matching_events
 from app.utils.request_json import is_row_id
 
 logger = logging.getLogger(__name__)
+
+
+def _has_rows(cursor, table: str, column: str, owner_id: int) -> bool:
+    """Whether *owner_id* already has a ranking, read before it is replaced."""
+    cursor.execute(
+        f"SELECT EXISTS(SELECT 1 FROM {table} WHERE {column} = %s) AS found", (owner_id,)
+    )
+    return cursor.fetchone()["found"]
+
+
+def _announce_ranking(build_text, name: str, updated: bool, side: str) -> None:
+    """Post a committed ranking to the event feed. Never raises: the ranking is saved."""
+    progress = None
+    if not updated:
+        try:
+            status = get_preference_submission_status()
+            progress = (status[f"{side}_submitted"], status[f"{side}_total"])
+        except Exception:
+            logger.exception("Could not count %s ranking submissions", side)
+    try:
+        event_notifier.notify(build_text(name, updated, progress))
+    except Exception:
+        logger.exception("Could not post the %s ranking event", side)
 
 
 def _preferences_error(preferences, id_key: str, noun: str) -> str | None:
@@ -44,13 +68,20 @@ def set_team_mentor_preferences(team_id, preferences):
         with get_db_cursor(current_app) as cursor:
             # Lock the team row for the duration of this transaction so that a
             # concurrent double-submit (network retry / double-click) from the
-            # same captain cannot interleave their DELETE+INSERT sequences.
+            # same captain cannot interleave their DELETE+INSERT sequences, and
+            # registration can't change between this check and the commit.
             cursor.execute(
-                "SELECT id FROM teams WHERE id = %s FOR UPDATE",
+                "SELECT team_name, status = 'active' AND is_registered AS eligible"
+                " FROM teams WHERE id = %s FOR UPDATE",
                 (team_id,),
             )
-            if not cursor.fetchone():
+            team = cursor.fetchone()
+            if not team:
                 return False, "Team not found"
+            # Matching only takes registered teams, so a ranking from any other
+            # team would never be used and would skew the submission count.
+            if not team["eligible"]:
+                return False, "Only registered teams can rank mentors"
 
             # Validate mentors inside the transaction to close the TOCTOU window
             # between the check and the INSERT (no FK enforces status='active').
@@ -62,17 +93,20 @@ def set_team_mentor_preferences(team_id, preferences):
                 if not cursor.fetchone():
                     return False, f"Mentor {mid} not found or inactive"
 
+            updated = _has_rows(cursor, "team_mentor_preferences", "team_id", team_id)
             cursor.execute("DELETE FROM team_mentor_preferences WHERE team_id = %s", (team_id,))
             for pref in preferences:
                 cursor.execute(
                     "INSERT INTO team_mentor_preferences (team_id, mentor_id, rank) VALUES (%s, %s, %s)",
                     (team_id, pref["mentor_id"], pref["rank"]),
                 )
-        logger.info(f"Team {team_id} set mentor preferences")
-        return True, "Mentor preferences saved successfully"
     except Exception as e:
         logger.error(f"Error setting team mentor preferences: {e}")
         return False, str(e)
+
+    logger.info(f"Team {team_id} set mentor preferences")
+    _announce_ranking(matching_events.team_ranking_text, team["team_name"], updated, "teams")
+    return True, "Mentor preferences saved successfully"
 
 
 def get_team_mentor_preferences(team_id):
@@ -108,11 +142,13 @@ def set_mentor_team_preferences(mentor_id, preferences):
             # Lock the mentor row for the duration of this transaction so that a
             # concurrent double-submit cannot interleave their DELETE+INSERT sequences.
             cursor.execute(
-                "SELECT id FROM mentors WHERE id = %s FOR UPDATE",
+                "SELECT first_name || ' ' || last_name AS name FROM mentors"
+                " WHERE id = %s AND status = 'active' FOR UPDATE",
                 (mentor_id,),
             )
-            if not cursor.fetchone():
-                return False, "Mentor not found"
+            mentor = cursor.fetchone()
+            if not mentor:
+                return False, "Mentor not found or inactive"
 
             # Validate teams inside the transaction to close the TOCTOU window.
             # Require active AND registered — matches the ranking UI filter so a
@@ -125,17 +161,20 @@ def set_mentor_team_preferences(mentor_id, preferences):
                 if not cursor.fetchone():
                     return False, f"Team {tid} not found or not eligible"
 
+            updated = _has_rows(cursor, "mentor_team_preferences", "mentor_id", mentor_id)
             cursor.execute("DELETE FROM mentor_team_preferences WHERE mentor_id = %s", (mentor_id,))
             for pref in preferences:
                 cursor.execute(
                     "INSERT INTO mentor_team_preferences (mentor_id, team_id, rank) VALUES (%s, %s, %s)",
                     (mentor_id, pref["team_id"], pref["rank"]),
                 )
-        logger.info(f"Mentor {mentor_id} set team preferences")
-        return True, "Team preferences saved successfully"
     except Exception as e:
         logger.error(f"Error setting mentor team preferences: {e}")
         return False, str(e)
+
+    logger.info(f"Mentor {mentor_id} set team preferences")
+    _announce_ranking(matching_events.mentor_ranking_text, mentor["name"], updated, "mentors")
+    return True, "Team preferences saved successfully"
 
 
 def get_mentor_team_preferences(mentor_id):

@@ -399,7 +399,9 @@ Captain of `team_id`. Replaces the team's ranking.
 }
 ```
 
-Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`).
+Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`). The team must be active and registered, since matching takes only registered teams; otherwise 400 `Only registered teams can rank mentors`.
+
+After the save commits, the event feed gets "submitted" with the teams' progress on a first ranking, or "updated" on a later one. It names the team, never the mentors or ranks.
 
 ### GET /api/teams/{team_id}/mentor-preferences
 
@@ -423,7 +425,9 @@ Mentor. Replaces the mentor's ranking.
 }
 ```
 
-Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`).
+Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`). A mentor deactivated after logging in gets 400 `Mentor not found or inactive`.
+
+After the save commits, the event feed gets "submitted" with the mentors' progress, or "updated". It names the mentor, never the teams or ranks.
 
 ### GET /api/mentors/team-preferences
 
@@ -542,11 +546,11 @@ Runs matching, replaces all assignments and resets confirmation. Always attempts
 }
 ```
 
-400 if there are no active registered teams or no active mentors. 500 if saving fails.
+400 if there are no active registered teams or no active mentors. 500 if saving fails. A saved run is posted to the event feed with its counts and warnings, never the pairs, and says so when it cleared a confirmation.
 
 ### POST /api/admin/confirm-matching
 
-Marks the current results final; teams and mentors start seeing assignments. A later `run-matching` resets this.
+Marks the current results final; teams and mentors start seeing assignments. A later `run-matching` resets this. Confirming posts to the event feed only when the results were not already confirmed, so a repeat call posts nothing.
 
 ### GET /api/admin/matching-results
 

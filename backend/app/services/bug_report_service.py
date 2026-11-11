@@ -13,6 +13,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
+from app.utils.slack import escape_mrkdwn
+
 logger = logging.getLogger(__name__)
 
 # 20 workers per gunicorn worker process.
@@ -46,7 +48,7 @@ def _slack_text(text: str, limit: int = _SLACK_FIELD_LIMIT) -> str:
     Reports can be anonymous, and Slack reads <...> as links and mentions, so an
     unescaped "<!channel>" would ping the whole channel.
     """
-    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    escaped = escape_mrkdwn(text)
     if len(escaped) <= limit:
         return escaped
     cut = escaped[: limit - 3]

@@ -170,7 +170,7 @@ def run_matching():
         return jsonify({"success": False, "error": message}), 400
 
     try:
-        matching_service.save_matching_results(assignments)
+        matching_service.save_matching_results(assignments, warnings)
     except Exception as e:
         logger.error(f"Failed to save matching results: {e}")
         return jsonify({"success": False, "error": "Failed to save matching results"}), 500
@@ -209,7 +209,7 @@ def confirm_matching():
     teams instead of their preferences.
     """
     try:
-        matching_service.set_matching_confirmed(True)
+        matching_service.confirm_matching()
         return jsonify({"success": True, "message": "Matching results confirmed as final"}), 200
     except Exception as e:
         logger.error(f"Error confirming matching: {e}")

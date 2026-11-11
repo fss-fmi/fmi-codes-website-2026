@@ -99,20 +99,20 @@ The script patches the ConfigMap and restarts the backend. Commit the matching c
 
 The complete list with defaults is `.env.example` (local) plus the ConfigMap and Secret above (cluster). Variables with no safe default:
 
-| Variable                                              | Required    | Notes                                                                                                                             |
-| ----------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value                                                                       |
-| `JWT_SECRET_KEY`                                      | yes         | Same check                                                                                                                        |
-| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                                                                               |
-| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                                                                                     |
-| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links                                                                 |
-| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped                                                                |
-| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Discord webhook for bug reports                                                                                                   |
-| `SLACK_BUG_WEBHOOK_URL`                               | no          | Slack incoming webhook for bug reports, used alongside Discord; with neither set bug reports are dropped                          |
-| `SLACK_MIGRATIONS_WEBHOOK_URL`                        | no          | Slack incoming webhook for migration results; without it they are only logged                                                     |
-| `SLACK_EVENTS_WEBHOOK_URL`                            | no          | Slack incoming webhook for the event feed (feature flag changes), one channel per environment; without it changes are only logged |
-| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off                                                              |
-| `RATELIMIT_MULTIPLIER`                                | no          | Multiplies every rate limit. Default 1 (prod), 10 on staging. Anything but a positive whole number refuses to boot                |
+| Variable                                              | Required    | Notes                                                                                                                                                                                 |
+| ----------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`                                          | yes         | Production refuses to start if missing or a known dev value                                                                                                                           |
+| `JWT_SECRET_KEY`                                      | yes         | Same check                                                                                                                                                                            |
+| `ADMIN_PASSWORD_HASH`                                 | yes         | bcrypt hash; production refuses to start without it                                                                                                                                   |
+| `DB_PASSWORD`                                         | yes         | From the `fmi-codes-db` Secret on the cluster                                                                                                                                         |
+| `FRONTEND_ORIGIN`                                     | yes in prod | CORS origin and the base of password-reset and verification links                                                                                                                     |
+| `MAIL_PASSWORD`                                       | no          | Without it reset, verification and join-request emails are skipped                                                                                                                    |
+| `DISCORD_BUG_WEBHOOK_URL`                             | no          | Discord webhook for bug reports                                                                                                                                                       |
+| `SLACK_BUG_WEBHOOK_URL`                               | no          | Slack incoming webhook for bug reports, used alongside Discord; with neither set bug reports are dropped                                                                              |
+| `SLACK_MIGRATIONS_WEBHOOK_URL`                        | no          | Slack incoming webhook for migration results; without it they are only logged                                                                                                         |
+| `SLACK_EVENTS_WEBHOOK_URL`                            | no          | Slack incoming webhook for the event feed (feature flag changes, ranking submissions, matching runs and confirmation), one channel per environment; without it events are only logged |
+| `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off                                                                                                                  |
+| `RATELIMIT_MULTIPLIER`                                | no          | Multiplies every rate limit. Default 1 (prod), 10 on staging. Anything but a positive whole number refuses to boot                                                                    |
 
 ## Health checks
 
