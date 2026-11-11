@@ -54,7 +54,7 @@ In production the cluster ingress routes `/api` straight to the backend Service 
 **Backend** (`backend/`). Flask app factory in `app/__init__.py`. Layering is routes → services → database:
 
 - `app/routes/`: four blueprints. `auth.py` (register, login, logout, me, password change and reset, email verification), `teams.py` (team lifecycle and join requests), `mentors.py` (mentor listing and preferences), `api_routes.py` (health, config, lookups, rankings, admin console including the feature flag switches, bug reports). Handlers validate input and delegate.
-- `app/services/`: business logic. `team_service.py` (team mutations and the registration queue), `matching_service.py` (the matching algorithm), `mentor_selection_service.py` (preferences), `ranking_service.py`, `mentor_service.py` (mentor reads and JSON seed loaders), `auth_service.py` (bcrypt, JWT), `token_blocklist.py`, `redis_client.py`, `email_service.py`, `bug_report_service.py`, `regulations_service.py`, `feature_flag_service.py` (registration, rankings and roster switches, with schedules), `event_notifier.py` (the Slack event feed).
+- `app/services/`: business logic. `team_service.py` (team mutations and the registration queue), `matching_service.py` (the matching algorithm), `mentor_selection_service.py` (preferences, from registered teams and active mentors only), `matching_events.py` (event feed messages for the matching phase), `ranking_service.py`, `mentor_service.py` (mentor reads and JSON seed loaders), `auth_service.py` (bcrypt, JWT), `token_blocklist.py`, `redis_client.py`, `email_service.py`, `bug_report_service.py`, `regulations_service.py`, `feature_flag_service.py` (registration, rankings and roster switches, with schedules), `event_notifier.py` (the Slack event feed).
 - `app/utils/auth_decorators.py`: `token_required`, `participant_required`, `mentor_required`, `captain_required`, `admin_required`.
 - `app/database.py`: a `ThreadedConnectionPool` per Gunicorn worker plus small helpers (`execute_query`, `execute_insert`, `get_db_cursor`). No ORM.
 
@@ -111,7 +111,9 @@ Inputs: active registered teams, active mentors, each captain's top-3 mentor ran
 
 Warnings (non-blocking): teams or mentors that never submitted preferences, and teams left with fewer than 3 mentors because mentor capacity ran out. With 20 mentors x 3 slots there are 60 slots for 18 x 3 = 54 team seats, so a full event fills every team to 3.
 
-`save_matching_results` replaces all rows in `team_mentors` under a separate advisory lock (`pg_advisory_xact_lock(2)`) and resets the confirmation flag. Teams and mentors keep seeing their own preferences until the admin calls `POST /api/admin/confirm-matching`. Running matching again after confirming silently un-confirms.
+`save_matching_results` replaces all rows in `team_mentors` under a separate advisory lock (`pg_advisory_xact_lock(2)`) and resets the confirmation flag. Teams and mentors keep seeing their own preferences until the admin calls `POST /api/admin/confirm-matching`. Running matching again after confirming un-confirms without warning on the site; only the event feed mentions it.
+
+Each step of the phase is posted to the event feed after its commit: a ranking submitted (with the progress count) or updated, a matching run (assignment and team counts plus the warnings) and a confirmation (only when it changes the flag). The messages name who acted and give counts, never a ranking, a rank or a team-mentor pair. A failing count or Slack hand-off is logged and never changes the response.
 
 The algorithm core (`_run_algorithm`) is pure and has no Flask or DB dependencies, which is what `tests/test_matching.py` exercises.
 

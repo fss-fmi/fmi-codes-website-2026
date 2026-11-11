@@ -17,6 +17,7 @@ from collections import deque
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
+from app.services import event_notifier, matching_events
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,10 @@ def run_gale_shapley():
     """Run the matching algorithm.
 
     Returns:
-        (success, message, assignments, warnings) where assignments is a list of
-        (team_id, mentor_id) tuples and warnings is a list of advisory strings.
+        (success, message, assignments, warnings, team_count) where assignments is
+        a list of (team_id, mentor_id) tuples, warnings is a list of advisory
+        strings and team_count is how many teams the run matched, those left
+        without a mentor included.
 
     Always attempts to run — incomplete preference submissions produce warnings
     rather than an outright failure. Phase 2 greedy fill covers the gaps.
@@ -57,9 +60,9 @@ def run_gale_shapley():
     all_mentors = [r["id"] for r in all_mentor_rows]
 
     if not all_teams:
-        return False, "No active registered teams found", [], []
+        return False, "No active registered teams found", [], [], 0
     if not all_mentors:
-        return False, "No active mentors found", [], []
+        return False, "No active mentors found", [], [], 0
 
     mentor_prefs_rows = (
         execute_query(
@@ -104,7 +107,7 @@ def run_gale_shapley():
         f" across {len(all_teams)} teams and {len(all_mentors)} mentors"
     )
     logger.info(msg)
-    return True, msg, assignments, warnings
+    return True, msg, assignments, warnings, len(all_teams)
 
 
 def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, warnings=None):
@@ -239,14 +242,18 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
     return assignments, warnings
 
 
-def save_matching_results(assignments):
+def save_matching_results(assignments, warnings, team_count):
     """Clear existing team_mentors and write new assignments.
 
     Also resets the admin confirmation flag so teams/mentors continue seeing
-    preferences until the admin explicitly re-confirms the new results.
+    preferences until the admin explicitly re-confirms the new results. After
+    the commit the run is posted to the event feed.
 
     Args:
         assignments: list of (team_id, mentor_id) tuples
+        warnings: the run's advisory strings, posted with it
+        team_count: teams in the run, from run_gale_shapley(); counting the
+            teams in *assignments* would miss any left without a mentor
     """
     try:
         with get_db_cursor(current_app) as cursor:
@@ -255,6 +262,8 @@ def save_matching_results(assignments):
             # accidental deadlocks.  Two simultaneous admin "run matching" calls
             # will now queue up here rather than racing on DELETE FROM team_mentors.
             cursor.execute("SELECT pg_advisory_xact_lock(2)")
+            cursor.execute("SELECT is_confirmed FROM matching_state WHERE id = 1 FOR UPDATE")
+            state = cursor.fetchone()
             cursor.execute("DELETE FROM team_mentors")
             for team_id, mentor_id in assignments:
                 cursor.execute(
@@ -269,6 +278,23 @@ def save_matching_results(assignments):
     except Exception as e:
         logger.error(f"Error saving matching results: {e}")
         raise
+    _announce_matching_run(
+        len(assignments), team_count, warnings, bool(state and state["is_confirmed"])
+    )
+
+
+def _announce_matching_run(
+    assignment_count: int, team_count: int, warnings, confirmation_cleared: bool
+) -> None:
+    """Post a saved matching run to the event feed: counts only, never the pairs."""
+    try:
+        event_notifier.notify(
+            matching_events.matching_run_text(
+                assignment_count, team_count, warnings, confirmation_cleared
+            )
+        )
+    except Exception:
+        logger.exception("Could not post the matching run event")
 
 
 def get_matching_confirmed() -> bool:
@@ -281,17 +307,24 @@ def get_matching_confirmed() -> bool:
     return bool(row["is_confirmed"]) if row else False
 
 
-def set_matching_confirmed(confirmed: bool) -> None:
-    """Set (or clear) the admin confirmation flag."""
+def confirm_matching() -> bool:
+    """Mark the current results final. Returns False when they already were.
+
+    The event feed is posted only on a real change, so a double-click or a
+    second confirm doesn't announce the same results twice.
+    """
     with get_db_cursor(current_app) as cursor:
-        if confirmed:
-            cursor.execute(
-                "UPDATE matching_state SET is_confirmed = TRUE, confirmed_at = NOW() WHERE id = 1"
-            )
-        else:
-            cursor.execute(
-                "UPDATE matching_state SET is_confirmed = FALSE, confirmed_at = NULL WHERE id = 1"
-            )
+        cursor.execute(
+            "UPDATE matching_state SET is_confirmed = TRUE, confirmed_at = NOW()"
+            " WHERE id = 1 AND NOT is_confirmed"
+        )
+        changed = cursor.rowcount == 1
+    if changed:
+        try:
+            event_notifier.notify(matching_events.matching_confirmed_text())
+        except Exception:
+            logger.exception("Could not post the matching confirmed event")
+    return changed
 
 
 def get_assigned_teams_for_mentor(mentor_id):

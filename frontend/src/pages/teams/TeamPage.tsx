@@ -265,6 +265,7 @@ function TeamDashboardView({
             mentors={team.mentors ?? []}
             prefs={prefs}
             isCaptain={isCaptain}
+            isRegistered={!!team.is_registered}
           />
         )}
 

@@ -165,12 +165,12 @@ def preference_status():
 @admin_required
 def run_matching():
     """Trigger matching algorithm — always attempts to run, returns warnings for partial data"""
-    success, message, assignments, warnings = matching_service.run_gale_shapley()
+    success, message, assignments, warnings, team_count = matching_service.run_gale_shapley()
     if not success:
         return jsonify({"success": False, "error": message}), 400
 
     try:
-        matching_service.save_matching_results(assignments)
+        matching_service.save_matching_results(assignments, warnings, team_count)
     except Exception as e:
         logger.error(f"Failed to save matching results: {e}")
         return jsonify({"success": False, "error": "Failed to save matching results"}), 500
@@ -209,7 +209,7 @@ def confirm_matching():
     teams instead of their preferences.
     """
     try:
-        matching_service.set_matching_confirmed(True)
+        matching_service.confirm_matching()
         return jsonify({"success": True, "message": "Matching results confirmed as final"}), 200
     except Exception as e:
         logger.error(f"Error confirming matching: {e}")

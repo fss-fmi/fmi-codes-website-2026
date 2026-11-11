@@ -127,7 +127,7 @@ bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_
 `SLACK_BUG_WEBHOOK_URL` / `SLACK_MIGRATIONS_WEBHOOK_URL` / `SLACK_EVENTS_WEBHOOK_URL` are
 optional; set them later with `rotate-secret.sh` (step 5) if you want password-reset mail, bug
 reports in Discord or Slack, migration results in Slack, or the event feed (feature flag
-changes) in Slack.
+changes, ranking submissions and matching) in Slack.
 
 ### 3. Run the bootstrap
 

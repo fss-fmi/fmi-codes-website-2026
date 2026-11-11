@@ -76,7 +76,7 @@ As a regular member, **DANGER ZONE → LEAVE TEAM** takes you off the team. If t
 
 ### 5. Choose your mentors (captains)
 
-Once your team is active, the **MENTORS** panel on your team page shows a **CHOOSE MENTORS** button.
+Once your team is registered (it holds one of the 18 event slots), the **MENTORS** panel on your team page shows a **CHOOSE MENTORS** button. A team in the queue sees a note instead, since only registered teams take part in mentor matching.
 
 1. Click **CHOOSE MENTORS**.
 2. Pick exactly 3 mentors from the cards (**STEP 1**) and click **NEXT: RANK MENTORS**.
@@ -177,6 +177,21 @@ Shows which teams and mentors have submitted their rankings (✓ or —). Use it
 3. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences.
 
 Note: although the confirm dialog says it cannot be undone, running the matching again un-publishes the results until you confirm again.
+
+### Following matching in Slack
+
+The event feed (`#event-feed-prod`; staging posts to `#event-feed-staging`) follows the matching phase as it happens, so you don't have to keep refreshing Mission Control. It says that someone submitted, never what they chose: no rankings, ranks or team-mentor pairs.
+
+| When                                    | The feed shows                                                                                                                                      |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A team submits its first mentor ranking | "Team _X_ submitted its mentor ranking. Teams: 7 of 18 submitted."                                                                                  |
+| A team changes its ranking              | "Team _X_ updated its mentor ranking."                                                                                                              |
+| A mentor submits their first ranking    | "Mentor _Y_ submitted their team ranking. Mentors: 12 of 20 submitted."                                                                             |
+| A mentor changes their ranking          | "Mentor _Y_ updated their team ranking."                                                                                                            |
+| You run the matching                    | How many assignments went to how many teams, the run's warnings (such as teams that never submitted) and whether it cleared an earlier confirmation |
+| You confirm the matching                | "Matching confirmed as final. Teams and mentors now see their assignments." (once; confirming again posts nothing)                                  |
+
+The counts cover registered teams and active mentors, the same ones the matching uses.
 
 ### Scores tab
 

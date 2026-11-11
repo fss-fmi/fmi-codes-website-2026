@@ -10,18 +10,20 @@ interface MentorPref {
 
 /**
  * Active-team mentor state, in priority order:
- * confirmed assignments → submitted preferences → captain CTA / waiting note.
+ * confirmed assignments → not registered → submitted preferences → captain CTA / waiting note.
  */
 export default function MentorsPanel({
   confirmed,
   mentors,
   prefs,
   isCaptain,
+  isRegistered,
 }: {
   confirmed: boolean | undefined;
   mentors: TeamMentor[];
   prefs: MentorPref[];
   isCaptain: boolean;
+  isRegistered: boolean;
 }) {
   if (confirmed && mentors.length > 0) {
     return (
@@ -50,10 +52,15 @@ export default function MentorsPanel({
               }}
             />
             <div>
-              <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+              <div
+                style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}
+              >
                 {m.mentor_name}
               </div>
-              <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+              <div
+                className="px-body-sm"
+                style={{ color: 'var(--px-muted-strong)' }}
+              >
                 {m.company_name}
               </div>
             </div>
@@ -63,10 +70,27 @@ export default function MentorsPanel({
     );
   }
 
+  if (!isRegistered) {
+    return (
+      <Panel title="MENTORS">
+        <p
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)' }}
+        >
+          &gt; Only registered teams take part in mentor matching. Your team can rank mentors once
+          it holds one of the event slots.
+        </p>
+      </Panel>
+    );
+  }
+
   if (prefs.length > 0) {
     return (
       <Panel title="MENTORS">
-        <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', marginBottom: 12 }}>
+        <p
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)', marginBottom: 12 }}
+        >
           &gt; Preferences submitted. Waiting for matching.
         </p>
         {prefs.map((p, i) => (
@@ -74,7 +98,10 @@ export default function MentorsPanel({
             key={p.mentor_id}
             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}
           >
-            <span className="px-label" style={{ color: 'var(--px-teal)', minWidth: 30 }}>
+            <span
+              className="px-label"
+              style={{ color: 'var(--px-teal)', minWidth: 30 }}
+            >
               #{i + 1}
             </span>
             <span style={{ fontFamily: 'var(--px-mono)', color: 'var(--px-white)' }}>
@@ -90,16 +117,25 @@ export default function MentorsPanel({
     <Panel title="MENTORS">
       {isCaptain ? (
         <>
-          <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', marginBottom: 16 }}>
+          <p
+            className="px-body-sm"
+            style={{ color: 'var(--px-muted-strong)', marginBottom: 16 }}
+          >
             &gt; Your team is active. As captain, rank your preferred mentors so the matching
             algorithm can find the best fit.
           </p>
-          <Button variant="primary" href="/chooseMentor">
+          <Button
+            variant="primary"
+            href="/chooseMentor"
+          >
             CHOOSE MENTORS
           </Button>
         </>
       ) : (
-        <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+        <p
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)' }}
+        >
           &gt; Waiting for the captain to select mentor preferences.
         </p>
       )}

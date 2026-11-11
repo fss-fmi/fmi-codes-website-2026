@@ -100,7 +100,7 @@ An industry volunteer onboarded by the organizers (seeded from `backend/database
 
 ### Mentor preferences
 
-A captain's ranking of exactly 3 distinct mentors, ranks 1 to 3 (`team_mentor_preferences`). Rank 1 is the first choice.
+A registered team's ranking of exactly 3 distinct mentors, set by its captain, ranks 1 to 3 (`team_mentor_preferences`). Rank 1 is the first choice. Teams that are not registered cannot submit one.
 
 ### Mission Control
 

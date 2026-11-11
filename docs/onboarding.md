@@ -50,7 +50,7 @@ Also check:
 
 - `DB_USER` defaults to `fmi_app` in `.env.example`. Either create that role or change it to `postgres`.
 - Participant registration starts closed on a new database (the `feature_flags` row is seeded false). Log in as admin and press **OPEN NOW** on Mission Control's SITE tab, or the register page shows "REGISTRATION CLOSED" and the API returns 403.
-- `MAIL_*`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL` and `SLACK_EVENTS_WEBHOOK_URL` are optional. Without them password-reset and verification mail and bug reports are dropped with a logged warning, and flag changes are only logged.
+- `MAIL_*`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL` and `SLACK_EVENTS_WEBHOOK_URL` are optional. Without them password-reset and verification mail and bug reports are dropped with a logged warning, and event feed notices (flag changes, rankings, matching) are only logged.
 - `REQUIRE_EMAIL_VERIFICATION=false` in `.env.example`. Leave it off locally unless `MAIL_*` works, or no participant can create or join a team.
 - Leave every `REDIS_*` blank to run without Redis (in-memory rate limiting, no token revocation).
 
