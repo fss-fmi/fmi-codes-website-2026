@@ -180,9 +180,27 @@ def test_account_key_hides_the_email_and_ignores_case(limited_app):
     assert _key(limited_app, login_account_key, {"email": "bo@example.com"}) != a
 
 
-@pytest.mark.parametrize("body", [None, [], {"email": ""}, {"email": 5}, {"role": "mentor"}])
+@pytest.mark.parametrize(
+    "body",
+    [
+        None,
+        [],
+        {"email": ""},
+        {"email": 5},
+        {"role": "mentor"},
+        {"email": "\ud800@example.com"},
+        {"email": "a\x00@example.com"},
+    ],
+)
 def test_account_key_without_an_email_is_the_address(limited_app, body):
     assert _key(limited_app, login_account_key, body) == f"ip:{CLIENT_A}"
+
+
+@pytest.mark.parametrize("path", ["/api/auth/login", "/api/auth/reset-password"])
+def test_an_email_that_is_not_valid_text_is_a_400_not_a_limiter_crash(limited_app, path):
+    """The key function runs before the route and must not fail on what the route rejects."""
+    body = {"email": "\ud800@example.com", "password": "x", "role": "participant"}
+    assert _post(limited_app.test_client(), path, body) == 400
 
 
 @pytest.mark.parametrize("role", [None, "admin", "nobody"])

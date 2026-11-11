@@ -5,8 +5,25 @@ import logging
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
+from app.utils.request_json import is_row_id
 
 logger = logging.getLogger(__name__)
+
+
+def _preferences_error(preferences, id_key: str, noun: str) -> str | None:
+    """Why a submitted ranking of exactly 3 `noun` is malformed, or None."""
+    if not isinstance(preferences, list) or len(preferences) != 3:
+        return f"You must rank exactly 3 {noun}"
+    if not all(
+        isinstance(p, dict) and is_row_id(p.get(id_key)) and is_row_id(p.get("rank"))
+        for p in preferences
+    ):
+        return f"Each preference needs a whole-number {id_key} and rank"
+    if sorted(p["rank"] for p in preferences) != [1, 2, 3]:
+        return "Ranks must be exactly 1, 2, and 3"
+    if len({p[id_key] for p in preferences}) != 3:
+        return f"All three {noun} must be different"
+    return None
 
 
 def set_team_mentor_preferences(team_id, preferences):
@@ -19,16 +36,9 @@ def set_team_mentor_preferences(team_id, preferences):
     Returns:
         (success, message)
     """
-    if len(preferences) != 3:
-        return False, "You must rank exactly 3 mentors"
-
-    ranks = sorted([p["rank"] for p in preferences])
-    if ranks != [1, 2, 3]:
-        return False, "Ranks must be exactly 1, 2, and 3"
-
+    if error := _preferences_error(preferences, "mentor_id", "mentors"):
+        return False, error
     mentor_ids = [p["mentor_id"] for p in preferences]
-    if len(set(mentor_ids)) != 3:
-        return False, "All three mentors must be different"
 
     try:
         with get_db_cursor(current_app) as cursor:
@@ -89,16 +99,9 @@ def set_mentor_team_preferences(mentor_id, preferences):
     Returns:
         (success, message)
     """
-    if len(preferences) != 3:
-        return False, "You must rank exactly 3 teams"
-
-    ranks = sorted([p["rank"] for p in preferences])
-    if ranks != [1, 2, 3]:
-        return False, "Ranks must be exactly 1, 2, and 3"
-
+    if error := _preferences_error(preferences, "team_id", "teams"):
+        return False, error
     team_ids = [p["team_id"] for p in preferences]
-    if len(set(team_ids)) != 3:
-        return False, "All three teams must be different"
 
     try:
         with get_db_cursor(current_app) as cursor:

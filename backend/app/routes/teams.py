@@ -2,7 +2,7 @@
 
 import threading
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, jsonify
 
 from app.database import execute_query
 from app.routes import teams_bp
@@ -16,6 +16,7 @@ from app.utils.auth_decorators import (
     token_required,
     verified_email_required,
 )
+from app.utils.request_json import json_object, string_field
 
 
 @teams_bp.route("/api/teams/registered", methods=["GET"])
@@ -124,8 +125,7 @@ def get_team_members_public(team_id):
 @verified_email_required
 def create_team():
     """Create a new team. The authenticated participant becomes captain."""
-    data = request.get_json(silent=True) or {}
-    team_name = (data.get("team_name") or "").strip()
+    team_name = string_field(json_object(), "team_name", max_length=100)
     if not team_name:
         return jsonify({"success": False, "error": "Team name is required"}), 400
 
@@ -150,8 +150,7 @@ def create_team():
 @verified_email_required
 def join_team():
     """Join a team via invite code."""
-    data = request.get_json(silent=True) or {}
-    join_code = (data.get("join_code") or "").strip()
+    join_code = string_field(json_object(), "join_code")
     if not join_code:
         return jsonify({"success": False, "error": "Join code is required"}), 400
 

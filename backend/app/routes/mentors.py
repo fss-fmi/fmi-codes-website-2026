@@ -2,7 +2,7 @@
 
 from io import BytesIO
 
-from flask import g, jsonify, request, send_file
+from flask import g, jsonify, send_file
 
 from app.routes import mentors_bp
 from app.services import mentor_selection_service, mentor_service
@@ -10,6 +10,7 @@ from app.utils.auth_decorators import (
     captain_required,
     mentor_required,
 )
+from app.utils.request_json import json_object
 
 # ── Public mentor API ──────────────────────────────────────────────
 
@@ -61,8 +62,7 @@ def set_team_preferences(team_id):
     if g.current_user.get("team_id") != team_id:
         return jsonify({"success": False, "error": "Not your team"}), 403
 
-    data = request.get_json(silent=True) or {}
-    preferences = data.get("preferences", [])
+    preferences = json_object().get("preferences", [])
 
     success, message = mentor_selection_service.set_team_mentor_preferences(team_id, preferences)
     if success:
@@ -96,8 +96,7 @@ def get_available_teams():
 @mentor_required
 def set_mentor_preferences():
     """Mentor sets ranked team preferences"""
-    data = request.get_json(silent=True) or {}
-    preferences = data.get("preferences", [])
+    preferences = json_object().get("preferences", [])
 
     success, message = mentor_selection_service.set_mentor_team_preferences(
         g.current_user["user_id"], preferences

@@ -8,6 +8,8 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 **Response envelope.** Most endpoints return `{"success": true, ...}` or `{"success": false, "error": "<message>"}`. Exceptions: `/api/health`, `/api/health/ready` and `/api/config` return bare objects.
 
+**Request bodies.** A body must be a JSON object; any other JSON value (an array, a string, a number) returns 400 `Request body must be a JSON object`. A missing or unparsable body counts as `{}`, so it gets the route's usual missing-field 400. A text field sent as anything but a string or `null` returns 400 `<field> must be a string`; `null` counts as missing. Text with a NUL character or an unpaired UTF-16 surrogate escape returns 400 `<field> contains an invalid character`, and text longer than its database column returns 400 `<field> must be at most <n> characters`. Ids and ranks must be JSON integers.
+
 **Authentication.** Login and registration set an httpOnly cookie named `token` (JWT, HS256, 3-day expiry, `SameSite=Lax`, `Secure` in production). Send it back with every request (`credentials: 'include'`). For scripts, `Authorization: Bearer <token>` works on every protected route.
 
 | Guard       | Meaning                                                                                  | Failure   |
@@ -89,7 +91,7 @@ Request (all fields required):
 }
 ```
 
-Rules: names may not contain `< > & ; " \`; email must look like an address (stored lowercased); `course` must be one of `Bachelor 1st Year` to `Bachelor 4th Year`, `Masters 1st Year` or `Masters 2nd Year`; password at least 12 characters; email and faculty number must be unique.
+Rules: names may not contain `< > & ; " \`; email must look like an address (stored lowercased); `course` must be one of `Bachelor 1st Year` to `Bachelor 4th Year`, `Masters 1st Year` or `Masters 2nd Year`; password at least 12 characters; email and faculty number must be unique. At most 100 characters for each name, 255 for the email and 20 for the phone and faculty numbers. `specialty_id` and `university_id` are a positive integer, the same as a string (the form's `"1"`) or `"other"`; anything else returns `Invalid specialty_id` / `Invalid university_id`.
 
 **"Other" university or specialty.** Send `"university_id": "other"` with `university_other`, or `"specialty_id": "other"` with `specialty_other`:
 
@@ -295,7 +297,7 @@ Participant. Creates a team with the caller as captain.
 { "team_name": "Code Wizards" }
 ```
 
-201 `{"success": true, "message": "Team created successfully", "team": {...}}`. 400 for a blank or taken name, HTML characters, or if the caller is already on a team. 403 `email_unverified` while email verification is required.
+201 `{"success": true, "message": "Team created successfully", "team": {...}}`. 400 for a blank or taken name, a name over 100 characters, HTML characters, or if the caller is already on a team. 403 `email_unverified` while email verification is required.
 
 ### POST /api/teams/join
 
@@ -397,7 +399,7 @@ Captain of `team_id`. Replaces the team's ranking.
 }
 ```
 
-Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400.
+Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`).
 
 ### GET /api/teams/{team_id}/mentor-preferences
 
@@ -421,7 +423,7 @@ Mentor. Replaces the mentor's ranking.
 }
 ```
 
-Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400.
+Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`).
 
 ### GET /api/mentors/team-preferences
 
