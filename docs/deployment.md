@@ -71,15 +71,16 @@ Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub Ap
 
 ### Feature flags during the event
 
-Registration, the mentor roster and the rankings are switched by the admin in Mission Control (**SITE** tab, see the [User Guide](user-guide.md#site-tab)), with no deploy, config change or restart. Each can be switched now or scheduled for a time, and every change is posted to the environment's event feed in Slack (`SLACK_EVENTS_WEBHOOK_URL`: `#event-feed-prod` or `#event-feed-staging`). The values live in the `feature_flags` table ([Data Model](data.md#feature_flags), [ADR-013](adr/013-feature-flags-in-database.md)), so staging and prod are switched independently and a Flux reconcile never reverts them.
+Registration, preference submission, the mentor roster and the rankings are switched by the admin in Mission Control (**SITE** tab, see the [User Guide](user-guide.md#site-tab)), with no deploy, config change or restart. Each can be switched now or scheduled for a time, and every change is posted to the environment's event feed in Slack (`SLACK_EVENTS_WEBHOOK_URL`: `#event-feed-prod` or `#event-feed-staging`). The values live in the `feature_flags` table ([Data Model](data.md#feature_flags), [ADR-013](adr/013-feature-flags-in-database.md)), so staging and prod are switched independently and a Flux reconcile never reverts them.
 
-| Flag                 | Turn on when                   | Effect                                                                                                        |
-| -------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `registration_open`  | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                                                            |
-| `mentors_stay_tuned` | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster                                                  |
-| `rankings_live`      | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder; API returns scores (admin-only until then) |
+| Flag                 | Turn on when                   | Effect                                                                                                                              |
+| -------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `registration_open`  | Registration window opens      | Enables `/api/auth/register` and the REGISTER link                                                                                  |
+| `preferences_open`   | Ranking window opens           | Enables both ranking POSTs (403 while off) and the ranking pages' edit flow; close it at the deadline before the final matching run |
+| `mentors_stay_tuned` | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster                                                                        |
+| `rankings_live`      | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder; API returns scores (admin-only until then)                       |
 
-The API enforces a change on the next request in every pod. Visitors who already have the site open see it within 30 seconds (the SPA polls `/api/config`). A scheduled change takes effect within a few seconds of its time, on the first request after it; the database clock decides.
+Every flag starts off on a new database, and migration 020 adds `preferences_open` off, so after that deploy nobody can rank until the admin opens it. The API enforces a change on the next request in every pod. Visitors who already have the site open see it within 30 seconds (the SPA polls `/api/config`). A scheduled change takes effect within a few seconds of its time, on the first request after it; the database clock decides.
 
 `REQUIRE_EMAIL_VERIFICATION` is still server config, because it depends on SMTP working rather than on an event moment:
 

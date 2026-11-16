@@ -10,7 +10,8 @@ interface MentorPref {
 
 /**
  * Active-team mentor state, in priority order:
- * confirmed assignments → not registered → submitted preferences → captain CTA / waiting note.
+ * confirmed assignments → not registered → submitted preferences → submissions closed →
+ * captain CTA / waiting note.
  */
 export default function MentorsPanel({
   confirmed,
@@ -18,12 +19,14 @@ export default function MentorsPanel({
   prefs,
   isCaptain,
   isRegistered,
+  preferencesOpen,
 }: {
   confirmed: boolean | undefined;
   mentors: TeamMentor[];
   prefs: MentorPref[];
   isCaptain: boolean;
   isRegistered: boolean;
+  preferencesOpen: boolean;
 }) {
   if (confirmed && mentors.length > 0) {
     return (
@@ -109,6 +112,20 @@ export default function MentorsPanel({
             </span>
           </div>
         ))}
+      </Panel>
+    );
+  }
+
+  if (!preferencesOpen) {
+    return (
+      <Panel title="MENTORS">
+        <p
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)' }}
+        >
+          &gt; Preference submission is closed. Mentors can be ranked only while the organizers have
+          it open.
+        </p>
       </Panel>
     );
   }

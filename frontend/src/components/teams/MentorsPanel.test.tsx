@@ -4,7 +4,12 @@ import MentorsPanel from './MentorsPanel';
 
 const prefs = [{ mentor_id: 4, rank: 1, mentor_name: 'Ana Petrova' }];
 
-function renderPanel(props: { isRegistered: boolean; isCaptain?: boolean; withPrefs?: boolean }) {
+function renderPanel(props: {
+  isRegistered: boolean;
+  isCaptain?: boolean;
+  withPrefs?: boolean;
+  preferencesOpen?: boolean;
+}) {
   render(
     <MemoryRouter>
       <MentorsPanel
@@ -13,6 +18,7 @@ function renderPanel(props: { isRegistered: boolean; isCaptain?: boolean; withPr
         prefs={props.withPrefs ? prefs : []}
         isCaptain={props.isCaptain ?? true}
         isRegistered={props.isRegistered}
+        preferencesOpen={props.preferencesOpen ?? true}
       />
     </MemoryRouter>,
   );
@@ -35,4 +41,20 @@ test('a ranking left over from before the team lost its slot is not shown as wai
   renderPanel({ isRegistered: false, withPrefs: true });
   expect(screen.queryByText(/waiting for matching/i)).toBeNull();
   expect(screen.queryByText('Ana Petrova')).toBeNull();
+});
+
+test.each([true, false])(
+  'while submissions are closed there is no CTA, only the note (captain: %s)',
+  (isCaptain) => {
+    renderPanel({ isRegistered: true, isCaptain, preferencesOpen: false });
+    expect(screen.queryByText('CHOOSE MENTORS')).toBeNull();
+    expect(screen.queryByText(/waiting for the captain/i)).toBeNull();
+    expect(screen.getByText(/preference submission is closed/i)).toBeInTheDocument();
+  },
+);
+
+test('a submitted ranking still shows while submissions are closed', () => {
+  renderPanel({ isRegistered: true, withPrefs: true, preferencesOpen: false });
+  expect(screen.getByText('Ana Petrova')).toBeInTheDocument();
+  expect(screen.getByText(/waiting for matching/i)).toBeInTheDocument();
 });

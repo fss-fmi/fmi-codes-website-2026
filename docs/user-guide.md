@@ -85,6 +85,8 @@ Once your team is registered (it holds one of the 18 event slots), the **MENTORS
 
 You can come back and click **CHANGE PREFERENCES** until the organizers confirm the matching. Teammates see "Preferences submitted. Waiting for matching."
 
+Rankings can only be submitted while the organizers have preference submission open. While it is closed, the **MENTORS** panel says so instead of showing **CHOOSE MENTORS**, and **CHOOSE YOUR MENTORS** shows your saved ranking without **CHANGE PREFERENCES**, or **SUBMISSIONS CLOSED** if your team never submitted. Open pages follow a change within 30 seconds.
+
 <!-- screenshot: drag-to-rank step -->
 
 ### 6. See your mentors
@@ -127,6 +129,8 @@ Only registered teams can be ranked, so this list fills up as teams register.
 
 Click **CHANGE PREFERENCES** to edit until the organizers confirm the matching.
 
+This works only while the organizers have preference submission open. While it is closed, the dashboard shows your saved ranking without **CHANGE PREFERENCES**, or **SUBMISSIONS CLOSED** if you never submitted.
+
 <!-- screenshot: mentor dashboard team selection -->
 
 ### See your assigned teams
@@ -147,13 +151,14 @@ Log in with **ADMIN** selected. Click **ADMIN** in the menu to open **MISSION CO
 
 ### Site tab
 
-Opens and closes participant registration, publishes the rankings and shows or hides the mentor roster for everyone, straight away, with no help from whoever runs the server. Each switch has its own panel showing whether it is on, when it last changed and any pending schedule.
+Opens and closes participant registration and preference submission, publishes the rankings and shows or hides the mentor roster for everyone, straight away, with no help from whoever runs the server. Each switch has its own panel showing whether it is on, when it last changed and any pending schedule.
 
-| Panel                        | On                                                  | Off                                             |
-| ---------------------------- | --------------------------------------------------- | ----------------------------------------------- |
-| **PARTICIPANT REGISTRATION** | OPEN: sign-up and the REGISTER links work           | CLOSED: the registration page says it is closed |
-| **LIVE RANKINGS**            | LIVE: the leaderboard and team scores are public    | HIDDEN: only you see the scores                 |
-| **MENTOR ROSTER**            | COMING SOON: the MENTORS page shows the placeholder | PUBLIC: the MENTORS page shows every mentor     |
+| Panel                        | On                                                              | Off                                                               |
+| ---------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **PARTICIPANT REGISTRATION** | OPEN: sign-up and the REGISTER links work                       | CLOSED: the registration page says it is closed                   |
+| **PREFERENCE SUBMISSIONS**   | OPEN: captains and mentors can submit and change their rankings | CLOSED: saved rankings are read-only and the API refuses new ones |
+| **LIVE RANKINGS**            | LIVE: the leaderboard and team scores are public                | HIDDEN: only you see the scores                                   |
+| **MENTOR ROSTER**            | COMING SOON: the MENTORS page shows the placeholder             | PUBLIC: the MENTORS page shows every mentor                       |
 
 - **OPEN NOW**, **CLOSE NOW** (and the matching button on the other panels) switches immediately after you confirm. Visitors with the site already open see the change within 30 seconds.
 - To have it happen by itself, pick a date and time in your own time zone and click **SCHEDULE**, then confirm. The server makes the change on the first visit to the site after that minute (open pages check every 30 seconds), so anyone looking sees it on time, even if nobody has Mission Control open. Each panel holds one schedule: a new one replaces it, and **CANCEL SCHEDULE** drops it. To open registration at one time and close it at another, schedule the opening, then schedule the closing once registration is open.
@@ -172,9 +177,10 @@ Shows which teams and mentors have submitted their rankings (✓ or —). Use it
 
 ### Matching tab
 
-1. Click **RUN MATCHING** and confirm. The results appear as team → mentor pairs. Every team gets up to 3 mentors, aiming for 2 or 3; the run still works if some preferences are missing.
-2. Review the pairs. You can run the matching again at any time; each run replaces the previous results.
-3. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences.
+1. Close **PREFERENCE SUBMISSIONS** on the [Site tab](#site-tab) at the deadline, so the matching runs on a fixed set of rankings. While it is open the **RUN MATCHING** dialog warns that rankings can still change after the run, but it still lets you run one, for example as a test before the deadline.
+2. Click **RUN MATCHING** and confirm. The results appear as team → mentor pairs. Every team gets up to 3 mentors, aiming for 2 or 3; the run still works if some preferences are missing.
+3. Review the pairs. You can run the matching again at any time; each run replaces the previous results.
+4. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences.
 
 Note: although the confirm dialog says it cannot be undone, running the matching again un-publishes the results until you confirm again.
 
@@ -199,7 +205,7 @@ After judging, type each team's total score (0 to 100) and click **SAVE**. Score
 
 ### Switching parts of the site on and off
 
-Registration, the rankings and the mentor roster are on the [Site tab](#site-tab). Only requiring participants to verify their email before forming a team is a server setting: ask whoever runs the server to change `REQUIRE_EMAIL_VERIFICATION` (see [Deployment](deployment.md#feature-flags-during-the-event)).
+Registration, preference submission, the rankings and the mentor roster are on the [Site tab](#site-tab). Only requiring participants to verify their email before forming a team is a server setting: ask whoever runs the server to change `REQUIRE_EMAIL_VERIFICATION` (see [Deployment](deployment.md#feature-flags-during-the-event)).
 
 ### Known issues
 

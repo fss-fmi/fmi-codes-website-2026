@@ -93,6 +93,7 @@ def get_config():
             "REGISTRATION_OPEN": flags["registration_open"],
             "MENTORS_STAY_TUNED": flags["mentors_stay_tuned"],
             "RANKINGS_LIVE": flags["rankings_live"],
+            "PREFERENCES_OPEN": flags["preferences_open"],
             "REQUIRE_EMAIL_VERIFICATION": bool(
                 current_app.config.get("REQUIRE_EMAIL_VERIFICATION")
             ),

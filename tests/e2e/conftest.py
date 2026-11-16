@@ -192,8 +192,8 @@ def clean_db(db_conn, flask_app):
 
     Universities, specialties, and mentors are deliberately preserved —
     they're seeded once per session.  The matching_state row is reset to
-    is_confirmed=FALSE, and the feature flags to registration open, everything
-    else off, no schedules.
+    is_confirmed=FALSE, and the feature flags to registration and preference
+    submission open, everything else off, no schedules.
     """
     _wipe_entities(db_conn)
     _reset_caches()
@@ -233,7 +233,7 @@ def _wipe_entities(conn):
             "ON CONFLICT (id) DO UPDATE SET is_confirmed = FALSE, confirmed_at = NULL"
         )
         cur.execute(
-            "UPDATE feature_flags SET enabled = (name = 'registration_open'),"
+            "UPDATE feature_flags SET enabled = (name IN ('registration_open', 'preferences_open')),"
             " scheduled_value = NULL, scheduled_at = NULL"
         )
 

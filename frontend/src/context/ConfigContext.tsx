@@ -6,6 +6,7 @@ interface Flags {
   REGISTRATION_OPEN: boolean;
   MENTORS_STAY_TUNED: boolean;
   RANKINGS_LIVE: boolean;
+  PREFERENCES_OPEN: boolean;
   REQUIRE_EMAIL_VERIFICATION: boolean;
 }
 
@@ -17,6 +18,7 @@ const CLOSED: Flags = {
   REGISTRATION_OPEN: false,
   MENTORS_STAY_TUNED: false,
   RANKINGS_LIVE: false,
+  PREFERENCES_OPEN: false,
   REQUIRE_EMAIL_VERIFICATION: false,
 };
 
@@ -37,6 +39,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     REGISTRATION_OPEN: flags.REGISTRATION_OPEN,
     MENTORS_STAY_TUNED: flags.MENTORS_STAY_TUNED,
     RANKINGS_LIVE: flags.RANKINGS_LIVE,
+    PREFERENCES_OPEN: flags.PREFERENCES_OPEN,
     REQUIRE_EMAIL_VERIFICATION: flags.REQUIRE_EMAIL_VERIFICATION,
     isLoading: isPending,
   };

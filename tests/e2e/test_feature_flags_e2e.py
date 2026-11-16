@@ -103,10 +103,16 @@ class TestAccess:
 
 
 class TestSwitch:
-    def test_admin_lists_all_three_flags(self, admin):
+    def test_admin_lists_all_four_flags(self, admin):
         flags = _flags(admin)
-        assert set(flags) == {"registration_open", "rankings_live", "mentors_stay_tuned"}
+        assert set(flags) == {
+            "registration_open",
+            "rankings_live",
+            "mentors_stay_tuned",
+            "preferences_open",
+        }
         assert flags["registration_open"]["enabled"] is True
+        assert flags["preferences_open"]["enabled"] is True
         assert flags["rankings_live"]["enabled"] is False
         assert flags["mentors_stay_tuned"]["scheduled_value"] is None
 

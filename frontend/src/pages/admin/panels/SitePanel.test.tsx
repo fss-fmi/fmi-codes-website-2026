@@ -49,6 +49,7 @@ beforeEach(() => {
       flag('registration_open', false),
       flag('rankings_live', false),
       flag('mentors_stay_tuned', true),
+      flag('preferences_open', true),
     ],
   });
   put.mockReset().mockResolvedValue({ success: true });
@@ -80,6 +81,27 @@ test('a schedule is sent in the admin’s local time with its UTC offset', async
   expect(body.value).toBe(true);
   expect(body.at).toMatch(/^2030-03-14T10:30:00[+-]\d{2}:\d{2}$/);
   expect(new Date(body.at).getTime()).toBe(new Date('2030-03-14T10:30').getTime());
+});
+
+test('preference submissions sit second and close through the same confirm', async () => {
+  renderPanel();
+  await screen.findByText('PREFERENCE SUBMISSIONS');
+  const titles = Array.from(document.querySelectorAll('.px-label'))
+    .map((el) => el.textContent)
+    .filter((t) => t && !t.startsWith('SCHEDULE'));
+  expect(titles).toEqual([
+    'PARTICIPANT REGISTRATION',
+    'PREFERENCE SUBMISSIONS',
+    'LIVE RANKINGS',
+    'MENTOR ROSTER',
+  ]);
+
+  fireEvent.click(screen.getByRole('button', { name: 'CLOSE NOW' }));
+  expect(put).not.toHaveBeenCalled();
+  fireEvent.click(confirmButton('CLOSE'));
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith('/api/admin/flags/preferences_open', { enabled: false }),
+  );
 });
 
 test('the roster panel reads ON as the coming-soon placeholder', async () => {

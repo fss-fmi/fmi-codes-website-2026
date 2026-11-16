@@ -21,7 +21,11 @@ export interface TeamScore {
   score: number | null;
 }
 
-export type FlagName = 'registration_open' | 'rankings_live' | 'mentors_stay_tuned';
+export type FlagName =
+  | 'registration_open'
+  | 'preferences_open'
+  | 'rankings_live'
+  | 'mentors_stay_tuned';
 
 export interface FeatureFlag {
   name: FlagName;

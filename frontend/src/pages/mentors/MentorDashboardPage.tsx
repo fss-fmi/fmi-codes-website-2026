@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
   closestCenter,
@@ -23,7 +23,9 @@ import PageHeader from '@/components/layout/PageHeader';
 import Panel from '@/components/common/Panel';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Button from '@/components/common/Button';
+import { useConfig } from '@/context/ConfigContext';
 import api from '@/lib/api';
+import { PREFERENCES_CLOSED_ERROR } from '@/lib/preferences';
 
 interface TeamItem {
   team_id: number;
@@ -37,15 +39,9 @@ interface TeamPref {
   team_name?: string;
 }
 
-type Step = 'select' | 'rank' | 'done' | 'assigned';
+type Step = 'select' | 'rank' | 'done' | 'closed' | 'assigned';
 
-function SortableTeamRow({
-  team,
-  rank,
-}: {
-  team: TeamItem;
-  rank: number;
-}) {
+function SortableTeamRow({ team, rank }: { team: TeamItem; rank: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(team.team_id),
   });
@@ -60,9 +56,7 @@ function SortableTeamRow({
         gap: 16,
         padding: '14px 16px',
         background: isDragging ? 'var(--px-bg-elevated)' : 'var(--px-bg-card)',
-        border: isDragging
-          ? '2px solid var(--px-teal-strong)'
-          : '1px solid var(--px-teal-dim)',
+        border: isDragging ? '2px solid var(--px-teal-strong)' : '1px solid var(--px-teal-dim)',
         cursor: 'grab',
         userSelect: 'none',
       }}
@@ -84,7 +78,10 @@ function SortableTeamRow({
         <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
           {team.team_name}
         </div>
-        <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+        <div
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)' }}
+        >
           {team.participant_count} members
         </div>
       </div>
@@ -102,7 +99,9 @@ function SortableTeamRow({
   );
 }
 
-function MentorDashboardContent() {
+export function MentorDashboardContent() {
+  const qc = useQueryClient();
+  const { PREFERENCES_OPEN, isLoading: configLoading } = useConfig();
   const [uiStep, setUiStep] = useState<'select' | 'rank'>('select');
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<TeamItem[]>([]);
@@ -137,9 +136,13 @@ function MentorDashboardContent() {
   const isConfirmed = matchingStatus?.confirmed ?? false;
   const step: Step = isConfirmed
     ? 'assigned'
-    : serverPrefs.length > 0 && !editing
-      ? 'done'
-      : uiStep;
+    : !PREFERENCES_OPEN
+      ? serverPrefs.length > 0
+        ? 'done'
+        : 'closed'
+      : serverPrefs.length > 0 && !editing
+        ? 'done'
+        : uiStep;
   const submitted = serverPrefs;
 
   const { data: teamsData, isLoading: teamsLoading } = useQuery<{ teams: TeamItem[] }>({
@@ -178,8 +181,13 @@ function MentorDashboardContent() {
       } else {
         setError(data.error ?? 'Failed to submit.');
       }
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (e) {
+      if (e instanceof Error && e.message === PREFERENCES_CLOSED_ERROR) {
+        qc.invalidateQueries({ queryKey: ['config'] });
+        setError('Preference submission closed before your ranking was saved.');
+      } else {
+        setError('Network error. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -195,7 +203,7 @@ function MentorDashboardContent() {
     });
   }
 
-  if (statusLoading) return <LoadingSpinner fullPage />;
+  if (statusLoading || configLoading) return <LoadingSpinner fullPage />;
 
   const stepLabel =
     step === 'select'
@@ -204,7 +212,9 @@ function MentorDashboardContent() {
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'assigned'
           ? 'ASSIGNMENTS CONFIRMED'
-          : 'PREFERENCES SUBMITTED';
+          : step === 'closed'
+            ? 'SUBMISSIONS CLOSED'
+            : 'PREFERENCES SUBMITTED';
 
   return (
     <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
@@ -238,7 +248,10 @@ function MentorDashboardContent() {
       {step === 'assigned' && (
         <Panel title="ASSIGNED TEAMS">
           {assigned.length === 0 ? (
-            <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+            <p
+              className="px-body"
+              style={{ color: 'var(--px-muted-strong)', margin: 0 }}
+            >
               &gt; No teams assigned.
             </p>
           ) : (
@@ -263,16 +276,37 @@ function MentorDashboardContent() {
                   }}
                 />
                 <div>
-                  <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--px-mono)',
+                      fontWeight: 700,
+                      color: 'var(--px-white)',
+                    }}
+                  >
                     {t.team_name}
                   </div>
-                  <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+                  <div
+                    className="px-body-sm"
+                    style={{ color: 'var(--px-muted-strong)' }}
+                  >
                     {t.participant_count} members
                   </div>
                 </div>
               </div>
             ))
           )}
+        </Panel>
+      )}
+
+      {step === 'closed' && (
+        <Panel title="SUBMISSIONS CLOSED">
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: 0 }}
+          >
+            &gt; Preference submission is closed. You can rank teams only while the organizers have
+            it open.
+          </p>
         </Panel>
       )}
 
@@ -302,31 +336,46 @@ function MentorDashboardContent() {
                 >
                   #{i + 1}
                 </span>
-                <span style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+                <span
+                  style={{
+                    fontFamily: 'var(--px-mono)',
+                    fontWeight: 700,
+                    color: 'var(--px-white)',
+                  }}
+                >
                   {p.team_name ?? `Team #${p.team_id}`}
                 </span>
               </div>
             ))}
-          <button
-            type="button"
-            className="px-btn-secondary"
-            style={{ marginTop: 24 }}
-            onClick={() => {
-              setEditing(true);
-              setUiStep('select');
-              setSelected(
-                [...submitted]
-                  .sort((a, b) => a.rank - b.rank)
-                  .map((p) => ({
-                    team_id: p.team_id,
-                    team_name: p.team_name ?? `Team #${p.team_id}`,
-                    participant_count: 0,
-                  })),
-              );
-            }}
-          >
-            CHANGE PREFERENCES
-          </button>
+          {!PREFERENCES_OPEN ? (
+            <p
+              className="px-body-sm"
+              style={{ color: 'var(--px-muted-strong)', margin: '24px 0 0 0' }}
+            >
+              &gt; Preference submission is closed, so this ranking can no longer be changed.
+            </p>
+          ) : (
+            <button
+              type="button"
+              className="px-btn-secondary"
+              style={{ marginTop: 24 }}
+              onClick={() => {
+                setEditing(true);
+                setUiStep('select');
+                setSelected(
+                  [...submitted]
+                    .sort((a, b) => a.rank - b.rank)
+                    .map((p) => ({
+                      team_id: p.team_id,
+                      team_name: p.team_name ?? `Team #${p.team_id}`,
+                      participant_count: 0,
+                    })),
+                );
+              }}
+            >
+              CHANGE PREFERENCES
+            </button>
+          )}
         </Panel>
       )}
 
@@ -350,7 +399,10 @@ function MentorDashboardContent() {
                     padding: 40,
                   }}
                 >
-                  <p className="px-body" style={{ color: 'var(--px-muted-strong)', textAlign: 'center', margin: 0 }}>
+                  <p
+                    className="px-body"
+                    style={{ color: 'var(--px-muted-strong)', textAlign: 'center', margin: 0 }}
+                  >
                     &gt; No active teams available.
                   </p>
                 </div>
@@ -409,7 +461,10 @@ function MentorDashboardContent() {
                     >
                       {t.team_name}
                     </div>
-                    <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+                    <div
+                      className="px-body-sm"
+                      style={{ color: 'var(--px-muted-strong)' }}
+                    >
                       {t.participant_count}/6 members
                     </div>
                   </button>
@@ -434,17 +489,28 @@ function MentorDashboardContent() {
 
       {step === 'rank' && (
         <Panel title="RANK YOUR TEAMS">
-          <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}>
+          <p
+            className="px-body-sm"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}
+          >
             &gt; Drag or use Space + arrow keys to reorder your team preferences.
           </p>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
             <SortableContext
               items={ranked.map((t) => String(t.team_id))}
               strategy={verticalListSortingStrategy}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {ranked.map((t, i) => (
-                  <SortableTeamRow key={t.team_id} team={t} rank={i + 1} />
+                  <SortableTeamRow
+                    key={t.team_id}
+                    team={t}
+                    rank={i + 1}
+                  />
                 ))}
               </div>
             </SortableContext>
@@ -467,7 +533,6 @@ function MentorDashboardContent() {
           </div>
         </Panel>
       )}
-
     </main>
   );
 }

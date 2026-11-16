@@ -9,17 +9,20 @@ import DragRankSlots from '@/components/common/DragRankSlots';
 import MentorCard from '@/components/mentors/MentorCard';
 import Button from '@/components/common/Button';
 import { useAuth } from '@/context/AuthContext';
+import { useConfig } from '@/context/ConfigContext';
 import api from '@/lib/api';
+import { PREFERENCES_CLOSED_ERROR } from '@/lib/preferences';
 import type { Mentor, Preference } from '@/types/mentor';
 import type { Team } from '@/types/team';
 
-type Step = 'select' | 'rank' | 'done' | 'confirmed';
+type Step = 'select' | 'rank' | 'done' | 'closed' | 'confirmed';
 
 export function ChooseMentorContent() {
   const { user } = useAuth();
   const teamId = user?.team_id;
   const isCaptain = user?.is_captain;
   const qc = useQueryClient();
+  const { PREFERENCES_OPEN, isLoading: configLoading } = useConfig();
 
   const [uiStep, setUiStep] = useState<'select' | 'rank'>('select');
   const [editing, setEditing] = useState(false);
@@ -51,9 +54,13 @@ export function ChooseMentorContent() {
   const isConfirmed = matchingStatus?.confirmed ?? false;
   const step: Step = isConfirmed
     ? 'confirmed'
-    : serverPrefs.length > 0 && !editing
-      ? 'done'
-      : uiStep;
+    : !PREFERENCES_OPEN
+      ? serverPrefs.length > 0
+        ? 'done'
+        : 'closed'
+      : serverPrefs.length > 0 && !editing
+        ? 'done'
+        : uiStep;
   const submitted = serverPrefs;
 
   const { data: mentorsData, isLoading } = useQuery<{ mentors: Mentor[] }>({
@@ -89,8 +96,13 @@ export function ChooseMentorContent() {
       } else {
         setError(data.error ?? 'Failed to submit preferences.');
       }
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (e) {
+      if (e instanceof Error && e.message === PREFERENCES_CLOSED_ERROR) {
+        qc.invalidateQueries({ queryKey: ['config'] });
+        setError('Preference submission closed before your ranking was saved.');
+      } else {
+        setError('Network error. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -134,7 +146,7 @@ export function ChooseMentorContent() {
 
   // If the team can't be loaded, carry on: the server still refuses a ranking
   // from a team that isn't registered, and the form shows its error.
-  if (!teamData && !teamIsError) return <LoadingSpinner fullPage />;
+  if ((!teamData && !teamIsError) || configLoading) return <LoadingSpinner fullPage />;
 
   if (registered === false) {
     return (
@@ -166,7 +178,9 @@ export function ChooseMentorContent() {
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'confirmed'
           ? 'MATCHING CONFIRMED'
-          : 'PREFERENCES SUBMITTED';
+          : step === 'closed'
+            ? 'SUBMISSIONS CLOSED'
+            : 'PREFERENCES SUBMITTED';
 
   return (
     <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
@@ -214,6 +228,24 @@ export function ChooseMentorContent() {
         </Panel>
       )}
 
+      {step === 'closed' && (
+        <Panel title="SUBMISSIONS CLOSED">
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}
+          >
+            &gt; Preference submission is closed. Your team can rank mentors only while the
+            organizers have it open.
+          </p>
+          <Button
+            variant="primary"
+            href="/team"
+          >
+            GO TO TEAM PAGE
+          </Button>
+        </Panel>
+      )}
+
       {step === 'done' && (
         <Panel title="YOUR PREFERENCES">
           {[...submitted]
@@ -251,28 +283,38 @@ export function ChooseMentorContent() {
                 </span>
               </div>
             ))}
-          <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="px-btn-secondary"
-              onClick={() => {
-                setEditing(true);
-                setUiStep('select');
-                setSelected(
-                  [...submitted]
-                    .sort((a, b) => a.rank - b.rank)
-                    .map(
-                      (p) =>
-                        mentors.find((m) => m.mentor_id === p.mentor_id) ?? {
-                          mentor_id: p.mentor_id,
-                          name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
-                        },
-                    ),
-                );
-              }}
+          {!PREFERENCES_OPEN && (
+            <p
+              className="px-body-sm"
+              style={{ color: 'var(--px-muted-strong)', margin: '24px 0 0 0' }}
             >
-              CHANGE PREFERENCES
-            </button>
+              &gt; Preference submission is closed, so this ranking can no longer be changed.
+            </p>
+          )}
+          <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {PREFERENCES_OPEN && (
+              <button
+                type="button"
+                className="px-btn-secondary"
+                onClick={() => {
+                  setEditing(true);
+                  setUiStep('select');
+                  setSelected(
+                    [...submitted]
+                      .sort((a, b) => a.rank - b.rank)
+                      .map(
+                        (p) =>
+                          mentors.find((m) => m.mentor_id === p.mentor_id) ?? {
+                            mentor_id: p.mentor_id,
+                            name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
+                          },
+                      ),
+                  );
+                }}
+              >
+                CHANGE PREFERENCES
+              </button>
+            )}
             <Button
               variant="primary"
               href="/team"

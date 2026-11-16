@@ -25,12 +25,13 @@ from app.services.redis_client import redis_get, redis_incr, redis_set
 
 logger = logging.getLogger(__name__)
 
-FLAG_NAMES = ("registration_open", "rankings_live", "mentors_stay_tuned")
+FLAG_NAMES = ("registration_open", "rankings_live", "mentors_stay_tuned", "preferences_open")
 
 _LABELS = {
     "registration_open": "Participant registration",
     "rankings_live": "Live rankings",
     "mentors_stay_tuned": 'Mentors "coming soon" placeholder',
+    "preferences_open": "Preference submissions",
 }
 
 _CACHE_VERSION_KEY = "cache:feature_flags:version"

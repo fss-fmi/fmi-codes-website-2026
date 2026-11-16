@@ -4,11 +4,13 @@ import Panel from '@/components/common/Panel';
 import Button from '@/components/common/Button';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import { useToast } from '@/components/common/useToast';
+import { useConfig } from '@/context/ConfigContext';
 import { useConfirmAction } from '@/hooks/useConfirmAction';
 import api from '@/lib/api';
 
 export default function MatchingPanel() {
   const qc = useQueryClient();
+  const { PREFERENCES_OPEN } = useConfig();
   const { showToast } = useToast();
   const { confirm, dialogProps } = useConfirmAction();
   const [running, setRunning] = useState(false);
@@ -71,7 +73,11 @@ export default function MatchingPanel() {
   function askRun() {
     confirm({
       title: 'RUN MATCHING',
-      description: 'Run the matching algorithm? This will overwrite any previous results.',
+      description: `Run the matching algorithm? This will overwrite any previous results.${
+        PREFERENCES_OPEN
+          ? ' Preference submissions are still open, so rankings can change after this run.'
+          : ''
+      }`,
       action: doRunMatching,
       successMessage: 'Matching complete.',
     });
@@ -126,7 +132,10 @@ export default function MatchingPanel() {
           }}
         >
           <div>
-            <div className="px-label" style={{ marginBottom: 8 }}>
+            <div
+              className="px-label"
+              style={{ marginBottom: 8 }}
+            >
               MATCHING STATE
             </div>
             <div
@@ -155,7 +164,11 @@ export default function MatchingPanel() {
             >
               {confirming ? 'CONFIRMING…' : 'CONFIRM'}
             </button>
-            <button type="button" className="px-btn-ghost" onClick={fetchExport}>
+            <button
+              type="button"
+              className="px-btn-ghost"
+              onClick={fetchExport}
+            >
               EXPORT
             </button>
           </div>
@@ -196,8 +209,20 @@ export default function MatchingPanel() {
 
       {exportData && (
         <Panel>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center' }}>
-            <h3 className="px-prompt-heading" style={{ margin: 0 }}>EXPORT DATA</h3>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+              alignItems: 'center',
+            }}
+          >
+            <h3
+              className="px-prompt-heading"
+              style={{ margin: 0 }}
+            >
+              EXPORT DATA
+            </h3>
             <button
               type="button"
               onClick={() => setExportData(null)}

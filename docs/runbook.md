@@ -1866,7 +1866,7 @@ bash infra/k8s/scripts/apply-config.sh REQUIRE_EMAIL_VERIFICATION true
 bash infra/k8s/scripts/apply-config.sh          # re-apply the overlay from disk, then roll
 ```
 
-Registration, rankings and the mentor roster are not config: the admin switches or schedules
+Registration, preference submission, rankings and the mentor roster are not config: the admin switches or schedules
 them in Mission Control (**SITE** tab), and the script refuses `REGISTRATION_OPEN`,
 `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ([Deployment](deployment.md#feature-flags-during-the-event)).
 

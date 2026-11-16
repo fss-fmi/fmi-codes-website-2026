@@ -25,7 +25,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 **Rate limits.** Each limit keys on what it protects ([ADR-014](adr/014-rate-limits-keyed-on-account-and-user.md)). The default is 200 requests per minute per signed-in user (from a token with a valid signature) and, for anonymous requests, 3000 per minute per client address on each route and 6000 per minute across all routes together. Login and password reset also key on the account the request names, and a few public routes key on the address alone; each endpoint lists its own. Counters are shared across workers when Redis is configured. Exceeding a limit returns 429 `{"success": false, "error": "Too many requests. Wait a moment and try again."}`. The backend takes the address from the last `X-Forwarded-For` entry, the one its single trusted proxy sets (ingress-nginx in k3s, the frontend's nginx in Compose), so a client can't pick its own bucket by sending the header. Everyone behind one NAT shares an address, which is why address limits are sized for a whole venue and the two polled reads, `GET /api/config` and `GET /api/teams/rankings`, are exempt: at the venue every phone is on the same Wi-Fi. On staging every visitor arrives through the Tailscale proxy and shares one address, so staging multiplies every limit listed here by 10 (`RATELIMIT_MULTIPLIER`).
 
-**Feature flags.** `registration_open`, `rankings_live` and `mentors_stay_tuned` live in the `feature_flags` table; the admin switches or schedules them through `/api/admin/flags*` and every request reads the current value, so no restart is needed. `REQUIRE_EMAIL_VERIFICATION` comes from server config. Three are enforced by the API: `registration_open` (registration returns 403 when closed), `rankings_live` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `mentors_stay_tuned` only changes what the SPA renders.
+**Feature flags.** `registration_open`, `preferences_open`, `rankings_live` and `mentors_stay_tuned` live in the `feature_flags` table; the admin switches or schedules them through `/api/admin/flags*` and every request reads the current value, so no restart is needed. `REQUIRE_EMAIL_VERIFICATION` comes from server config. Four are enforced by the API: `registration_open` (registration returns 403 when closed), `preferences_open` (both ranking POSTs return 403 when closed), `rankings_live` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `mentors_stay_tuned` only changes what the SPA renders.
 
 **Email verification.** While `REQUIRE_EMAIL_VERIFICATION` is on, `POST /api/teams`, `POST /api/teams/join` and `POST /api/teams/{team_id}/apply` return 403 `{"success": false, "error": "Verify your email address before creating or joining a team.", "code": "email_unverified"}` for a participant whose email is not verified.
 
@@ -52,13 +52,14 @@ Readiness probe. Runs a pooled `SELECT 1`; Redis is reported but never fails the
 
 ### GET /api/config
 
-Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first three come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. Exempt from rate limits, because every open page polls it and a full venue shares one NAT address. 503 if the flags can't be read.
+Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first four come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. Exempt from rate limits, because every open page polls it and a full venue shares one NAT address. 503 if the flags can't be read.
 
 ```json
 {
   "REGISTRATION_OPEN": false,
   "MENTORS_STAY_TUNED": false,
   "RANKINGS_LIVE": false,
+  "PREFERENCES_OPEN": false,
   "REQUIRE_EMAIL_VERIFICATION": false
 }
 ```
@@ -399,13 +400,13 @@ Captain of `team_id`. Replaces the team's ranking.
 }
 ```
 
-Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`). The team must be active and registered, since matching takes only registered teams; otherwise 400 `Only registered teams can rank mentors`.
+403 `Preference submission is closed` while `preferences_open` is off, before the body is read (a captain of another team still gets `Not your team` first); nothing is written. Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`). The team must be active and registered, since matching takes only registered teams; otherwise 400 `Only registered teams can rank mentors`.
 
 After the save commits, the event feed gets "submitted" with the teams' progress on a first ranking, or "updated" on a later one. It names the team, never the mentors or ranks.
 
 ### GET /api/teams/{team_id}/mentor-preferences
 
-Captain of `team_id`. `[{rank, mentor_id, mentor_name, company_name, picture_url}]` ordered by rank.
+Captain of `team_id`. `[{rank, mentor_id, mentor_name, company_name, picture_url}]` ordered by rank. Works whether or not submissions are open.
 
 ### GET /api/mentors/available-teams
 
@@ -425,13 +426,13 @@ Mentor. Replaces the mentor's ranking.
 }
 ```
 
-Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`). A mentor deactivated after logging in gets 400 `Mentor not found or inactive`.
+403 `Preference submission is closed` while `preferences_open` is off, before the body is read; nothing is written. Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`). A mentor deactivated after logging in gets 400 `Mentor not found or inactive`.
 
 After the save commits, the event feed gets "submitted" with the mentors' progress, or "updated". It names the mentor, never the teams or ranks.
 
 ### GET /api/mentors/team-preferences
 
-Mentor. `[{rank, team_id, team_name}]`.
+Mentor. `[{rank, team_id, team_name}]`. Works whether or not submissions are open.
 
 ### GET /api/mentors/assigned-teams
 
@@ -534,7 +535,7 @@ Unregisters a team. Does not promote anyone from the queue.
 
 ### POST /api/admin/run-matching
 
-Runs matching, replaces all assignments and resets confirmation. Always attempts to run; missing preferences produce warnings, not errors.
+Runs matching, replaces all assignments and resets confirmation. Always attempts to run; missing preferences produce warnings, not errors. It runs whether or not `preferences_open` is on; Mission Control's confirm dialog warns while it is, since rankings can still change after the run.
 
 ```json
 {
@@ -603,7 +604,7 @@ Every feature flag with its value, when the value last changed and any pending s
 }
 ```
 
-Flags: `registration_open`, `rankings_live`, `mentors_stay_tuned`. Any other `{name}` in the routes below returns 404.
+Flags: `registration_open`, `preferences_open`, `rankings_live`, `mentors_stay_tuned`. Any other `{name}` in the routes below returns 404.
 
 ### PUT /api/admin/flags/{name}
 

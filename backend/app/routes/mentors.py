@@ -5,7 +5,7 @@ from io import BytesIO
 from flask import g, jsonify, send_file
 
 from app.routes import mentors_bp
-from app.services import mentor_selection_service, mentor_service
+from app.services import feature_flag_service, mentor_selection_service, mentor_service
 from app.utils.auth_decorators import (
     captain_required,
     mentor_required,
@@ -45,6 +45,13 @@ def get_mentor_picture(mentor_id):
 # ── Team mentor preferences (captain) ─────────────────────────────
 
 
+def _preferences_closed():
+    """403 while the admin has preference submission switched off, else None."""
+    if feature_flag_service.is_enabled("preferences_open"):
+        return None
+    return jsonify({"success": False, "error": "Preference submission is closed"}), 403
+
+
 @mentors_bp.route("/api/teams/<int:team_id>/available-mentors", methods=["GET"])
 @captain_required
 def get_available_mentors(team_id):
@@ -61,6 +68,8 @@ def set_team_preferences(team_id):
     """Captain sets ranked mentor preferences for the team"""
     if g.current_user.get("team_id") != team_id:
         return jsonify({"success": False, "error": "Not your team"}), 403
+    if (closed := _preferences_closed()) is not None:
+        return closed
 
     preferences = json_object().get("preferences", [])
 
@@ -96,6 +105,8 @@ def get_available_teams():
 @mentor_required
 def set_mentor_preferences():
     """Mentor sets ranked team preferences"""
+    if (closed := _preferences_closed()) is not None:
+        return closed
     preferences = json_object().get("preferences", [])
 
     success, message = mentor_selection_service.set_mentor_team_preferences(

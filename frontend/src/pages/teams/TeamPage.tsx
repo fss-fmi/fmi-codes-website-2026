@@ -165,6 +165,7 @@ function TeamDashboardView({
 }) {
   const { showToast } = useToast();
   const { confirm, dialogProps } = useConfirmAction();
+  const { PREFERENCES_OPEN } = useConfig();
   const isCaptain = String(team.captain_id) === String(userId);
   const [busyReqId, setBusyReqId] = useState<number | null>(null);
 
@@ -266,6 +267,7 @@ function TeamDashboardView({
             prefs={prefs}
             isCaptain={isCaptain}
             isRegistered={!!team.is_registered}
+            preferencesOpen={PREFERENCES_OPEN}
           />
         )}
 
