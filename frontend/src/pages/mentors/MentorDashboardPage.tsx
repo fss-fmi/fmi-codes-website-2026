@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
   closestCenter,
@@ -23,6 +23,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import Panel from '@/components/common/Panel';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Button from '@/components/common/Button';
+import SubmissionAccepted from '@/components/common/SubmissionAccepted';
 import api from '@/lib/api';
 
 interface TeamItem {
@@ -39,13 +40,7 @@ interface TeamPref {
 
 type Step = 'select' | 'rank' | 'done' | 'assigned';
 
-function SortableTeamRow({
-  team,
-  rank,
-}: {
-  team: TeamItem;
-  rank: number;
-}) {
+function SortableTeamRow({ team, rank }: { team: TeamItem; rank: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(team.team_id),
   });
@@ -60,9 +55,7 @@ function SortableTeamRow({
         gap: 16,
         padding: '14px 16px',
         background: isDragging ? 'var(--px-bg-elevated)' : 'var(--px-bg-card)',
-        border: isDragging
-          ? '2px solid var(--px-teal-strong)'
-          : '1px solid var(--px-teal-dim)',
+        border: isDragging ? '2px solid var(--px-teal-strong)' : '1px solid var(--px-teal-dim)',
         cursor: 'grab',
         userSelect: 'none',
       }}
@@ -84,7 +77,10 @@ function SortableTeamRow({
         <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
           {team.team_name}
         </div>
-        <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+        <div
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)' }}
+        >
           {team.participant_count} members
         </div>
       </div>
@@ -102,13 +98,15 @@ function SortableTeamRow({
   );
 }
 
-function MentorDashboardContent() {
+export function MentorDashboardContent() {
+  const qc = useQueryClient();
   const [uiStep, setUiStep] = useState<'select' | 'rank'>('select');
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<TeamItem[]>([]);
   const [ranked, setRanked] = useState<TeamItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [updated, setUpdated] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -140,7 +138,8 @@ function MentorDashboardContent() {
     : serverPrefs.length > 0 && !editing
       ? 'done'
       : uiStep;
-  const submitted = serverPrefs;
+  const isUpdate = serverPrefs.length > 0;
+  const submitted = [...serverPrefs].sort((a, b) => a.rank - b.rank);
 
   const { data: teamsData, isLoading: teamsLoading } = useQuery<{ teams: TeamItem[] }>({
     queryKey: ['mentor-available-teams'],
@@ -174,12 +173,20 @@ function MentorDashboardContent() {
         { preferences: prefs },
       );
       if (data.success) {
+        qc.setQueryData<{ preferences: TeamPref[] }>(['mentor-team-preferences'], {
+          preferences: ranked.map((t, i) => ({
+            team_id: t.team_id,
+            rank: i + 1,
+            team_name: t.team_name,
+          })),
+        });
+        setUpdated(isUpdate);
         setEditing(false);
       } else {
         setError(data.error ?? 'Failed to submit.');
       }
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (err) {
+      setError((err as Error)?.message ?? 'Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -204,7 +211,7 @@ function MentorDashboardContent() {
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'assigned'
           ? 'ASSIGNMENTS CONFIRMED'
-          : 'PREFERENCES SUBMITTED';
+          : 'SUBMISSION ACCEPTED';
 
   return (
     <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
@@ -238,7 +245,10 @@ function MentorDashboardContent() {
       {step === 'assigned' && (
         <Panel title="ASSIGNED TEAMS">
           {assigned.length === 0 ? (
-            <p className="px-body" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+            <p
+              className="px-body"
+              style={{ color: 'var(--px-muted-strong)', margin: 0 }}
+            >
               &gt; No teams assigned.
             </p>
           ) : (
@@ -263,10 +273,19 @@ function MentorDashboardContent() {
                   }}
                 />
                 <div>
-                  <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--px-mono)',
+                      fontWeight: 700,
+                      color: 'var(--px-white)',
+                    }}
+                  >
                     {t.team_name}
                   </div>
-                  <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+                  <div
+                    className="px-body-sm"
+                    style={{ color: 'var(--px-muted-strong)' }}
+                  >
                     {t.participant_count} members
                   </div>
                 </div>
@@ -277,57 +296,25 @@ function MentorDashboardContent() {
       )}
 
       {step === 'done' && (
-        <Panel title="YOUR PREFERENCES">
-          {[...submitted]
-            .sort((a, b) => a.rank - b.rank)
-            .map((p, i) => (
-              <div
-                key={p.team_id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  padding: '12px 0',
-                  borderBottom: '1px solid var(--px-teal-dim)',
-                }}
-              >
-                <span
-                  className="px-label"
-                  style={{
-                    color: 'var(--px-teal)',
-                    minWidth: 36,
-                    textAlign: 'center',
-                    fontSize: '0.6rem',
-                  }}
-                >
-                  #{i + 1}
-                </span>
-                <span style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
-                  {p.team_name ?? `Team #${p.team_id}`}
-                </span>
-              </div>
-            ))}
-          <button
-            type="button"
-            className="px-btn-secondary"
-            style={{ marginTop: 24 }}
-            onClick={() => {
-              setEditing(true);
-              setUiStep('select');
-              setSelected(
-                [...submitted]
-                  .sort((a, b) => a.rank - b.rank)
-                  .map((p) => ({
-                    team_id: p.team_id,
-                    team_name: p.team_name ?? `Team #${p.team_id}`,
-                    participant_count: 0,
-                  })),
-              );
-            }}
-          >
-            CHANGE PREFERENCES
-          </button>
-        </Panel>
+        <SubmissionAccepted
+          ranking={submitted.map((p) => ({
+            id: p.team_id,
+            name: p.team_name ?? `Team #${p.team_id}`,
+          }))}
+          updated={updated}
+          onUpdate={() => {
+            setEditing(true);
+            setUiStep('select');
+            setError('');
+            setSelected(
+              submitted.map((p) => ({
+                team_id: p.team_id,
+                team_name: p.team_name ?? `Team #${p.team_id}`,
+                participant_count: 0,
+              })),
+            );
+          }}
+        />
       )}
 
       {step === 'select' && (
@@ -350,7 +337,10 @@ function MentorDashboardContent() {
                     padding: 40,
                   }}
                 >
-                  <p className="px-body" style={{ color: 'var(--px-muted-strong)', textAlign: 'center', margin: 0 }}>
+                  <p
+                    className="px-body"
+                    style={{ color: 'var(--px-muted-strong)', textAlign: 'center', margin: 0 }}
+                  >
                     &gt; No active teams available.
                   </p>
                 </div>
@@ -409,7 +399,10 @@ function MentorDashboardContent() {
                     >
                       {t.team_name}
                     </div>
-                    <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+                    <div
+                      className="px-body-sm"
+                      style={{ color: 'var(--px-muted-strong)' }}
+                    >
                       {t.participant_count}/6 members
                     </div>
                   </button>
@@ -422,7 +415,9 @@ function MentorDashboardContent() {
               variant="primary"
               disabled={selected.length !== 3}
               onClick={() => {
-                setRanked([...selected]);
+                const full = selected.map((s) => teams.find((t) => t.team_id === s.team_id) ?? s);
+                setSelected(full);
+                setRanked(full);
                 setUiStep('rank');
               }}
             >
@@ -434,17 +429,28 @@ function MentorDashboardContent() {
 
       {step === 'rank' && (
         <Panel title="RANK YOUR TEAMS">
-          <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}>
+          <p
+            className="px-body-sm"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}
+          >
             &gt; Drag or use Space + arrow keys to reorder your team preferences.
           </p>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
             <SortableContext
               items={ranked.map((t) => String(t.team_id))}
               strategy={verticalListSortingStrategy}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {ranked.map((t, i) => (
-                  <SortableTeamRow key={t.team_id} team={t} rank={i + 1} />
+                  <SortableTeamRow
+                    key={t.team_id}
+                    team={t}
+                    rank={i + 1}
+                  />
                 ))}
               </div>
             </SortableContext>
@@ -462,12 +468,17 @@ function MentorDashboardContent() {
               disabled={ranked.length !== 3 || submitting}
               onClick={handleSubmit}
             >
-              {submitting ? 'SUBMITTING…' : 'SUBMIT PREFERENCES'}
+              {submitting
+                ? isUpdate
+                  ? 'UPDATING…'
+                  : 'SUBMITTING…'
+                : isUpdate
+                  ? 'UPDATE PREFERENCES'
+                  : 'SUBMIT PREFERENCES'}
             </Button>
           </div>
         </Panel>
       )}
-
     </main>
   );
 }

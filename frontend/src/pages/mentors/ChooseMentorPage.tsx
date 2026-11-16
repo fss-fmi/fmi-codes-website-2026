@@ -8,6 +8,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import DragRankSlots from '@/components/common/DragRankSlots';
 import MentorCard from '@/components/mentors/MentorCard';
 import Button from '@/components/common/Button';
+import SubmissionAccepted from '@/components/common/SubmissionAccepted';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import type { Mentor, Preference } from '@/types/mentor';
@@ -27,6 +28,7 @@ export function ChooseMentorContent() {
   const [ranked, setRanked] = useState<Preference[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [updated, setUpdated] = useState(false);
 
   const { data: matchingStatus } = useQuery<{ confirmed: boolean }>({
     queryKey: ['matching-status'],
@@ -54,7 +56,8 @@ export function ChooseMentorContent() {
     : serverPrefs.length > 0 && !editing
       ? 'done'
       : uiStep;
-  const submitted = serverPrefs;
+  const isUpdate = serverPrefs.length > 0;
+  const submitted = [...serverPrefs].sort((a, b) => a.rank - b.rank);
 
   const { data: mentorsData, isLoading } = useQuery<{ mentors: Mentor[] }>({
     queryKey: ['available-mentors', teamId],
@@ -84,13 +87,19 @@ export function ChooseMentorContent() {
         { preferences: ranked },
       );
       if (data.success) {
-        qc.setQueryData(['team-mentor-preferences', teamId], { preferences: ranked });
+        qc.setQueryData<{ preferences: Preference[] }>(['team-mentor-preferences', teamId], {
+          preferences: ranked.map((p) => ({
+            ...p,
+            mentor_name: selected.find((m) => m.mentor_id === p.mentor_id)?.name,
+          })),
+        });
+        setUpdated(isUpdate);
         setEditing(false);
       } else {
         setError(data.error ?? 'Failed to submit preferences.');
       }
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (err) {
+      setError((err as Error)?.message ?? 'Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -158,7 +167,6 @@ export function ChooseMentorContent() {
     );
   }
 
-  const RANK_LABELS = ['#1', '#2', '#3'];
   const stepLabel =
     step === 'select'
       ? `STEP 1 — SELECT 3 MENTORS (${selected.length}/3)`
@@ -166,7 +174,7 @@ export function ChooseMentorContent() {
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'confirmed'
           ? 'MATCHING CONFIRMED'
-          : 'PREFERENCES SUBMITTED';
+          : 'SUBMISSION ACCEPTED';
 
   return (
     <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
@@ -215,72 +223,34 @@ export function ChooseMentorContent() {
       )}
 
       {step === 'done' && (
-        <Panel title="YOUR PREFERENCES">
-          {[...submitted]
-            .sort((a, b) => a.rank - b.rank)
-            .map((p, i) => (
-              <div
-                key={p.mentor_id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
-                  padding: '12px 0',
-                  borderBottom: '1px solid var(--px-teal-dim)',
-                }}
-              >
-                <span
-                  className="px-label"
-                  style={{
-                    color: 'var(--px-teal)',
-                    minWidth: 36,
-                    textAlign: 'center',
-                    fontSize: '0.6rem',
-                  }}
-                >
-                  {RANK_LABELS[i]}
-                </span>
-                <span
-                  style={{
-                    fontFamily: 'var(--px-mono)',
-                    fontWeight: 700,
-                    color: 'var(--px-white)',
-                  }}
-                >
-                  {p.mentor_name ?? `Mentor #${p.mentor_id}`}
-                </span>
-              </div>
-            ))}
-          <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="px-btn-secondary"
-              onClick={() => {
-                setEditing(true);
-                setUiStep('select');
-                setSelected(
-                  [...submitted]
-                    .sort((a, b) => a.rank - b.rank)
-                    .map(
-                      (p) =>
-                        mentors.find((m) => m.mentor_id === p.mentor_id) ?? {
-                          mentor_id: p.mentor_id,
-                          name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
-                        },
-                    ),
-                );
-              }}
-            >
-              CHANGE PREFERENCES
-            </button>
-            <Button
-              variant="primary"
-              href="/team"
-            >
-              GO TO TEAM PAGE
-            </Button>
-          </div>
-        </Panel>
+        <SubmissionAccepted
+          ranking={submitted.map((p) => ({
+            id: p.mentor_id,
+            name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
+          }))}
+          updated={updated}
+          onUpdate={() => {
+            setEditing(true);
+            setUiStep('select');
+            setError('');
+            setSelected(
+              submitted.map(
+                (p) =>
+                  mentors.find((m) => m.mentor_id === p.mentor_id) ?? {
+                    mentor_id: p.mentor_id,
+                    name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
+                  },
+              ),
+            );
+          }}
+        >
+          <Button
+            variant="primary"
+            href="/team"
+          >
+            GO TO TEAM PAGE
+          </Button>
+        </SubmissionAccepted>
       )}
 
       {step === 'select' && (
@@ -353,7 +323,11 @@ export function ChooseMentorContent() {
               variant="primary"
               disabled={selected.length !== 3}
               onClick={() => {
-                setRanked(selected.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
+                const full = selected.map(
+                  (s) => mentors.find((m) => m.mentor_id === s.mentor_id) ?? s,
+                );
+                setSelected(full);
+                setRanked(full.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
                 setUiStep('rank');
               }}
             >
@@ -389,7 +363,13 @@ export function ChooseMentorContent() {
               disabled={ranked.length < 3 || submitting}
               onClick={handleSubmit}
             >
-              {submitting ? 'SUBMITTING…' : 'SUBMIT PREFERENCES'}
+              {submitting
+                ? isUpdate
+                  ? 'UPDATING…'
+                  : 'SUBMITTING…'
+                : isUpdate
+                  ? 'UPDATE PREFERENCES'
+                  : 'SUBMIT PREFERENCES'}
             </Button>
           </div>
         </Panel>
