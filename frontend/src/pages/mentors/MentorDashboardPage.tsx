@@ -25,6 +25,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Button from '@/components/common/Button';
 import SubmissionAccepted from '@/components/common/SubmissionAccepted';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 interface TeamItem {
   team_id: number;
@@ -106,7 +107,7 @@ export function MentorDashboardContent() {
   const [ranked, setRanked] = useState<TeamItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [updated, setUpdated] = useState(false);
+  const [justSaved, setJustSaved] = useState<'submitted' | 'updated' | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -118,7 +119,7 @@ export function MentorDashboardContent() {
     queryFn: () => api.get('/api/matching-status'),
   });
 
-  const { data: prefData } = useQuery<{ preferences: TeamPref[] }>({
+  const { data: prefData, isLoading: prefsLoading } = useQuery<{ preferences: TeamPref[] }>({
     queryKey: ['mentor-team-preferences'],
     queryFn: () => api.get('/api/mentors/team-preferences'),
     enabled: !matchingStatus?.confirmed,
@@ -144,22 +145,23 @@ export function MentorDashboardContent() {
   const { data: teamsData, isLoading: teamsLoading } = useQuery<{ teams: TeamItem[] }>({
     queryKey: ['mentor-available-teams'],
     queryFn: () => api.get('/api/mentors/available-teams'),
-    enabled: step === 'select' && !matchingStatus?.confirmed,
+    enabled: !statusLoading && !prefsLoading && step === 'select' && !isConfirmed,
   });
 
   const teams = teamsData?.teams ?? [];
+  // A saved pick that is no longer offered (its team was unregistered) has no
+  // card to untick, so it is dropped instead of blocking the third slot.
+  const picked = teamsData
+    ? selected.flatMap((s) => teams.filter((t) => t.team_id === s.team_id))
+    : selected;
 
   function toggleTeam(t: TeamItem) {
-    setSelected((prev) => {
-      if (prev.find((x) => x.team_id === t.team_id))
-        return prev.filter((x) => x.team_id !== t.team_id);
-      if (prev.length >= 3) {
-        setError('Select exactly 3 teams.');
-        return prev;
-      }
-      return [...prev, t];
-    });
     setError('');
+    if (picked.some((x) => x.team_id === t.team_id)) {
+      setSelected(picked.filter((x) => x.team_id !== t.team_id));
+    } else if (picked.length < 3) {
+      setSelected([...picked, t]);
+    }
   }
 
   async function handleSubmit() {
@@ -180,13 +182,13 @@ export function MentorDashboardContent() {
             team_name: t.team_name,
           })),
         });
-        setUpdated(isUpdate);
+        setJustSaved(isUpdate ? 'updated' : 'submitted');
         setEditing(false);
       } else {
         setError(data.error ?? 'Failed to submit.');
       }
     } catch (err) {
-      setError((err as Error)?.message ?? 'Network error. Please try again.');
+      setError(errorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -202,11 +204,11 @@ export function MentorDashboardContent() {
     });
   }
 
-  if (statusLoading) return <LoadingSpinner fullPage />;
+  if (statusLoading || prefsLoading) return <LoadingSpinner fullPage />;
 
   const stepLabel =
     step === 'select'
-      ? `STEP 1 — SELECT 3 TEAMS (${selected.length}/3)`
+      ? `STEP 1 — SELECT 3 TEAMS (${picked.length}/3)`
       : step === 'rank'
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'assigned'
@@ -301,11 +303,12 @@ export function MentorDashboardContent() {
             id: p.team_id,
             name: p.team_name ?? `Team #${p.team_id}`,
           }))}
-          updated={updated}
+          justSaved={justSaved}
           onUpdate={() => {
             setEditing(true);
             setUiStep('select');
             setError('');
+            setJustSaved(null);
             setSelected(
               submitted.map((p) => ({
                 team_id: p.team_id,
@@ -346,8 +349,8 @@ export function MentorDashboardContent() {
                 </div>
               )}
               {teams.map((t) => {
-                const isSelected = !!selected.find((x) => x.team_id === t.team_id);
-                const disabled = !isSelected && selected.length >= 3;
+                const isSelected = picked.some((x) => x.team_id === t.team_id);
+                const disabled = !isSelected && picked.length >= 3;
                 return (
                   <button
                     key={t.team_id}
@@ -410,14 +413,25 @@ export function MentorDashboardContent() {
               })}
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            {editing && (
+              <button
+                type="button"
+                className="px-btn-secondary"
+                onClick={() => {
+                  setEditing(false);
+                  setError('');
+                }}
+              >
+                CANCEL
+              </button>
+            )}
             <Button
               variant="primary"
-              disabled={selected.length !== 3}
+              disabled={picked.length !== 3}
               onClick={() => {
-                const full = selected.map((s) => teams.find((t) => t.team_id === s.team_id) ?? s);
-                setSelected(full);
-                setRanked(full);
+                setSelected(picked);
+                setRanked(picked);
                 setUiStep('rank');
               }}
             >

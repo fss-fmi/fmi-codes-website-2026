@@ -67,7 +67,7 @@ test('first submit shows SUBMISSION ACCEPTED with the ranking, no reload', async
   await pick('Alpha', 'Bravo', 'Charlie');
   fireEvent.click(screen.getByRole('button', { name: 'SUBMIT PREFERENCES' }));
 
-  expect(await screen.findByText(/Preferences saved successfully\./)).toBeInTheDocument();
+  expect(await screen.findByText(/Preferences saved successfully\./)).toHaveFocus();
   expect(screen.getByRole('heading', { name: 'SUBMISSION ACCEPTED' })).toBeInTheDocument();
   expect(rankingShown()).toEqual(['#1Alpha', '#2Bravo', '#3Charlie']);
   expect(screen.getByRole('button', { name: 'UPDATE PREFERENCES' })).toBeInTheDocument();
@@ -95,8 +95,60 @@ test('loading with a saved ranking shows SUBMISSION ACCEPTED straight away', asy
   expect(
     screen.getByText('SUBMISSION ACCEPTED', { selector: '.px-status-chip' }),
   ).toBeInTheDocument();
+  expect(screen.getByText(/Preferences saved successfully\./)).not.toHaveFocus();
+  expect(rankingShown()).toEqual(['#1Alpha', '#2Bravo', '#3Charlie']);
+  expect(screen.queryByText(/STEP 1/)).toBeNull();
+  expect(get).not.toHaveBeenCalledWith('/api/mentors/available-teams');
+});
+
+test('CANCEL leaves the edit flow without saving', async () => {
+  answer({
+    preferences: [
+      { team_id: 1, rank: 1, team_name: 'Alpha' },
+      { team_id: 2, rank: 2, team_name: 'Bravo' },
+      { team_id: 3, rank: 3, team_name: 'Charlie' },
+    ],
+  });
+  renderDashboard();
+
+  fireEvent.click(await screen.findByRole('button', { name: 'UPDATE PREFERENCES' }));
+  fireEvent.click(await screen.findByRole('button', { name: /Alpha/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'CANCEL' }));
+
+  expect(screen.getByRole('heading', { name: 'SUBMISSION ACCEPTED' })).toBeInTheDocument();
   expect(screen.getByText(/Preferences saved successfully\./)).toBeInTheDocument();
   expect(rankingShown()).toEqual(['#1Alpha', '#2Bravo', '#3Charlie']);
+  expect(post).not.toHaveBeenCalled();
+});
+
+test('a saved team that is no longer offered drops out of the pre-filled pick', async () => {
+  answer({
+    preferences: [
+      { team_id: 1, rank: 1, team_name: 'Alpha' },
+      { team_id: 9, rank: 2, team_name: 'Gone' },
+      { team_id: 2, rank: 3, team_name: 'Bravo' },
+    ],
+  });
+  post.mockResolvedValue({ success: true });
+  renderDashboard();
+
+  fireEvent.click(await screen.findByRole('button', { name: 'UPDATE PREFERENCES' }));
+  expect(await screen.findByText('STEP 1 — SELECT 3 TEAMS (2/3)')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'NEXT: RANK TEAMS' })).toBeDisabled();
+
+  await pick('Delta');
+  expect(screen.getByText('3 members')).toBeInTheDocument();
+  expect(screen.queryByText('0 members')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'UPDATE PREFERENCES' }));
+
+  expect(await screen.findByText(/Preferences updated\./)).toBeInTheDocument();
+  expect(post).toHaveBeenCalledWith('/api/mentors/team-preferences', {
+    preferences: [
+      { team_id: 1, rank: 1 },
+      { team_id: 2, rank: 2 },
+      { team_id: 4, rank: 3 },
+    ],
+  });
 });
 
 test('an update is labelled as one and shows the new ranking, not the old', async () => {
@@ -139,6 +191,17 @@ test('a failed submit keeps the form and shows the server error', async () => {
   expect(screen.getByRole('button', { name: 'SUBMIT PREFERENCES' })).toBeEnabled();
   expect(screen.getByText('STEP 2 — DRAG TO RANK')).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'SUBMISSION ACCEPTED' })).toBeNull();
+});
+
+test('a submit that never reaches the server says so in plain words', async () => {
+  answer();
+  post.mockRejectedValue(new TypeError('Failed to fetch'));
+  renderDashboard();
+
+  await pick('Alpha', 'Bravo', 'Charlie');
+  fireEvent.click(screen.getByRole('button', { name: 'SUBMIT PREFERENCES' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Network error. Please try again.');
 });
 
 test('confirmed matching shows the assigned teams instead', async () => {

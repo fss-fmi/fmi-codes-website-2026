@@ -1,22 +1,31 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import Panel from '@/components/common/Panel';
 
 interface Props {
   ranking: { id: number; name: string }[];
-  updated: boolean;
+  // Set right after a save: picks the message and moves focus here, since the
+  // button that was clicked is gone.
+  justSaved: 'submitted' | 'updated' | null;
   onUpdate: () => void;
   children?: ReactNode;
 }
 
-export default function SubmissionAccepted({ ranking, updated, onUpdate, children }: Props) {
+export default function SubmissionAccepted({ ranking, justSaved, onUpdate, children }: Props) {
+  const messageRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (justSaved) messageRef.current?.focus();
+  }, [justSaved]);
+
   return (
     <Panel title="SUBMISSION ACCEPTED">
       <p
-        role="status"
+        ref={messageRef}
+        tabIndex={-1}
         className="px-body"
-        style={{ color: 'var(--px-teal)', margin: '0 0 16px 0' }}
+        style={{ color: 'var(--px-teal)', margin: '0 0 16px 0', outline: 'none' }}
       >
-        &gt; {updated ? 'Preferences updated.' : 'Preferences saved successfully.'}
+        &gt; {justSaved === 'updated' ? 'Preferences updated.' : 'Preferences saved successfully.'}
       </p>
       <ol
         aria-label="Your ranking"

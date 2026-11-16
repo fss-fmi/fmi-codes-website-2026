@@ -11,6 +11,7 @@ import Button from '@/components/common/Button';
 import SubmissionAccepted from '@/components/common/SubmissionAccepted';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { Mentor, Preference } from '@/types/mentor';
 import type { Team } from '@/types/team';
 
@@ -28,14 +29,14 @@ export function ChooseMentorContent() {
   const [ranked, setRanked] = useState<Preference[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [updated, setUpdated] = useState(false);
+  const [justSaved, setJustSaved] = useState<'submitted' | 'updated' | null>(null);
 
-  const { data: matchingStatus } = useQuery<{ confirmed: boolean }>({
+  const { data: matchingStatus, isLoading: statusLoading } = useQuery<{ confirmed: boolean }>({
     queryKey: ['matching-status'],
     queryFn: () => api.get('/api/matching-status'),
   });
 
-  const { data: prefData } = useQuery<{ preferences: Preference[] }>({
+  const { data: prefData, isLoading: prefsLoading } = useQuery<{ preferences: Preference[] }>({
     queryKey: ['team-mentor-preferences', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/mentor-preferences`),
     enabled: !!teamId,
@@ -62,19 +63,28 @@ export function ChooseMentorContent() {
   const { data: mentorsData, isLoading } = useQuery<{ mentors: Mentor[] }>({
     queryKey: ['available-mentors', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/available-mentors`),
-    enabled: !!teamId && !!isCaptain && step === 'select' && (registered === true || teamIsError),
+    enabled:
+      !!teamId &&
+      !!isCaptain &&
+      !statusLoading &&
+      !prefsLoading &&
+      step === 'select' &&
+      (registered === true || teamIsError),
   });
 
   const mentors = mentorsData?.mentors ?? [];
+  // A saved pick that is no longer offered (the mentor was deactivated) has no
+  // card to untick, so it is dropped instead of blocking the third slot.
+  const picked = mentorsData
+    ? selected.flatMap((s) => mentors.filter((m) => m.mentor_id === s.mentor_id))
+    : selected;
 
   function toggleMentor(m: Mentor) {
-    setSelected((prev) => {
-      if (prev.find((x) => x.mentor_id === m.mentor_id)) {
-        return prev.filter((x) => x.mentor_id !== m.mentor_id);
-      }
-      if (prev.length >= 3) return prev;
-      return [...prev, m];
-    });
+    if (picked.some((x) => x.mentor_id === m.mentor_id)) {
+      setSelected(picked.filter((x) => x.mentor_id !== m.mentor_id));
+    } else if (picked.length < 3) {
+      setSelected([...picked, m]);
+    }
   }
 
   async function handleSubmit() {
@@ -93,13 +103,13 @@ export function ChooseMentorContent() {
             mentor_name: selected.find((m) => m.mentor_id === p.mentor_id)?.name,
           })),
         });
-        setUpdated(isUpdate);
+        setJustSaved(isUpdate ? 'updated' : 'submitted');
         setEditing(false);
       } else {
         setError(data.error ?? 'Failed to submit preferences.');
       }
     } catch (err) {
-      setError((err as Error)?.message ?? 'Network error. Please try again.');
+      setError(errorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -143,7 +153,9 @@ export function ChooseMentorContent() {
 
   // If the team can't be loaded, carry on: the server still refuses a ranking
   // from a team that isn't registered, and the form shows its error.
-  if (!teamData && !teamIsError) return <LoadingSpinner fullPage />;
+  if ((!teamData && !teamIsError) || statusLoading || prefsLoading) {
+    return <LoadingSpinner fullPage />;
+  }
 
   if (registered === false) {
     return (
@@ -169,7 +181,7 @@ export function ChooseMentorContent() {
 
   const stepLabel =
     step === 'select'
-      ? `STEP 1 — SELECT 3 MENTORS (${selected.length}/3)`
+      ? `STEP 1 — SELECT 3 MENTORS (${picked.length}/3)`
       : step === 'rank'
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'confirmed'
@@ -228,19 +240,17 @@ export function ChooseMentorContent() {
             id: p.mentor_id,
             name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
           }))}
-          updated={updated}
+          justSaved={justSaved}
           onUpdate={() => {
             setEditing(true);
             setUiStep('select');
             setError('');
+            setJustSaved(null);
             setSelected(
-              submitted.map(
-                (p) =>
-                  mentors.find((m) => m.mentor_id === p.mentor_id) ?? {
-                    mentor_id: p.mentor_id,
-                    name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
-                  },
-              ),
+              submitted.map((p) => ({
+                mentor_id: p.mentor_id,
+                name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
+              })),
             );
           }}
         >
@@ -267,8 +277,8 @@ export function ChooseMentorContent() {
               }}
             >
               {mentors.map((m) => {
-                const isSelected = !!selected.find((x) => x.mentor_id === m.mentor_id);
-                const disabled = !isSelected && selected.length >= 3;
+                const isSelected = picked.some((x) => x.mentor_id === m.mentor_id);
+                const disabled = !isSelected && picked.length >= 3;
                 return (
                   <button
                     key={m.mentor_id}
@@ -318,16 +328,25 @@ export function ChooseMentorContent() {
               })}
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            {editing && (
+              <button
+                type="button"
+                className="px-btn-secondary"
+                onClick={() => {
+                  setEditing(false);
+                  setError('');
+                }}
+              >
+                CANCEL
+              </button>
+            )}
             <Button
               variant="primary"
-              disabled={selected.length !== 3}
+              disabled={picked.length !== 3}
               onClick={() => {
-                const full = selected.map(
-                  (s) => mentors.find((m) => m.mentor_id === s.mentor_id) ?? s,
-                );
-                setSelected(full);
-                setRanked(full.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
+                setSelected(picked);
+                setRanked(picked.map((m, i) => ({ mentor_id: m.mentor_id, rank: i + 1 })));
                 setUiStep('rank');
               }}
             >
