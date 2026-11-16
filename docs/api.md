@@ -400,7 +400,7 @@ Captain of `team_id`. Replaces the team's ranking.
 }
 ```
 
-403 `Preference submission is closed` while `preferences_open` is off, before the body is read (a captain of another team still gets `Not your team` first); nothing is written. Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`). The team must be active and registered, since matching takes only registered teams; otherwise 400 `Only registered teams can rank mentors`.
+403 `Preference submission is closed` while `preferences_open` is off, before the body is read (a captain of another team still gets `Not your team` first); nothing is written. The save re-checks the flag inside its transaction under a row lock, counting a schedule that has come due, so a close that commits while the save is under way still refuses it. Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`). The team must be active and registered, since matching takes only registered teams; otherwise 400 `Only registered teams can rank mentors`.
 
 After the save commits, the event feed gets "submitted" with the teams' progress on a first ranking, or "updated" on a later one. It names the team, never the mentors or ranks.
 
@@ -426,7 +426,7 @@ Mentor. Replaces the mentor's ranking.
 }
 ```
 
-403 `Preference submission is closed` while `preferences_open` is off, before the body is read; nothing is written. Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`). A mentor deactivated after logging in gets 400 `Mentor not found or inactive`.
+403 `Preference submission is closed` while `preferences_open` is off, before the body is read; nothing is written. Re-checked under a row lock inside the save, as for teams. Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`). A mentor deactivated after logging in gets 400 `Mentor not found or inactive`.
 
 After the save commits, the event feed gets "submitted" with the mentors' progress, or "updated". It names the mentor, never the teams or ranks.
 

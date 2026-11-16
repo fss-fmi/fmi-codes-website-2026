@@ -2,17 +2,19 @@
 
 1. Closed, both ranking POSTs answer 403 and write nothing; the GETs still show the saved ranking
 2. A switch from Mission Control locks and unlocks both routes on the next request
-3. Migration 020 adds the flag, closed, to a database from before it, and re-runs as a no-op
+3. A close that commits while a save is under way still refuses it, and a due schedule counts
+4. Migration 020 adds the flag, closed, to a database from before it, and re-runs as a no-op
 """
 
 import threading
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import psycopg2
 import pytest
 
-from tests.e2e.conftest import admin_token, bearer, mentor_token_for
-from tests.e2e.test_matching_events_e2e import _registered_teams
+from tests.e2e.conftest import admin_token, bearer, mentor_token_for, registered_teams
 
 pytestmark = pytest.mark.e2e
 
@@ -50,7 +52,7 @@ def notices(monkeypatch):
 @pytest.fixture()
 def rankers(flask_app, seeds):
     """A registered team's captain and a mentor, each with a ranking to POST."""
-    teams = _registered_teams(flask_app, seeds, ["Lockstep", "Keystone", "Latchkey"])
+    teams = registered_teams(flask_app, seeds, ["Lockstep", "Keystone", "Latchkey"])
     team_id, captain = teams[0]
     mid0, mid1, mid2 = seeds["mentor_ids"]
     team = (
@@ -155,6 +157,55 @@ class TestSwitch:
         assert rv.status_code == 200, rv.get_json()
         rv = admin.delete("/api/admin/flags/preferences_open/schedule")
         assert rv.get_json() == {"success": True, "cancelled": True}
+
+
+class TestDeadline:
+    def test_a_close_committing_during_a_save_refuses_it(self, flask_app, rankers, db_url, db_conn):
+        """The cached check passes, but the save waits for the close and then sees it."""
+        closer = psycopg2.connect(db_url)
+        try:
+            with closer.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM feature_flags WHERE name = 'preferences_open' FOR UPDATE"
+                )
+                cur.execute(
+                    "UPDATE feature_flags SET enabled = FALSE WHERE name = 'preferences_open'"
+                )
+            result = {}
+
+            def save():
+                with flask_app.test_client() as c:
+                    result["rv"] = _post(c, rankers["team"])
+
+            worker = threading.Thread(target=save)
+            worker.start()
+            time.sleep(0.5)
+            assert worker.is_alive(), "the save did not wait for the close's row lock"
+            closer.commit()
+            worker.join(10)
+        finally:
+            closer.close()
+        assert result["rv"].status_code == 403
+        assert result["rv"].get_json() == CLOSED
+        assert _counts(db_conn) == (0, 0)
+
+    def test_a_due_schedule_counts_before_anything_applies_it(self, flask_app, rankers, db_conn):
+        from app.services import mentor_selection_service
+
+        _, _, body = rankers["team"]
+        team_id = int(rankers["team"][0].split("/")[3])
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE feature_flags SET scheduled_value = FALSE, scheduled_at = %s"
+                " WHERE name = 'preferences_open'",
+                (datetime.now(UTC) - timedelta(seconds=1),),
+            )
+        with flask_app.app_context():
+            result = mentor_selection_service.set_team_mentor_preferences(
+                team_id, body["preferences"]
+            )
+        assert result == (False, mentor_selection_service.PREFERENCES_CLOSED)
+        assert _counts(db_conn) == (0, 0)
 
 
 class TestMigration020:

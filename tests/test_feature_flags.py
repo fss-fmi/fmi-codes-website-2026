@@ -581,15 +581,13 @@ def post_preferences(app_ctx, client, monkeypatch):
         },
     )
 
-    def send(route, open_):
+    def send(route, open_, result=(True, "Saved")):
         path, role, service = _PREFERENCE_POSTS[route]
         saves = []
         monkeypatch.setattr(
             feature_flag_service, "is_enabled", lambda name: open_ and name == "preferences_open"
         )
-        monkeypatch.setattr(
-            mentor_selection_service, service, lambda *a: saves.append(a) or (True, "Saved")
-        )
+        monkeypatch.setattr(mentor_selection_service, service, lambda *a: saves.append(a) or result)
         headers = {"Authorization": f"Bearer {generate_token(1, role)}"}
         return client.post(path, json={"preferences": []}, headers=headers), saves
 
@@ -609,6 +607,22 @@ def test_preference_post_saves_while_open(post_preferences, route):
     rv, saves = post_preferences(route, open_=True)
     assert rv.status_code == 200
     assert len(saves) == 1
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+def test_a_close_caught_by_the_locked_recheck_is_403(post_preferences, route):
+    from app.services import mentor_selection_service
+
+    closed = (False, mentor_selection_service.PREFERENCES_CLOSED)
+    rv, _ = post_preferences(route, open_=True, result=closed)
+    assert rv.status_code == 403
+    assert rv.get_json() == {"success": False, "error": "Preference submission is closed"}
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+def test_other_refused_saves_stay_400(post_preferences, route):
+    rv, _ = post_preferences(route, open_=True, result=(False, "You must rank exactly 3 teams"))
+    assert rv.status_code == 400
 
 
 def test_closed_flag_does_not_hide_not_your_team(app_ctx, client, monkeypatch):

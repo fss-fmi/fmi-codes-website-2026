@@ -5,10 +5,17 @@ import logging
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
-from app.services import event_notifier, matching_events
+from app.services import event_notifier, feature_flag_service, matching_events
 from app.utils.request_json import is_row_id
 
 logger = logging.getLogger(__name__)
+
+PREFERENCES_CLOSED = "Preference submission is closed"
+
+
+def _closed(cursor) -> bool:
+    """Whether the admin has submissions switched off, checked under a lock in this transaction."""
+    return not feature_flag_service.is_enabled_locked(cursor, "preferences_open")
 
 
 def _has_rows(cursor, table: str, column: str, owner_id: int) -> bool:
@@ -66,6 +73,8 @@ def set_team_mentor_preferences(team_id, preferences):
 
     try:
         with get_db_cursor(current_app) as cursor:
+            if _closed(cursor):
+                return False, PREFERENCES_CLOSED
             # Lock the team row for the duration of this transaction so that a
             # concurrent double-submit (network retry / double-click) from the
             # same captain cannot interleave their DELETE+INSERT sequences, and
@@ -139,6 +148,8 @@ def set_mentor_team_preferences(mentor_id, preferences):
 
     try:
         with get_db_cursor(current_app) as cursor:
+            if _closed(cursor):
+                return False, PREFERENCES_CLOSED
             # Lock the mentor row for the duration of this transaction so that a
             # concurrent double-submit cannot interleave their DELETE+INSERT sequences.
             cursor.execute(

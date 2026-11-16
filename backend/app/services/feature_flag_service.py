@@ -161,6 +161,23 @@ def is_enabled(name: str) -> bool:
     return get_flags()[name]
 
 
+def is_enabled_locked(cursor, name: str) -> bool:
+    """Value of *name* read in the caller's transaction, with a share lock on its row.
+
+    A switch or schedule apply locks the row FOR UPDATE, so it waits for the
+    caller's commit, and the caller waits for one already under way: a write
+    made after this check can't land once the flag is off. A schedule that has
+    come due counts even if no read has applied it yet.
+    """
+    cursor.execute(
+        "SELECT CASE WHEN scheduled_at <= NOW() THEN scheduled_value ELSE enabled END AS value"
+        " FROM feature_flags WHERE name = %s FOR SHARE",
+        (name,),
+    )
+    row = cursor.fetchone()
+    return bool(row and row["value"])
+
+
 def list_flags() -> list[dict]:
     """Every flag with its value, last change and pending schedule, for the admin."""
     rows = _read_rows()

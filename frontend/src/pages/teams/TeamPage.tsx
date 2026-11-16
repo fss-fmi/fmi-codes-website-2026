@@ -165,7 +165,7 @@ function TeamDashboardView({
 }) {
   const { showToast } = useToast();
   const { confirm, dialogProps } = useConfirmAction();
-  const { PREFERENCES_OPEN } = useConfig();
+  const { PREFERENCES_OPEN, isLoaded: configLoaded } = useConfig();
   const isCaptain = String(team.captain_id) === String(userId);
   const [busyReqId, setBusyReqId] = useState<number | null>(null);
 
@@ -260,7 +260,7 @@ function TeamDashboardView({
           onRemove={askRemoveMember}
         />
 
-        {team.status === 'active' && (
+        {team.status === 'active' && configLoaded && (
           <MentorsPanel
             confirmed={statusData?.confirmed}
             mentors={team.mentors ?? []}

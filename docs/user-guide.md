@@ -83,9 +83,9 @@ Once your team is registered (it holds one of the 18 event slots), the **MENTORS
 3. Drag them into order (**STEP 2**), with your first choice at the top. You can also use Space and the arrow keys.
 4. Click **SUBMIT PREFERENCES**.
 
-You can come back and click **CHANGE PREFERENCES** until the organizers confirm the matching. Teammates see "Preferences submitted. Waiting for matching."
+The page switches to **SUBMISSION ACCEPTED** with "Preferences saved successfully." and your ranking in order, and shows it again whenever you come back. Until the organizers confirm the matching you can click **UPDATE PREFERENCES** to reopen both steps with your saved ranking filled in (a mentor who has left the event drops out, so pick a replacement); the last button then reads **UPDATE PREFERENCES** and the panel comes back with the new ranking and "Preferences updated." **CANCEL** on the first step keeps your saved ranking. If a submission fails, the form stays open with the error above it. Teammates see "Preferences submitted. Waiting for matching."
 
-Rankings can only be submitted while the organizers have preference submission open. While it is closed, the **MENTORS** panel says so instead of showing **CHOOSE MENTORS**, and **CHOOSE YOUR MENTORS** shows your saved ranking without **CHANGE PREFERENCES**, or **SUBMISSIONS CLOSED** if your team never submitted. Open pages follow a change within 30 seconds.
+Rankings can only be submitted while the organizers have preference submission open. While it is closed, the **MENTORS** panel says so instead of showing **CHOOSE MENTORS**, and **CHOOSE YOUR MENTORS** shows your saved ranking without **UPDATE PREFERENCES**, or **SUBMISSIONS CLOSED** if your team never submitted. If it closes while you are editing, the page drops back to your saved ranking. Open pages follow a change within 30 seconds.
 
 <!-- screenshot: drag-to-rank step -->
 
@@ -127,9 +127,9 @@ Only registered teams can be ranked, so this list fills up as teams register.
 2. Drag them into order with your favourite at the top (**STEP 2**).
 3. Click **SUBMIT PREFERENCES**.
 
-Click **CHANGE PREFERENCES** to edit until the organizers confirm the matching.
+The dashboard switches to **SUBMISSION ACCEPTED** with "Preferences saved successfully." and your ranking in order, and shows it again whenever you come back. Until the organizers confirm the matching you can click **UPDATE PREFERENCES** to reopen both steps with your saved ranking filled in (a team that has lost its slot drops out, so pick a replacement); the last button then reads **UPDATE PREFERENCES** and the panel comes back with the new ranking and "Preferences updated." **CANCEL** on the first step keeps your saved ranking. If a submission fails, the form stays open with the error above it.
 
-This works only while the organizers have preference submission open. While it is closed, the dashboard shows your saved ranking without **CHANGE PREFERENCES**, or **SUBMISSIONS CLOSED** if you never submitted.
+This works only while the organizers have preference submission open. While it is closed, the dashboard shows your saved ranking without **UPDATE PREFERENCES**, or **SUBMISSIONS CLOSED** if you never submitted. If it closes while you are editing, the dashboard drops back to your saved ranking.
 
 <!-- screenshot: mentor dashboard team selection -->
 
@@ -177,7 +177,7 @@ Shows which teams and mentors have submitted their rankings (✓ or —). Use it
 
 ### Matching tab
 
-1. Close **PREFERENCE SUBMISSIONS** on the [Site tab](#site-tab) at the deadline, so the matching runs on a fixed set of rankings. While it is open the **RUN MATCHING** dialog warns that rankings can still change after the run, but it still lets you run one, for example as a test before the deadline.
+1. Close **PREFERENCE SUBMISSIONS** on the [Site tab](#site-tab) at the deadline, so the matching runs on a fixed set of rankings. A ranking still being saved at that moment either lands before the close or is refused, never after it. While submissions are open the **RUN MATCHING** dialog warns that rankings can still change after the run, but it still lets you run one, for example as a test before the deadline. If a registered team leaves or disbands after the close, the mentors who ranked it are left with 2 picks, and a team promoted from the queue has none. Check the [Preferences tab](#preferences-tab), and to let them rank, open submissions again for a short announced window before the final run.
 2. Click **RUN MATCHING** and confirm. The results appear as team → mentor pairs. Every team gets up to 3 mentors, aiming for 2 or 3; the run still works if some preferences are missing.
 3. Review the pairs. You can run the matching again at any time; each run replaces the previous results.
 4. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences.

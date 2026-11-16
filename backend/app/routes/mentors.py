@@ -46,10 +46,19 @@ def get_mentor_picture(mentor_id):
 
 
 def _preferences_closed():
-    """403 while the admin has preference submission switched off, else None."""
+    """403 while the admin has preference submission switched off, else None.
+
+    A cached fast path that answers before the body is read; the save itself
+    re-checks under a row lock, which is what holds at the deadline.
+    """
     if feature_flag_service.is_enabled("preferences_open"):
         return None
-    return jsonify({"success": False, "error": "Preference submission is closed"}), 403
+    return _save_refused(mentor_selection_service.PREFERENCES_CLOSED)
+
+
+def _save_refused(message):
+    status = 403 if message == mentor_selection_service.PREFERENCES_CLOSED else 400
+    return jsonify({"success": False, "error": message}), status
 
 
 @mentors_bp.route("/api/teams/<int:team_id>/available-mentors", methods=["GET"])
@@ -76,7 +85,7 @@ def set_team_preferences(team_id):
     success, message = mentor_selection_service.set_team_mentor_preferences(team_id, preferences)
     if success:
         return jsonify({"success": True, "message": message}), 200
-    return jsonify({"success": False, "error": message}), 400
+    return _save_refused(message)
 
 
 @mentors_bp.route("/api/teams/<int:team_id>/mentor-preferences", methods=["GET"])
@@ -114,7 +123,7 @@ def set_mentor_preferences():
     )
     if success:
         return jsonify({"success": True, "message": message}), 200
-    return jsonify({"success": False, "error": message}), 400
+    return _save_refused(message)
 
 
 @mentors_bp.route("/api/mentors/team-preferences", methods=["GET"])

@@ -70,13 +70,23 @@ export default function MatchingPanel() {
     }
   }
 
-  function askRun() {
+  async function askRun() {
+    // The polled flags can be 30 s old, and a scheduled close may have just fired.
+    let open = PREFERENCES_OPEN;
+    try {
+      const flags = await qc.fetchQuery<{ PREFERENCES_OPEN: boolean }>({
+        queryKey: ['config'],
+        queryFn: () => api.get('/api/config'),
+        staleTime: 0,
+      });
+      open = flags.PREFERENCES_OPEN;
+    } catch {
+      // Keep the last polled value.
+    }
     confirm({
       title: 'RUN MATCHING',
       description: `Run the matching algorithm? This will overwrite any previous results.${
-        PREFERENCES_OPEN
-          ? ' Preference submissions are still open, so rankings can change after this run.'
-          : ''
+        open ? ' Preference submissions are still open, so rankings can change after this run.' : ''
       }`,
       action: doRunMatching,
       successMessage: 'Matching complete.',

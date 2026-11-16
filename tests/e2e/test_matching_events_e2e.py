@@ -14,8 +14,8 @@ from tests.e2e.conftest import (
     bearer,
     mentor_token_for,
     register_and_token,
+    registered_teams,
 )
-from tests.e2e.test_admin_e2e import _create_active_registered_team
 
 pytestmark = pytest.mark.e2e
 
@@ -57,18 +57,9 @@ def _status(flask_app):
         ).get_json()
 
 
-def _registered_teams(flask_app, seeds, names):
-    teams = []
-    for i, name in enumerate(names, 1):
-        with flask_app.test_client() as c:
-            token = register_and_token(c, i, seeds)
-            teams.append((_create_active_registered_team(c, token, flask_app, seeds, name), token))
-    return teams
-
-
 class TestTeamRanking:
     def test_submit_then_update(self, flask_app, seeds, notices):
-        [(team_id, token)] = _registered_teams(flask_app, seeds, ["Night Owls"])
+        [(team_id, token)] = registered_teams(flask_app, seeds, ["Night Owls"])
         with flask_app.test_client() as c:
             rv = c.post(
                 f"/api/teams/{team_id}/mentor-preferences",
@@ -110,7 +101,7 @@ class TestTeamRanking:
         assert _status(flask_app)["teams_submitted"] == 0
 
     def test_unregistered_active_team_cannot_rank(self, flask_app, seeds, notices):
-        [(team_id, token)] = _registered_teams(flask_app, seeds, ["Dropped"])
+        [(team_id, token)] = registered_teams(flask_app, seeds, ["Dropped"])
         with flask_app.test_client() as adm:
             rv = adm.post(
                 f"/api/admin/teams/{team_id}/unregister", headers=bearer(admin_token(flask_app))
@@ -131,7 +122,7 @@ class TestTeamRanking:
             raise RuntimeError("pool shut down")
 
         monkeypatch.setattr("app.services.event_notifier.notify", broken)
-        [(team_id, token)] = _registered_teams(flask_app, seeds, ["Resilient"])
+        [(team_id, token)] = registered_teams(flask_app, seeds, ["Resilient"])
         with flask_app.test_client() as c:
             rv = c.post(
                 f"/api/teams/{team_id}/mentor-preferences",
@@ -146,7 +137,7 @@ class TestTeamRanking:
 class TestMentorRanking:
     def test_submit_then_update(self, flask_app, seeds, notices):
         team_names = ["Team Red", "Team Green", "Team Blue"]
-        team_ids = [t for t, _ in _registered_teams(flask_app, seeds, team_names)]
+        team_ids = [t for t, _ in registered_teams(flask_app, seeds, team_names)]
         notices.clear()
         mentor_id = seeds["mentor_ids"][0]
         token = mentor_token_for(flask_app, mentor_id)
@@ -168,7 +159,7 @@ class TestMentorRanking:
             assert not any(name in text for name in team_names)
 
     def test_mentor_deactivated_after_login_cannot_rank(self, flask_app, seeds, db_conn, notices):
-        team_ids = [t for t, _ in _registered_teams(flask_app, seeds, ["T1", "T2", "T3"])]
+        team_ids = [t for t, _ in registered_teams(flask_app, seeds, ["T1", "T2", "T3"])]
         notices.clear()
         mentor_id = seeds["mentor_ids"][0]
         token = mentor_token_for(flask_app, mentor_id)
@@ -193,7 +184,7 @@ class TestMentorRanking:
 class TestMatching:
     def test_run_confirm_and_rerun(self, flask_app, seeds, notices):
         team_names = ["Matched One", "Matched Two"]
-        _registered_teams(flask_app, seeds, team_names)
+        registered_teams(flask_app, seeds, team_names)
         notices.clear()
         adm_tok = admin_token(flask_app)
         with flask_app.test_client() as adm:
@@ -234,7 +225,7 @@ class TestMatching:
         assert notices == []
 
     def test_failed_save_posts_nothing(self, flask_app, seeds, notices, monkeypatch):
-        _registered_teams(flask_app, seeds, ["Unlucky"])
+        registered_teams(flask_app, seeds, ["Unlucky"])
         notices.clear()
 
         def broken(*args, **kwargs):

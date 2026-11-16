@@ -206,6 +206,7 @@ Read at request time (not stored in the DB):
 - Every change to team membership or registration state runs inside one transaction that first takes `pg_advisory_xact_lock(1)`, then row-locks what it touches with `SELECT ... FOR UPDATE`.
 - Saving matching results takes `pg_advisory_xact_lock(2)`, a separate key so it never contends with team mutations.
 - Preference writes lock the owning team or mentor row so a double submit cannot interleave.
+- A ranking save reads `preferences_open` with `FOR SHARE` as the first statement of its transaction (`feature_flag_service.is_enabled_locked`), so a switch or schedule apply waits for the save to commit, and a save started during one waits and then sees the new value. A schedule that has come due counts as applied.
 - Flag writes and schedule applies lock the `feature_flags` row (`SELECT ... FOR UPDATE`); a reader that loses the race to apply a due schedule waits, re-checks and finds nothing due, so a scheduled change is applied and announced once.
 - UNIQUE constraints (email, faculty number, team name, join code, join request pair) are the final guard against races.
 

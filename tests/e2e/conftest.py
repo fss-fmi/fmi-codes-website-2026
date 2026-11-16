@@ -387,6 +387,37 @@ def register_and_token(client, n: int, seeds: dict, **overrides) -> str:
     return token
 
 
+def create_active_registered_team(client, token, flask_app, seeds, name="Admin Reg Team"):
+    """Create a 3-member team that auto-activates and auto-registers."""
+    rv = client.post("/api/teams", json={"team_name": name}, headers=bearer(token))
+    assert rv.status_code == 201, f"create team failed: {rv.get_data(as_text=True)}"
+    team_id = rv.get_json()["team"]["id"]
+    join_code = rv.get_json()["team"]["join_code"]
+    for _ in range(2):
+        with flask_app.test_client() as cx:
+            tok = register_extra_and_token(cx, seeds)
+            rv_join = cx.post("/api/teams/join", json={"join_code": join_code}, headers=bearer(tok))
+            assert rv_join.status_code == 200, (
+                f"join failed: {rv_join.status_code} {rv_join.get_data(as_text=True)}"
+            )
+    # Verify the team is now active (auto-activated at 3 members)
+    team_status = client.get(f"/api/teams/{team_id}", headers=bearer(token)).get_json()["team"][
+        "status"
+    ]
+    assert team_status == "active", f"Expected active team, got status={team_status!r}"
+    return team_id
+
+
+def registered_teams(flask_app, seeds, names) -> list[tuple[int, str]]:
+    """One registered team per name, each from its own client: [(team_id, captain token)]."""
+    teams = []
+    for i, name in enumerate(names, 1):
+        with flask_app.test_client() as c:
+            token = register_and_token(c, i, seeds)
+            teams.append((create_active_registered_team(c, token, flask_app, seeds, name), token))
+    return teams
+
+
 def bearer(token: str) -> dict:
     """Return an Authorization header dict for the given token."""
     return {"Authorization": f"Bearer {token}"}

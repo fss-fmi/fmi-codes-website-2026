@@ -12,6 +12,8 @@ interface Flags {
 
 interface ConfigState extends Flags {
   isLoading: boolean;
+  /** False until a load succeeds: the flags above are then only the closed defaults. */
+  isLoaded: boolean;
 }
 
 const CLOSED: Flags = {
@@ -22,7 +24,7 @@ const CLOSED: Flags = {
   REQUIRE_EMAIL_VERIFICATION: false,
 };
 
-const ConfigContext = createContext<ConfigState>({ ...CLOSED, isLoading: true });
+const ConfigContext = createContext<ConfigState>({ ...CLOSED, isLoading: true, isLoaded: false });
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
   // The admin switches flags live from Mission Control, so open pages poll for them.
@@ -42,6 +44,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     PREFERENCES_OPEN: flags.PREFERENCES_OPEN,
     REQUIRE_EMAIL_VERIFICATION: flags.REQUIRE_EMAIL_VERIFICATION,
     isLoading: isPending,
+    isLoaded: data !== undefined,
   };
 
   return <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>;

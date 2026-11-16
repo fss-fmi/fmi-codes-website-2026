@@ -80,7 +80,7 @@ Registration, preference submission, the mentor roster and the rankings are swit
 | `mentors_stay_tuned` | Mentor roster is not final yet | `/mentors` shows "MENTORS COMING SOON" instead of the roster                                                                        |
 | `rankings_live`      | Results go public              | `/rankings` shows the live leaderboard instead of the placeholder; API returns scores (admin-only until then)                       |
 
-Every flag starts off on a new database, and migration 020 adds `preferences_open` off, so after that deploy nobody can rank until the admin opens it. The API enforces a change on the next request in every pod. Visitors who already have the site open see it within 30 seconds (the SPA polls `/api/config`). A scheduled change takes effect within a few seconds of its time, on the first request after it; the database clock decides.
+Every flag starts off on a new database, and migration 020 adds `preferences_open` off, so after that deploy nobody can rank until the admin opens it. On the first prod promote that carries 020, open **PREFERENCE SUBMISSIONS** right after the rollout if ranking should already be open; the migration posts nothing to the event feed. The API enforces a change on the next request in every pod. Visitors who already have the site open see it within 30 seconds (the SPA polls `/api/config`). A scheduled change takes effect within a few seconds of its time, on the first request after it; the database clock decides.
 
 `REQUIRE_EMAIL_VERIFICATION` is still server config, because it depends on SMTP working rather than on an event moment:
 
