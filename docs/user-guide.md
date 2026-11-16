@@ -83,7 +83,7 @@ Once your team is registered (it holds one of the 18 event slots), the **MENTORS
 3. Drag them into order (**STEP 2**), with your first choice at the top. You can also use Space and the arrow keys.
 4. Click **SUBMIT PREFERENCES**.
 
-You can come back and click **CHANGE PREFERENCES** until the organizers confirm the matching. Teammates see "Preferences submitted. Waiting for matching."
+The page switches to **SUBMISSION ACCEPTED** with "Preferences saved successfully." and your ranking in order, and shows it again whenever you come back. Until the organizers confirm the matching you can click **UPDATE PREFERENCES** to reopen both steps with your saved ranking filled in (a mentor who has left the event drops out, so pick a replacement); the last button then reads **UPDATE PREFERENCES** and the panel comes back with the new ranking and "Preferences updated." **CANCEL** on the first step keeps your saved ranking. If a submission fails, the form stays open with the error above it. Teammates see "Preferences submitted. Waiting for matching."
 
 <!-- screenshot: drag-to-rank step -->
 
@@ -125,7 +125,7 @@ Only registered teams can be ranked, so this list fills up as teams register.
 2. Drag them into order with your favourite at the top (**STEP 2**).
 3. Click **SUBMIT PREFERENCES**.
 
-Click **CHANGE PREFERENCES** to edit until the organizers confirm the matching.
+The dashboard switches to **SUBMISSION ACCEPTED** with "Preferences saved successfully." and your ranking in order, and shows it again whenever you come back. Until the organizers confirm the matching you can click **UPDATE PREFERENCES** to reopen both steps with your saved ranking filled in (a team that has lost its slot drops out, so pick a replacement); the last button then reads **UPDATE PREFERENCES** and the panel comes back with the new ranking and "Preferences updated." **CANCEL** on the first step keeps your saved ranking. If a submission fails, the form stays open with the error above it.
 
 <!-- screenshot: mentor dashboard team selection -->
 
