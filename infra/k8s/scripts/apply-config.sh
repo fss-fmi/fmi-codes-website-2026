@@ -80,14 +80,22 @@ restart_backend() {
   fi
 }
 
-# $1 key. The repo-relative file that sets it for ENV: the overlay's patch when it sets the key,
-# else the base.
+STAGING_PATCH_REL="infra/k8s/overlays/staging/backend-config-patch.yaml"
+
+# Prod has no config overlay: its values are the base, which staging inherits for every key its
+# own patch doesn't set. So a staging-only change goes in that patch, and a base change can
+# reach staging too.
 config_source() {
-  local patch="$APP_OVERLAY/backend-config-patch.yaml"
-  if [ -f "$patch" ] && grep -qE "^[[:space:]]+$1:" "$patch"; then
-    echo "infra/k8s/overlays/$ENV/backend-config-patch.yaml"
-  else
-    echo "infra/k8s/base/app/backend.yaml"
+  if [ "$ENV" = "staging" ]; then echo "$STAGING_PATCH_REL"; else echo "infra/k8s/base/app/backend.yaml"; fi
+}
+
+# $1 key. Printed after the file to edit.
+config_note() {
+  local key_re
+  key_re="$(printf '%s' "$1" | sed 's/\./\\./g')"
+  if [ "$ENV" = "prod" ] && ! grep -qE "^[[:space:]]+$key_re:" "$K8S_DIR/overlays/staging/backend-config-patch.yaml"; then
+    echo "Staging inherits the base value of $1.
+To leave staging as it is, also set its current value in $STAGING_PATCH_REL."
   fi
 }
 
@@ -101,9 +109,17 @@ if [ $# -eq 0 ]; then
   flux resume kustomization $FLUX_KUSTOMIZATION -n flux-system"
     fi
     command -v flux >/dev/null 2>&1 || die "flux not found — run install-tools.sh first."
+    # Only a pod template change rolls new pods; a replica change alone doesn't.
+    pod_template() { kubectl -n "$NAMESPACE" get deployment/backend -o jsonpath='{.spec.template}' 2>/dev/null || true; }
+    before="$(pod_template)"
     log "Flux owns the app: applying git main (not the files on disk)"
     flux reconcile kustomization "$FLUX_KUSTOMIZATION" -n flux-system --with-source
-    restart_backend
+    if [ -n "$before" ] && [ "$(pod_template)" != "$before" ]; then
+      log "main also changed the backend's pod template, so Flux is rolling it; the new pods read the new config"
+      kubectl -n "$NAMESPACE" rollout status deployment/backend --timeout=120s
+    else
+      restart_backend
+    fi
     log "Done. The cluster runs the config on main."
     exit 0
   fi
@@ -138,9 +154,12 @@ if [ "$ENV" = "staging" ] && [ "$KEY" = "FRONTEND_ORIGIN" ]; then
 fi
 
 SOURCE="$(config_source "$KEY")"
+NOTE="$(config_note "$KEY")"
+[ -z "$NOTE" ] || NOTE=$'\n'"$NOTE"
 if [ "$FLUX" = "true" ] && ! flux_app_suspended "$FLUX_KUSTOMIZATION"; then
   die "Flux owns the app in '$NAMESPACE', so a live patch would revert to git within 5 minutes.
-Set $KEY in $SOURCE, merge it to main, then apply it with:
+Set $KEY in $SOURCE.$NOTE
+Merge it to main, then apply it with:
   ENV=$ENV bash $SCRIPT_DIR/apply-config.sh
 If the change must hold before the merge, suspend Flux for this env first (that also pauses
 its image deploys), run this again, and resume once the change is merged:
@@ -158,10 +177,11 @@ restart_backend
 
 if [ "$FLUX" = "true" ]; then
   log "Done. The patch holds while Flux Kustomization '$FLUX_KUSTOMIZATION' stays suspended."
-  echo "Set $KEY in $SOURCE and merge it to main, then resume Flux. Resuming applies main,"
-  echo "so before the merge it would put the old value back:"
+  echo "Set $KEY in $SOURCE and merge it to main, then resume Flux.${NOTE}"
+  echo "Resuming applies main: before the merge it puts the old value back in the ConfigMap"
+  echo "and the backend's next restart, whatever causes it, picks that up."
   echo "  flux resume kustomization $FLUX_KUSTOMIZATION -n flux-system"
 else
   log "Done. Live ConfigMap updated. Set $KEY in $SOURCE too and commit it, so a"
-  echo "re-apply from disk won't revert this."
+  echo "re-apply from disk won't revert this.${NOTE}"
 fi

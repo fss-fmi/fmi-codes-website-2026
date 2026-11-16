@@ -87,7 +87,7 @@ The API enforces a change on the next request in every pod. Visitors who already
 | ---------------------------- | ---------------------------- | ----------------------------------------------------------------- |
 | `REQUIRE_EMAIL_VERIFICATION` | SMTP is confirmed to deliver | Unverified participants get 403 on create, join and apply to team |
 
-Set it in `infra/k8s/base/app/backend.yaml` (both envs) or in staging's `backend-config-patch.yaml` (staging only), merge it, then apply `main` and restart the backend:
+Staging and prod are switched independently. For staging, set it in `infra/k8s/overlays/staging/backend-config-patch.yaml`. For prod, set it in `infra/k8s/base/app/backend.yaml`, which staging inherits, so also pin staging's current value (`"false"` until its `MAIL_PASSWORD` is set) in staging's patch. Merge it, then apply `main` and restart the backend:
 
 ```bash
 ENV=prod bash infra/k8s/scripts/apply-config.sh

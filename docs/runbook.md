@@ -1860,17 +1860,24 @@ throughout.
 ## Change a config value
 
 Non-secret backend setting (`REQUIRE_EMAIL_VERIFICATION`, `FRONTEND_ORIGIN`, DB/Redis
-coordinates) in the `fmi-codes-backend-config` ConfigMap. The value lives in git:
-staging's `DB_HOST`, `DB_NAME`, `REDIS_SENTINELS` and `RATELIMIT_MULTIPLIER` in
-`infra/k8s/overlays/staging/backend-config-patch.yaml`, everything else (all of prod's) in
-`infra/k8s/base/app/backend.yaml`. Staging's `FRONTEND_ORIGIN` is in its SOPS app secret, so
-the script refuses it for staging (use `rotate-secret.sh FRONTEND_ORIGIN`).
+coordinates) in the `fmi-codes-backend-config` ConfigMap. The value lives in git. Prod's
+values are `infra/k8s/base/app/backend.yaml`, and staging inherits each of them unless
+`infra/k8s/overlays/staging/backend-config-patch.yaml` sets the key. So:
+
+- **Staging only:** set the key in staging's patch (add it if it isn't there).
+- **Prod only:** set it in the base. If staging's patch doesn't set that key, add staging's
+  current value there too, or staging changes with prod.
+
+Staging's `FRONTEND_ORIGIN` is in its SOPS app secret, so the script refuses it for staging
+(use `rotate-secret.sh FRONTEND_ORIGIN`).
 
 **With Flux** (both envs once `--with-flux` ran), Flux applies git every 5 minutes and puts
 back any live change, so a change goes through git:
 
 1. Edit the YAML, open a PR and merge it.
-2. Apply `main` now and restart the backend, which reads the ConfigMap only at startup:
+2. Apply `main` now and restart the backend, which reads the ConfigMap only at startup (if
+   `main` also changed the backend's pod template, an image bump for example, Flux is rolling
+   it already and the script only waits):
 
    ```bash
    ENV=prod bash infra/k8s/scripts/apply-config.sh
@@ -1888,7 +1895,8 @@ flux resume kustomization fmi-codes -n flux-system
 ```
 
 While suspended, Flux deploys nothing to that env, image bumps included. Resuming applies
-`main`, so resume only after the merge, or the old value comes back.
+`main`, so resume only after the merge: before it, the ConfigMap goes back to the old value,
+and the backend's next restart, whatever causes it, quietly picks that up.
 
 **Without Flux**, `apply-config.sh <KEY> <VALUE>` patches the live ConfigMap and restarts
 the backend; commit the same change to the YAML afterwards. With no arguments it re-applies
