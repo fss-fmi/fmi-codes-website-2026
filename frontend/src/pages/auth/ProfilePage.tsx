@@ -11,6 +11,7 @@ import FormAlert from '@/components/common/FormAlert';
 import VerifyEmailNotice from '@/components/common/VerifyEmailNotice';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import { validateNewPassword } from '@/lib/validation';
 
 function InfoCell({ label, value }: { label: string; value?: string | number | null }) {
@@ -80,20 +81,16 @@ export function ProfileContent() {
     }
     setPwLoading(true);
     try {
-      const data = await api.patch<{ success: boolean; error?: string }>(
-        '/api/auth/change-password',
-        { current_password: curPw, new_password: newPw },
-      );
-      if (data.success) {
-        setPwSuccess('Password updated successfully.');
-        setCurPw('');
-        setNewPw('');
-        setConfPw('');
-      } else {
-        setPwError(data.error ?? 'Failed to update password.');
-      }
+      await api.patch('/api/auth/change-password', {
+        current_password: curPw,
+        new_password: newPw,
+      });
+      setPwSuccess('Password updated successfully.');
+      setCurPw('');
+      setNewPw('');
+      setConfPw('');
     } catch (err: unknown) {
-      setPwError((err as Error)?.message ?? 'Network error. Please try again.');
+      setPwError(errorMessage(err));
     } finally {
       setPwLoading(false);
     }

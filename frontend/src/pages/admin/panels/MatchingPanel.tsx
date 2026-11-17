@@ -7,6 +7,7 @@ import { useToast } from '@/components/common/useToast';
 import { useConfig } from '@/context/ConfigContext';
 import { useConfirmAction } from '@/hooks/useConfirmAction';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 export default function MatchingPanel() {
   const qc = useQueryClient();
@@ -33,17 +34,11 @@ export default function MatchingPanel() {
   async function doRunMatching() {
     setRunning(true);
     try {
-      let d: { success: boolean; error?: string };
-      try {
-        d = await api.post('/api/admin/run-matching', {});
-      } catch {
-        throw new Error('Network error');
-      }
-      if (d.success) {
-        qc.invalidateQueries({ queryKey: ['matching-status'] });
-        refetchResults();
-      } else {
-        throw new Error(d.error ?? 'Error');
+      const d = await api.post<{ warnings?: string[] }>('/api/admin/run-matching', {});
+      qc.invalidateQueries({ queryKey: ['matching-status'] });
+      refetchResults();
+      if (d.warnings?.length) {
+        showToast({ kind: 'warning', message: `Matching warnings: ${d.warnings.join('; ')}` });
       }
     } finally {
       setRunning(false);
@@ -53,18 +48,9 @@ export default function MatchingPanel() {
   async function doConfirmMatching() {
     setConfirming(true);
     try {
-      let d: { success: boolean; error?: string };
-      try {
-        d = await api.post('/api/admin/confirm-matching', {});
-      } catch {
-        throw new Error('Network error');
-      }
-      if (d.success) {
-        qc.invalidateQueries({ queryKey: ['matching-status'] });
-        refetchResults();
-      } else {
-        throw new Error(d.error ?? 'Error');
-      }
+      await api.post('/api/admin/confirm-matching', {});
+      qc.invalidateQueries({ queryKey: ['matching-status'] });
+      refetchResults();
     } finally {
       setConfirming(false);
     }
@@ -105,10 +91,10 @@ export default function MatchingPanel() {
 
   async function fetchExport() {
     try {
-      const d = await api.get<{ success: boolean; export: string }>('/api/admin/matching-export');
-      if (d.success) setExportData(d.export);
-    } catch {
-      showToast({ kind: 'danger', message: 'Export failed' });
+      const d = await api.get<{ export: string }>('/api/admin/matching-export');
+      setExportData(d.export);
+    } catch (err: unknown) {
+      showToast({ kind: 'danger', message: errorMessage(err) });
     }
   }
 

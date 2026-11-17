@@ -9,6 +9,7 @@ import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 function CreateTeamContent() {
   const navigate = useNavigate();
@@ -24,16 +25,12 @@ function CreateTeamContent() {
     setError('');
     setLoading(true);
     try {
-      const d = await api.post<{ success: boolean; error?: string }>('/api/teams', {
-        team_name: name.trim(),
-      });
-      if (d.success) {
-        await refreshUser();
-        queryClient.invalidateQueries({ queryKey: ['me'] });
-        navigate('/team', { replace: true });
-      } else setError(d.error ?? 'Failed to create team.');
-    } catch {
-      setError('Network error. Please try again.');
+      await api.post('/api/teams', { team_name: name.trim() });
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      navigate('/team', { replace: true });
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -76,9 +73,16 @@ function CreateTeamContent() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} noValidate>
+          <form
+            onSubmit={handleSubmit}
+            noValidate
+          >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <Field id="teamName" label="TEAM NAME" required>
+              <Field
+                id="teamName"
+                label="TEAM NAME"
+                required
+              >
                 <Input
                   type="text"
                   required
@@ -88,7 +92,12 @@ function CreateTeamContent() {
                   onChange={(e) => setName(e.target.value)}
                 />
               </Field>
-              <Button type="submit" variant="primary" disabled={loading} style={{ width: '100%' }}>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={loading}
+                style={{ width: '100%' }}
+              >
                 {loading ? 'CREATING…' : 'CREATE TEAM'}
               </Button>
             </div>

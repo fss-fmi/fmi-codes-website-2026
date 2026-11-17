@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useToast } from '@/components/common/useToast';
+import { errorMessage } from '@/lib/errors';
 
 interface ConfirmOptions {
   title: string;
@@ -45,13 +46,15 @@ export function useConfirmAction() {
         setDialog(CLOSED);
         try {
           await opts.action();
-          if (opts.successMessage) {
-            showToast({ kind: 'success', message: opts.successMessage });
-          }
-          opts.onDone?.();
         } catch (e) {
-          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
+          showToast({ kind: 'danger', message: errorMessage(e) });
+          return;
         }
+        // Outside the try: a failing refresh must not be reported as a failed action.
+        if (opts.successMessage) {
+          showToast({ kind: 'success', message: opts.successMessage });
+        }
+        opts.onDone?.();
       },
     });
   }

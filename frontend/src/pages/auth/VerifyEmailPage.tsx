@@ -6,11 +6,10 @@ import FormAlert from '@/components/common/FormAlert';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 type State =
-  | { kind: 'pending' }
-  | { kind: 'success'; text: string }
-  | { kind: 'error'; text: string };
+  { kind: 'pending' } | { kind: 'success'; text: string } | { kind: 'error'; text: string };
 
 const linkStyle = { color: 'var(--px-teal)', textDecoration: 'underline' };
 
@@ -34,10 +33,7 @@ export default function VerifyEmailPage() {
         void refreshUser();
       })
       .catch((err: unknown) => {
-        setState({
-          kind: 'error',
-          text: (err as Error)?.message ?? 'Could not verify your email. Please try again.',
-        });
+        setState({ kind: 'error', text: errorMessage(err) });
       });
   }, [token, refreshUser]);
 

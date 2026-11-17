@@ -6,12 +6,15 @@
 //   - Parses JSON responses and returns the parsed body (typed via the generic).
 //   - On HTTP 401, dispatches a global `auth:unauthorized` event that
 //     AuthContext listens for to clear its user/role state.
-//   - On any non-2xx response, throws an Error whose message is the server's
-//     `error` field (if present) or a generic "HTTP <status>" fallback so
-//     callers can `catch` and surface the message to the user.
+//   - On any non-2xx response, throws an ApiError whose message is the server's
+//     `error` field, or a generic text when the answer has none. When no answer
+//     comes back at all, throws a NetworkError. Callers show either one through
+//     errorMessage() from lib/errors.ts.
 //
 // Requests hit relative paths (`/api/...`). In dev, Vite proxies `/api` to the
 // backend (see vite.config.ts). In prod, Nginx does the same routing.
+
+import { ApiError, GENERIC_ERROR, NetworkError } from './errors';
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
@@ -40,7 +43,13 @@ async function request<T>(
     init.body = JSON.stringify(body);
   }
 
-  const res = await fetch(url, init);
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    throw new NetworkError();
+  }
 
   if (res.status === 401) {
     // Let AuthContext know the session is gone so it can clear state and
@@ -59,7 +68,7 @@ async function request<T>(
   const payload: unknown = isJson ? await res.json().catch(() => null) : await res.text();
 
   if (!res.ok) {
-    let message = `HTTP ${res.status}`;
+    let message = GENERIC_ERROR;
     if (
       isJson &&
       payload &&
@@ -69,7 +78,7 @@ async function request<T>(
     ) {
       message = (payload as { error: string }).error;
     }
-    throw new Error(message);
+    throw new ApiError(res.status, message);
   }
 
   return payload as T;
@@ -79,7 +88,8 @@ const api = {
   get: <T>(url: string, opts?: RequestOptions) => request<T>('GET', url, undefined, opts),
   post: <T>(url: string, body?: Json, opts?: RequestOptions) => request<T>('POST', url, body, opts),
   put: <T>(url: string, body?: Json, opts?: RequestOptions) => request<T>('PUT', url, body, opts),
-  patch: <T>(url: string, body?: Json, opts?: RequestOptions) => request<T>('PATCH', url, body, opts),
+  patch: <T>(url: string, body?: Json, opts?: RequestOptions) =>
+    request<T>('PATCH', url, body, opts),
   delete: <T>(url: string, opts?: RequestOptions) => request<T>('DELETE', url, undefined, opts),
 };
 

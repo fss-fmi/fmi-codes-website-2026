@@ -10,6 +10,7 @@ import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { User } from '@/types/auth';
 
 type Role = 'participant' | 'mentor' | 'admin';
@@ -51,25 +52,19 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const data = await api.post<{
-        success: boolean;
-        role: Role;
-        user_id: number;
-        user: User;
-        error?: string;
-      }>('/api/auth/login', { email, password, role });
-      if (data.success) {
-        login(data.role, data.user);
-        const from =
-          (location.state as { from?: { pathname: string } } | null)?.from?.pathname ??
-          ROLE_DEFAULT[data.role];
-        navigate(from, { replace: true });
-      } else {
-        setError(data.error ?? 'Invalid credentials. Please try again.');
-      }
+      const data = await api.post<{ role: Role; user_id: number; user: User }>('/api/auth/login', {
+        email,
+        password,
+        role,
+      });
+      login(data.role, data.user);
+      const from =
+        (location.state as { from?: { pathname: string } } | null)?.from?.pathname ??
+        ROLE_DEFAULT[data.role];
+      navigate(from, { replace: true });
     } catch (err: unknown) {
       console.error('Login failed:', err);
-      setError('Something went wrong. Please try again.');
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -85,17 +80,13 @@ export default function LoginPage() {
     }
     setResetLoading(true);
     try {
-      const data = await api.post<{ success: boolean; message?: string; error?: string }>(
-        '/api/auth/reset-password',
-        { email: resetEmail, role },
-      );
-      if (data.success) {
-        setResetSuccess(data.message ?? 'Recovery email sent.');
-      } else {
-        setResetError(data.error ?? 'Something went wrong.');
-      }
-    } catch {
-      setResetError('Network error. Please try again.');
+      const data = await api.post<{ message?: string }>('/api/auth/reset-password', {
+        email: resetEmail,
+        role,
+      });
+      setResetSuccess(data.message ?? 'Recovery email sent.');
+    } catch (err: unknown) {
+      setResetError(errorMessage(err));
     } finally {
       setResetLoading(false);
     }

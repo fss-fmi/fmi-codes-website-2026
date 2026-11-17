@@ -8,6 +8,7 @@ import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
 import { validateNewPassword } from '@/lib/validation';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -35,17 +36,14 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      const data = await api.post<{ success: boolean; message?: string; error?: string }>(
-        '/api/auth/reset-password/confirm',
-        { token, new_password: newPassword, role },
-      );
-      if (data.success) {
-        setSuccess(data.message ?? 'Password reset successfully. You can now log in.');
-      } else {
-        setError(data.error ?? 'Something went wrong. Please request a new reset link.');
-      }
+      const data = await api.post<{ message?: string }>('/api/auth/reset-password/confirm', {
+        token,
+        new_password: newPassword,
+        role,
+      });
+      setSuccess(data.message ?? 'Password reset successfully. You can now log in.');
     } catch (err: unknown) {
-      setError((err as Error)?.message ?? 'Network error. Please try again.');
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -75,9 +73,7 @@ export default function ResetPasswordPage() {
             </p>
 
             {isAdminRole && (
-              <FormAlert kind="error">
-                Admin passwords cannot be reset through this page.
-              </FormAlert>
+              <FormAlert kind="error">Admin passwords cannot be reset through this page.</FormAlert>
             )}
 
             {!isAdminRole && isInvalidLink && (
@@ -106,10 +102,17 @@ export default function ResetPasswordPage() {
             )}
 
             {!isAdminRole && !isInvalidLink && !success && (
-              <form onSubmit={handleSubmit} noValidate>
+              <form
+                onSubmit={handleSubmit}
+                noValidate
+              >
                 {error && <FormAlert kind="error">{error}</FormAlert>}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <Field id="new-password" label="NEW PASSWORD" required>
+                  <Field
+                    id="new-password"
+                    label="NEW PASSWORD"
+                    required
+                  >
                     <Input
                       type="password"
                       required
@@ -119,7 +122,11 @@ export default function ResetPasswordPage() {
                       autoComplete="new-password"
                     />
                   </Field>
-                  <Field id="confirm-password" label="CONFIRM PASSWORD" required>
+                  <Field
+                    id="confirm-password"
+                    label="CONFIRM PASSWORD"
+                    required
+                  >
                     <Input
                       type="password"
                       required

@@ -9,6 +9,7 @@ import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 function JoinTeamContent() {
   const navigate = useNavigate();
@@ -24,16 +25,12 @@ function JoinTeamContent() {
     setError('');
     setLoading(true);
     try {
-      const d = await api.post<{ success: boolean; error?: string }>('/api/teams/join', {
-        join_code: code.trim(),
-      });
-      if (d.success) {
-        await refreshUser();
-        queryClient.invalidateQueries({ queryKey: ['me'] });
-        navigate('/team', { replace: true });
-      } else setError(d.error ?? 'Failed to join team.');
-    } catch {
-      setError('Network error. Please try again.');
+      await api.post('/api/teams/join', { join_code: code.trim() });
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      navigate('/team', { replace: true });
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -75,9 +72,16 @@ function JoinTeamContent() {
               {error}
             </div>
           )}
-          <form onSubmit={handleSubmit} noValidate>
+          <form
+            onSubmit={handleSubmit}
+            noValidate
+          >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <Field id="inviteCode" label="INVITE CODE" required>
+              <Field
+                id="inviteCode"
+                label="INVITE CODE"
+                required
+              >
                 <Input
                   type="text"
                   required
@@ -93,7 +97,12 @@ function JoinTeamContent() {
                   spellCheck={false}
                 />
               </Field>
-              <Button type="submit" variant="primary" disabled={loading} style={{ width: '100%' }}>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={loading}
+                style={{ width: '100%' }}
+              >
                 {loading ? 'JOINING…' : 'JOIN TEAM'}
               </Button>
             </div>

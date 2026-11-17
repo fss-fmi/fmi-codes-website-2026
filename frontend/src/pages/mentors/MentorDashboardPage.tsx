@@ -182,23 +182,16 @@ export function MentorDashboardContent() {
     setSubmitting(true);
     setError('');
     try {
-      const data = await api.post<{ success: boolean; error?: string }>(
-        '/api/mentors/team-preferences',
-        { preferences: prefs },
-      );
-      if (data.success) {
-        qc.setQueryData<{ preferences: TeamPref[] }>(['mentor-team-preferences'], {
-          preferences: ranked.map((t, i) => ({
-            team_id: t.team_id,
-            rank: i + 1,
-            team_name: t.team_name,
-          })),
-        });
-        setJustSaved(isUpdate ? 'updated' : 'submitted');
-        setEditing(false);
-      } else {
-        setError(data.error ?? 'Failed to submit.');
-      }
+      await api.post('/api/mentors/team-preferences', { preferences: prefs });
+      qc.setQueryData<{ preferences: TeamPref[] }>(['mentor-team-preferences'], {
+        preferences: ranked.map((t, i) => ({
+          team_id: t.team_id,
+          rank: i + 1,
+          team_name: t.team_name,
+        })),
+      });
+      setJustSaved(isUpdate ? 'updated' : 'submitted');
+      setEditing(false);
     } catch (err) {
       setError(errorMessage(err));
       refetchFlagsIfClosed(err, qc);

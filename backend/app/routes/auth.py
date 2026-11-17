@@ -514,8 +514,9 @@ def change_password():
         fetch_one=True,
     )
 
+    # 400, not 401: the SPA reads every 401 as a dead session and signs the user out.
     if not row or not verify_password(current_password, row["password_hash"]):
-        return jsonify({"success": False, "error": "Current password is incorrect"}), 401
+        return jsonify({"success": False, "error": "Current password is incorrect"}), 400
 
     new_hash = hash_password(new_password)
     # R-25: Bump the revocation epoch so every OTHER active session for this user

@@ -5,6 +5,7 @@ import ScoreInput from '@/components/admin/ScoreInput';
 import HorizontalBar from '@/components/admin/HorizontalBar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { TeamScore } from './shared';
 
 export default function ScoresPanel() {
@@ -18,16 +19,11 @@ export default function ScoresPanel() {
 
   async function saveScore(teamId: number, score: number) {
     try {
-      const d = await api.put<{ success: boolean; error?: string }>(
-        `/api/admin/teams/${teamId}/score`,
-        { score },
-      );
-      if (d.success) {
-        qc.invalidateQueries({ queryKey: ['admin-scores'] });
-        showToast({ kind: 'success', message: 'Score saved.' });
-      } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
-    } catch {
-      showToast({ kind: 'danger', message: 'Network error' });
+      await api.put(`/api/admin/teams/${teamId}/score`, { score });
+      qc.invalidateQueries({ queryKey: ['admin-scores'] });
+      showToast({ kind: 'success', message: 'Score saved.' });
+    } catch (err: unknown) {
+      showToast({ kind: 'danger', message: errorMessage(err) });
     }
   }
 
