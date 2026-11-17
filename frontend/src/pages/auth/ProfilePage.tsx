@@ -81,18 +81,14 @@ export function ProfileContent() {
     }
     setPwLoading(true);
     try {
-      const data = await api.patch<{ success: boolean; error?: string }>(
-        '/api/auth/change-password',
-        { current_password: curPw, new_password: newPw },
-      );
-      if (data.success) {
-        setPwSuccess('Password updated successfully.');
-        setCurPw('');
-        setNewPw('');
-        setConfPw('');
-      } else {
-        setPwError(data.error ?? 'Failed to update password.');
-      }
+      await api.patch('/api/auth/change-password', {
+        current_password: curPw,
+        new_password: newPw,
+      });
+      setPwSuccess('Password updated successfully.');
+      setCurPw('');
+      setNewPw('');
+      setConfPw('');
     } catch (err: unknown) {
       setPwError(errorMessage(err));
     } finally {

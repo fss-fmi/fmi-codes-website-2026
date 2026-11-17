@@ -25,14 +25,10 @@ function JoinTeamContent() {
     setError('');
     setLoading(true);
     try {
-      const d = await api.post<{ success: boolean; error?: string }>('/api/teams/join', {
-        join_code: code.trim(),
-      });
-      if (d.success) {
-        await refreshUser();
-        queryClient.invalidateQueries({ queryKey: ['me'] });
-        navigate('/team', { replace: true });
-      } else setError(d.error ?? 'Failed to join team.');
+      await api.post('/api/teams/join', { join_code: code.trim() });
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      navigate('/team', { replace: true });
     } catch (err: unknown) {
       setError(errorMessage(err));
     } finally {

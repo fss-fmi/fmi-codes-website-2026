@@ -25,14 +25,10 @@ function CreateTeamContent() {
     setError('');
     setLoading(true);
     try {
-      const d = await api.post<{ success: boolean; error?: string }>('/api/teams', {
-        team_name: name.trim(),
-      });
-      if (d.success) {
-        await refreshUser();
-        queryClient.invalidateQueries({ queryKey: ['me'] });
-        navigate('/team', { replace: true });
-      } else setError(d.error ?? 'Failed to create team.');
+      await api.post('/api/teams', { team_name: name.trim() });
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      navigate('/team', { replace: true });
     } catch (err: unknown) {
       setError(errorMessage(err));
     } finally {

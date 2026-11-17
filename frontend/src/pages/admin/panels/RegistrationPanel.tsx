@@ -18,14 +18,9 @@ export default function RegistrationPanel() {
 
   async function handleRegister(teamId: number) {
     try {
-      const d = await api.post<{ success: boolean; error?: string }>(
-        `/api/admin/teams/${teamId}/register`,
-        {},
-      );
-      if (d.success) {
-        qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
-        showToast({ kind: 'success', message: 'Team registered.' });
-      } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
+      await api.post(`/api/admin/teams/${teamId}/register`, {});
+      qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
+      showToast({ kind: 'success', message: 'Team registered.' });
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
     }
@@ -33,14 +28,9 @@ export default function RegistrationPanel() {
 
   async function handleUnregister(teamId: number) {
     try {
-      const d = await api.post<{ success: boolean; error?: string }>(
-        `/api/admin/teams/${teamId}/unregister`,
-        {},
-      );
-      if (d.success) {
-        qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
-        showToast({ kind: 'success', message: 'Team unregistered.' });
-      } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
+      await api.post(`/api/admin/teams/${teamId}/unregister`, {});
+      qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
+      showToast({ kind: 'success', message: 'Team unregistered.' });
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
     }

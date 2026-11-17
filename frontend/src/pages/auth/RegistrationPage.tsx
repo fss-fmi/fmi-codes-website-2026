@@ -93,24 +93,17 @@ export default function RegistrationPage() {
 
       // "Other" entries travel inside the register request so the backend creates
       // them in the same transaction as the account.
-      const data = await api.post<{
-        success: boolean;
-        role: 'participant';
-        user_id: number;
-        user: User;
-        error?: string;
-      }>('/api/auth/register', {
-        ...form,
-        ...(isOtherUni ? { university_other: otherUni } : {}),
-        ...(isOtherSpec ? { specialty_other: { name: otherSpec } } : {}),
-      });
-      if (data.success) {
-        login(data.role, data.user);
-        setSuccess('Registration successful. Redirecting…');
-        navigate('/team', { replace: true });
-      } else {
-        setError(data.error ?? 'Registration failed');
-      }
+      const data = await api.post<{ role: 'participant'; user_id: number; user: User }>(
+        '/api/auth/register',
+        {
+          ...form,
+          ...(isOtherUni ? { university_other: otherUni } : {}),
+          ...(isOtherSpec ? { specialty_other: { name: otherSpec } } : {}),
+        },
+      );
+      login(data.role, data.user);
+      setSuccess('Registration successful. Redirecting…');
+      navigate('/team', { replace: true });
     } catch (err: unknown) {
       setError(errorMessage(err));
     } finally {

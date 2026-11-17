@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApiError, NetworkError } from '@/lib/errors';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthContext } from '@/context/AuthContext';
 import { ChooseMentorContent } from './ChooseMentorPage';
@@ -228,7 +229,7 @@ test('an update is labelled as one and shows the new ranking, not the old', asyn
 
 test('a failed submit keeps the form and shows the server error', async () => {
   answer(true, { mentors: MENTORS });
-  post.mockRejectedValue(new Error('Only registered teams can rank mentors'));
+  post.mockRejectedValue(new ApiError(400, 'Only registered teams can rank mentors'));
   renderAsCaptain();
 
   await pick('Ada', 'Grace', 'Alan');
@@ -244,7 +245,7 @@ test('a failed submit keeps the form and shows the server error', async () => {
 
 test('a submit that never reaches the server says so in plain words', async () => {
   answer(true, { mentors: MENTORS });
-  post.mockRejectedValue(new TypeError('Failed to fetch'));
+  post.mockRejectedValue(new NetworkError());
   renderAsCaptain();
 
   await pick('Ada', 'Grace', 'Alan');

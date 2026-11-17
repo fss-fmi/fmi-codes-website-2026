@@ -1,6 +1,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { ApiError, NetworkError } from '@/lib/errors';
 import LoginPage from './LoginPage';
+
+// The backend's 429 body (backend/app/__init__.py).
+const RATE_LIMITED = 'Too many requests. Wait a moment and try again.';
 
 const post = vi.fn();
 
@@ -128,26 +132,26 @@ test.each([
 });
 
 test('a refused login shows the server message', async () => {
-  post.mockRejectedValue(new Error('Invalid email or password'));
+  post.mockRejectedValue(new ApiError(401, 'Invalid email or password'));
   renderLogin();
   signIn();
   expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
 });
 
 test('a login that gets no answer shows the network message', async () => {
-  post.mockRejectedValue(new TypeError('Failed to fetch'));
+  post.mockRejectedValue(new NetworkError());
   renderLogin();
   signIn();
   expect(await screen.findByText('Network error. Please try again.')).toBeInTheDocument();
 });
 
-test('a refused reset request shows the server message', async () => {
-  post.mockRejectedValue(new Error('Too many reset requests'));
+test('a rate-limited reset request shows the server message', async () => {
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED));
   renderLogin();
   fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
   fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
   fireEvent.click(screen.getByRole('button', { name: /send recovery email/i }));
-  expect(await screen.findByText('Too many reset requests')).toBeInTheDocument();
+  expect(await screen.findByText(RATE_LIMITED)).toBeInTheDocument();
 });
 
 test('ADMIN in the dropdown hides FORGOT PASSWORD, as the button does', () => {

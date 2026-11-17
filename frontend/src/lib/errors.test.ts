@@ -1,14 +1,19 @@
-import { errorMessage } from './errors';
+import { ApiError, errorMessage, GENERIC_ERROR, NETWORK_ERROR, NetworkError } from './errors';
 
 test("a server's error text reaches the user", () => {
-  expect(errorMessage(new Error('Invalid email or password'))).toBe('Invalid email or password');
+  expect(errorMessage(new ApiError(401, 'Invalid email or password'))).toBe(
+    'Invalid email or password',
+  );
 });
 
-test('a fetch that got no answer shows the network message, not "Failed to fetch"', () => {
-  expect(errorMessage(new TypeError('Failed to fetch'))).toBe('Network error. Please try again.');
+test('no answer at all shows the network message', () => {
+  expect(errorMessage(new NetworkError())).toBe(NETWORK_ERROR);
 });
 
-test('anything without a message falls back to the network message', () => {
-  expect(errorMessage(new Error(''))).toBe('Network error. Please try again.');
-  expect(errorMessage('boom')).toBe('Network error. Please try again.');
+test('a bug in our own code shows the generic text, never its message or the network one', () => {
+  expect(errorMessage(new TypeError("Cannot read properties of undefined (reading 'x')"))).toBe(
+    GENERIC_ERROR,
+  );
+  expect(errorMessage(new Error('boom'))).toBe(GENERIC_ERROR);
+  expect(errorMessage('boom')).toBe(GENERIC_ERROR);
 });

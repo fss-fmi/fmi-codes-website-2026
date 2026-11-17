@@ -104,22 +104,15 @@ export function ChooseMentorContent() {
     setSubmitting(true);
     setError('');
     try {
-      const data = await api.post<{ success: boolean; error?: string }>(
-        `/api/teams/${teamId}/mentor-preferences`,
-        { preferences: ranked },
-      );
-      if (data.success) {
-        qc.setQueryData<{ preferences: Preference[] }>(['team-mentor-preferences', teamId], {
-          preferences: ranked.map((p) => ({
-            ...p,
-            mentor_name: selected.find((m) => m.mentor_id === p.mentor_id)?.name,
-          })),
-        });
-        setJustSaved(isUpdate ? 'updated' : 'submitted');
-        setEditing(false);
-      } else {
-        setError(data.error ?? 'Failed to submit preferences.');
-      }
+      await api.post(`/api/teams/${teamId}/mentor-preferences`, { preferences: ranked });
+      qc.setQueryData<{ preferences: Preference[] }>(['team-mentor-preferences', teamId], {
+        preferences: ranked.map((p) => ({
+          ...p,
+          mentor_name: selected.find((m) => m.mentor_id === p.mentor_id)?.name,
+        })),
+      });
+      setJustSaved(isUpdate ? 'updated' : 'submitted');
+      setEditing(false);
     } catch (err) {
       setError(errorMessage(err));
       refetchFlagsIfClosed(err, qc);

@@ -179,12 +179,11 @@ Participant or mentor, 10/min per user.
 
 Revokes the current token, invalidates every other session for the user and sets a fresh `token` cookie so the caller stays logged in.
 
-| Code | Meaning                                            |
-| ---- | -------------------------------------------------- |
-| 200  | `Password changed successfully`                    |
-| 400  | Missing fields or new password under 12 characters |
-| 401  | `Current password is incorrect`                    |
-| 403  | Admin (admin password is config-only)              |
+| Code | Meaning                                                                                                                               |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 200  | `Password changed successfully`                                                                                                       |
+| 400  | Missing fields, new password under 12 characters, or `Current password is incorrect` (not 401, which the SPA reads as a dead session) |
+| 403  | Admin (admin password is config-only)                                                                                                 |
 
 ### POST /api/auth/reset-password
 

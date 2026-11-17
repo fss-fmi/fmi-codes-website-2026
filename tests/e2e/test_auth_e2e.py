@@ -379,7 +379,7 @@ class TestChangePassword:
         rv2 = client.get("/api/auth/me", headers=bearer(new_token))
         assert rv2.status_code == 200
 
-    def test_wrong_current_password_returns_401(self, client, seeds):
+    def test_wrong_current_password_returns_400_and_keeps_the_session(self, client, seeds):
         register(client, 1, seeds)
         token = login_token(client, "user1@e2e.test", DEFAULT_PW)
         rv = client.patch(
@@ -387,7 +387,9 @@ class TestChangePassword:
             json={"current_password": "WRONG!", "new_password": "NewPassword99!"},
             headers=bearer(token),
         )
-        assert rv.status_code == 401
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "Current password is incorrect"
+        assert client.get("/api/auth/me", headers=bearer(token)).status_code == 200
 
     def test_new_password_too_short_returns_400(self, client, seeds):
         register(client, 1, seeds)

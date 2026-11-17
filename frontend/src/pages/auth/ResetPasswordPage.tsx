@@ -36,15 +36,12 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      const data = await api.post<{ success: boolean; message?: string; error?: string }>(
-        '/api/auth/reset-password/confirm',
-        { token, new_password: newPassword, role },
-      );
-      if (data.success) {
-        setSuccess(data.message ?? 'Password reset successfully. You can now log in.');
-      } else {
-        setError(data.error ?? 'Something went wrong. Please request a new reset link.');
-      }
+      const data = await api.post<{ message?: string }>('/api/auth/reset-password/confirm', {
+        token,
+        new_password: newPassword,
+        role,
+      });
+      setSuccess(data.message ?? 'Password reset successfully. You can now log in.');
     } catch (err: unknown) {
       setError(errorMessage(err));
     } finally {

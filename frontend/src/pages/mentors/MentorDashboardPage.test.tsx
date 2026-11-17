@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApiError, NetworkError } from '@/lib/errors';
 import { MemoryRouter } from 'react-router-dom';
 import { MentorDashboardContent } from './MentorDashboardPage';
 
@@ -193,7 +194,7 @@ test('an update is labelled as one and shows the new ranking, not the old', asyn
 
 test('a failed submit keeps the form and shows the server error', async () => {
   answer();
-  post.mockRejectedValue(new Error('Only registered teams can be ranked'));
+  post.mockRejectedValue(new ApiError(400, 'Only registered teams can be ranked'));
   renderDashboard();
 
   await pick('Alpha', 'Bravo', 'Charlie');
@@ -207,7 +208,7 @@ test('a failed submit keeps the form and shows the server error', async () => {
 
 test('a submit that never reaches the server says so in plain words', async () => {
   answer();
-  post.mockRejectedValue(new TypeError('Failed to fetch'));
+  post.mockRejectedValue(new NetworkError());
   renderDashboard();
 
   await pick('Alpha', 'Bravo', 'Charlie');
@@ -257,7 +258,7 @@ test('while submissions are closed a saved ranking is read-only', async () => {
 
 test('a submit refused because submissions just closed says so and refetches the flags', async () => {
   answer();
-  post.mockRejectedValue(new Error('Preference submission is closed'));
+  post.mockRejectedValue(new ApiError(403, 'Preference submission is closed'));
   const { client } = renderDashboard();
   const invalidate = vi.spyOn(client, 'invalidateQueries');
 
@@ -270,7 +271,7 @@ test('a submit refused because submissions just closed says so and refetches the
 
 test('a reopen after a refused submit clears the error and starts the pick afresh', async () => {
   answer();
-  post.mockRejectedValue(new Error('Preference submission is closed'));
+  post.mockRejectedValue(new ApiError(403, 'Preference submission is closed'));
   const { rerender } = renderDashboard();
   await pick('Alpha', 'Bravo', 'Charlie');
   fireEvent.click(screen.getByRole('button', { name: 'SUBMIT PREFERENCES' }));

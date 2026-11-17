@@ -19,14 +19,9 @@ export default function ScoresPanel() {
 
   async function saveScore(teamId: number, score: number) {
     try {
-      const d = await api.put<{ success: boolean; error?: string }>(
-        `/api/admin/teams/${teamId}/score`,
-        { score },
-      );
-      if (d.success) {
-        qc.invalidateQueries({ queryKey: ['admin-scores'] });
-        showToast({ kind: 'success', message: 'Score saved.' });
-      } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
+      await api.put(`/api/admin/teams/${teamId}/score`, { score });
+      qc.invalidateQueries({ queryKey: ['admin-scores'] });
+      showToast({ kind: 'success', message: 'Score saved.' });
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
     }
