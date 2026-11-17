@@ -20,6 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useConfig } from '@/context/ConfigContext';
 import type { User } from '@/types/auth';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { Team, JoinRequest, Application } from '@/types/team';
 
 interface MentorPref {
@@ -234,7 +235,7 @@ function TeamDashboardView({
       refetchReqs();
       onRefresh();
     } catch (e) {
-      showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
+      showToast({ kind: 'danger', message: errorMessage(e) });
     } finally {
       setBusyReqId(null);
     }

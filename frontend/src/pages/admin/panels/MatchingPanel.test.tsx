@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@/components/common/useToast';
 import MatchingPanel from './MatchingPanel';
 
 // `polled` is what ConfigContext last fetched; `live` is what /api/config answers now.
 const flags = vi.hoisted(() => ({ polled: true, live: true as boolean | 'down' }));
+const runMatching = vi.hoisted(() => ({ reject: null as Error | null }));
 
 vi.mock('@/lib/api', () => ({
   default: {
@@ -20,7 +21,8 @@ vi.mock('@/lib/api', () => ({
           : { success: true, results: [] },
       );
     },
-    post: () => Promise.resolve({ success: true }),
+    post: () =>
+      runMatching.reject ? Promise.reject(runMatching.reject) : Promise.resolve({ success: true }),
   },
 }));
 
@@ -64,4 +66,23 @@ test('the warning follows the live flag, not a poll from before a scheduled clos
 test('if the live check fails the last polled value decides', async () => {
   Object.assign(flags, { polled: true, live: 'down' });
   expect(await openRunDialog()).toMatch(WARNING);
+});
+
+test.each([
+  [
+    'refused by the server',
+    new Error('No registered teams to match'),
+    'No registered teams to match',
+  ],
+  ['with no answer', new TypeError('Failed to fetch'), 'Network error. Please try again.'],
+])('a run %s toasts the reason', async (_case, err, shown) => {
+  Object.assign(flags, { polled: false, live: false });
+  runMatching.reject = err;
+  try {
+    await openRunDialog();
+    fireEvent.click(within(document.querySelector('dialog') as HTMLElement).getByText('CONFIRM'));
+    expect(await screen.findByText(shown)).toBeInTheDocument();
+  } finally {
+    runMatching.reject = null;
+  }
 });

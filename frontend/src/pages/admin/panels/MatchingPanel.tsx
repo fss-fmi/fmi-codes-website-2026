@@ -33,12 +33,7 @@ export default function MatchingPanel() {
   async function doRunMatching() {
     setRunning(true);
     try {
-      let d: { success: boolean; error?: string };
-      try {
-        d = await api.post('/api/admin/run-matching', {});
-      } catch {
-        throw new Error('Network error');
-      }
+      const d = await api.post<{ success: boolean; error?: string }>('/api/admin/run-matching', {});
       if (d.success) {
         qc.invalidateQueries({ queryKey: ['matching-status'] });
         refetchResults();
@@ -53,12 +48,10 @@ export default function MatchingPanel() {
   async function doConfirmMatching() {
     setConfirming(true);
     try {
-      let d: { success: boolean; error?: string };
-      try {
-        d = await api.post('/api/admin/confirm-matching', {});
-      } catch {
-        throw new Error('Network error');
-      }
+      const d = await api.post<{ success: boolean; error?: string }>(
+        '/api/admin/confirm-matching',
+        {},
+      );
       if (d.success) {
         qc.invalidateQueries({ queryKey: ['matching-status'] });
         refetchResults();

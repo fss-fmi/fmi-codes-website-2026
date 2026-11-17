@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/common/useToast';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 export interface UseApplyToTeamResult {
   applyingTo: number | null;
@@ -33,8 +34,8 @@ export function useApplyToTeam(invalidateKey?: unknown[]): UseApplyToTeamResult 
       } else {
         showToast({ kind: 'danger', message: d.error ?? 'Failed to apply.' });
       }
-    } catch {
-      showToast({ kind: 'danger', message: 'Network error.' });
+    } catch (err: unknown) {
+      showToast({ kind: 'danger', message: errorMessage(err) });
     } finally {
       setApplyingTo(null);
     }

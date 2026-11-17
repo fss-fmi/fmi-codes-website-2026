@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 const MAX_LEN = 2000;
 
@@ -48,7 +49,7 @@ export default function BugReportBubble() {
       setStatus('success');
     } catch (err) {
       setStatus('error');
-      setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
+      setErrorMsg(errorMessage(err));
     }
   }
 

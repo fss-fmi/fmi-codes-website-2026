@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useToast } from '@/components/common/useToast';
+import { errorMessage } from '@/lib/errors';
 
 interface ConfirmOptions {
   title: string;
@@ -50,7 +51,7 @@ export function useConfirmAction() {
           }
           opts.onDone?.();
         } catch (e) {
-          showToast({ kind: 'danger', message: (e as Error).message || 'Failed.' });
+          showToast({ kind: 'danger', message: errorMessage(e) });
         }
       },
     });

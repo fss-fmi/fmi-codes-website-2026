@@ -11,6 +11,7 @@ import FormAlert from '@/components/common/FormAlert';
 import VerifyEmailNotice from '@/components/common/VerifyEmailNotice';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import { validateNewPassword } from '@/lib/validation';
 
 function InfoCell({ label, value }: { label: string; value?: string | number | null }) {
@@ -93,7 +94,7 @@ export function ProfileContent() {
         setPwError(data.error ?? 'Failed to update password.');
       }
     } catch (err: unknown) {
-      setPwError((err as Error)?.message ?? 'Network error. Please try again.');
+      setPwError(errorMessage(err));
     } finally {
       setPwLoading(false);
     }

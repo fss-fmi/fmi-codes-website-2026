@@ -10,6 +10,7 @@ import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import { MIN_PASSWORD_LENGTH } from '@/lib/validation';
 import type { User } from '@/types/auth';
 
@@ -111,7 +112,7 @@ export default function RegistrationPage() {
         setError(data.error ?? 'Registration failed');
       }
     } catch (err: unknown) {
-      setError((err as Error)?.message ?? 'Network error. Please try again.');
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }

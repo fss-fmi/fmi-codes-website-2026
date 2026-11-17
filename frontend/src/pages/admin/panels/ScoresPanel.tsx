@@ -5,6 +5,7 @@ import ScoreInput from '@/components/admin/ScoreInput';
 import HorizontalBar from '@/components/admin/HorizontalBar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { TeamScore } from './shared';
 
 export default function ScoresPanel() {
@@ -26,8 +27,8 @@ export default function ScoresPanel() {
         qc.invalidateQueries({ queryKey: ['admin-scores'] });
         showToast({ kind: 'success', message: 'Score saved.' });
       } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
-    } catch {
-      showToast({ kind: 'danger', message: 'Network error' });
+    } catch (err: unknown) {
+      showToast({ kind: 'danger', message: errorMessage(err) });
     }
   }
 

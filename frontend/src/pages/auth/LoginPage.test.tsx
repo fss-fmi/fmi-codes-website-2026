@@ -127,6 +127,29 @@ test.each([
   });
 });
 
+test('a refused login shows the server message', async () => {
+  post.mockRejectedValue(new Error('Invalid email or password'));
+  renderLogin();
+  signIn();
+  expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
+});
+
+test('a login that gets no answer shows the network message', async () => {
+  post.mockRejectedValue(new TypeError('Failed to fetch'));
+  renderLogin();
+  signIn();
+  expect(await screen.findByText('Network error. Please try again.')).toBeInTheDocument();
+});
+
+test('a refused reset request shows the server message', async () => {
+  post.mockRejectedValue(new Error('Too many reset requests'));
+  renderLogin();
+  fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: /send recovery email/i }));
+  expect(await screen.findByText('Too many reset requests')).toBeInTheDocument();
+});
+
 test('ADMIN in the dropdown hides FORGOT PASSWORD, as the button does', () => {
   mobile = true;
   renderLogin();

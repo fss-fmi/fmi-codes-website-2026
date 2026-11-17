@@ -4,6 +4,7 @@ import { useToast } from '@/components/common/useToast';
 import DonutChart from '@/components/admin/DonutChart';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import { CHART_COLORS, type RegStatus } from './shared';
 
 export default function RegistrationPanel() {
@@ -25,8 +26,8 @@ export default function RegistrationPanel() {
         qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
         showToast({ kind: 'success', message: 'Team registered.' });
       } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
-    } catch {
-      showToast({ kind: 'danger', message: 'Network error' });
+    } catch (err: unknown) {
+      showToast({ kind: 'danger', message: errorMessage(err) });
     }
   }
 
@@ -40,8 +41,8 @@ export default function RegistrationPanel() {
         qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
         showToast({ kind: 'success', message: 'Team unregistered.' });
       } else showToast({ kind: 'danger', message: d.error ?? 'Error' });
-    } catch {
-      showToast({ kind: 'danger', message: 'Network error' });
+    } catch (err: unknown) {
+      showToast({ kind: 'danger', message: errorMessage(err) });
     }
   }
 
@@ -49,7 +50,10 @@ export default function RegistrationPanel() {
   if (isError)
     return (
       <Panel title="REGISTRATION">
-        <p className="px-body-sm" style={{ color: 'var(--px-danger)', margin: 0 }}>
+        <p
+          className="px-body-sm"
+          style={{ color: 'var(--px-danger)', margin: 0 }}
+        >
           &gt; Failed to load registration data.
         </p>
       </Panel>
@@ -85,7 +89,10 @@ export default function RegistrationPanel() {
           className="px-progress-track"
           style={{ height: 8 }}
         >
-          <div className="px-progress-fill" style={{ transform: `scaleX(${pct / 100})` }} />
+          <div
+            className="px-progress-fill"
+            style={{ transform: `scaleX(${pct / 100})` }}
+          />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 16 }}>
           {Array.from({ length: max_registered }, (_, i) => (
@@ -95,8 +102,7 @@ export default function RegistrationPanel() {
               style={{
                 width: 10,
                 height: 10,
-                background:
-                  i < registered_count ? CHART_COLORS.green : 'var(--px-teal-dim)',
+                background: i < registered_count ? CHART_COLORS.green : 'var(--px-teal-dim)',
               }}
             />
           ))}
@@ -125,7 +131,10 @@ export default function RegistrationPanel() {
       >
         <Panel title={`REGISTERED (${registered_count})`}>
           {registered_teams.length === 0 && (
-            <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+            <p
+              className="px-body-sm"
+              style={{ color: 'var(--px-muted-strong)', margin: 0 }}
+            >
               &gt; No teams yet.
             </p>
           )}
@@ -142,7 +151,13 @@ export default function RegistrationPanel() {
                 flexWrap: 'wrap',
               }}
             >
-              <span style={{ fontFamily: 'var(--px-mono)', fontSize: '0.9rem', color: 'var(--px-white)' }}>
+              <span
+                style={{
+                  fontFamily: 'var(--px-mono)',
+                  fontSize: '0.9rem',
+                  color: 'var(--px-white)',
+                }}
+              >
                 {t.team_name}
               </span>
               <button
@@ -160,7 +175,10 @@ export default function RegistrationPanel() {
 
         <Panel title={`QUEUE (${queue_count})`}>
           {queued_teams.length === 0 && (
-            <p className="px-body-sm" style={{ color: 'var(--px-muted-strong)', margin: 0 }}>
+            <p
+              className="px-body-sm"
+              style={{ color: 'var(--px-muted-strong)', margin: 0 }}
+            >
               &gt; Queue is empty.
             </p>
           )}
@@ -177,7 +195,13 @@ export default function RegistrationPanel() {
                 flexWrap: 'wrap',
               }}
             >
-              <span style={{ fontFamily: 'var(--px-mono)', fontSize: '0.9rem', color: 'var(--px-white)' }}>
+              <span
+                style={{
+                  fontFamily: 'var(--px-mono)',
+                  fontSize: '0.9rem',
+                  color: 'var(--px-white)',
+                }}
+              >
                 {t.team_name}
               </span>
               <button

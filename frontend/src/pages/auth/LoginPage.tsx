@@ -10,6 +10,7 @@ import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { User } from '@/types/auth';
 
 type Role = 'participant' | 'mentor' | 'admin';
@@ -69,7 +70,7 @@ export default function LoginPage() {
       }
     } catch (err: unknown) {
       console.error('Login failed:', err);
-      setError('Something went wrong. Please try again.');
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -94,8 +95,8 @@ export default function LoginPage() {
       } else {
         setResetError(data.error ?? 'Something went wrong.');
       }
-    } catch {
-      setResetError('Network error. Please try again.');
+    } catch (err: unknown) {
+      setResetError(errorMessage(err));
     } finally {
       setResetLoading(false);
     }

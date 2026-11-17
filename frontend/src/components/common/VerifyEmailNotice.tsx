@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
 import api from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 
 /**
  * Tells an unverified participant to check their inbox and lets them request
@@ -31,7 +32,7 @@ export default function VerifyEmailNotice({
       );
       setStatus({ kind: 'success', text: data.message ?? 'Verification link sent.' });
     } catch (err: unknown) {
-      setStatus({ kind: 'error', text: (err as Error)?.message ?? 'Could not send the link.' });
+      setStatus({ kind: 'error', text: errorMessage(err) });
     } finally {
       setSending(false);
     }
