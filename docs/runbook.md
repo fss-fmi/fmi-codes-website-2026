@@ -662,9 +662,9 @@ redirect would loop). The controller sets `X-Forwarded-For` to its TCP peer, whi
 the Tailscale proxy, so every anonymous staging visitor shares one address bucket. That is why
 staging sets `RATELIMIT_MULTIPLIER: "10"` in `overlays/staging/backend-config-patch.yaml`: every
 limit is 10 times prod's (150 login attempts per account a minute, anonymous default 30000/min).
-To test prod's exact limits, set it to `"1"` there and commit it (Flux reverts an
-`apply-config.sh` patch), then put it back. A staging rate-limit test still says nothing about
-how prod buckets real clients. Flux reconciles the
+To test prod's exact limits, set it to `"1"` there and merge it (Flux reverts a live patch, so
+`apply-config.sh` refuses one), then put it back. A staging rate-limit test still says nothing
+about how prod buckets real clients. Flux reconciles the
 tailnet Ingress as `fmi-codes-staging-tailnet`. The address appears once the operator runs
 ([Phase 7](#7--observability-prometheus--grafana)); until then, or without Tailscale:
 
@@ -1301,8 +1301,9 @@ kubectl -n flux-system delete imagerepository alert-test
 
 Restart test: break one again, wait for the post, run `kubectl -n flux-system delete pod -l
 app=flux-relay`, then fix it. The reply still comes, from the state ConfigMap. Delete the pod
-rather than `rollout restart` it: Flux undoes the restart annotation on its next apply of
-`fmi-codes-flux-relay` (within 5 minutes), which restarts the relay a second time. Leave it
+rather than a plain `rollout restart`: Flux undoes that restart annotation on its next apply of
+`fmi-codes-flux-relay` (within 5 minutes), which restarts the relay a second time
+([Restarting by hand](#change-a-config-value)). Leave it
 broken for 6 minutes or more to see a second post join the incident: one reply, ✅ on both.
 
 #### Access Grafana and staging
@@ -1859,24 +1860,63 @@ throughout.
 ## Change a config value
 
 Non-secret backend setting (`REQUIRE_EMAIL_VERIFICATION`, `FRONTEND_ORIGIN`, DB/Redis
-coordinates):
+coordinates) in the `fmi-codes-backend-config` ConfigMap. The value lives in git. Prod's
+values are `infra/k8s/base/app/backend.yaml`, and staging inherits each of them unless
+`infra/k8s/overlays/staging/backend-config-patch.yaml` sets the key. So:
+
+- **Staging only:** set the key in staging's patch (add it if it isn't there).
+- **Prod only:** set it in the base. If staging's patch doesn't set that key, add staging's
+  current value there too, or staging changes with prod.
+
+Staging's `FRONTEND_ORIGIN` is in its SOPS app secret, so the script refuses it for staging
+(use `rotate-secret.sh FRONTEND_ORIGIN`).
+
+**With Flux** (both envs once `--with-flux` ran), Flux applies git every 5 minutes and puts
+back any live change, so a change goes through git:
+
+1. Edit the YAML, open a PR and merge it.
+2. Apply `main` now and restart the backend, which reads the ConfigMap only at startup (if
+   `main` also changed the backend's pod template, an image bump for example, Flux is rolling
+   it already and the script only waits):
+
+   ```bash
+   ENV=prod bash infra/k8s/scripts/apply-config.sh
+   ```
+
+`apply-config.sh <KEY> <VALUE>` refuses on a Flux cluster and names the file to edit. For a
+change that can't wait for the merge (SMTP breaks and `REQUIRE_EMAIL_VERIFICATION` has to go
+off now), suspend Flux for that env first; then the patch holds:
 
 ```bash
-bash infra/k8s/scripts/apply-config.sh REQUIRE_EMAIL_VERIFICATION true
-bash infra/k8s/scripts/apply-config.sh          # re-apply the overlay from disk, then roll
+flux suspend kustomization fmi-codes -n flux-system     # fmi-codes-staging for staging
+ENV=prod bash infra/k8s/scripts/apply-config.sh REQUIRE_EMAIL_VERIFICATION false
+# merge the same change to main, then:
+flux resume kustomization fmi-codes -n flux-system
 ```
+
+While suspended, Flux deploys nothing to that env, image bumps included. Resuming applies
+`main`, so resume only after the merge: before it, the ConfigMap goes back to the old value,
+and the backend's next restart, whatever causes it, quietly picks that up.
+
+**Without Flux**, `apply-config.sh <KEY> <VALUE>` patches the live ConfigMap and restarts
+the backend; commit the same change to the YAML afterwards. With no arguments it re-applies
+the overlay from disk and restarts.
 
 Registration, rankings and the mentor roster are not config: the admin switches or schedules
 them in Mission Control (**SITE** tab), and the script refuses `REGISTRATION_OPEN`,
 `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ([Deployment](deployment.md#feature-flags-during-the-event)).
+Secrets are refused too (use `rotate-secret.sh` / `rotate-datastore-password.sh`). Staging is
+the default; pass `ENV=prod` for prod and `RESTART=false` to batch several changes into one
+restart.
 
-It patches the `fmi-codes-backend-config` ConfigMap and restarts the backend. Secrets are
-refused (use `rotate-secret.sh` / `deploy-stateful.sh`). A live patch drifts from git, so
-also edit the source and commit: env-specific keys (`DB_HOST`, `DB_NAME`, `REDIS_SENTINELS`)
-live in `overlays/<env>/backend-config-patch.yaml`, the rest in `base/app/backend.yaml`. Prod's
-`FRONTEND_ORIGIN` is in `base/app/backend.yaml`; staging's is in its SOPS app secret, so the
-script refuses it for `ENV=staging` (use `rotate-secret.sh FRONTEND_ORIGIN`). Pass
-`RESTART=false` to batch, `ENV=staging` to target staging.
+**Restarting by hand.** On every apply Flux drops whatever a `kubectl*` field manager owns,
+so a plain `kubectl rollout restart` of a Flux-applied Deployment loses its restart annotation
+within 5 minutes and rolls a second time. The scripts restart under their own field manager,
+which Flux leaves alone; do the same:
+
+```bash
+kubectl -n fmi-codes rollout restart deployment/backend --field-manager=fmi-codes-scripts
+```
 
 ## Restore a migration backup
 
