@@ -106,6 +106,8 @@ case "$ENV" in
 esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/rollout.sh
+. "$SCRIPT_DIR/lib/rollout.sh"
 # The env whose copy the Secret holds; only the Tailscale client differs from ENV.
 SECRET_ENV="$ENV"
 if [ "$GRAFANA" = "true" ]; then
@@ -258,11 +260,10 @@ elif [ -z "$RESTART_TARGET" ]; then
   echo "updates the mounted Secret within a minute or two."
 elif [ "$RESTART" = "true" ]; then
   log "Restarting $RESTART_TARGET so pods pick up the rotated value"
-  kubectl -n "$NAMESPACE" rollout restart "$RESTART_TARGET"
-  kubectl -n "$NAMESPACE" rollout status "$RESTART_TARGET" --timeout=120s
+  rollout_restart "$NAMESPACE" "$RESTART_TARGET" 120
 else
   echo "RESTART=false — skipping rollout restart. Restart manually to apply:"
-  echo "  kubectl -n $NAMESPACE rollout restart $RESTART_TARGET"
+  rollout_restart_hint "$NAMESPACE" "$RESTART_TARGET"
 fi
 
 if [ "$GRAFANA" = "true" ] && [ "$KEY" = "admin-password" ]; then

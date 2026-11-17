@@ -17,6 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_OVERLAY="$K8S_DIR/overlays/$ENV"
 SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL}"
+# shellcheck source=lib/rollout.sh
+. "$SCRIPT_DIR/lib/rollout.sh"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
 die() { echo "Error: $1" >&2; exit 1; }
@@ -78,10 +80,6 @@ else
   fi
 fi
 
-flux_owns_app() {
-  kubectl get kustomizations.kustomize.toolkit.fluxcd.io "$FLUX_KUSTOMIZATION" -n flux-system >/dev/null 2>&1
-}
-
 admin_hash="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \
   -o jsonpath='{.data.ADMIN_PASSWORD_HASH}' 2>/dev/null || true)"
 if [ -z "$admin_hash" ]; then
@@ -104,12 +102,11 @@ if [ "$ENV" = "staging" ]; then
   fi
 fi
 
-if flux_owns_app; then
+if flux_owns_app "$FLUX_KUSTOMIZATION"; then
   log "Flux is active — it owns the backend/frontend Deployments"
-  echo "Applied the app secret only. Flux reconciles the Deployments from git; it"
-  echo "will pick up the secret change on its next reconcile, or force it now with:"
-  echo "  flux reconcile kustomization $FLUX_KUSTOMIZATION -n flux-system"
-  echo "  kubectl -n $NAMESPACE rollout restart deployment/backend"
+  echo "Applied the app secret only; Flux applies the Deployments from git. The backend"
+  echo "reads the secret only when a pod starts, so if it changed, restart the backend:"
+  rollout_restart_hint "$NAMESPACE" deployment/backend
   exit 0
 fi
 
@@ -125,7 +122,7 @@ if [ -z "$admin_hash" ]; then
 fi
 
 log "Restarting backend so pods pick up any ConfigMap/Secret changes"
-kubectl -n "$NAMESPACE" rollout restart deployment/backend
+kubectl -n "$NAMESPACE" rollout restart deployment/backend --field-manager="$ROLLOUT_FIELD_MANAGER"
 
 log "Waiting for rollouts to become ready"
 kubectl -n "$NAMESPACE" rollout status deployment/backend  --timeout "${READY_TIMEOUT}s"

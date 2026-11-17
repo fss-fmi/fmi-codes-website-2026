@@ -51,6 +51,8 @@ case "$ENV" in
 esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/rollout.sh
+. "$SCRIPT_DIR/lib/rollout.sh"
 POSTGRES_VALUES="$K8S_DIR/$VALUES_DIR/postgresql-values.yaml"
 REDIS_VALUES="$K8S_DIR/$VALUES_DIR/redis-values.yaml"
 DB_SECRET="fmi-codes-db"
@@ -89,8 +91,7 @@ gen_password() {
 restart_backend() {
   if kubectl -n "$NAMESPACE" get "$BACKEND" >/dev/null 2>&1; then
     log "Restarting $BACKEND so it reads the new password"
-    kubectl -n "$NAMESPACE" rollout restart "$BACKEND"
-    kubectl -n "$NAMESPACE" rollout status "$BACKEND" --timeout="${READY_TIMEOUT}s"
+    rollout_restart "$NAMESPACE" "$BACKEND" "$READY_TIMEOUT"
   else
     echo "$BACKEND not found in $NAMESPACE; nothing to restart."
   fi

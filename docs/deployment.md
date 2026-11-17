@@ -65,7 +65,7 @@ Like the promote PR, the migration PR is opened by the `fmi-codes-bot` GitHub Ap
 
 | Kind                                                                                                                                                                                                 | Where                                                                                                                             | Change it with                                                                                                                                                                                             |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, `REQUIRE_EMAIL_VERIFICATION`, `RATELIMIT_MULTIPLIER`)                                             | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | `bash infra/k8s/scripts/apply-config.sh <KEY> <VALUE>`, then commit the YAML too                                                                                                                           |
+| Non-secret config (`FLASK_ENV`, `DB_*`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `FRONTEND_ORIGIN`, `REQUIRE_EMAIL_VERIFICATION`, `RATELIMIT_MULTIPLIER`)                                             | ConfigMap `fmi-codes-backend-config`: `infra/k8s/base/app/backend.yaml` plus `infra/k8s/overlays/<env>/backend-config-patch.yaml` | Edit the YAML and merge it, then `bash infra/k8s/scripts/apply-config.sh` applies `main` and restarts the backend ([how](runbook.md#change-a-config-value))                                                |
 | App secrets (`SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`) | SOPS-encrypted `infra/k8s/secrets/secrets.enc.yaml` (prod) and `infra/k8s/overlays/staging/secrets/secrets.enc.yaml`              | `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; see [Rotate a secret](runbook.md#rotate-a-secret)), then commit the `.enc.yaml`                                                    |
 | DB and Redis passwords                                                                                                                                                                               | Generated in-cluster by `deploy-stateful.sh`, tied to the PVC                                                                     | `bash infra/k8s/scripts/rotate-datastore-password.sh <target>` with `db`, `db-admin` or `redis` ([how](runbook.md#db-and-redis-passwords)); never delete the Secret and PVC to rotate, that wipes the data |
 
@@ -88,13 +88,15 @@ Every flag starts off on a new database, and migration 020 adds `preferences_ope
 | ---------------------------- | ---------------------------- | ----------------------------------------------------------------- |
 | `REQUIRE_EMAIL_VERIFICATION` | SMTP is confirmed to deliver | Unverified participants get 403 on create, join and apply to team |
 
+Staging and prod are switched independently. For staging, set it in `infra/k8s/overlays/staging/backend-config-patch.yaml`. For prod, set it in `infra/k8s/base/app/backend.yaml`, which staging inherits, so also pin staging's current value (`"false"` until its `MAIL_PASSWORD` is set) in staging's patch. Merge it, then apply `main` and restart the backend:
+
 ```bash
-ENV=prod bash infra/k8s/scripts/apply-config.sh REQUIRE_EMAIL_VERIFICATION true
+ENV=prod bash infra/k8s/scripts/apply-config.sh
 ```
 
 Before turning on `REQUIRE_EMAIL_VERIFICATION`, register a test account and confirm the verification email arrives. With SMTP broken nobody could verify, and so nobody could form a team. On an existing database, apply `backend/database/migrations/016_email_verification.sql` first.
 
-The script patches the ConfigMap and restarts the backend. Commit the matching change to the base or overlay YAML so Git and the cluster agree (on a Flux cluster the patch reverts to git within minutes otherwise). Staging and prod are flipped independently (`ENV=staging` is the default).
+Flux applies git every 5 minutes and puts back any live change, so on a Flux cluster `apply-config.sh REQUIRE_EMAIL_VERIFICATION true` refuses. To turn it off before a fix can merge (SMTP broke mid-event), suspend Flux for that env first; [Change a config value](runbook.md#change-a-config-value) has the steps. Staging is the default env; pass `ENV=prod` for prod.
 
 ### Environment variables
 
