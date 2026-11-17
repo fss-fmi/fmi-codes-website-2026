@@ -142,7 +142,7 @@ A single row (`id = 1`, enforced by CHECK). `is_confirmed` flips to true when th
 
 ### feature_flags
 
-One row per flag, seeded false by migration 017 and `schema.sql`: `registration_open`, `rankings_live`, `mentors_stay_tuned` (the `name` primary key has a CHECK for exactly these). `enabled` is the live value and `updated_at` is when it last changed. `scheduled_value` and `scheduled_at` hold the one pending change, both set or both NULL (CHECK). Nothing runs a schedule on its own: the first read after `scheduled_at` locks the due rows (`SELECT ... FOR UPDATE`), applies them and clears the pair, so concurrent readers apply it once. Only the admin writes this table, through `/api/admin/flags*` ([ADR-013](adr/013-feature-flags-in-database.md)).
+One row per flag, seeded false by migrations 017 and 020 and by `schema.sql`: `registration_open`, `rankings_live`, `mentors_stay_tuned`, `preferences_open` (the `name` primary key has a CHECK for exactly these, `feature_flags_name_check`). `enabled` is the live value and `updated_at` is when it last changed. `scheduled_value` and `scheduled_at` hold the one pending change, both set or both NULL (CHECK). Nothing runs a schedule on its own: the first read after `scheduled_at` locks the due rows (`SELECT ... FOR UPDATE`), applies them and clears the pair, so concurrent readers apply it once. Only the admin writes this table, through `/api/admin/flags*` ([ADR-013](adr/013-feature-flags-in-database.md)).
 
 ### password_reset_tokens
 
@@ -197,6 +197,7 @@ Read at request time (not stored in the DB):
 - `017_feature_flags.sql` creates `feature_flags` and inserts its three rows as false with `ON CONFLICT DO NOTHING`, so it never overwrites a value the admin has set. False matches the old `REGISTRATION_OPEN`, `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ConfigMap values in every environment, so deploying it changes nothing visible.
 - `018_masters_two_years.sql` replaces `participants_course_check` so a Masters course is only `Masters 1st Year` or `Masters 2nd Year`. It does not rewrite stored courses: if a participant already holds `Masters 3rd Year` to `Masters 6th Year`, the migration fails and the rollout stops until those rows are fixed by hand.
 - `019_mentor_pictures_webp.sql` points seeded mentors at the WebP photos the frontend serves: `picture_url` `/static/mentorPictures/<name>.jpg|jpeg|png` becomes `/mentorPictures/<name>.webp` and `picture_filename` follows. Other paths and URLs are left alone, so it is safe to re-run.
+- `020_preferences_open.sql` replaces `feature_flags_name_check` to allow `preferences_open` and inserts it as false with `ON CONFLICT DO NOTHING`, so after the deploy nobody can rank until the admin opens it, and a re-run keeps a value the admin has set.
 - Most statements use `IF NOT EXISTS`, but the `CREATE TRIGGER` statements do not, so running `schema.sql` a second time against an existing database fails partway. Treat it as a create-once script.
 - On k3s the schema and DB password are baked into the Postgres PVC at first boot. Editing `schema.sql` does not migrate a running database.
 
@@ -205,6 +206,7 @@ Read at request time (not stored in the DB):
 - Every change to team membership or registration state runs inside one transaction that first takes `pg_advisory_xact_lock(1)`, then row-locks what it touches with `SELECT ... FOR UPDATE`.
 - Saving matching results takes `pg_advisory_xact_lock(2)`, a separate key so it never contends with team mutations.
 - Preference writes lock the owning team or mentor row so a double submit cannot interleave.
+- A ranking save reads `preferences_open` with `FOR SHARE` as the first statement of its transaction (`feature_flag_service.is_enabled_locked`), so a switch or schedule apply waits for the save to commit, and a save started during one waits and then sees the new value. A schedule that has come due counts as applied.
 - Flag writes and schedule applies lock the `feature_flags` row (`SELECT ... FOR UPDATE`); a reader that loses the race to apply a due schedule waits, re-checks and finds nothing due, so a scheduled change is applied and announced once.
 - UNIQUE constraints (email, faculty number, team name, join code, join request pair) are the final guard against races.
 

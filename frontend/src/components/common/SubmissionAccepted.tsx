@@ -7,10 +7,18 @@ interface Props {
   // button that was clicked is gone.
   justSaved: 'submitted' | 'updated' | null;
   onUpdate: () => void;
+  // Preference submission is switched off: the ranking is read-only.
+  closed?: boolean;
   children?: ReactNode;
 }
 
-export default function SubmissionAccepted({ ranking, justSaved, onUpdate, children }: Props) {
+export default function SubmissionAccepted({
+  ranking,
+  justSaved,
+  onUpdate,
+  closed = false,
+  children,
+}: Props) {
   const messageRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
@@ -61,14 +69,24 @@ export default function SubmissionAccepted({ ranking, justSaved, onUpdate, child
           </li>
         ))}
       </ol>
-      <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className="px-btn-secondary"
-          onClick={onUpdate}
+      {closed && (
+        <p
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)', margin: '24px 0 0 0' }}
         >
-          UPDATE PREFERENCES
-        </button>
+          &gt; Preference submission is closed, so this ranking can no longer be changed.
+        </p>
+      )}
+      <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {!closed && (
+          <button
+            type="button"
+            className="px-btn-secondary"
+            onClick={onUpdate}
+          >
+            UPDATE PREFERENCES
+          </button>
+        )}
         {children}
       </div>
     </Panel>

@@ -9,19 +9,23 @@ import DragRankSlots from '@/components/common/DragRankSlots';
 import MentorCard from '@/components/mentors/MentorCard';
 import Button from '@/components/common/Button';
 import SubmissionAccepted from '@/components/common/SubmissionAccepted';
+import PreferencesUnknown from '@/components/common/PreferencesUnknown';
 import { useAuth } from '@/context/AuthContext';
+import { useConfig } from '@/context/ConfigContext';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { rankingStep, refetchFlagsIfClosed, useOnPreferencesSwitch } from '@/lib/preferences';
 import type { Mentor, Preference } from '@/types/mentor';
 import type { Team } from '@/types/team';
 
-type Step = 'select' | 'rank' | 'done' | 'confirmed';
+type Step = ReturnType<typeof rankingStep> | 'confirmed';
 
 export function ChooseMentorContent() {
   const { user } = useAuth();
   const teamId = user?.team_id;
   const isCaptain = user?.is_captain;
   const qc = useQueryClient();
+  const { PREFERENCES_OPEN, isLoading: configLoading, isLoaded: configLoaded } = useConfig();
 
   const [uiStep, setUiStep] = useState<'select' | 'rank'>('select');
   const [editing, setEditing] = useState(false);
@@ -30,6 +34,16 @@ export function ChooseMentorContent() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [justSaved, setJustSaved] = useState<'submitted' | 'updated' | null>(null);
+
+  useOnPreferencesSwitch(
+    PREFERENCES_OPEN,
+    () => {
+      setEditing(false);
+      setUiStep('select');
+      setSelected([]);
+    },
+    () => setError(''),
+  );
 
   const { data: matchingStatus, isLoading: statusLoading } = useQuery<{ confirmed: boolean }>({
     queryKey: ['matching-status'],
@@ -54,9 +68,7 @@ export function ChooseMentorContent() {
   const isConfirmed = matchingStatus?.confirmed ?? false;
   const step: Step = isConfirmed
     ? 'confirmed'
-    : serverPrefs.length > 0 && !editing
-      ? 'done'
-      : uiStep;
+    : rankingStep(serverPrefs.length > 0, editing, PREFERENCES_OPEN, uiStep);
   const isUpdate = serverPrefs.length > 0;
   const submitted = [...serverPrefs].sort((a, b) => a.rank - b.rank);
 
@@ -110,6 +122,7 @@ export function ChooseMentorContent() {
       }
     } catch (err) {
       setError(errorMessage(err));
+      refetchFlagsIfClosed(err, qc);
     } finally {
       setSubmitting(false);
     }
@@ -153,9 +166,11 @@ export function ChooseMentorContent() {
 
   // If the team can't be loaded, carry on: the server still refuses a ranking
   // from a team that isn't registered, and the form shows its error.
-  if ((!teamData && !teamIsError) || statusLoading || prefsLoading) {
+  if ((!teamData && !teamIsError) || statusLoading || prefsLoading || configLoading) {
     return <LoadingSpinner fullPage />;
   }
+
+  if (!configLoaded && !isConfirmed) return <PreferencesUnknown />;
 
   if (registered === false) {
     return (
@@ -186,7 +201,9 @@ export function ChooseMentorContent() {
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'confirmed'
           ? 'MATCHING CONFIRMED'
-          : 'SUBMISSION ACCEPTED';
+          : step === 'closed'
+            ? 'SUBMISSIONS CLOSED'
+            : 'SUBMISSION ACCEPTED';
 
   return (
     <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
@@ -234,6 +251,24 @@ export function ChooseMentorContent() {
         </Panel>
       )}
 
+      {step === 'closed' && (
+        <Panel title="SUBMISSIONS CLOSED">
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: '0 0 24px 0' }}
+          >
+            &gt; Preference submission is closed. Your team can rank mentors only while the
+            organizers have it open.
+          </p>
+          <Button
+            variant="primary"
+            href="/team"
+          >
+            GO TO TEAM PAGE
+          </Button>
+        </Panel>
+      )}
+
       {step === 'done' && (
         <SubmissionAccepted
           ranking={submitted.map((p) => ({
@@ -241,6 +276,7 @@ export function ChooseMentorContent() {
             name: p.mentor_name ?? `Mentor #${p.mentor_id}`,
           }))}
           justSaved={justSaved}
+          closed={!PREFERENCES_OPEN}
           onUpdate={() => {
             setEditing(true);
             setUiStep('select');

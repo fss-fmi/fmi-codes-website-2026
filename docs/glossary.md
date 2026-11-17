@@ -48,11 +48,12 @@ The university-issued student ID entered at registration (for example `1MI070012
 
 ### Feature flags
 
-Four booleans. Three live in the `feature_flags` table and are switched or scheduled by the admin on the **Mission Control** SITE tab; `/api/config` exposes them in upper case. The fourth is server config:
+Five booleans. Four live in the `feature_flags` table and are switched or scheduled by the admin on the **Mission Control** SITE tab; `/api/config` exposes them in upper case. The fifth is server config:
 
 | Flag                         | Where           | When true                                                                 |
 | ---------------------------- | --------------- | ------------------------------------------------------------------------- |
 | `registration_open`          | Mission Control | Participants can register                                                 |
+| `preferences_open`           | Mission Control | Captains and mentors can submit and change their rankings                 |
 | `mentors_stay_tuned`         | Mission Control | The mentors page shows a "coming soon" placeholder                        |
 | `rankings_live`              | Mission Control | Scores are public: the live leaderboard and API                           |
 | `REQUIRE_EMAIL_VERIFICATION` | Server config   | Unverified participants cannot create, join or apply to teams (see below) |

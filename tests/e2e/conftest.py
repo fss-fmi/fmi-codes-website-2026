@@ -192,8 +192,8 @@ def clean_db(db_conn, flask_app):
 
     Universities, specialties, and mentors are deliberately preserved —
     they're seeded once per session.  The matching_state row is reset to
-    is_confirmed=FALSE, and the feature flags to registration open, everything
-    else off, no schedules.
+    is_confirmed=FALSE, and the feature flags to registration and preference
+    submission open, everything else off, no schedules.
     """
     _wipe_entities(db_conn)
     _reset_caches()
@@ -233,7 +233,7 @@ def _wipe_entities(conn):
             "ON CONFLICT (id) DO UPDATE SET is_confirmed = FALSE, confirmed_at = NULL"
         )
         cur.execute(
-            "UPDATE feature_flags SET enabled = (name = 'registration_open'),"
+            "UPDATE feature_flags SET enabled = (name IN ('registration_open', 'preferences_open')),"
             " scheduled_value = NULL, scheduled_at = NULL"
         )
 
@@ -385,6 +385,37 @@ def register_and_token(client, n: int, seeds: dict, **overrides) -> str:
     token = _extract_token(rv)
     assert token, "No token cookie after registration"
     return token
+
+
+def create_active_registered_team(client, token, flask_app, seeds, name="Admin Reg Team"):
+    """Create a 3-member team that auto-activates and auto-registers."""
+    rv = client.post("/api/teams", json={"team_name": name}, headers=bearer(token))
+    assert rv.status_code == 201, f"create team failed: {rv.get_data(as_text=True)}"
+    team_id = rv.get_json()["team"]["id"]
+    join_code = rv.get_json()["team"]["join_code"]
+    for _ in range(2):
+        with flask_app.test_client() as cx:
+            tok = register_extra_and_token(cx, seeds)
+            rv_join = cx.post("/api/teams/join", json={"join_code": join_code}, headers=bearer(tok))
+            assert rv_join.status_code == 200, (
+                f"join failed: {rv_join.status_code} {rv_join.get_data(as_text=True)}"
+            )
+    # Verify the team is now active (auto-activated at 3 members)
+    team_status = client.get(f"/api/teams/{team_id}", headers=bearer(token)).get_json()["team"][
+        "status"
+    ]
+    assert team_status == "active", f"Expected active team, got status={team_status!r}"
+    return team_id
+
+
+def registered_teams(flask_app, seeds, names) -> list[tuple[int, str]]:
+    """One registered team per name, each from its own client: [(team_id, captain token)]."""
+    teams = []
+    for i, name in enumerate(names, 1):
+        with flask_app.test_client() as c:
+            token = register_and_token(c, i, seeds)
+            teams.append((create_active_registered_team(c, token, flask_app, seeds, name), token))
+    return teams
 
 
 def bearer(token: str) -> dict:

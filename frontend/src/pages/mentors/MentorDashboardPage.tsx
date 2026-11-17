@@ -24,8 +24,11 @@ import Panel from '@/components/common/Panel';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Button from '@/components/common/Button';
 import SubmissionAccepted from '@/components/common/SubmissionAccepted';
+import PreferencesUnknown from '@/components/common/PreferencesUnknown';
+import { useConfig } from '@/context/ConfigContext';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { rankingStep, refetchFlagsIfClosed, useOnPreferencesSwitch } from '@/lib/preferences';
 
 interface TeamItem {
   team_id: number;
@@ -39,7 +42,7 @@ interface TeamPref {
   team_name?: string;
 }
 
-type Step = 'select' | 'rank' | 'done' | 'assigned';
+type Step = ReturnType<typeof rankingStep> | 'assigned';
 
 function SortableTeamRow({ team, rank }: { team: TeamItem; rank: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -101,6 +104,7 @@ function SortableTeamRow({ team, rank }: { team: TeamItem; rank: number }) {
 
 export function MentorDashboardContent() {
   const qc = useQueryClient();
+  const { PREFERENCES_OPEN, isLoading: configLoading, isLoaded: configLoaded } = useConfig();
   const [uiStep, setUiStep] = useState<'select' | 'rank'>('select');
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<TeamItem[]>([]);
@@ -108,6 +112,16 @@ export function MentorDashboardContent() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [justSaved, setJustSaved] = useState<'submitted' | 'updated' | null>(null);
+
+  useOnPreferencesSwitch(
+    PREFERENCES_OPEN,
+    () => {
+      setEditing(false);
+      setUiStep('select');
+      setSelected([]);
+    },
+    () => setError(''),
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -136,9 +150,7 @@ export function MentorDashboardContent() {
   const isConfirmed = matchingStatus?.confirmed ?? false;
   const step: Step = isConfirmed
     ? 'assigned'
-    : serverPrefs.length > 0 && !editing
-      ? 'done'
-      : uiStep;
+    : rankingStep(serverPrefs.length > 0, editing, PREFERENCES_OPEN, uiStep);
   const isUpdate = serverPrefs.length > 0;
   const submitted = [...serverPrefs].sort((a, b) => a.rank - b.rank);
 
@@ -189,6 +201,7 @@ export function MentorDashboardContent() {
       }
     } catch (err) {
       setError(errorMessage(err));
+      refetchFlagsIfClosed(err, qc);
     } finally {
       setSubmitting(false);
     }
@@ -204,7 +217,8 @@ export function MentorDashboardContent() {
     });
   }
 
-  if (statusLoading || prefsLoading) return <LoadingSpinner fullPage />;
+  if (statusLoading || prefsLoading || configLoading) return <LoadingSpinner fullPage />;
+  if (!configLoaded && !isConfirmed) return <PreferencesUnknown />;
 
   const stepLabel =
     step === 'select'
@@ -213,7 +227,9 @@ export function MentorDashboardContent() {
         ? 'STEP 2 — DRAG TO RANK'
         : step === 'assigned'
           ? 'ASSIGNMENTS CONFIRMED'
-          : 'SUBMISSION ACCEPTED';
+          : step === 'closed'
+            ? 'SUBMISSIONS CLOSED'
+            : 'SUBMISSION ACCEPTED';
 
   return (
     <main style={{ padding: '80px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
@@ -297,6 +313,18 @@ export function MentorDashboardContent() {
         </Panel>
       )}
 
+      {step === 'closed' && (
+        <Panel title="SUBMISSIONS CLOSED">
+          <p
+            className="px-body"
+            style={{ color: 'var(--px-muted-strong)', margin: 0 }}
+          >
+            &gt; Preference submission is closed. You can rank teams only while the organizers have
+            it open.
+          </p>
+        </Panel>
+      )}
+
       {step === 'done' && (
         <SubmissionAccepted
           ranking={submitted.map((p) => ({
@@ -304,6 +332,7 @@ export function MentorDashboardContent() {
             name: p.team_name ?? `Team #${p.team_id}`,
           }))}
           justSaved={justSaved}
+          closed={!PREFERENCES_OPEN}
           onUpdate={() => {
             setEditing(true);
             setUiStep('select');

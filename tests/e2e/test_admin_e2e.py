@@ -22,8 +22,8 @@ from tests.e2e.conftest import (
     ADMIN_PW,
     admin_token,
     bearer,
+    create_active_registered_team,
     register_and_token,
-    register_extra_and_token,
 )
 
 pytestmark = pytest.mark.e2e
@@ -36,27 +36,6 @@ def _create_team(client, token, name="Admin Test Team"):
     rv = client.post("/api/teams", json={"team_name": name}, headers=bearer(token))
     assert rv.status_code == 201, f"create team failed: {rv.get_data(as_text=True)}"
     return rv.get_json()["team"]["id"]
-
-
-def _create_active_registered_team(client, token, flask_app, seeds, name="Admin Reg Team"):
-    """Create a 3-member team that auto-activates and auto-registers."""
-    rv = client.post("/api/teams", json={"team_name": name}, headers=bearer(token))
-    assert rv.status_code == 201, f"create team failed: {rv.get_data(as_text=True)}"
-    team_id = rv.get_json()["team"]["id"]
-    join_code = rv.get_json()["team"]["join_code"]
-    for _ in range(2):
-        with flask_app.test_client() as cx:
-            tok = register_extra_and_token(cx, seeds)
-            rv_join = cx.post("/api/teams/join", json={"join_code": join_code}, headers=bearer(tok))
-            assert rv_join.status_code == 200, (
-                f"join failed: {rv_join.status_code} {rv_join.get_data(as_text=True)}"
-            )
-    # Verify the team is now active (auto-activated at 3 members)
-    team_status = client.get(f"/api/teams/{team_id}", headers=bearer(token)).get_json()["team"][
-        "status"
-    ]
-    assert team_status == "active", f"Expected active team, got status={team_status!r}"
-    return team_id
 
 
 def _register_team(admin_client, team_id, adm_tok):
@@ -153,7 +132,7 @@ class TestTeamRegistration:
         """
         adm_tok = admin_token(flask_app)
         token = register_and_token(client, 1, seeds)
-        team_id = _create_active_registered_team(client, token, flask_app, seeds)
+        team_id = create_active_registered_team(client, token, flask_app, seeds)
 
         with flask_app.test_client() as adm:
             # Team is already auto-registered — unregister it first so admin
@@ -179,7 +158,7 @@ class TestTeamRegistration:
     def test_admin_can_unregister_a_team(self, flask_app, seeds, client):
         adm_tok = admin_token(flask_app)
         token = register_and_token(client, 1, seeds)
-        team_id = _create_active_registered_team(client, token, flask_app, seeds, "Unreg Team")
+        team_id = create_active_registered_team(client, token, flask_app, seeds, "Unreg Team")
 
         with flask_app.test_client() as adm:
             # Team is already auto-registered when it activated — just unregister it

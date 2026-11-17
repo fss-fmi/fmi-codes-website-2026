@@ -1902,7 +1902,7 @@ and the backend's next restart, whatever causes it, quietly picks that up.
 the backend; commit the same change to the YAML afterwards. With no arguments it re-applies
 the overlay from disk and restarts.
 
-Registration, rankings and the mentor roster are not config: the admin switches or schedules
+Registration, preference submission, rankings and the mentor roster are not config: the admin switches or schedules
 them in Mission Control (**SITE** tab), and the script refuses `REGISTRATION_OPEN`,
 `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ([Deployment](deployment.md#feature-flags-during-the-event)).
 Secrets are refused too (use `rotate-secret.sh` / `rotate-datastore-password.sh`). Staging is

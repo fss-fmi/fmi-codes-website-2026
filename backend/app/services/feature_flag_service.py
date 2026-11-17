@@ -25,12 +25,13 @@ from app.services.redis_client import redis_get, redis_incr, redis_set
 
 logger = logging.getLogger(__name__)
 
-FLAG_NAMES = ("registration_open", "rankings_live", "mentors_stay_tuned")
+FLAG_NAMES = ("registration_open", "rankings_live", "mentors_stay_tuned", "preferences_open")
 
 _LABELS = {
     "registration_open": "Participant registration",
     "rankings_live": "Live rankings",
     "mentors_stay_tuned": 'Mentors "coming soon" placeholder',
+    "preferences_open": "Preference submissions",
 }
 
 _CACHE_VERSION_KEY = "cache:feature_flags:version"
@@ -158,6 +159,23 @@ def get_flags() -> dict[str, bool]:
 
 def is_enabled(name: str) -> bool:
     return get_flags()[name]
+
+
+def is_enabled_locked(cursor, name: str) -> bool:
+    """Value of *name* read in the caller's transaction, with a share lock on its row.
+
+    A switch or schedule apply locks the row FOR UPDATE, so it waits for the
+    caller's commit, and the caller waits for one already under way: a write
+    made after this check can't land once the flag is off. A schedule that has
+    come due counts even if no read has applied it yet.
+    """
+    cursor.execute(
+        "SELECT CASE WHEN scheduled_at <= NOW() THEN scheduled_value ELSE enabled END AS value"
+        " FROM feature_flags WHERE name = %s FOR SHARE",
+        (name,),
+    )
+    row = cursor.fetchone()
+    return bool(row and row["value"])
 
 
 def list_flags() -> list[dict]:

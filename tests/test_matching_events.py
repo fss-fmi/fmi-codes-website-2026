@@ -141,9 +141,10 @@ def test_matching_confirmed_text():
 # ── Team ranking ────────────────────────────────────────────────────
 
 
-def _team_cursor(*, eligible=True, had_rows=False, name="Night Owls"):
+def _team_cursor(*, eligible=True, had_rows=False, name="Night Owls", open_=True):
     return FakeCursor(
         [
+            {"value": open_},
             {"team_name": name, "eligible": eligible},
             *({"id": m} for m in MENTOR_IDS),
             {"found": had_rows},
@@ -229,9 +230,10 @@ def test_notifier_failure_keeps_the_saved_ranking(app_ctx, cursor_for, status, m
 # ── Mentor ranking ──────────────────────────────────────────────────
 
 
-def _mentor_cursor(*, active=True, had_rows=False):
+def _mentor_cursor(*, active=True, had_rows=False, open_=True):
     return FakeCursor(
         [
+            {"value": open_},
             {"name": "Ana Petrova"} if active else None,
             *({"id": t} for t in TEAM_IDS),
             {"found": had_rows},
@@ -267,6 +269,38 @@ def test_inactive_mentor_is_refused_and_posts_nothing(app_ctx, cursor_for, notic
         MENTOR_IDS[0], _ranking("team_id", TEAM_IDS)
     )
     assert (ok, message) == (False, "Mentor not found or inactive")
+    assert notices == []
+
+
+# ── Submissions closed under the lock ───────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("save", "make_cursor", "ranking"),
+    [
+        (
+            mentor_selection_service.set_team_mentor_preferences,
+            _team_cursor,
+            _ranking("mentor_id", MENTOR_IDS),
+        ),
+        (
+            mentor_selection_service.set_mentor_team_preferences,
+            _mentor_cursor,
+            _ranking("team_id", TEAM_IDS),
+        ),
+    ],
+)
+def test_save_rechecks_the_flag_under_a_lock_before_writing(
+    app_ctx, cursor_for, notices, save, make_cursor, ranking
+):
+    cursor = make_cursor(open_=False)
+    cursor_for(mentor_selection_service, cursor)
+    assert save(4101, ranking) == (False, mentor_selection_service.PREFERENCES_CLOSED)
+    first_sql, params = cursor.executed[0]
+    assert first_sql.endswith("FROM feature_flags WHERE name = %s FOR SHARE")
+    assert "scheduled_at <= NOW()" in first_sql
+    assert params == ("preferences_open",)
+    assert len(cursor.executed) == 1
     assert notices == []
 
 

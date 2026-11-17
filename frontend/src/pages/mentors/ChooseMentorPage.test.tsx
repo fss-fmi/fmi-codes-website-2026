@@ -14,6 +14,16 @@ vi.mock('@/lib/api', () => ({
   },
 }));
 
+const mockConfig = vi.hoisted(() => ({ PREFERENCES_OPEN: true, isLoading: false, isLoaded: true }));
+
+vi.mock('@/context/ConfigContext', () => ({ useConfig: () => mockConfig }));
+
+beforeEach(() => {
+  mockConfig.PREFERENCES_OPEN = true;
+  mockConfig.isLoading = false;
+  mockConfig.isLoaded = true;
+});
+
 const MENTORS = [
   { mentor_id: 1, name: 'Ada Lovelace', company_name: 'Engines' },
   { mentor_id: 2, name: 'Grace Hopper', company_name: 'Compilers' },
@@ -42,7 +52,7 @@ function answer(
 
 function renderAsCaptain() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const tree = () => (
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <AuthContext.Provider
@@ -58,8 +68,10 @@ function renderAsCaptain() {
           <ChooseMentorContent />
         </AuthContext.Provider>
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const view = render(tree());
+  return { rerender: () => view.rerender(tree()) };
 }
 
 async function pick(...names: string[]) {
@@ -250,4 +262,77 @@ test('confirmed matching shows MATCHING CONFIRMED instead', async () => {
 
   expect(await screen.findByRole('heading', { name: '> MATCHING CONFIRMED' })).toBeInTheDocument();
   expect(screen.queryByText('SUBMISSION ACCEPTED')).toBeNull();
+});
+
+// ── preference submission switched off ────────────────────────────
+
+test('while submissions are closed a team without a ranking gets no picker', async () => {
+  mockConfig.PREFERENCES_OPEN = false;
+  answer(true);
+  renderAsCaptain();
+  expect(await screen.findByRole('heading', { name: 'SUBMISSIONS CLOSED' })).toBeInTheDocument();
+  expect(screen.getByText(/your team can rank mentors only while/i)).toBeInTheDocument();
+  expect(screen.queryByText(/STEP 1/)).toBeNull();
+  expect(get).not.toHaveBeenCalledWith('/api/teams/7/available-mentors');
+});
+
+test('while submissions are closed a saved ranking is read-only', async () => {
+  mockConfig.PREFERENCES_OPEN = false;
+  answer(true, {
+    preferences: [
+      { mentor_id: 1, rank: 1, mentor_name: 'Ada Lovelace' },
+      { mentor_id: 2, rank: 2, mentor_name: 'Grace Hopper' },
+      { mentor_id: 3, rank: 3, mentor_name: 'Alan Turing' },
+    ],
+  });
+  renderAsCaptain();
+  expect(await screen.findByRole('heading', { name: 'SUBMISSION ACCEPTED' })).toBeInTheDocument();
+  expect(rankingShown()).toEqual(['#1Ada Lovelace', '#2Grace Hopper', '#3Alan Turing']);
+  expect(screen.getByText(/this ranking can no longer be changed/i)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'UPDATE PREFERENCES' })).toBeNull();
+});
+
+test('a close mid-edit drops back to the saved ranking, and a reopen does not resume the edit', async () => {
+  answer(true, {
+    preferences: [
+      { mentor_id: 1, rank: 1, mentor_name: 'Ada Lovelace' },
+      { mentor_id: 2, rank: 2, mentor_name: 'Grace Hopper' },
+      { mentor_id: 3, rank: 3, mentor_name: 'Alan Turing' },
+    ],
+    mentors: MENTORS,
+  });
+  const { rerender } = renderAsCaptain();
+  fireEvent.click(await screen.findByRole('button', { name: 'UPDATE PREFERENCES' }));
+  expect(await screen.findByText(/STEP 1/)).toBeInTheDocument();
+
+  mockConfig.PREFERENCES_OPEN = false;
+  rerender();
+  expect(screen.queryByText(/STEP 1/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'UPDATE PREFERENCES' })).toBeNull();
+  expect(rankingShown()).toEqual(['#1Ada Lovelace', '#2Grace Hopper', '#3Alan Turing']);
+
+  mockConfig.PREFERENCES_OPEN = true;
+  rerender();
+  expect(screen.queryByText(/STEP 1/)).toBeNull();
+  expect(screen.getByRole('button', { name: 'UPDATE PREFERENCES' })).toBeInTheDocument();
+});
+
+test('nothing renders as closed while the flags are still loading', () => {
+  mockConfig.PREFERENCES_OPEN = false;
+  mockConfig.isLoading = true;
+  mockConfig.isLoaded = false;
+  answer(true);
+  renderAsCaptain();
+  expect(screen.queryByText(/preference submission is closed/i)).toBeNull();
+});
+
+test('flags that never loaded are not mistaken for closed submissions', async () => {
+  mockConfig.PREFERENCES_OPEN = false;
+  mockConfig.isLoaded = false;
+  answer(true);
+  renderAsCaptain();
+  expect(
+    await screen.findByText(/could not check whether preference submission is open/i),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'SUBMISSIONS CLOSED' })).toBeNull();
 });

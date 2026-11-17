@@ -24,6 +24,14 @@ const FLAG_TEXT: Record<FlagName, FlagText> = {
     turnOn: 'OPEN',
     turnOff: 'CLOSE',
   },
+  preferences_open: {
+    title: 'PREFERENCE SUBMISSIONS',
+    hint: 'Captains ranking mentors at /chooseMentor and mentors ranking teams at /mentorDashboard.',
+    onState: 'OPEN',
+    offState: 'CLOSED',
+    turnOn: 'OPEN',
+    turnOff: 'CLOSE',
+  },
   rankings_live: {
     title: 'LIVE RANKINGS',
     hint: 'The public leaderboard at /rankings and team scores in the API.',
@@ -42,7 +50,12 @@ const FLAG_TEXT: Record<FlagName, FlagText> = {
   },
 };
 
-const FLAG_ORDER: FlagName[] = ['registration_open', 'rankings_live', 'mentors_stay_tuned'];
+const FLAG_ORDER: FlagName[] = [
+  'registration_open',
+  'preferences_open',
+  'rankings_live',
+  'mentors_stay_tuned',
+];
 
 function formatLocal(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {

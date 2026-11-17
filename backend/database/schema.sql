@@ -408,12 +408,15 @@ INSERT INTO matching_state (id, is_confirmed)
 VALUES (1, FALSE)
 ON CONFLICT (id) DO NOTHING;
 
--- Feature flags, switched or scheduled by the admin in Mission Control (migration 017).
+-- Feature flags, switched or scheduled by the admin in Mission Control (migrations 017, 020).
 -- updated_at is when `enabled` last changed; a pending schedule is the
 -- scheduled_value/scheduled_at pair, applied by the first read after its time.
 CREATE TABLE IF NOT EXISTS feature_flags (
     name            TEXT PRIMARY KEY
-                    CHECK (name IN ('registration_open', 'rankings_live', 'mentors_stay_tuned')),
+                    CONSTRAINT feature_flags_name_check CHECK (name IN (
+                        'registration_open', 'rankings_live', 'mentors_stay_tuned',
+                        'preferences_open'
+                    )),
     enabled         BOOLEAN     NOT NULL DEFAULT FALSE,
     scheduled_value BOOLEAN,
     scheduled_at    TIMESTAMPTZ,
@@ -423,7 +426,8 @@ CREATE TABLE IF NOT EXISTS feature_flags (
 INSERT INTO feature_flags (name, enabled)
 VALUES ('registration_open', FALSE),
        ('rankings_live', FALSE),
-       ('mentors_stay_tuned', FALSE)
+       ('mentors_stay_tuned', FALSE),
+       ('preferences_open', FALSE)
 ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================================

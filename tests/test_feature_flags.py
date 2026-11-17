@@ -116,7 +116,7 @@ def _db_rows(monkeypatch, *row_sets):
 
 
 def test_get_flags_cache_hit_skips_db(app_ctx, fake_redis, monkeypatch):
-    cached = {"registration_open": True, "rankings_live": False, "mentors_stay_tuned": False}
+    cached = {**dict.fromkeys(feature_flag_service.FLAG_NAMES, False), "registration_open": True}
     fake_redis.store["cache:feature_flags:v0"] = json.dumps(cached)
     monkeypatch.setattr(
         feature_flag_service, "execute_query", lambda *a, **k: pytest.fail("DB hit on cache hit")
@@ -127,7 +127,10 @@ def test_get_flags_cache_hit_skips_db(app_ctx, fake_redis, monkeypatch):
 def test_get_flags_miss_reads_db_and_caches(app_ctx, fake_redis, monkeypatch):
     _db_rows(monkeypatch, _rows(registration_open=_row("registration_open", enabled=True)))
     flags = feature_flag_service.get_flags()
-    assert flags == {"registration_open": True, "rankings_live": False, "mentors_stay_tuned": False}
+    assert flags == {
+        **dict.fromkeys(feature_flag_service.FLAG_NAMES, False),
+        "registration_open": True,
+    }
     assert fake_redis.set_calls == [("cache:feature_flags:v0", json.dumps(flags), 10)]
 
 
@@ -187,7 +190,7 @@ def test_due_schedule_is_applied_then_reread(app_ctx, fake_redis, notices, curso
 
 
 def test_a_switch_during_a_read_cannot_leave_the_old_value_cached(app_ctx, fake_redis, monkeypatch):
-    old = {"registration_open": False, "rankings_live": False, "mentors_stay_tuned": False}
+    old = dict.fromkeys(feature_flag_service.FLAG_NAMES, False)
     new = {**old, "registration_open": True}
 
     def read_old_while_a_switch_commits():
@@ -265,6 +268,13 @@ def test_set_flag_changes_value_and_announces(app_ctx, fake_redis, notices, curs
     )
     assert fake_redis.bumps == 1
     assert notices == ["🚦 *Live rankings*: OFF → *ON* (switched by the admin)"]
+
+
+def test_preferences_open_switch_is_announced(app_ctx, fake_redis, notices, cursors):
+    queue, _ = cursors
+    queue += [FakeCursor([[]]), FakeCursor([{"enabled": True}, None])]
+    assert feature_flag_service.set_flag("preferences_open", False) is True
+    assert notices == ["🚦 *Preference submissions*: ON → *OFF* (switched by the admin)"]
 
 
 def test_set_flag_same_value_is_a_quiet_no_op(app_ctx, fake_redis, notices, cursors):
@@ -396,7 +406,12 @@ def test_config_route_keeps_its_shape(client, monkeypatch):
     monkeypatch.setattr(
         feature_flag_service,
         "get_flags",
-        lambda: {"registration_open": True, "rankings_live": False, "mentors_stay_tuned": True},
+        lambda: {
+            "registration_open": True,
+            "rankings_live": False,
+            "mentors_stay_tuned": True,
+            "preferences_open": True,
+        },
     )
     rv = client.get("/api/config")
     assert rv.status_code == 200
@@ -404,6 +419,7 @@ def test_config_route_keeps_its_shape(client, monkeypatch):
         "REGISTRATION_OPEN": True,
         "MENTORS_STAY_TUNED": True,
         "RANKINGS_LIVE": False,
+        "PREFERENCES_OPEN": True,
         "REQUIRE_EMAIL_VERIFICATION": False,
     }
 
@@ -539,3 +555,83 @@ def test_cancel_schedule_route(client, admin_headers, monkeypatch):
     rv = client.delete("/api/admin/flags/registration_open/schedule", headers=admin_headers)
     assert rv.status_code == 200
     assert rv.get_json() == {"success": True, "cancelled": False}
+
+
+# ── preferences_open guards the ranking POSTs ───────────────────────
+
+_PREFERENCE_POSTS = {
+    "team": ("/api/teams/1/mentor-preferences", "participant", "set_team_mentor_preferences"),
+    "mentor": ("/api/mentors/team-preferences", "mentor", "set_mentor_team_preferences"),
+}
+
+
+@pytest.fixture()
+def post_preferences(app_ctx, client, monkeypatch):
+    """POST a ranking as team 1's verified captain or as mentor 1; returns (response, saves)."""
+    from app.services import mentor_selection_service
+
+    monkeypatch.setattr(
+        "app.database.execute_query",
+        lambda *a, **k: {
+            "id": 1,
+            "team_id": 1,
+            "is_captain": True,
+            "email_verified": True,
+            "tokens_valid_from": None,
+        },
+    )
+
+    def send(route, open_, result=(True, "Saved")):
+        path, role, service = _PREFERENCE_POSTS[route]
+        saves = []
+        monkeypatch.setattr(
+            feature_flag_service, "is_enabled", lambda name: open_ and name == "preferences_open"
+        )
+        monkeypatch.setattr(mentor_selection_service, service, lambda *a: saves.append(a) or result)
+        headers = {"Authorization": f"Bearer {generate_token(1, role)}"}
+        return client.post(path, json={"preferences": []}, headers=headers), saves
+
+    return send
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+def test_preference_post_is_403_while_closed(post_preferences, route):
+    rv, saves = post_preferences(route, open_=False)
+    assert rv.status_code == 403
+    assert rv.get_json() == {"success": False, "error": "Preference submission is closed"}
+    assert saves == []
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+def test_preference_post_saves_while_open(post_preferences, route):
+    rv, saves = post_preferences(route, open_=True)
+    assert rv.status_code == 200
+    assert len(saves) == 1
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+def test_a_close_caught_by_the_locked_recheck_is_403(post_preferences, route):
+    from app.services import mentor_selection_service
+
+    closed = (False, mentor_selection_service.PREFERENCES_CLOSED)
+    rv, _ = post_preferences(route, open_=True, result=closed)
+    assert rv.status_code == 403
+    assert rv.get_json() == {"success": False, "error": "Preference submission is closed"}
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+def test_other_refused_saves_stay_400(post_preferences, route):
+    rv, _ = post_preferences(route, open_=True, result=(False, "You must rank exactly 3 teams"))
+    assert rv.status_code == 400
+
+
+def test_closed_flag_does_not_hide_not_your_team(app_ctx, client, monkeypatch):
+    monkeypatch.setattr(
+        "app.database.execute_query",
+        lambda *a, **k: {"id": 1, "team_id": 2, "is_captain": True, "tokens_valid_from": None},
+    )
+    monkeypatch.setattr(feature_flag_service, "is_enabled", lambda name: False)
+    headers = {"Authorization": f"Bearer {generate_token(1, 'participant')}"}
+    rv = client.post("/api/teams/1/mentor-preferences", json={}, headers=headers)
+    assert rv.status_code == 403
+    assert rv.get_json()["error"] == "Not your team"

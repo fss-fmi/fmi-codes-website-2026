@@ -54,7 +54,7 @@ In production the cluster ingress routes `/api` straight to the backend Service 
 **Backend** (`backend/`). Flask app factory in `app/__init__.py`. Layering is routes → services → database:
 
 - `app/routes/`: four blueprints. `auth.py` (register, login, logout, me, password change and reset, email verification), `teams.py` (team lifecycle and join requests), `mentors.py` (mentor listing and preferences), `api_routes.py` (health, config, lookups, rankings, admin console including the feature flag switches, bug reports). Handlers validate input and delegate.
-- `app/services/`: business logic. `team_service.py` (team mutations and the registration queue), `matching_service.py` (the matching algorithm), `mentor_selection_service.py` (preferences, from registered teams and active mentors only), `matching_events.py` (event feed messages for the matching phase), `ranking_service.py`, `mentor_service.py` (mentor reads and JSON seed loaders), `auth_service.py` (bcrypt, JWT), `token_blocklist.py`, `redis_client.py`, `email_service.py`, `bug_report_service.py`, `regulations_service.py`, `feature_flag_service.py` (registration, rankings and roster switches, with schedules), `event_notifier.py` (the Slack event feed).
+- `app/services/`: business logic. `team_service.py` (team mutations and the registration queue), `matching_service.py` (the matching algorithm), `mentor_selection_service.py` (preferences, from registered teams and active mentors only), `matching_events.py` (event feed messages for the matching phase), `ranking_service.py`, `mentor_service.py` (mentor reads and JSON seed loaders), `auth_service.py` (bcrypt, JWT), `token_blocklist.py`, `redis_client.py`, `email_service.py`, `bug_report_service.py`, `regulations_service.py`, `feature_flag_service.py` (registration, preference submission, rankings and roster switches, with schedules), `event_notifier.py` (the Slack event feed).
 - `app/utils/auth_decorators.py`: `token_required`, `participant_required`, `mentor_required`, `captain_required`, `admin_required`.
 - `app/database.py`: a `ThreadedConnectionPool` per Gunicorn worker plus small helpers (`execute_query`, `execute_insert`, `get_db_cursor`). No ORM.
 
@@ -155,7 +155,7 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 - [ADR-010](adr/010-cluster-alerts-to-slack.md): Alertmanager and Flux post in-cluster failures to a prod and a staging Slack channel through webhooks.
 - [ADR-011](adr/011-one-tailscale-client-staging.md): every cluster, prod's included, uses staging's Tailscale OAuth client, so a prod machine needs the staging age key too.
 - [ADR-012](adr/012-flux-recovery-replies.md): a relay in `flux-system` replies "recovered" in the thread of a Flux error once the object is ready again, with its own Slack app and Secret.
-- [ADR-013](adr/013-feature-flags-in-database.md): registration, rankings and the mentor roster are rows in `feature_flags`, switched or scheduled from Mission Control with no restart, each change posted to the event feed.
+- [ADR-013](adr/013-feature-flags-in-database.md): registration, preference submission, rankings and the mentor roster are rows in `feature_flags`, switched or scheduled from Mission Control with no restart, each change posted to the event feed.
 - [ADR-014](adr/014-rate-limits-keyed-on-account-and-user.md): rate limits key on the account a login or reset names and on the signed-in user; client-address limits are only ceilings sized for a venue behind one NAT address.
 
 ## External dependencies
