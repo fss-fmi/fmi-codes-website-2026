@@ -12,11 +12,11 @@ How the test suite is built and how to extend it. For setup and single-test comm
 
 | Layer                   | Location                     | Tests | Needs                               |
 | ----------------------- | ---------------------------- | ----- | ----------------------------------- |
-| Backend unit            | `tests/*.py`                 | 524   | Nothing (Redis optional)            |
-| Backend API integration | `tests/e2e/*.py`             | 218   | PostgreSQL test DB (Redis optional) |
+| Backend unit            | `tests/*.py`                 | 575   | Nothing (Redis optional)            |
+| Backend API integration | `tests/e2e/*.py`             | 236   | PostgreSQL test DB (Redis optional) |
 | Frontend component      | `frontend/src/**/*.test.tsx` | 32    | Node only                           |
 
-Counts are `def test_` occurrences, so parametrised tests run more cases than listed.
+Counts are `def test_` occurrences, so parametrised tests run more cases than listed. The [load test](#load-test) in `tests/load/` is run by hand on staging, not by pytest.
 
 ## Test layers
 
@@ -47,6 +47,7 @@ Counts are `def test_` occurrences, so parametrised tests run more cases than li
 | `test_flux_bump_gate.py`       | Flux bump gate (`.github/scripts`): reads every `$imagepolicy` tag (and the real staging overlay's markers), titles from the tags; matching tags open or re-arm the PR, mismatched tags open nothing and disarm an open PR, a split release opens one PR once whole, a second release arriving while a PR is open, a deleted branch or one already on `main` does nothing, a missing file on `main` and auto-merge failures fail the run, the `gh` wrapper (404s, a fork's PR from a branch of the same name ignored)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `test_flux_relay.py`           | Flux Relay (`infra/k8s/base/flux-relay`): finding Flux's error post by object and message, one incident per object (repeat posts share it), recovery from `Ready` (new transition, seen unready, quiet period, current generation only), one thread reply plus a reaction on every post, deleted objects, restarts from the state ConfigMap, no Slack traffic without a post or a token, waiting events expiring and capped, per-route channels, the closest post winning over another cluster's identical one, a channel that is gone or a deleted first post, reactions spread over ticks with saved progress, health during a slow tick, the HTTP endpoint and that each relay Alert in `flux/notifications.yaml` mirrors its Slack Alert                                                                                                                                                                                                                                                                                                 |
 | `test_site_images.py`          | Every image in `frontend/public/` fits its budget (raster 100 KiB, SVG 128 KiB gzipped); mentor seed photos, company logos and literal image paths in the frontend all exist; no image is left unused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `test_load_rush.py`            | The [load test](#load-test)'s verdict: a 5xx, a 429, a request with no answer or an unexpected status each fail the run, an expected 403 does not; register p95 and p99 over their limits, a timed-out registration counting towards them, no registration at all, a late start (the generator fell behind) and a crashed user fail it; exact percentiles; the token read from `Set-Cookie` (a cleared cookie is none); the HTTP client sends the token by hand, keeps one connection per thread, resends once only when an idle reused connection was closed, and records error statuses, no answer and a body cut off after its status line as no answer; a 201 or 200 without a token and a team without a join code are problems, a failed join stays on the form; out-of-range options are refused                                                                                                                                                                                                                                      |
 
 Scope: a single function or a single route with dependencies replaced. No database. Runs in seconds.
 
@@ -56,19 +57,20 @@ Add a test here when the logic has branches or edge cases you can drive with in-
 
 These are not browser tests. They boot the real Flask app, point it at a real PostgreSQL database and call the API through Flask's test client.
 
-| File                             | What it covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_auth_e2e.py`               | Register, login per role, logout revocation, `/me`, password change and reset flows, session epoch invalidation                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `test_teams_e2e.py`              | Team create/join/leave/kick/disband, join requests, auto-activation at 3, the 18-slot queue and promotion, public endpoints                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `test_admin_e2e.py`              | Registration console, preference status, run/confirm matching, scoring, rankings                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `test_security.py`               | Unauthenticated access, role escalation, IDOR between captains, data leakage (join codes, hashes, emails), SQL injection and XSS inputs, validation, feature flags, business-logic abuse                                                                                                                                                                                                                                                                                                                                        |
-| `test_email_verification_e2e.py` | Verification tokens (single use, expiry, hash-only storage), resend, the team-action gate with the flag on and off, migration 016 grandfathering                                                                                                                                                                                                                                                                                                                                                                                |
-| `test_migrate_e2e.py`            | Every committed migration applies on a `schema.sql` database and re-runs as a no-op; a failing file rolls back and stops; the advisory lock serialises runners                                                                                                                                                                                                                                                                                                                                                                  |
-| `test_mentor_pictures_e2e.py`    | Migration 019 moves seeded `/static/mentorPictures/` jpg, jpeg and png paths (Cyrillic names and upper-case extensions included) to `/mentorPictures/<name>.webp`, leaves other paths, URLs and nulls alone, and re-runs as a no-op                                                                                                                                                                                                                                                                                             |
-| `test_public_exposure_e2e.py`    | Scores hidden until `rankings_live`, "Other" university/specialty created only through registration, bug-report attribution from a valid session and both configured webhooks used                                                                                                                                                                                                                                                                                                                                              |
-| `test_matching_events_e2e.py`    | The event feed against real rows: a team's and a mentor's first ranking post "submitted" with the real counts and a resubmit posts "updated"; pending and admin-unregistered teams and a mentor deactivated after login get 400 and post nothing; a run, a confirm (twice, posted once) and a re-run that clears it; nothing posted for an empty or failed run; a broken notifier never changes the response; no team or mentor name of a choice in any notice                                                                  |
-| `test_feature_flags_e2e.py`      | Admin-only flag routes; register, rankings, team scores and `/api/config` follow a switch on the next request; cache invalidation and Redis down; a schedule applies at its time with one notice; four concurrent readers apply a due schedule once; cancel, replace and the refused schedules                                                                                                                                                                                                                                  |
-| `test_preferences_open_e2e.py`   | With `preferences_open` off both ranking POSTs answer 403 and write nothing while the GETs still return the saved ranking; an admin switch locks and unlocks both routes with one feed post each; the flag schedules and cancels; a save that starts while a close is being committed waits for it and is refused, and a schedule that has come due refuses a save before any read applies it; migration 020 adds the flag off to a pre-020 database, rejects unknown names, re-runs as a no-op and keeps a value the admin set |
+| File                             | What it covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_auth_e2e.py`               | Register, login per role, logout revocation, `/me`, password change and reset flows, session epoch invalidation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `test_teams_e2e.py`              | Team create/join/leave/kick/disband, join requests, auto-activation at 3, the 18-slot queue and promotion, public endpoints                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `test_admin_e2e.py`              | Registration console, preference status, run/confirm matching, scoring, rankings                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `test_security.py`               | Unauthenticated access, role escalation, IDOR between captains, data leakage (join codes, hashes, emails), SQL injection and XSS inputs, validation, feature flags, business-logic abuse                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `test_email_verification_e2e.py` | Verification tokens (single use, expiry, hash-only storage), resend, the team-action gate with the flag on and off, migration 016 grandfathering                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `test_migrate_e2e.py`            | Every committed migration applies on a `schema.sql` database and re-runs as a no-op; a failing file rolls back and stops; the advisory lock serialises runners                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `test_mentor_pictures_e2e.py`    | Migration 019 moves seeded `/static/mentorPictures/` jpg, jpeg and png paths (Cyrillic names and upper-case extensions included) to `/mentorPictures/<name>.webp`, leaves other paths, URLs and nulls alone, and re-runs as a no-op                                                                                                                                                                                                                                                                                                                                                                               |
+| `test_public_exposure_e2e.py`    | Scores hidden until `rankings_live`, "Other" university/specialty created only through registration, bug-report attribution from a valid session and both configured webhooks used                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `test_matching_events_e2e.py`    | The event feed against real rows: a team's and a mentor's first ranking post "submitted" with the real counts and a resubmit posts "updated"; pending and admin-unregistered teams and a mentor deactivated after login get 400 and post nothing; a run, a confirm (twice, posted once) and a re-run that clears it; nothing posted for an empty or failed run; a broken notifier never changes the response; no team or mentor name of a choice in any notice                                                                                                                                                    |
+| `test_feature_flags_e2e.py`      | Admin-only flag routes; register, rankings, team scores and `/api/config` follow a switch on the next request; cache invalidation and Redis down; a schedule applies at its time with one notice; four concurrent readers apply a due schedule once; cancel, replace and the refused schedules                                                                                                                                                                                                                                                                                                                    |
+| `test_preferences_open_e2e.py`   | With `preferences_open` off both ranking POSTs answer 403 and write nothing while the GETs still return the saved ranking; an admin switch locks and unlocks both routes with one feed post each; the flag schedules and cancels; a save that starts while a close is being committed waits for it and is refused, and a schedule that has come due refuses a save before any read applies it; migration 020 adds the flag off to a pre-020 database, rejects unknown names, re-runs as a no-op and keeps a value the admin set                                                                                   |
+| `test_load_rush_e2e.py`          | The [load test](#load-test) on the real app: a 60-user rush in teams of 3 passes, leaves 18 registered and 2 queued teams that `check.sql` finds consistent, and `cleanup.sql` removes them; the preflight refuses while registration is closed or teams are registered; `check.sql` reports each inconsistency it names on hand-built states and counts an inactive member as the trigger and the app do; `cleanup.sql` keeps real accounts and teams, handles a captain who registered after their members and refuses, changing nothing, a load test team with a real member or another team left in the queue |
 
 Add a test here for anything that touches SQL, transactions, locking, auth guards or response shapes. Every new endpoint should get at least a happy path and a wrong-role test.
 
@@ -179,6 +181,109 @@ Tests send tokens through the `Authorization` header so several users can share 
 | Integration | Flask app, PostgreSQL, SQL, locks, triggers | Rate limiting (disabled), SMTP, Discord and Slack (not configured, so sends are skipped) |
 
 The boundary sits at the database: anything whose correctness depends on SQL semantics, transactions or constraints must be tested against real Postgres, because the mocks cannot reproduce locking or uniqueness races.
+
+## Load test
+
+`tests/load/` holds the registration rush test ([#222](https://github.com/fss-fmi/fmi-codes-website-2026/issues/222)): 500 people register and form teams in the first minute after registration opens. It is a Python script on the standard library only, run by hand as a one-off Job on staging. CI never runs it; CI runs its tests (`test_load_rush.py`, `test_load_rush_e2e.py`).
+
+| File                   | What it is                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `registration_rush.py` | The scenario, the measurements and the verdict. `--help` lists every option                                             |
+| `job.yaml`             | The Job: a stock `python:3.12-slim` image running the script from the `registration-rush` ConfigMap                     |
+| `check.sql`            | Database consistency after the run. Read only; every row it returns is a problem                                        |
+| `cleanup.sql`          | Deletes every `@loadtest.invalid` account and the teams they are in, in one transaction, or refuses and changes nothing |
+
+### Scenario
+
+- **Open model.** 500 arrivals at random times over 60 s (`--users`, `--arrival-seconds`), each started on schedule however slow the backend gets, so a backlog shows up in the latencies instead of slowing the arrivals. A user started more than 1 s late (`--max-start-lag`) means the generator fell behind, and the run fails.
+- **Each user** sends what the SPA sends: the registration page's calls (`/api/auth/me`, `/api/config`, universities, specialties), register, the team page, then every third user creates a team and the rest join one by code. A captain puts one entry per open seat (`--team-size`, 6) on a queue and joiners take them in order, so teams fill to 6 one after another and 18 register while the rest queue. 10% log out and back in (`--relogin-share`). Everyone then stays for 120 s (`--linger-seconds`), polling `/api/config` every 30 s like `ConfigContext` and reloading the team page twice (`--team-reloads`). A team page asks every member for the mentor preferences, which only the captain may read, so a member's 403 there is expected.
+- **One address.** Every request comes from the Job pod, the case of every participant behind the university's NAT. The script talks plain HTTP to staging's ingress controller (`ingress-nginx-staging-controller.ingress-nginx-staging`), so requests take prod's path through ingress-nginx. Each user keeps one HTTP/1.1 connection alive, as a browser does. Staging runs `FLASK_ENV=production`, which marks the `token` cookie `Secure`: the script reads it from `Set-Cookie` and sends it itself.
+- **Accounts** are `<run>-<n>@loadtest.invalid` with faculty numbers `LT<run><n>`, so two runs never collide. The output starts with the run id and the seed; `--seed` repeats a run's arrival schedule.
+- **Preflight.** The script refuses to start (exit 2) unless `registration_open` is on, `REQUIRE_EMAIL_VERIFICATION` is off (captains couldn't create teams) and no team is registered.
+
+### Pass criteria
+
+The script exits 0 only when all of these hold, 1 otherwise. It prints a table per endpoint (count, p50, p95, p99, max, statuses), the start lag, when the last registration finished and every failed criterion.
+
+- No 5xx, no 429, no request without a complete answer (the client waits 75 s, past the ingress's 60 s; a body cut off after its status line counts too) and no status other than the one the real client gets. A 201 or 200 without the token cookie fails the run as well. The SPA retries a 429 on login and register after its `Retry-After`; the script doesn't, since any 429 already fails the run.
+- Register p95 under 3 s and p99 under 10 s, exact percentiles over every registration, failed ones included (`--register-p95`, `--register-p99`).
+- No pod restarts and no pod dropped from the Service: check by hand (below).
+- `check.sql` returns no rows: as many registered teams as active ones up to 18, queue positions 1 to n with no gaps, no team over 6 members, team status matching its active members, `participant_count` matching every participant on the team and every captain in their own team and only there.
+
+### Run it on staging
+
+**In git for the test window.** One PR before the run and one that reverts it after, because Flux reverts `kubectl` patches:
+
+- The backend sized like prod: the prod capacity patch (`overlays/prod/backend-capacity-patch.yaml`: 4 pods, request 1, limit 3 CPU) applied in the staging overlay.
+- Staging Postgres at prod's `max_connections = 250` and 2Gi (`overlays/staging/postgresql-values.yaml`), in the same PR, or `test_capacity_budget.py` fails (6 pods during a rollout x 4 workers x 8 + 10 = 202 against staging's 150). The running database only gets it from a re-run of `deploy-stateful.sh`, which restarts Postgres.
+- `RATELIMIT_MULTIPLIER: "2"` in `overlays/staging/backend-config-patch.yaml`. Register and login allow 300/min per address at prod's values ([ADR-014](adr/014-rate-limits-keyed-on-account-and-user.md)), so 500 registrations from one address in 60 s at `"1"` get 429s, more or fewer depending on where the fixed one-minute window falls. At `"2"` the ceiling is 600/min and no 60 s run puts 500 in one window. 2 is the lowest value that fits, so any other limit the scenario gets close to still trips. This doesn't test 500 real people behind one address at prod's limits: that relies on ADR-014's bet that no more than 300 register or log in from one address in a minute.
+
+**Before the run**, from the repo root on the cluster machine:
+
+```bash
+NS=fmi-codes-staging
+DB="psql -U fmi_app -d fmi_hackathon_2026_staging -v ON_ERROR_STOP=1"
+
+# 0 teams: the cleanup would otherwise leave gaps in other teams' queue positions.
+kubectl -n $NS exec -i postgres-0 -- $DB -c 'SELECT COUNT(*) FROM teams'
+
+# CPU time of one bcrypt hash on this machine (#221's sizing assumed about 0.42 s at a pod's 500m limit).
+kubectl -n $NS exec deploy/backend -c backend -- python -c \
+  'import time, bcrypt; t = time.process_time(); bcrypt.hashpw(b"x" * 12, bcrypt.gensalt(12)); print(time.process_time() - t)'
+```
+
+- Check staging's `MAIL_PASSWORD`: with it set, every registration sends a verification email, which counts against the Gmail daily limit. Leave it empty for the test unless you are measuring the mail path on purpose.
+- Switch `registration_open` on in Mission Control (SITE tab).
+
+**Run it:**
+
+```bash
+kubectl -n $NS create configmap registration-rush --from-file=tests/load/registration_rush.py \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n $NS delete job registration-rush --ignore-not-found
+kubectl apply -f tests/load/job.yaml
+# Retries until the pod's container has started, then follows it to the end.
+until kubectl -n $NS logs -f job/registration-rush 2>/dev/null; do sleep 2; done
+kubectl -n $NS get job registration-rush        # Complete or Failed
+```
+
+The log ends with `RESULT: PASS` or `RESULT: FAIL`, or with a `preflight:` line when the script refused to start.
+
+A failed Job also posts `KubeJobFailed` to `#cluster-alerts-staging` after a minute.
+
+**While it runs**, in other terminals:
+
+```bash
+kubectl -n $NS get pods -w                      # RESTARTS stays 0, every backend pod stays 1/1
+kubectl -n $NS get endpoints backend -w         # all 4 backend pods stay listed
+while sleep 2; do
+  kubectl -n $NS exec -i postgres-0 -- $DB -tAc "SELECT now()::time(0), COUNT(*), COUNT(*) FILTER (WHERE wait_event_type = 'Lock' AND wait_event = 'advisory') FROM pg_stat_activity WHERE datname = current_database()"
+done                                            # time | connections | waiting on the advisory lock
+```
+
+**After the run:**
+
+```bash
+kubectl -n $NS exec -i postgres-0 -- $DB < tests/load/check.sql    # (0 rows) passes
+```
+
+Record, in #222: peak backend CPU and throttling (Grafana, **Kubernetes / Compute Resources / Pod** for each `backend` pod), peak Postgres connections and the most connections waiting on the registration advisory lock (the loop above), the CPU time per hash and how long the backlog took to drain (the script's `registrations:` line, against the 60 s of arrivals). If something fails, change the sizing in #221's files and run it again.
+
+**Clean up:**
+
+```bash
+kubectl -n $NS exec -i postgres-0 -- $DB < tests/load/cleanup.sql
+# The SQL bypasses the app, so drop the caches its writes would have cleared (the
+# registered teams list, the rankings): the migration runner's helper, with the pod's Redis.
+kubectl -n $NS exec deploy/backend -c backend -- python -c \
+  'from database.migrate import clear_caches; print("caches cleared:", clear_caches())'
+kubectl -n $NS delete job registration-rush
+kubectl -n $NS delete configmap registration-rush
+```
+
+`caches cleared: None` means Redis was off or failed, and the caches expire on their own within a minute. Then switch `registration_open` off and merge the PR that reverts the test window's changes.
+
+The bcrypt numbers depend on the CPUs, so measure CPU per hash again on the prod machine once it is bootstrapped, and rerun if it differs.
 
 ## CI
 
