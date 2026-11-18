@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 _IDENTITY = "fmi.rate_limit_identity"
 LOGIN_ACCOUNT_LIMIT = "15 per minute"
+# The fixed window kept a counter (a Redis string) under the same key names the moving window
+# keeps its timestamps (a list) under. Sharing them, a backend still on the old strategy during
+# a rollout, and the keys it left behind (up to an hour), would fail every hit with WRONGTYPE.
+LIMITER_KEY_PREFIX = "LIMITS-MOVING"
 
 
 def multiplier_from_env() -> int:

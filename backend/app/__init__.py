@@ -15,6 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.services.redis_client import build_limiter_storage_uri
 from app.utils.rate_limits import (
+    LIMITER_KEY_PREFIX,
     identity_key,
     is_signed_in,
     multiplier_from_env,
@@ -35,24 +36,31 @@ logger = logging.getLogger(__name__)
 # falls back to in-memory for local dev without Redis.
 # The default is per route; the application limit caps one anonymous address across all
 # routes, so a scraper can't take 3000/min from every public route at once.
+# A moving window allows a request only if fewer than the limit were accepted in the last
+# window length (#251): a fixed window lets twice the limit through across its reset and
+# reopens every slot at the same instant.
 limiter = Limiter(
     key_func=identity_key,
     default_limits=[per_identity("200 per minute", "3000 per minute")],
     application_limits=[scaled("6000 per minute")],
     application_limits_exempt_when=is_signed_in,
+    strategy="moving-window",
+    storage_options={"key_prefix": LIMITER_KEY_PREFIX},
 )
 
 
 def _retry_after_seconds():
-    """Seconds until the breached limit's window frees a slot, never early.
+    """Seconds until the breached limit frees a slot, never early.
 
     Only 429s carry it: RATELIMIT_HEADERS_ENABLED would put every limit's remaining budget
     on every response. A storage error here must not turn the 429 into a 500.
 
-    Redis reports a window's TTL rounded to the nearest second, so the reset time can be up
-    to half a second early; the half second added covers that. No window has more left than
-    its own length, so capping at it can't be early either, and keeps a minute window at 60
-    (RequestLimit.reset_at rounds up by a whole second and reads 61).
+    The reset time is the oldest accepted hit's timestamp plus the window length, but a hit
+    still counts at exactly that moment, Redis hands the timestamp back rounded to 0.1 ms and
+    the pod that wrote it may run on another clock. Half a second covers all three for clocks
+    within half a second of each other (one node today). No slot is further away than one
+    window, so capping at it can't be early either, and keeps a minute window at 60
+    (RequestLimit.reset_at adds a second and reads 61).
     """
     try:
         current = limiter.current_limit

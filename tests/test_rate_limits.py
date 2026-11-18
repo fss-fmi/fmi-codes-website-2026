@@ -1,17 +1,22 @@
 """Rate limits key on what they protect and scale with RATELIMIT_MULTIPLIER (#207, #219).
 
 Each test builds a production app with in-memory limiter storage, so no Redis is
-needed. REMOTE_ADDR plays the one trusted proxy in front of the backend
+needed. Tests marked with the `storage` parameter run on Redis too when REDIS_URL is
+set (CI sets it), since the moving window runs Lua scripts there (#251).
+REMOTE_ADDR plays the one trusted proxy in front of the backend
 (ingress-nginx in k3s, the frontend's nginx in Compose). Every request in a test
 comes from CLIENT_A unless it says otherwise: the university network, where every
 device shares one address.
 """
 
+import os
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
+import app as app_module
 import bcrypt
 import jwt
 import pytest
@@ -21,6 +26,7 @@ from app.services import feature_flag_service, ranking_service
 from app.services.auth_service import generate_token
 from app.utils import auth_decorators
 from app.utils.rate_limits import (
+    LIMITER_KEY_PREFIX,
     LOGIN_ACCOUNT_LIMIT,
     identity_key,
     login_account_key,
@@ -31,8 +37,16 @@ from app.utils.rate_limits import (
 from flask import request
 from flask_limiter import RequestLimit
 from limits import parse
+from limits.storage import memory as memory_storage
+from limits.storage import redis as redis_storage
+from limits.storage import storage_from_string
+from limits.strategies import FixedWindowRateLimiter, MovingWindowRateLimiter
 from limits.util import WindowStats
 
+import redis
+
+REDIS_URL = os.environ.get("REDIS_URL")
+BOTH_STORAGES = pytest.mark.parametrize("storage", ["memory", "redis"], indirect=True)
 PROXY = "10.42.0.7"
 CLIENT_A = "203.0.113.5"
 CLIENT_B = "198.51.100.20"
@@ -52,10 +66,34 @@ def scaled_route():
     return "ok"
 
 
+def _clear_redis_limits():
+    connection = redis.Redis.from_url(REDIS_URL)
+    try:
+        keys = list(connection.scan_iter(f"{LIMITER_KEY_PREFIX}:*"))
+        if keys:
+            connection.delete(*keys)
+    finally:
+        connection.close()
+
+
 @pytest.fixture()
-def make_app(monkeypatch):
+def storage(request):
+    """memory unless a test parametrizes it; redis skips without REDIS_URL."""
+    name = getattr(request, "param", "memory")
+    if name == "redis":
+        if not REDIS_URL:
+            pytest.skip("Redis not configured (set REDIS_URL)")
+        _clear_redis_limits()
+        request.addfinalizer(_clear_redis_limits)
+    return name
+
+
+@pytest.fixture()
+def make_app(monkeypatch, storage):
     for var in ("REDIS_SENTINELS", "REDIS_MASTER_NAME", "REDIS_URL", "RATELIMIT_MULTIPLIER"):
         monkeypatch.delenv(var, raising=False)
+    if storage == "redis":
+        monkeypatch.setenv("REDIS_URL", REDIS_URL)
     monkeypatch.setenv("SECRET_KEY", "x" * 40)
     monkeypatch.setenv("JWT_SECRET_KEY", JWT_SECRET)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "$2b$12$" + "a" * 22)
@@ -85,6 +123,16 @@ def make_app(monkeypatch):
 @pytest.fixture()
 def limited_app(make_app):
     return make_app()
+
+
+@pytest.fixture()
+def clock(monkeypatch):
+    """Time as the limiter's storage and the Retry-After header see it; tests move it."""
+    now = SimpleNamespace(value=1_800_000_000.0)
+    fake = SimpleNamespace(time=lambda: now.value)
+    for module in (memory_storage, redis_storage, app_module):
+        monkeypatch.setattr(module, "time", fake)
+    return now
 
 
 def _get(client, forwarded_for, path="/test/whoami", token=None):
@@ -120,6 +168,7 @@ def test_entries_a_client_forged_before_the_proxy_are_ignored(limited_app):
     assert _get(limited_app.test_client(), f"1.2.3.4, {CLIENT_A}").text == CLIENT_A
 
 
+@BOTH_STORAGES
 def test_each_client_gets_its_own_bucket(limited_app):
     c = limited_app.test_client()
     assert [_get(c, CLIENT_A).status_code for _ in range(3)] == [200, 200, 429]
@@ -250,8 +299,9 @@ def test_429_says_why(limited_app):
     assert response.get_json()["error"].startswith("Too many requests")
 
 
+@BOTH_STORAGES
 def test_429_says_when_to_retry(limited_app):
-    """The window opened with the first request a moment ago, so nearly all of it is left."""
+    """The oldest hit was a moment ago, so nearly the whole window is left."""
     c = limited_app.test_client()
     for _ in range(2):
         _get(c, CLIENT_A)
@@ -260,12 +310,13 @@ def test_429_says_when_to_retry(limited_app):
 
 @pytest.mark.parametrize(
     ("left", "expected"),
-    [(10.2, 11), (10.6, 12), (59.7, 60), (60.4, 60), (0.1, 1), (-0.8, 1)],
+    [(10.0, 11), (10.2, 11), (10.6, 12), (59.7, 60), (60.4, 60), (0.1, 1), (-0.8, 1)],
 )
 def test_retry_after_is_never_early_and_never_past_the_window(
     limited_app, monkeypatch, left, expected
 ):
-    """Redis rounds a TTL to the nearest second, so a reported reset can be 0.5 s early."""
+    """A hit still counts at exactly its reset, so a whole second left must not read as that
+    second: half a second on top, also for rounding and clocks, capped at the window."""
     c = limited_app.test_client()
     for _ in range(2):
         _get(c, CLIENT_A)
@@ -275,6 +326,7 @@ def test_retry_after_is_never_early_and_never_past_the_window(
     assert _get(c, CLIENT_A).headers["Retry-After"] == str(expected)
 
 
+@BOTH_STORAGES
 def test_retry_after_is_the_breached_limits_window(limited_app, monkeypatch):
     """Reset requests are 5 an hour, so the wait is far past the 60 s fallback."""
     monkeypatch.setattr(auth_routes, "execute_query", lambda *a, **k: None)
@@ -314,6 +366,46 @@ def test_only_429s_carry_rate_limit_headers(limited_app):
     ]
 
 
+# --- Moving window (#251) ---
+
+
+@BOTH_STORAGES
+def test_slots_free_one_at_a_time_as_the_oldest_hits_age_out(limited_app, clock):
+    """A fixed window would let both requests at 60.5 through: its counter reset at 60."""
+    c = limited_app.test_client()
+
+    def at(t):
+        clock.value = 1_800_000_000.0 + t
+        response = _get(c, CLIENT_A)
+        return response.status_code, response.headers.get("Retry-After")
+
+    assert at(0) == (200, None)
+    assert at(20) == (200, None)
+    assert at(30) == (429, "31")
+    # A refused request takes no slot in the limit that refused it, so retrying early never
+    # pushes the wait back.
+    assert [at(30 + i)[0] for i in range(1, 30)] == [429] * 29
+    assert at(60.5) == (200, None)
+    assert at(60.5) == (429, "20")
+    assert at(80.5) == (200, None)
+
+
+@pytest.mark.parametrize("storage", ["redis"], indirect=True)
+def test_a_counter_the_fixed_window_left_never_breaks_a_request(limited_app):
+    """A backend still on the fixed window during a rollout writes a string where the moving
+    window keeps a list. Under the same key, every hit on it would fail with WRONGTYPE."""
+    item, identifiers = parse("2 per minute"), (f"ip:{CLIENT_A}", "test_whoami")
+    old = storage_from_string(REDIS_URL)
+    try:
+        FixedWindowRateLimiter(old).hit(item, *identifiers)
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            MovingWindowRateLimiter(old).hit(item, *identifiers)
+        assert _get(limited_app.test_client(), CLIENT_A).status_code == 200
+    finally:
+        old.clear(item.key_for(*identifiers))
+        old.get_connection().close()
+
+
 def test_default_limit_is_scaled(make_app):
     app = make_app("2")
     c = app.test_client()
@@ -350,6 +442,7 @@ def _login(client, email, password, forwarded_for=CLIENT_A, role="participant"):
     return _post(client, "/api/auth/login", body, forwarded_for)
 
 
+@BOTH_STORAGES
 def test_failed_logins_lock_only_that_account(login_app):
     c = login_app.test_client()
     assert [_login(c, "ana@example.com", "wrong") for _ in range(15)] == [401] * 15
@@ -358,12 +451,27 @@ def test_failed_logins_lock_only_that_account(login_app):
     assert _login(c, "bo@example.com", "wrong") == 401
 
 
+@BOTH_STORAGES
+def test_a_login_refused_for_its_account_still_counts_against_the_address(login_app):
+    """Flask-Limiter takes a slot in each limit in turn and stops at the first one that is
+    full, so the address limit counted the attempt before the account limit refused it."""
+    c = login_app.test_client()
+    assert [_login(c, "ana@example.com", "wrong") for _ in range(20)] == [401] * 15 + [429] * 5
+    with login_app.test_request_context(environ_base={"REMOTE_ADDR": CLIENT_A}):
+        window = limiter.limiter.get_window_stats(
+            parse("300 per minute"), f"ip:{CLIENT_A}", "auth.login"
+        )
+    assert window.remaining == 280
+
+
+@BOTH_STORAGES
 def test_an_attempt_counts_before_bcrypt_runs(login_app):
     """Counting after the response would let parallel guesses all pass the check first."""
     _login(login_app.test_client(), "ana@example.com", "wrong")
     assert login_app.remaining_during_login == [14]
 
 
+@BOTH_STORAGES
 def test_a_successful_login_clears_the_failures(login_app):
     c = login_app.test_client()
     assert [_login(c, "ana@example.com", "wrong") for _ in range(14)] == [401] * 14

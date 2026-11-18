@@ -191,7 +191,7 @@ class TestClearCaches:
                 "cache:feature_flags:v4",
                 "cache:feature_flags:version",
                 "jti:blocked:abc",
-                "LIMITS:LIMITER/10.42.0.5/api.login/15/1/minute",
+                "LIMITS-MOVING:LIMITER/ip:10.42.0.5/auth.login/15/1/minute",
             }
         )
         monkeypatch.setattr(migrate, "_redis_client", lambda: fake)
@@ -200,7 +200,7 @@ class TestClearCaches:
         assert fake.keys == {
             "cache:feature_flags:version",
             "jti:blocked:abc",
-            "LIMITS:LIMITER/10.42.0.5/api.login/15/1/minute",
+            "LIMITS-MOVING:LIMITER/ip:10.42.0.5/auth.login/15/1/minute",
         }
 
     def test_deletes_in_batches(self, monkeypatch):
