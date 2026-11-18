@@ -10,7 +10,7 @@ import FormAlert from '@/components/common/FormAlert';
 import RetryNotice from '@/components/common/RetryNotice';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { RETRYING_LABEL, useRateLimitRetry } from '@/hooks/useRateLimitRetry';
+import { RETRYING_LABEL, retryingText, useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
 import { errorMessage, isAbortError } from '@/lib/errors';
 import type { User } from '@/types/auth';
@@ -36,7 +36,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { login } = useAuth();
   const isMobile = useIsMobile();
-  const { run: withRetry, cancel: cancelRetry, waitSeconds } = useRateLimitRetry();
+  const { run: withRetry, cancel: cancelRetry, retrying, waitSeconds } = useRateLimitRetry();
 
   const [role, setRole] = useState<Role>('participant');
   const [email, setEmail] = useState('');
@@ -52,6 +52,9 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    // The busy button is only aria-disabled: a disabled one drops keyboard focus to the page
+    // for the whole wait. So a press while busy lands here and does nothing.
+    if (loading) return;
     setError('');
     setLoading(true);
     try {
@@ -221,23 +224,23 @@ export default function LoginPage() {
                     />
                   </Field>
                   <div>
-                    <RetryNotice
-                      waiting={waitSeconds !== null}
-                      action="signing in"
-                    />
                     <Button
                       type="submit"
                       variant="primary"
-                      disabled={loading}
-                      aria-label={waitSeconds !== null ? RETRYING_LABEL : undefined}
+                      aria-disabled={loading || undefined}
+                      aria-label={retrying ? RETRYING_LABEL : undefined}
                       style={{ width: '100%', marginTop: '4px' }}
                     >
-                      {waitSeconds !== null
-                        ? `RETRYING… ${waitSeconds}s`
+                      {retrying
+                        ? retryingText(waitSeconds)
                         : loading
                           ? 'AUTHENTICATING…'
                           : 'SIGN IN'}
                     </Button>
+                    <RetryNotice
+                      retrying={retrying}
+                      action="signing in"
+                    />
                   </div>
                 </div>
               </form>

@@ -68,7 +68,7 @@ test('a rate-limited registration counts down on the button and registers on the
   });
   renderRegistration();
   const button = await screen.findByRole('button', { name: 'Retrying automatically' });
-  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute('aria-disabled', 'true');
   expect(button).toHaveTextContent('RETRYING… 1s');
   expect(screen.getByRole('status')).toHaveTextContent(/lots of people are registering/i);
   expect(await screen.findByText('TEAM PAGE', {}, { timeout: 3000 })).toBeInTheDocument();
@@ -80,7 +80,9 @@ test('editing a field during the countdown drops the retry', async () => {
   renderRegistration();
   await screen.findByRole('button', { name: 'Retrying automatically' });
   fireEvent.change(screen.getByPlaceholderText('Ivan'), { target: { value: 'Petar' } });
-  expect(await screen.findByRole('button', { name: 'REGISTER' })).toBeEnabled();
+  expect(await screen.findByRole('button', { name: 'REGISTER' })).not.toHaveAttribute(
+    'aria-disabled',
+  );
   await new Promise((resolve) => setTimeout(resolve, 1500));
   expect(post).toHaveBeenCalledTimes(1);
   expect(screen.queryByText(RATE_LIMITED)).toBeNull();
@@ -90,6 +92,6 @@ test('a 429 asking for more than a minute shows the server message at once', asy
   post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 120));
   renderRegistration();
   expect(await screen.findByText(RATE_LIMITED)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'REGISTER' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'REGISTER' })).not.toHaveAttribute('aria-disabled');
   expect(post).toHaveBeenCalledTimes(1);
 });

@@ -10,7 +10,7 @@ import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
 import RetryNotice from '@/components/common/RetryNotice';
 import { useAuth } from '@/context/AuthContext';
-import { RETRYING_LABEL, useRateLimitRetry } from '@/hooks/useRateLimitRetry';
+import { RETRYING_LABEL, retryingText, useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
 import { errorMessage, isAbortError } from '@/lib/errors';
 import { MIN_PASSWORD_LENGTH } from '@/lib/validation';
@@ -39,7 +39,7 @@ const COURSES = [
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const { run: withRetry, cancel: cancelRetry, waitSeconds } = useRateLimitRetry();
+  const { run: withRetry, cancel: cancelRetry, retrying, waitSeconds } = useRateLimitRetry();
 
   const [form, setForm] = useState({
     first_name: '',
@@ -81,6 +81,9 @@ export default function RegistrationPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // The busy button is only aria-disabled: a disabled one drops keyboard focus to the page
+    // for the whole wait. So a press while busy lands here and does nothing.
+    if (loading) return;
     setError('');
     setSuccess('');
     setLoading(true);
@@ -391,23 +394,19 @@ export default function RegistrationPage() {
                 )}
 
                 <div>
-                  <RetryNotice
-                    waiting={waitSeconds !== null}
-                    action="registering"
-                  />
                   <Button
                     type="submit"
                     variant="primary"
-                    disabled={loading}
-                    aria-label={waitSeconds !== null ? RETRYING_LABEL : undefined}
+                    aria-disabled={loading || undefined}
+                    aria-label={retrying ? RETRYING_LABEL : undefined}
                     style={{ width: '100%', marginTop: '4px' }}
                   >
-                    {waitSeconds !== null
-                      ? `RETRYING… ${waitSeconds}s`
-                      : loading
-                        ? 'REGISTERING…'
-                        : 'REGISTER'}
+                    {retrying ? retryingText(waitSeconds) : loading ? 'REGISTERING…' : 'REGISTER'}
                   </Button>
+                  <RetryNotice
+                    retrying={retrying}
+                    action="registering"
+                  />
                 </div>
               </div>
             </form>
