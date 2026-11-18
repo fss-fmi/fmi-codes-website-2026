@@ -7,11 +7,15 @@
 -- participants.team_id holds one team, so the only way to sit in two teams is to captain
 -- one while a member of another: the two captain checks catch that.
 
+-- member_count is the active members, as the app counts them for team size and activation;
+-- row_count is every participant on the team, as the participant_count trigger counts them.
 WITH members AS (
     SELECT t.id, t.team_name, t.status, t.is_registered, t.queue_position,
-           t.participant_count, t.captain_id, COUNT(p.id) AS member_count
+           t.participant_count, t.captain_id,
+           COUNT(p.id) FILTER (WHERE p.status = 'active') AS member_count,
+           COUNT(p.id) AS row_count
     FROM teams t
-    LEFT JOIN participants p ON p.team_id = t.id AND p.status = 'active'
+    LEFT JOIN participants p ON p.team_id = t.id
     GROUP BY t.id
 ),
 queue AS (
@@ -58,9 +62,9 @@ FROM members
 WHERE status = 'pending' AND (is_registered OR queue_position IS NOT NULL)
 
 UNION ALL
-SELECT 'participant_count', team_name || ' says ' || participant_count || ', has ' || member_count
+SELECT 'participant_count', team_name || ' says ' || participant_count || ', has ' || row_count
 FROM members
-WHERE participant_count <> member_count
+WHERE participant_count <> row_count
 
 UNION ALL
 SELECT 'captain not in the team', m.team_name || ' captain ' || COALESCE(p.email, 'none')

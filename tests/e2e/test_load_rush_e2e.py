@@ -83,6 +83,8 @@ def test_a_small_rush_passes_checks_and_cleans_up(live_server, db_conn, db_url):
         "--seat-wait-seconds=60",
         "--register-p95=120",
         "--register-p99=120",
+        # A busy CI runner can start a thread late; the 1 s default is for the cluster run.
+        "--max-start-lag=10",
         "--seed=7",
     )
     assert run.returncode == 0, run.stdout + run.stderr
@@ -180,6 +182,20 @@ def _full_event(db_conn, seeds, queued=2):
 def test_check_passes_a_consistent_event(db_conn, seeds):
     _full_event(db_conn, seeds)
     assert problems(db_conn) == []
+
+
+def test_check_counts_an_inactive_member_as_the_trigger_and_the_app_do(db_conn, seeds):
+    # participant_count counts every row on the team; size and activation only active ones.
+    queued_ids = _full_event(db_conn, seeds)
+    _sql(
+        db_conn,
+        "UPDATE participants SET status = 'inactive'"
+        " WHERE team_id = %s AND NOT is_captain AND id = ("
+        "  SELECT MAX(id) FROM participants WHERE team_id = %s)",
+        queued_ids[0],
+        queued_ids[0],
+    )
+    assert problems(db_conn) == ["status vs members"]
 
 
 def _gap_in_queue(c, s, q):

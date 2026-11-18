@@ -20,14 +20,14 @@ import statistics
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
+import urllib.parse
 from collections import Counter
 from dataclasses import dataclass, field
 from http.cookies import CookieError, SimpleCookie
 
 EMAIL_DOMAIN = "loadtest.invalid"
 CAPTAIN_EVERY = 3
+MAX_TEAM_MEMBERS = 6  # team_service.py; a larger --team-size hands out seats the backend refuses
 # A thread that starts later than this after its scheduled arrival means the generator,
 # not the backend, set the pace, and every latency it measured is understated.
 MAX_START_LAG_SECONDS = 1.0
@@ -86,7 +86,7 @@ def token_from(set_cookie_headers: list[str]) -> str | None:
 
 
 class Client:
-    """One HTTP request per call, a new connection each time.
+    """HTTP/1.1 with one kept-alive connection per thread, as a browser tab keeps one.
 
     The token cookie is `Secure` on staging (`FLASK_ENV=production`) and the Job talks plain
     HTTP, so a cookie jar would never send it back: it is read from `Set-Cookie` and sent by
@@ -94,9 +94,61 @@ class Client:
     """
 
     def __init__(self, base_url: str, timeout: float, results: Results | None):
-        self.base_url = base_url.rstrip("/")
+        url = urllib.parse.urlsplit(base_url)
+        if url.scheme not in ("http", "https") or not url.hostname:
+            raise ValueError(f"--base-url must be an http(s) URL, got {base_url!r}")
+        self.connection_class = (
+            http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
+        )
+        self.host, self.port = url.hostname, url.port
+        self.prefix = url.path.rstrip("/")
         self.timeout = timeout
         self.results = results
+        self.local = threading.local()
+
+    def _connection(self) -> tuple[http.client.HTTPConnection, bool]:
+        """This thread's connection and whether it has carried a request before."""
+        conn = getattr(self.local, "conn", None)
+        if conn is not None:
+            return conn, True
+        self.local.conn = self.connection_class(self.host, self.port, timeout=self.timeout)
+        return self.local.conn, False
+
+    def _drop_connection(self) -> None:
+        conn = getattr(self.local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self.local.conn = None
+
+    def _send(self, method: str, path: str, data: bytes | None, headers: dict):
+        """(status, Set-Cookie headers, body); raises when no complete answer came back."""
+        retried = False
+        while True:
+            conn, reused = self._connection()
+            try:
+                conn.request(method, self.prefix + path, body=data, headers=headers)
+                reply = conn.getresponse()
+            except ConnectionError:  # reset, aborted (Windows) or broken pipe: the peer closed it
+                self._drop_connection()
+                # No status line came back on a kept-alive connection: the server closed it
+                # while idle (nginx at keepalive_timeout), so sending again is safe. Only once
+                # and only on a reused connection; a request repeated after all would show up
+                # as an unexpected status (a second register is a 409).
+                if reused and not retried:
+                    retried = True
+                    continue
+                raise
+            except BaseException:
+                self._drop_connection()
+                raise
+            try:
+                raw = reply.read()
+            except BaseException:
+                self._drop_connection()
+                raise
+            if reply.will_close:
+                self._drop_connection()
+            return reply.status, reply.headers.get_all("Set-Cookie") or [], raw
 
     def call(
         self,
@@ -109,27 +161,19 @@ class Client:
         expect: tuple[int, ...] = (200,),
     ) -> Response:
         data = None if body is None else json.dumps(body).encode()
-        request = urllib.request.Request(self.base_url + path, data=data, method=method)
-        request.add_header("Accept", "application/json")
+        headers = {"Accept": "application/json"}
         if data is not None:
-            request.add_header("Content-Type", "application/json")
+            headers["Content-Type"] = "application/json"
         if token:
-            request.add_header("Cookie", f"token={token}")
+            headers["Cookie"] = f"token={token}"
 
         status, raw, cookies, error = 0, b"", [], ""
         started = time.perf_counter()
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as reply:
-                status = reply.status
-                cookies = reply.headers.get_all("Set-Cookie") or []
-                raw = reply.read()
-        except urllib.error.HTTPError as exc:
-            status = exc.code
-            try:
-                raw = exc.read()
-            except (OSError, http.client.HTTPException):
-                raw = b""
+            status, cookies, raw = self._send(method, path, data, headers)
         except (OSError, http.client.HTTPException) as exc:
+            # A status line followed by a cut-off body is no answer either: the status of a
+            # half-delivered response says nothing about whether the request worked.
             error = f"{type(exc).__name__}: {exc}"
         seconds = time.perf_counter() - started
 
@@ -225,7 +269,10 @@ class User:
             },
             expect=(201,),
         )
-        if reply.status != 201 or not reply.token or not reply.body:
+        if reply.status != 201:
+            return False
+        if not reply.token or not reply.body:
+            self.s.results.problem(f"user {self.index} registered but got no token or no body")
             return False
         self.token = reply.token
         self.user_id = reply.body.get("user_id")
@@ -266,10 +313,14 @@ class User:
             body={"team_name": f"Load {self.s.run_id} {self.index:04d}"},
             expect=(201,),
         )
+        if reply.status != 201:
+            return
         code = ((reply.body or {}).get("team") or {}).get("join_code")
-        if reply.status == 201 and code:
-            for _ in range(self.s.team_size - 1):
-                self.s.seats.put(code)
+        if not code:
+            self.s.results.problem(f"user {self.index} created a team but got no join code")
+            return
+        for _ in range(self.s.team_size - 1):
+            self.s.seats.put(code)
         self.after_team_change()
 
     def join_team(self) -> None:
@@ -280,13 +331,15 @@ class User:
                 f"user {self.index} found no open seat in {self.s.seat_wait_seconds:.0f} s"
             )
             return
-        self.c.call(
+        reply = self.c.call(
             "join_team", "POST", "/api/teams/join", token=self.token, body={"join_code": code}
         )
-        self.after_team_change()
+        if reply.status == 200:
+            self.after_team_change()
 
     def after_team_change(self) -> None:
-        # CreateTeamPage and JoinTeamPage refresh the user, then navigate to /team.
+        # On success CreateTeamPage and JoinTeamPage refresh the user, then navigate to /team;
+        # on a failure they stay on the form.
         self.c.call("me", "GET", "/api/auth/me", token=self.token)
         self.team_page()
 
@@ -299,7 +352,10 @@ class User:
             "/api/auth/login",
             body={"email": self.email, "password": self.s.password, "role": "participant"},
         )
-        if reply.status != 200 or not reply.token:
+        if reply.status != 200:
+            return False
+        if not reply.token:
+            self.s.results.problem(f"user {self.index} logged in but got no token")
             return False
         self.token = reply.token
         self.team_page()
@@ -419,9 +475,7 @@ def preflight(client: Client) -> tuple[int, int]:
     if registered.status != 200 or registered.body is None:
         raise PreflightError(f"/api/teams/registered answered {registered.status}")
     if registered.body.get("teams"):
-        raise PreflightError(
-            "teams are already registered; run cleanup.sql (the list is cached for ~30 s)"
-        )
+        raise PreflightError("teams are already registered; run cleanup.sql, then clear the caches")
 
     ids = []
     for path, key in (("/api/universities", "universities"), ("/api/specialties", "specialties")):
@@ -466,12 +520,36 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     p.add_argument("--register-p95", type=float, default=3.0)
     p.add_argument("--register-p99", type=float, default=10.0)
+    p.add_argument(
+        "--max-start-lag",
+        type=float,
+        default=MAX_START_LAG_SECONDS,
+        help="fail when a user starts this late (the generator fell behind)",
+    )
     p.add_argument("--seed", type=int, default=None, help="repeat a run's arrival schedule")
     args = p.parse_args(argv)
-    if args.users < 1 or args.team_size < 2 or args.arrival_seconds < 0:
-        p.error(
-            "--users must be at least 1, --team-size at least 2, --arrival-seconds not negative"
-        )
+    for bad, message in (
+        (args.users < 1, "--users must be at least 1"),
+        (
+            not 2 <= args.team_size <= MAX_TEAM_MEMBERS,
+            f"--team-size must be 2 to {MAX_TEAM_MEMBERS} (MAX_TEAM_MEMBERS)",
+        ),
+        (not 0 <= args.relogin_share <= 1, "--relogin-share must be 0 to 1"),
+        (args.team_reloads < 0, "--team-reloads must not be negative"),
+        (args.arrival_seconds < 0, "--arrival-seconds must not be negative"),
+        (args.linger_seconds < 0, "--linger-seconds must not be negative"),
+        (args.config_poll_seconds <= 0, "--config-poll-seconds must be positive"),
+        (args.seat_wait_seconds <= 0, "--seat-wait-seconds must be positive"),
+        (args.timeout <= 0, "--timeout must be positive"),
+        (args.register_p95 <= 0 or args.register_p99 <= 0, "--register-p95/p99 must be positive"),
+        (args.max_start_lag <= 0, "--max-start-lag must be positive"),
+    ):
+        if bad:
+            p.error(message)
+    try:
+        Client(args.base_url, args.timeout, None)
+    except ValueError as exc:
+        p.error(str(exc))
     return args
 
 
@@ -521,7 +599,7 @@ def main(argv: list[str] | None = None) -> int:
         thread.join()
 
     report(results, started, args.arrival_seconds)
-    failures = verdict(results, Limits(args.register_p95, args.register_p99))
+    failures = verdict(results, Limits(args.register_p95, args.register_p99, args.max_start_lag))
     for line in failures:
         print(f"FAIL: {line}")
     print("RESULT: " + ("FAIL" if failures else "PASS"), flush=True)

@@ -32,8 +32,10 @@ spec:
         - name: load
           image: python:3.12-slim
           command: ["python", "-u", "/load/registration_rush.py"]
+          # The trailing dot makes the name absolute: with the pod's ndots:5 every new
+          # connection would otherwise try each search domain first.
           args:
-            - --base-url=http://ingress-nginx-staging-controller.ingress-nginx-staging.svc.cluster.local
+            - --base-url=http://ingress-nginx-staging-controller.ingress-nginx-staging.svc.cluster.local.
           resources:
             requests:
               cpu: 500m
