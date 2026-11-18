@@ -12,11 +12,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function answer(status: number, body: string, contentType: string) {
+function answer(
+  status: number,
+  body: string,
+  contentType: string,
+  headers: Record<string, string> = {},
+) {
   fetchMock.mockResolvedValue(
-    new Response(body, { status, headers: { 'content-type': contentType } }),
+    new Response(body, { status, headers: { 'content-type': contentType, ...headers } }),
   );
 }
+
+const RATE_LIMITED = JSON.stringify({ success: false, error: 'Too many requests' });
 
 async function rejection(promise: Promise<unknown>) {
   try {
@@ -43,6 +50,23 @@ test('an HTML error page from the ingress throws the generic text, not "HTTP 502
   const err = await rejection(api.get('/api/teams'));
   expect(err).toBeInstanceOf(ApiError);
   expect(err).toMatchObject({ status: 502, message: GENERIC_ERROR });
+});
+
+test("a 429's Retry-After seconds travel on the ApiError", async () => {
+  answer(429, RATE_LIMITED, 'application/json', { 'Retry-After': '42' });
+  expect(await rejection(api.post('/api/auth/register', {}))).toMatchObject({
+    status: 429,
+    retryAfter: 42,
+  });
+});
+
+test.each([
+  ['no header', {}],
+  ['an HTTP date', { 'Retry-After': 'Wed, 18 Nov 2026 12:00:00 GMT' }],
+  ['a negative number', { 'Retry-After': '-5' }],
+])('Retry-After with %s is null', async (_, headers) => {
+  answer(429, RATE_LIMITED, 'application/json', headers);
+  expect(await rejection(api.post('/api/auth/register', {}))).toMatchObject({ retryAfter: null });
 });
 
 test('no answer at all throws a NetworkError', async () => {

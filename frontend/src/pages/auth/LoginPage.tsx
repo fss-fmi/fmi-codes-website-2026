@@ -9,6 +9,7 @@ import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import type { User } from '@/types/auth';
@@ -34,6 +35,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { login } = useAuth();
   const isMobile = useIsMobile();
+  const { run: withRetry, waitSeconds } = useRateLimitRetry();
 
   const [role, setRole] = useState<Role>('participant');
   const [email, setEmail] = useState('');
@@ -52,11 +54,13 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const data = await api.post<{ role: Role; user_id: number; user: User }>('/api/auth/login', {
-        email,
-        password,
-        role,
-      });
+      const data = await withRetry(() =>
+        api.post<{ role: Role; user_id: number; user: User }>('/api/auth/login', {
+          email,
+          password,
+          role,
+        }),
+      );
       login(data.role, data.user);
       const from =
         (location.state as { from?: { pathname: string } } | null)?.from?.pathname ??
@@ -208,7 +212,11 @@ export default function LoginPage() {
                     disabled={loading}
                     style={{ width: '100%', marginTop: '4px' }}
                   >
-                    {loading ? 'AUTHENTICATING…' : 'SIGN IN'}
+                    {waitSeconds !== null
+                      ? `BUSY, RETRYING IN ${waitSeconds}s`
+                      : loading
+                        ? 'AUTHENTICATING…'
+                        : 'SIGN IN'}
                   </Button>
                 </div>
               </form>

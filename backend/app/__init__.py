@@ -1,7 +1,9 @@
 """Flask application factory and initialization"""
 
 import logging
+import math
 import os
+import time
 from importlib import import_module
 
 from config import get_config
@@ -39,6 +41,22 @@ limiter = Limiter(
     application_limits=[scaled("6000 per minute")],
     application_limits_exempt_when=is_signed_in,
 )
+
+
+def _retry_after_seconds():
+    """Seconds until the breached limit's window frees a slot.
+
+    Only 429s carry it: RATELIMIT_HEADERS_ENABLED would put every limit's remaining budget
+    on every response. A storage error here must not turn the 429 into a 500. RequestLimit's
+    reset_at adds a second to round up, which makes a minute window read 61.
+    """
+    try:
+        current = limiter.current_limit
+        if current is not None:
+            return max(1, math.ceil(current.window.reset_time - time.time()))
+    except Exception:
+        logger.warning("Could not read the breached rate limit's reset time", exc_info=True)
+    return 60
 
 
 def create_app(config_name="development"):
@@ -81,9 +99,12 @@ def create_app(config_name="development"):
     # The SPA shows a response's `error` field; without one a 429 reads "HTTP 429".
     @app.errorhandler(429)
     def too_many_requests(_e):
-        return jsonify(
+        response = jsonify(
             {"success": False, "error": "Too many requests. Wait a moment and try again."}
-        ), 429
+        )
+        response.status_code = 429
+        response.headers["Retry-After"] = str(_retry_after_seconds())
+        return response
 
     @app.errorhandler(InvalidJsonFieldError)
     def invalid_json_field(e):

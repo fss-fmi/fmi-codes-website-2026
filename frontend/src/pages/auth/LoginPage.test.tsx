@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ApiError, NetworkError } from '@/lib/errors';
 import LoginPage from './LoginPage';
@@ -45,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function renderLogin() {
@@ -143,6 +144,32 @@ test('a login that gets no answer shows the network message', async () => {
   renderLogin();
   signIn();
   expect(await screen.findByText('Network error. Please try again.')).toBeInTheDocument();
+});
+
+test('a rate-limited login counts down on the button and signs in on the retry', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValueOnce(new ApiError(429, RATE_LIMITED, 1)).mockResolvedValueOnce({
+    role: 'participant',
+    user_id: 1,
+    user: { role: 'participant', email: 'user@example.com' },
+  });
+  renderLogin();
+  signIn();
+  expect(await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' })).toBeDisabled();
+  expect(await screen.findByText('TEAM PAGE', {}, { timeout: 3000 })).toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText(RATE_LIMITED)).toBeNull();
+});
+
+test('leaving the page cancels a pending retry', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
+  renderLogin();
+  signIn();
+  await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' });
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  expect(post).toHaveBeenCalledTimes(1);
 });
 
 test('a rate-limited reset request shows the server message', async () => {

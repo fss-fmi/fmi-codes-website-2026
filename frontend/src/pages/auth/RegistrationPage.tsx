@@ -9,6 +9,7 @@ import Select from '@/components/common/Select';
 import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
+import { useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { MIN_PASSWORD_LENGTH } from '@/lib/validation';
@@ -37,6 +38,7 @@ const COURSES = [
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { run: withRetry, waitSeconds } = useRateLimitRetry();
 
   const [form, setForm] = useState({
     first_name: '',
@@ -93,13 +95,12 @@ export default function RegistrationPage() {
 
       // "Other" entries travel inside the register request so the backend creates
       // them in the same transaction as the account.
-      const data = await api.post<{ role: 'participant'; user_id: number; user: User }>(
-        '/api/auth/register',
-        {
+      const data = await withRetry(() =>
+        api.post<{ role: 'participant'; user_id: number; user: User }>('/api/auth/register', {
           ...form,
           ...(isOtherUni ? { university_other: otherUni } : {}),
           ...(isOtherSpec ? { specialty_other: { name: otherSpec } } : {}),
-        },
+        }),
       );
       login(data.role, data.user);
       setSuccess('Registration successful. Redirecting…');
@@ -386,7 +387,11 @@ export default function RegistrationPage() {
                   disabled={loading}
                   style={{ width: '100%', marginTop: '4px' }}
                 >
-                  {loading ? 'REGISTERING…' : 'REGISTER'}
+                  {waitSeconds !== null
+                    ? `BUSY, RETRYING IN ${waitSeconds}s`
+                    : loading
+                      ? 'REGISTERING…'
+                      : 'REGISTER'}
                 </Button>
               </div>
             </form>

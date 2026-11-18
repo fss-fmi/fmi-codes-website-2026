@@ -4,14 +4,17 @@ export const GENERIC_ERROR = 'Something went wrong. Please try again.';
 /**
  * A non-2xx answer. The message is the server's `error` text, or GENERIC_ERROR
  * when the answer carried none (an HTML 502 from the ingress during a rollout).
+ * `retryAfter` is the answer's Retry-After in seconds, which the backend sends on 429s.
  */
 export class ApiError extends Error {
   readonly status: number;
+  readonly retryAfter: number | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, retryAfter: number | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 

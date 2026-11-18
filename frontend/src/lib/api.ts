@@ -23,6 +23,12 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
+// Only the delta-seconds form: the backend never sends the HTTP-date one.
+function retryAfterSeconds(res: Response): number | null {
+  const value = res.headers.get('Retry-After')?.trim() ?? '';
+  return /^\d+$/.test(value) ? Number(value) : null;
+}
+
 async function request<T>(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
@@ -78,7 +84,7 @@ async function request<T>(
     ) {
       message = (payload as { error: string }).error;
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, retryAfterSeconds(res));
   }
 
   return payload as T;

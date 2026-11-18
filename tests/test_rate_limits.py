@@ -28,6 +28,7 @@ from app.utils.rate_limits import (
     scaled,
 )
 from flask import request
+from flask_limiter import RequestLimit
 from limits import parse
 
 PROXY = "10.42.0.7"
@@ -245,6 +246,52 @@ def test_429_says_why(limited_app):
     response = _get(c, CLIENT_A)
     assert response.status_code == 429
     assert response.get_json()["error"].startswith("Too many requests")
+
+
+def test_429_says_when_to_retry(limited_app):
+    c = limited_app.test_client()
+    for _ in range(2):
+        _get(c, CLIENT_A)
+    assert 1 <= int(_get(c, CLIENT_A).headers["Retry-After"]) <= 60
+
+
+def test_retry_after_is_the_breached_limits_window(limited_app, monkeypatch):
+    """Reset requests are 5 an hour, so the wait is far past the 60 s fallback."""
+    monkeypatch.setattr(auth_routes, "execute_query", lambda *a, **k: None)
+    c = limited_app.test_client()
+    body = {"email": "ana@example.com", "role": "participant"}
+    for _ in range(5):
+        _post(c, "/api/auth/reset-password", body)
+    response = c.post(
+        "/api/auth/reset-password",
+        json=body,
+        headers={"X-Forwarded-For": CLIENT_A},
+        environ_base={"REMOTE_ADDR": PROXY},
+    )
+    assert response.status_code == 429
+    assert 3500 < int(response.headers["Retry-After"]) <= 3600
+
+
+def test_a_storage_error_still_answers_429(limited_app, monkeypatch):
+    c = limited_app.test_client()
+    for _ in range(2):
+        _get(c, CLIENT_A)
+
+    def unreachable(_self):
+        raise ConnectionError("storage down")
+
+    monkeypatch.setattr(RequestLimit, "window", property(unreachable))
+    response = _get(c, CLIENT_A)
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "60"
+
+
+def test_only_429s_carry_rate_limit_headers(limited_app):
+    response = _get(limited_app.test_client(), CLIENT_A)
+    assert response.status_code == 200
+    assert not [
+        h for h in response.headers.keys() if h.lower().startswith(("x-ratelimit", "retry-after"))
+    ]
 
 
 def test_default_limit_is_scaled(make_app):
