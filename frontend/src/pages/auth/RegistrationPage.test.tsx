@@ -72,6 +72,17 @@ test('a rate-limited registration counts down on the button and registers on the
   expect(post).toHaveBeenCalledTimes(2);
 });
 
+test('editing a field during the countdown drops the retry', async () => {
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
+  renderRegistration();
+  await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' });
+  fireEvent.change(screen.getByPlaceholderText('Ivan'), { target: { value: 'Petar' } });
+  expect(await screen.findByRole('button', { name: 'REGISTER' })).toBeEnabled();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText(RATE_LIMITED)).toBeNull();
+});
+
 test('a 429 asking for more than a minute shows the server message at once', async () => {
   post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 120));
   renderRegistration();

@@ -18,6 +18,11 @@ export class ApiError extends Error {
   }
 }
 
+/** The caller cancelled: a fetch with an aborted signal, or a cancelled retry. */
+export function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
 /** fetch got no answer at all. */
 export class NetworkError extends Error {
   constructor() {

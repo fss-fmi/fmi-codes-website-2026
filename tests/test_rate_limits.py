@@ -7,6 +7,7 @@ comes from CLIENT_A unless it says otherwise: the university network, where ever
 device shares one address.
 """
 
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -30,6 +31,7 @@ from app.utils.rate_limits import (
 from flask import request
 from flask_limiter import RequestLimit
 from limits import parse
+from limits.util import WindowStats
 
 PROXY = "10.42.0.7"
 CLIENT_A = "203.0.113.5"
@@ -249,10 +251,28 @@ def test_429_says_why(limited_app):
 
 
 def test_429_says_when_to_retry(limited_app):
+    """The window opened with the first request a moment ago, so nearly all of it is left."""
     c = limited_app.test_client()
     for _ in range(2):
         _get(c, CLIENT_A)
-    assert 1 <= int(_get(c, CLIENT_A).headers["Retry-After"]) <= 60
+    assert 55 <= int(_get(c, CLIENT_A).headers["Retry-After"]) <= 60
+
+
+@pytest.mark.parametrize(
+    ("left", "expected"),
+    [(10.2, 11), (10.6, 12), (59.7, 60), (60.4, 60), (0.1, 1), (-0.8, 1)],
+)
+def test_retry_after_is_never_early_and_never_past_the_window(
+    limited_app, monkeypatch, left, expected
+):
+    """Redis rounds a TTL to the nearest second, so a reported reset can be 0.5 s early."""
+    c = limited_app.test_client()
+    for _ in range(2):
+        _get(c, CLIENT_A)
+    monkeypatch.setattr(
+        RequestLimit, "window", property(lambda _self: WindowStats(time.time() + left, 0))
+    )
+    assert _get(c, CLIENT_A).headers["Retry-After"] == str(expected)
 
 
 def test_retry_after_is_the_breached_limits_window(limited_app, monkeypatch):

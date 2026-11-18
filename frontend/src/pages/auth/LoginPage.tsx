@@ -11,7 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, isAbortError } from '@/lib/errors';
 import type { User } from '@/types/auth';
 
 type Role = 'participant' | 'mentor' | 'admin';
@@ -35,7 +35,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { login } = useAuth();
   const isMobile = useIsMobile();
-  const { run: withRetry, waitSeconds } = useRateLimitRetry();
+  const { run: withRetry, cancel: cancelRetry, waitSeconds } = useRateLimitRetry();
 
   const [role, setRole] = useState<Role>('participant');
   const [email, setEmail] = useState('');
@@ -67,6 +67,7 @@ export default function LoginPage() {
         ROLE_DEFAULT[data.role];
       navigate(from, { replace: true });
     } catch (err: unknown) {
+      if (isAbortError(err)) return;
       console.error('Login failed:', err);
       setError(errorMessage(err));
     } finally {
@@ -136,7 +137,10 @@ export default function LoginPage() {
                   >
                     <Select
                       value={role}
-                      onChange={(e) => setRole(e.target.value as Role)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setRole(e.target.value as Role);
+                      }}
                     >
                       {ROLES.map((r) => (
                         <option
@@ -161,7 +165,10 @@ export default function LoginPage() {
                       type="button"
                       className="px-btn-secondary"
                       aria-pressed={role === r}
-                      onClick={() => setRole(r)}
+                      onClick={() => {
+                        cancelRetry();
+                        setRole(r);
+                      }}
                       style={{ flex: '1 1 100px', minWidth: '100px' }}
                     >
                       {ROLE_LABEL[r]}
@@ -187,7 +194,10 @@ export default function LoginPage() {
                       type="email"
                       required
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setEmail(e.target.value);
+                      }}
                       placeholder="name@example.com"
                       autoComplete="email"
                     />
@@ -201,7 +211,10 @@ export default function LoginPage() {
                       type="password"
                       required
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setPassword(e.target.value);
+                      }}
                       placeholder="••••••••"
                       autoComplete="current-password"
                     />
@@ -287,6 +300,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    cancelRetry();
                     setShowReset(true);
                     setResetEmail(email);
                   }}

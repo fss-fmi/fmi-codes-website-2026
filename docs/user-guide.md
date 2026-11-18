@@ -37,7 +37,7 @@ Registration is open only during the registration window. When it is closed the 
 
 You are logged in and taken to your team page. Each email and faculty number can only be used once.
 
-If many people register at once, the button may show **BUSY, RETRYING IN 12s** and count down. Keep the page open: it tries again on its own, and so does **SIGN IN** on the login page. If it still can't get through, it shows "Too many requests" and you can click again.
+If many people register at once, the button may show **BUSY, RETRYING IN 12s** and count down. Keep the page open: it tries again on its own, and so does **SIGN IN** on the login page. Changing a field stops the countdown, so click the button again once you're done. If it still can't get through, it shows "Too many requests" and you can click again.
 
 We also email you a link to verify your address. Open it within 24 hours; the **VERIFY EMAIL** page confirms it worked. If the link expired or never arrived, open **PROFILE** and click **RESEND VERIFICATION EMAIL**. When the organizers require verification, you cannot create, join or apply to a team until your email is verified, and the team page reminds you.
 

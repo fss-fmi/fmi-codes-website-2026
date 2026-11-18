@@ -44,16 +44,21 @@ limiter = Limiter(
 
 
 def _retry_after_seconds():
-    """Seconds until the breached limit's window frees a slot.
+    """Seconds until the breached limit's window frees a slot, never early.
 
     Only 429s carry it: RATELIMIT_HEADERS_ENABLED would put every limit's remaining budget
-    on every response. A storage error here must not turn the 429 into a 500. RequestLimit's
-    reset_at adds a second to round up, which makes a minute window read 61.
+    on every response. A storage error here must not turn the 429 into a 500.
+
+    Redis reports a window's TTL rounded to the nearest second, so the reset time can be up
+    to half a second early; the half second added covers that. No window has more left than
+    its own length, so capping at it can't be early either, and keeps a minute window at 60
+    (RequestLimit.reset_at rounds up by a whole second and reads 61).
     """
     try:
         current = limiter.current_limit
         if current is not None:
-            return max(1, math.ceil(current.window.reset_time - time.time()))
+            left = math.ceil(current.window.reset_time - time.time() + 0.5)
+            return max(1, min(left, current.limit.get_expiry()))
     except Exception:
         logger.warning("Could not read the breached rate limit's reset time", exc_info=True)
     return 60

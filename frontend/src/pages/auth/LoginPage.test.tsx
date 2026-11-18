@@ -172,6 +172,20 @@ test('leaving the page cancels a pending retry', async () => {
   expect(post).toHaveBeenCalledTimes(1);
 });
 
+test('editing the form during the countdown drops the retry, so the old values are never sent', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
+  renderLogin();
+  signIn();
+  await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' });
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'fixed@example.com' } });
+  expect(await screen.findByRole('button', { name: 'SIGN IN' })).toBeEnabled();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText(RATE_LIMITED)).toBeNull();
+  expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull();
+});
+
 test('a rate-limited reset request shows the server message', async () => {
   post.mockRejectedValue(new ApiError(429, RATE_LIMITED));
   renderLogin();

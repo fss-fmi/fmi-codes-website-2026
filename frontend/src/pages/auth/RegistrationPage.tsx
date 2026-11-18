@@ -11,7 +11,7 @@ import FormAlert from '@/components/common/FormAlert';
 import { useAuth } from '@/context/AuthContext';
 import { useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, isAbortError } from '@/lib/errors';
 import { MIN_PASSWORD_LENGTH } from '@/lib/validation';
 import type { User } from '@/types/auth';
 
@@ -38,7 +38,7 @@ const COURSES = [
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const { run: withRetry, waitSeconds } = useRateLimitRetry();
+  const { run: withRetry, cancel: cancelRetry, waitSeconds } = useRateLimitRetry();
 
   const [form, setForm] = useState({
     first_name: '',
@@ -69,7 +69,13 @@ export default function RegistrationPage() {
   });
 
   function set(field: keyof typeof form, value: string) {
+    cancelRetry();
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function setOther(field: keyof typeof otherUni, value: string) {
+    cancelRetry();
+    setOtherUni((prev) => ({ ...prev, [field]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -106,6 +112,7 @@ export default function RegistrationPage() {
       setSuccess('Registration successful. Redirecting…');
       navigate('/team', { replace: true });
     } catch (err: unknown) {
+      if (isAbortError(err)) return;
       setError(errorMessage(err));
     } finally {
       setLoading(false);
@@ -303,7 +310,7 @@ export default function RegistrationPage() {
                         required
                         placeholder="University Name"
                         value={otherUni.name}
-                        onChange={(e) => setOtherUni((p) => ({ ...p, name: e.target.value }))}
+                        onChange={(e) => setOther('name', e.target.value)}
                       />
                     </Field>
                     <div style={rowStyle}>
@@ -318,7 +325,7 @@ export default function RegistrationPage() {
                             required
                             placeholder="City"
                             value={otherUni.city}
-                            onChange={(e) => setOtherUni((p) => ({ ...p, city: e.target.value }))}
+                            onChange={(e) => setOther('city', e.target.value)}
                           />
                         </Field>
                       </div>
@@ -333,9 +340,7 @@ export default function RegistrationPage() {
                             required
                             placeholder="Country"
                             value={otherUni.country}
-                            onChange={(e) =>
-                              setOtherUni((p) => ({ ...p, country: e.target.value }))
-                            }
+                            onChange={(e) => setOther('country', e.target.value)}
                           />
                         </Field>
                       </div>
@@ -376,7 +381,10 @@ export default function RegistrationPage() {
                       required
                       placeholder="Specialty name"
                       value={otherSpec}
-                      onChange={(e) => setOtherSpec(e.target.value)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setOtherSpec(e.target.value);
+                      }}
                     />
                   </Field>
                 )}

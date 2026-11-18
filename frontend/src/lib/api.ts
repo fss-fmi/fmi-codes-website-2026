@@ -14,7 +14,7 @@
 // Requests hit relative paths (`/api/...`). In dev, Vite proxies `/api` to the
 // backend (see vite.config.ts). In prod, Nginx does the same routing.
 
-import { ApiError, GENERIC_ERROR, NetworkError } from './errors';
+import { ApiError, GENERIC_ERROR, isAbortError, NetworkError } from './errors';
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
@@ -53,7 +53,7 @@ async function request<T>(
   try {
     res = await fetch(url, init);
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    if (isAbortError(err)) throw err;
     throw new NetworkError();
   }
 
