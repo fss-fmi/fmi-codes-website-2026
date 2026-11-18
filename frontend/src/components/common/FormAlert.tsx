@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
 
-type AlertKind = 'error' | 'success';
+type AlertKind = 'error' | 'success' | 'info';
 
-const STYLES: Record<AlertKind, { role: 'alert' | 'status'; color: string }> = {
+// `info` has no role of its own: it goes inside a live region that is always mounted
+// (RetryNotice), since screen readers often skip a region inserted with its text in it.
+const STYLES: Record<AlertKind, { role?: 'alert' | 'status'; color: string }> = {
   error: { role: 'alert', color: 'var(--px-danger)' },
   success: { role: 'status', color: 'var(--px-green)' },
+  info: { color: 'var(--px-teal)' },
 };
 
 /**

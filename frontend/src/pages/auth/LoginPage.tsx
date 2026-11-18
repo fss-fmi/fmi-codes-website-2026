@@ -7,9 +7,10 @@ import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
 import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
+import RetryNotice from '@/components/common/RetryNotice';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { useRateLimitRetry } from '@/hooks/useRateLimitRetry';
+import { RETRYING_LABEL, useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
 import { errorMessage, isAbortError } from '@/lib/errors';
 import type { User } from '@/types/auth';
@@ -219,18 +220,25 @@ export default function LoginPage() {
                       autoComplete="current-password"
                     />
                   </Field>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    disabled={loading}
-                    style={{ width: '100%', marginTop: '4px' }}
-                  >
-                    {waitSeconds !== null
-                      ? `BUSY, RETRYING IN ${waitSeconds}s`
-                      : loading
-                        ? 'AUTHENTICATING…'
-                        : 'SIGN IN'}
-                  </Button>
+                  <div>
+                    <RetryNotice
+                      waiting={waitSeconds !== null}
+                      action="signing in"
+                    />
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      disabled={loading}
+                      aria-label={waitSeconds !== null ? RETRYING_LABEL : undefined}
+                      style={{ width: '100%', marginTop: '4px' }}
+                    >
+                      {waitSeconds !== null
+                        ? `RETRYING… ${waitSeconds}s`
+                        : loading
+                          ? 'AUTHENTICATING…'
+                          : 'SIGN IN'}
+                    </Button>
+                  </div>
                 </div>
               </form>
             )}

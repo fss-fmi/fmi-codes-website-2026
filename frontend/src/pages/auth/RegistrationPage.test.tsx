@@ -67,7 +67,10 @@ test('a rate-limited registration counts down on the button and registers on the
     user: { role: 'participant', email: 'ivan@example.com' },
   });
   renderRegistration();
-  expect(await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' })).toBeDisabled();
+  const button = await screen.findByRole('button', { name: 'Retrying automatically' });
+  expect(button).toBeDisabled();
+  expect(button).toHaveTextContent('RETRYING… 1s');
+  expect(screen.getByRole('status')).toHaveTextContent(/lots of people are registering/i);
   expect(await screen.findByText('TEAM PAGE', {}, { timeout: 3000 })).toBeInTheDocument();
   expect(post).toHaveBeenCalledTimes(2);
 });
@@ -75,7 +78,7 @@ test('a rate-limited registration counts down on the button and registers on the
 test('editing a field during the countdown drops the retry', async () => {
   post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
   renderRegistration();
-  await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' });
+  await screen.findByRole('button', { name: 'Retrying automatically' });
   fireEvent.change(screen.getByPlaceholderText('Ivan'), { target: { value: 'Petar' } });
   expect(await screen.findByRole('button', { name: 'REGISTER' })).toBeEnabled();
   await new Promise((resolve) => setTimeout(resolve, 1500));

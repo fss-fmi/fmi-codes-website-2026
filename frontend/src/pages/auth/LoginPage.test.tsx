@@ -155,10 +155,28 @@ test('a rate-limited login counts down on the button and signs in on the retry',
   });
   renderLogin();
   signIn();
-  expect(await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' })).toBeDisabled();
+  const button = await screen.findByRole('button', { name: 'Retrying automatically' });
+  expect(button).toBeDisabled();
+  expect(button).toHaveTextContent('RETRYING… 1s');
   expect(await screen.findByText('TEAM PAGE', {}, { timeout: 3000 })).toBeInTheDocument();
   expect(post).toHaveBeenCalledTimes(2);
   expect(screen.queryByText(RATE_LIMITED)).toBeNull();
+});
+
+test('the countdown is explained once in a status region that was there before it', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 2));
+  renderLogin();
+  const status = screen.getByRole('status');
+  expect(status).toBeEmptyDOMElement();
+  signIn();
+  await screen.findByRole('button', { name: 'Retrying automatically' });
+  expect(status).toHaveTextContent(/lots of people are signing in right now/i);
+  expect(status).toHaveTextContent(/changing a field stops the retry/i);
+  expect(status.textContent).not.toMatch(/\d/);
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'fixed@example.com' } });
+  await screen.findByRole('button', { name: 'SIGN IN' });
+  expect(status).toBeEmptyDOMElement();
 });
 
 test('leaving the page cancels a pending retry', async () => {
@@ -166,7 +184,7 @@ test('leaving the page cancels a pending retry', async () => {
   post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
   renderLogin();
   signIn();
-  await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' });
+  await screen.findByRole('button', { name: 'Retrying automatically' });
   cleanup();
   await new Promise((resolve) => setTimeout(resolve, 1500));
   expect(post).toHaveBeenCalledTimes(1);
@@ -177,7 +195,7 @@ test('editing the form during the countdown drops the retry, so the old values a
   post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
   renderLogin();
   signIn();
-  await screen.findByRole('button', { name: 'BUSY, RETRYING IN 1s' });
+  await screen.findByRole('button', { name: 'Retrying automatically' });
   fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'fixed@example.com' } });
   expect(await screen.findByRole('button', { name: 'SIGN IN' })).toBeEnabled();
   await new Promise((resolve) => setTimeout(resolve, 1500));
