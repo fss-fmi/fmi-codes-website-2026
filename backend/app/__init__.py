@@ -55,14 +55,17 @@ def _retry_after_seconds():
     Only 429s carry it: RATELIMIT_HEADERS_ENABLED would put every limit's remaining budget
     on every response. A storage error here must not turn the 429 into a 500.
 
-    The reset time is the oldest accepted hit's timestamp plus the window length, so rounding
-    up is enough. No slot is further away than one window, so capping at it can't be early
-    either, and keeps a minute window at 60 (RequestLimit.reset_at adds a second and reads 61).
+    The reset time is the oldest accepted hit's timestamp plus the window length, but a hit
+    still counts at exactly that moment, Redis hands the timestamp back rounded to 0.1 ms and
+    the pod that wrote it may run on another clock. Half a second covers all three for clocks
+    within half a second of each other (one node today). No slot is further away than one
+    window, so capping at it can't be early either, and keeps a minute window at 60
+    (RequestLimit.reset_at adds a second and reads 61).
     """
     try:
         current = limiter.current_limit
         if current is not None:
-            left = math.ceil(current.window.reset_time - time.time())
+            left = math.ceil(current.window.reset_time - time.time() + 0.5)
             return max(1, min(left, current.limit.get_expiry()))
     except Exception:
         logger.warning("Could not read the breached rate limit's reset time", exc_info=True)

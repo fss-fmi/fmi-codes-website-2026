@@ -310,12 +310,13 @@ def test_429_says_when_to_retry(limited_app):
 
 @pytest.mark.parametrize(
     ("left", "expected"),
-    [(10.0, 10), (10.2, 11), (10.6, 11), (59.7, 60), (60.4, 60), (0.1, 1), (-0.8, 1)],
+    [(10.0, 11), (10.2, 11), (10.6, 12), (59.7, 60), (60.4, 60), (0.1, 1), (-0.8, 1)],
 )
 def test_retry_after_is_never_early_and_never_past_the_window(
     limited_app, monkeypatch, left, expected
 ):
-    """The reset is an exact timestamp, so rounding up is enough; capped at the window."""
+    """A hit still counts at exactly its reset, so a whole second left must not read as that
+    second: half a second on top, also for rounding and clocks, capped at the window."""
     c = limited_app.test_client()
     for _ in range(2):
         _get(c, CLIENT_A)
@@ -380,15 +381,15 @@ def test_slots_free_one_at_a_time_as_the_oldest_hits_age_out(limited_app, clock)
 
     assert at(0) == (200, None)
     assert at(20) == (200, None)
-    assert at(30) == (429, "30")
-    # Refused requests take no slot, so retrying early never pushes the wait back.
+    assert at(30) == (429, "31")
+    # A refused request takes no slot in the limit that refused it, so retrying early never
+    # pushes the wait back.
     assert [at(30 + i)[0] for i in range(1, 30)] == [429] * 29
     assert at(60.5) == (200, None)
     assert at(60.5) == (429, "20")
     assert at(80.5) == (200, None)
 
 
-@pytest.mark.skipif(not REDIS_URL, reason="Redis not configured (set REDIS_URL)")
 @pytest.mark.parametrize("storage", ["redis"], indirect=True)
 def test_a_counter_the_fixed_window_left_never_breaks_a_request(limited_app):
     """A backend still on the fixed window during a rollout writes a string where the moving
@@ -402,6 +403,7 @@ def test_a_counter_the_fixed_window_left_never_breaks_a_request(limited_app):
         assert _get(limited_app.test_client(), CLIENT_A).status_code == 200
     finally:
         old.clear(item.key_for(*identifiers))
+        old.get_connection().close()
 
 
 def test_default_limit_is_scaled(make_app):
@@ -447,6 +449,19 @@ def test_failed_logins_lock_only_that_account(login_app):
     assert _login(c, "ana@example.com", RIGHT_GUESS) == 429
     assert _login(c, "ana@example.com", RIGHT_GUESS, CLIENT_B) == 429
     assert _login(c, "bo@example.com", "wrong") == 401
+
+
+@BOTH_STORAGES
+def test_a_login_refused_for_its_account_still_counts_against_the_address(login_app):
+    """Flask-Limiter takes a slot in each limit in turn and stops at the first one that is
+    full, so the address limit counted the attempt before the account limit refused it."""
+    c = login_app.test_client()
+    assert [_login(c, "ana@example.com", "wrong") for _ in range(20)] == [401] * 15 + [429] * 5
+    with login_app.test_request_context(environ_base={"REMOTE_ADDR": CLIENT_A}):
+        window = limiter.limiter.get_window_stats(
+            parse("300 per minute"), f"ip:{CLIENT_A}", "auth.login"
+        )
+    assert window.remaining == 280
 
 
 @BOTH_STORAGES
