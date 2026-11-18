@@ -8,9 +8,11 @@ import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
 import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
+import RetryNotice from '@/components/common/RetryNotice';
 import { useAuth } from '@/context/AuthContext';
+import { RETRYING_LABEL, retryingText, useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, isAbortError } from '@/lib/errors';
 import { MIN_PASSWORD_LENGTH } from '@/lib/validation';
 import type { User } from '@/types/auth';
 
@@ -37,6 +39,7 @@ const COURSES = [
 export default function RegistrationPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { run: withRetry, cancel: cancelRetry, retrying, waitSeconds } = useRateLimitRetry();
 
   const [form, setForm] = useState({
     first_name: '',
@@ -67,11 +70,20 @@ export default function RegistrationPage() {
   });
 
   function set(field: keyof typeof form, value: string) {
+    cancelRetry();
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function setOther(field: keyof typeof otherUni, value: string) {
+    cancelRetry();
+    setOtherUni((prev) => ({ ...prev, [field]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // The busy button is only aria-disabled: a disabled one drops keyboard focus to the page
+    // for the whole wait. So a press while busy lands here and does nothing.
+    if (loading) return;
     setError('');
     setSuccess('');
     setLoading(true);
@@ -93,18 +105,18 @@ export default function RegistrationPage() {
 
       // "Other" entries travel inside the register request so the backend creates
       // them in the same transaction as the account.
-      const data = await api.post<{ role: 'participant'; user_id: number; user: User }>(
-        '/api/auth/register',
-        {
+      const data = await withRetry(() =>
+        api.post<{ role: 'participant'; user_id: number; user: User }>('/api/auth/register', {
           ...form,
           ...(isOtherUni ? { university_other: otherUni } : {}),
           ...(isOtherSpec ? { specialty_other: { name: otherSpec } } : {}),
-        },
+        }),
       );
       login(data.role, data.user);
       setSuccess('Registration successful. Redirecting…');
       navigate('/team', { replace: true });
     } catch (err: unknown) {
+      if (isAbortError(err)) return;
       setError(errorMessage(err));
     } finally {
       setLoading(false);
@@ -302,7 +314,7 @@ export default function RegistrationPage() {
                         required
                         placeholder="University Name"
                         value={otherUni.name}
-                        onChange={(e) => setOtherUni((p) => ({ ...p, name: e.target.value }))}
+                        onChange={(e) => setOther('name', e.target.value)}
                       />
                     </Field>
                     <div style={rowStyle}>
@@ -317,7 +329,7 @@ export default function RegistrationPage() {
                             required
                             placeholder="City"
                             value={otherUni.city}
-                            onChange={(e) => setOtherUni((p) => ({ ...p, city: e.target.value }))}
+                            onChange={(e) => setOther('city', e.target.value)}
                           />
                         </Field>
                       </div>
@@ -332,9 +344,7 @@ export default function RegistrationPage() {
                             required
                             placeholder="Country"
                             value={otherUni.country}
-                            onChange={(e) =>
-                              setOtherUni((p) => ({ ...p, country: e.target.value }))
-                            }
+                            onChange={(e) => setOther('country', e.target.value)}
                           />
                         </Field>
                       </div>
@@ -375,19 +385,29 @@ export default function RegistrationPage() {
                       required
                       placeholder="Specialty name"
                       value={otherSpec}
-                      onChange={(e) => setOtherSpec(e.target.value)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setOtherSpec(e.target.value);
+                      }}
                     />
                   </Field>
                 )}
 
-                <Button
-                  type="submit"
-                  variant="primary"
-                  disabled={loading}
-                  style={{ width: '100%', marginTop: '4px' }}
-                >
-                  {loading ? 'REGISTERING…' : 'REGISTER'}
-                </Button>
+                <div>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    aria-disabled={loading || undefined}
+                    aria-label={retrying ? RETRYING_LABEL : undefined}
+                    style={{ width: '100%', marginTop: '4px' }}
+                  >
+                    {retrying ? retryingText(waitSeconds) : loading ? 'REGISTERING…' : 'REGISTER'}
+                  </Button>
+                  <RetryNotice
+                    retrying={retrying}
+                    action="registering"
+                  />
+                </div>
               </div>
             </form>
 
