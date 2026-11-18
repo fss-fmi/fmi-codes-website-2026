@@ -7,10 +7,12 @@ import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
 import Button from '@/components/common/Button';
 import FormAlert from '@/components/common/FormAlert';
+import RetryNotice from '@/components/common/RetryNotice';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { RETRYING_LABEL, retryingText, useRateLimitRetry } from '@/hooks/useRateLimitRetry';
 import api from '@/lib/api';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, isAbortError } from '@/lib/errors';
 import type { User } from '@/types/auth';
 
 type Role = 'participant' | 'mentor' | 'admin';
@@ -34,6 +36,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { login } = useAuth();
   const isMobile = useIsMobile();
+  const { run: withRetry, cancel: cancelRetry, retrying, waitSeconds } = useRateLimitRetry();
 
   const [role, setRole] = useState<Role>('participant');
   const [email, setEmail] = useState('');
@@ -49,20 +52,26 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    // The busy button is only aria-disabled: a disabled one drops keyboard focus to the page
+    // for the whole wait. So a press while busy lands here and does nothing.
+    if (loading) return;
     setError('');
     setLoading(true);
     try {
-      const data = await api.post<{ role: Role; user_id: number; user: User }>('/api/auth/login', {
-        email,
-        password,
-        role,
-      });
+      const data = await withRetry(() =>
+        api.post<{ role: Role; user_id: number; user: User }>('/api/auth/login', {
+          email,
+          password,
+          role,
+        }),
+      );
       login(data.role, data.user);
       const from =
         (location.state as { from?: { pathname: string } } | null)?.from?.pathname ??
         ROLE_DEFAULT[data.role];
       navigate(from, { replace: true });
     } catch (err: unknown) {
+      if (isAbortError(err)) return;
       console.error('Login failed:', err);
       setError(errorMessage(err));
     } finally {
@@ -132,7 +141,10 @@ export default function LoginPage() {
                   >
                     <Select
                       value={role}
-                      onChange={(e) => setRole(e.target.value as Role)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setRole(e.target.value as Role);
+                      }}
                     >
                       {ROLES.map((r) => (
                         <option
@@ -157,7 +169,10 @@ export default function LoginPage() {
                       type="button"
                       className="px-btn-secondary"
                       aria-pressed={role === r}
-                      onClick={() => setRole(r)}
+                      onClick={() => {
+                        cancelRetry();
+                        setRole(r);
+                      }}
                       style={{ flex: '1 1 100px', minWidth: '100px' }}
                     >
                       {ROLE_LABEL[r]}
@@ -183,7 +198,10 @@ export default function LoginPage() {
                       type="email"
                       required
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setEmail(e.target.value);
+                      }}
                       placeholder="name@example.com"
                       autoComplete="email"
                     />
@@ -197,19 +215,33 @@ export default function LoginPage() {
                       type="password"
                       required
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        cancelRetry();
+                        setPassword(e.target.value);
+                      }}
                       placeholder="••••••••"
                       autoComplete="current-password"
                     />
                   </Field>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    disabled={loading}
-                    style={{ width: '100%', marginTop: '4px' }}
-                  >
-                    {loading ? 'AUTHENTICATING…' : 'SIGN IN'}
-                  </Button>
+                  <div>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      aria-disabled={loading || undefined}
+                      aria-label={retrying ? RETRYING_LABEL : undefined}
+                      style={{ width: '100%', marginTop: '4px' }}
+                    >
+                      {retrying
+                        ? retryingText(waitSeconds)
+                        : loading
+                          ? 'AUTHENTICATING…'
+                          : 'SIGN IN'}
+                    </Button>
+                    <RetryNotice
+                      retrying={retrying}
+                      action="signing in"
+                    />
+                  </div>
                 </div>
               </form>
             )}
@@ -279,6 +311,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    cancelRetry();
                     setShowReset(true);
                     setResetEmail(email);
                   }}

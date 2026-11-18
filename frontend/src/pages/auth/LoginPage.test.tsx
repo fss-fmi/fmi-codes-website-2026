@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ApiError, NetworkError } from '@/lib/errors';
 import LoginPage from './LoginPage';
@@ -45,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function renderLogin() {
@@ -143,6 +144,110 @@ test('a login that gets no answer shows the network message', async () => {
   renderLogin();
   signIn();
   expect(await screen.findByText('Network error. Please try again.')).toBeInTheDocument();
+});
+
+test('a rate-limited login counts down on the button and signs in on the retry', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValueOnce(new ApiError(429, RATE_LIMITED, 1)).mockResolvedValueOnce({
+    role: 'participant',
+    user_id: 1,
+    user: { role: 'participant', email: 'user@example.com' },
+  });
+  renderLogin();
+  signIn();
+  const button = await screen.findByRole('button', { name: 'Retrying automatically' });
+  expect(button).toHaveTextContent('RETRYING… 1s');
+  expect(await screen.findByText('TEAM PAGE', {}, { timeout: 3000 })).toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText(RATE_LIMITED)).toBeNull();
+});
+
+test('while the first request is in flight the button keeps focus but a press sends nothing', async () => {
+  post.mockReturnValue(new Promise(() => {}));
+  renderLogin();
+  signIn();
+  const button = await screen.findByRole('button', { name: 'AUTHENTICATING…' });
+  expect(button).not.toBeDisabled();
+  expect(button).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(button);
+  expect(post).toHaveBeenCalledTimes(1);
+});
+
+test('while retrying the button keeps focus but a press sends nothing', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 2));
+  renderLogin();
+  signIn();
+  const button = await screen.findByRole('button', { name: 'Retrying automatically' });
+  // A disabled button drops keyboard focus to the page for the whole wait.
+  expect(button).not.toBeDisabled();
+  expect(button).toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(post).toHaveBeenCalledTimes(1);
+});
+
+test('the note and button hold steady while a retry is being sent', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  let answer: (value: unknown) => void = () => {};
+  post.mockRejectedValueOnce(new ApiError(429, RATE_LIMITED, 1)).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  );
+  renderLogin();
+  signIn();
+  await screen.findByRole('button', { name: 'Retrying automatically' });
+  await waitFor(() => expect(post).toHaveBeenCalledTimes(2), { timeout: 3000 });
+  const button = screen.getByRole('button', { name: 'Retrying automatically' });
+  expect(button).toHaveTextContent(/^RETRYING…$/);
+  expect(screen.getByRole('status')).toHaveTextContent(/lots of people are signing in/i);
+  answer({ role: 'participant', user_id: 1, user: { role: 'participant', email: 'a@b.c' } });
+  expect(await screen.findByText('TEAM PAGE')).toBeInTheDocument();
+});
+
+test('the countdown is explained once in a status region that was there before it', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 2));
+  renderLogin();
+  const status = screen.getByRole('status');
+  expect(status).toBeEmptyDOMElement();
+  signIn();
+  await screen.findByRole('button', { name: 'Retrying automatically' });
+  expect(status).toHaveTextContent(/lots of people are signing in right now/i);
+  expect(status).toHaveTextContent(/changing a field stops the retry/i);
+  expect(status.textContent).not.toMatch(/\d/);
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'fixed@example.com' } });
+  await screen.findByRole('button', { name: 'SIGN IN' });
+  expect(status).toBeEmptyDOMElement();
+});
+
+test('leaving the page cancels a pending retry', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
+  renderLogin();
+  signIn();
+  await screen.findByRole('button', { name: 'Retrying automatically' });
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  expect(post).toHaveBeenCalledTimes(1);
+});
+
+test('editing the form during the countdown drops the retry, so the old values are never sent', async () => {
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  post.mockRejectedValue(new ApiError(429, RATE_LIMITED, 1));
+  renderLogin();
+  signIn();
+  await screen.findByRole('button', { name: 'Retrying automatically' });
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'fixed@example.com' } });
+  expect(await screen.findByRole('button', { name: 'SIGN IN' })).not.toHaveAttribute(
+    'aria-disabled',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText(RATE_LIMITED)).toBeNull();
+  expect(screen.queryByText('Something went wrong. Please try again.')).toBeNull();
 });
 
 test('a rate-limited reset request shows the server message', async () => {

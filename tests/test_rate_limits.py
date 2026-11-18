@@ -7,6 +7,7 @@ comes from CLIENT_A unless it says otherwise: the university network, where ever
 device shares one address.
 """
 
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -28,7 +29,9 @@ from app.utils.rate_limits import (
     scaled,
 )
 from flask import request
+from flask_limiter import RequestLimit
 from limits import parse
+from limits.util import WindowStats
 
 PROXY = "10.42.0.7"
 CLIENT_A = "203.0.113.5"
@@ -245,6 +248,70 @@ def test_429_says_why(limited_app):
     response = _get(c, CLIENT_A)
     assert response.status_code == 429
     assert response.get_json()["error"].startswith("Too many requests")
+
+
+def test_429_says_when_to_retry(limited_app):
+    """The window opened with the first request a moment ago, so nearly all of it is left."""
+    c = limited_app.test_client()
+    for _ in range(2):
+        _get(c, CLIENT_A)
+    assert 55 <= int(_get(c, CLIENT_A).headers["Retry-After"]) <= 60
+
+
+@pytest.mark.parametrize(
+    ("left", "expected"),
+    [(10.2, 11), (10.6, 12), (59.7, 60), (60.4, 60), (0.1, 1), (-0.8, 1)],
+)
+def test_retry_after_is_never_early_and_never_past_the_window(
+    limited_app, monkeypatch, left, expected
+):
+    """Redis rounds a TTL to the nearest second, so a reported reset can be 0.5 s early."""
+    c = limited_app.test_client()
+    for _ in range(2):
+        _get(c, CLIENT_A)
+    monkeypatch.setattr(
+        RequestLimit, "window", property(lambda _self: WindowStats(time.time() + left, 0))
+    )
+    assert _get(c, CLIENT_A).headers["Retry-After"] == str(expected)
+
+
+def test_retry_after_is_the_breached_limits_window(limited_app, monkeypatch):
+    """Reset requests are 5 an hour, so the wait is far past the 60 s fallback."""
+    monkeypatch.setattr(auth_routes, "execute_query", lambda *a, **k: None)
+    c = limited_app.test_client()
+    body = {"email": "ana@example.com", "role": "participant"}
+    for _ in range(5):
+        _post(c, "/api/auth/reset-password", body)
+    response = c.post(
+        "/api/auth/reset-password",
+        json=body,
+        headers={"X-Forwarded-For": CLIENT_A},
+        environ_base={"REMOTE_ADDR": PROXY},
+    )
+    assert response.status_code == 429
+    assert 3500 < int(response.headers["Retry-After"]) <= 3600
+
+
+def test_a_storage_error_still_answers_429(limited_app, monkeypatch):
+    c = limited_app.test_client()
+    for _ in range(2):
+        _get(c, CLIENT_A)
+
+    def unreachable(_self):
+        raise ConnectionError("storage down")
+
+    monkeypatch.setattr(RequestLimit, "window", property(unreachable))
+    response = _get(c, CLIENT_A)
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "60"
+
+
+def test_only_429s_carry_rate_limit_headers(limited_app):
+    response = _get(limited_app.test_client(), CLIENT_A)
+    assert response.status_code == 200
+    assert not [
+        h for h in response.headers.keys() if h.lower().startswith(("x-ratelimit", "retry-after"))
+    ]
 
 
 def test_default_limit_is_scaled(make_app):

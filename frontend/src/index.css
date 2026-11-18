@@ -674,18 +674,24 @@ body.arcade-theme {
     transform 100ms;
   text-decoration: none;
 }
-.px-btn-primary:hover:not(:disabled) {
+.px-btn-primary:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--px-salmon-hover);
 }
 .px-btn-primary:focus-visible {
   outline: none;
   box-shadow: var(--px-focus-glow-salmon);
 }
-.px-btn-primary:active:not(:disabled) {
+.px-btn-primary:active:not(:disabled, [aria-disabled='true']) {
   transform: translateY(2px);
 }
 .px-btn-primary:disabled {
   opacity: 0.4;
+  cursor: not-allowed;
+}
+/* Busy but keeps focus (login and register while sending or counting down to a retry). Its
+   text is read, so it dims less than :disabled: about 5.3:1 against 2.1:1. */
+.px-btn-primary[aria-disabled='true'] {
+  opacity: 0.85;
   cursor: not-allowed;
 }
 .px-btn-secondary {

@@ -1,7 +1,9 @@
 """Flask application factory and initialization"""
 
 import logging
+import math
 import os
+import time
 from importlib import import_module
 
 from config import get_config
@@ -39,6 +41,27 @@ limiter = Limiter(
     application_limits=[scaled("6000 per minute")],
     application_limits_exempt_when=is_signed_in,
 )
+
+
+def _retry_after_seconds():
+    """Seconds until the breached limit's window frees a slot, never early.
+
+    Only 429s carry it: RATELIMIT_HEADERS_ENABLED would put every limit's remaining budget
+    on every response. A storage error here must not turn the 429 into a 500.
+
+    Redis reports a window's TTL rounded to the nearest second, so the reset time can be up
+    to half a second early; the half second added covers that. No window has more left than
+    its own length, so capping at it can't be early either, and keeps a minute window at 60
+    (RequestLimit.reset_at rounds up by a whole second and reads 61).
+    """
+    try:
+        current = limiter.current_limit
+        if current is not None:
+            left = math.ceil(current.window.reset_time - time.time() + 0.5)
+            return max(1, min(left, current.limit.get_expiry()))
+    except Exception:
+        logger.warning("Could not read the breached rate limit's reset time", exc_info=True)
+    return 60
 
 
 def create_app(config_name="development"):
@@ -81,9 +104,12 @@ def create_app(config_name="development"):
     # The SPA shows a response's `error` field; without one a 429 reads "HTTP 429".
     @app.errorhandler(429)
     def too_many_requests(_e):
-        return jsonify(
+        response = jsonify(
             {"success": False, "error": "Too many requests. Wait a moment and try again."}
-        ), 429
+        )
+        response.status_code = 429
+        response.headers["Retry-After"] = str(_retry_after_seconds())
+        return response
 
     @app.errorhandler(InvalidJsonFieldError)
     def invalid_json_field(e):

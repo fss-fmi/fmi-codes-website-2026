@@ -14,13 +14,19 @@
 // Requests hit relative paths (`/api/...`). In dev, Vite proxies `/api` to the
 // backend (see vite.config.ts). In prod, Nginx does the same routing.
 
-import { ApiError, GENERIC_ERROR, NetworkError } from './errors';
+import { ApiError, GENERIC_ERROR, isAbortError, NetworkError } from './errors';
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
 interface RequestOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
+}
+
+// Only the delta-seconds form: the backend never sends the HTTP-date one.
+function retryAfterSeconds(res: Response): number | null {
+  const value = res.headers.get('Retry-After')?.trim() ?? '';
+  return /^\d+$/.test(value) ? Number(value) : null;
 }
 
 async function request<T>(
@@ -47,7 +53,7 @@ async function request<T>(
   try {
     res = await fetch(url, init);
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    if (isAbortError(err)) throw err;
     throw new NetworkError();
   }
 
@@ -78,7 +84,7 @@ async function request<T>(
     ) {
       message = (payload as { error: string }).error;
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, retryAfterSeconds(res));
   }
 
   return payload as T;
