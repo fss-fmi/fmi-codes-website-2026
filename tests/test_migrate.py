@@ -217,6 +217,17 @@ class TestClearCaches:
         monkeypatch.setattr(migrate, "_redis_client", lambda: None)
         assert migrate.clear_caches() is None
 
+    def test_waits_longer_than_a_request_would(self, monkeypatch):
+        """Requests get 0.5 s; a slow SCAN after a migration must not leave stale caches."""
+        from unittest.mock import patch
+
+        monkeypatch.delenv("REDIS_SENTINELS", raising=False)
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        with patch("redis.from_url") as from_url:
+            migrate._redis_client()
+        assert from_url.call_args.kwargs["socket_timeout"] == 5
+        assert from_url.call_args.kwargs["socket_connect_timeout"] == 5
+
     def test_redis_down_is_logged_not_raised(self, monkeypatch, caplog):
         monkeypatch.setattr(migrate, "_redis_client", lambda: _FakeRedis(set(), fail=True))
         assert migrate.clear_caches() is None

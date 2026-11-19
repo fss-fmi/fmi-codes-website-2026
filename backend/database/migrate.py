@@ -148,9 +148,10 @@ def apply_pending(params: str | dict, directory: Path = MIGRATIONS_DIR) -> list[
 def _redis_client():
     # Imported late: the app package calls logging.basicConfig on import, which
     # would win over main()'s format if it ran first.
-    from app.services.redis_client import get_redis_client
+    from app.services.redis_client import new_client
 
-    return get_redis_client()
+    # Not a request: a few seconds of patience beats leaving stale caches up to their TTL.
+    return new_client(timeout=5)
 
 
 def clear_caches() -> int | None:
