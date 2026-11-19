@@ -41,7 +41,8 @@ logger = logging.getLogger(__name__)
 # reopens every slot at the same instant.
 # A Redis outage must never fail or stall a request (#256): on a storage error each worker
 # keeps the same limits in its own memory and pings Redis on a backoff (1 to 32 s) until it
-# answers, and any other limiter error lets the request through with a log line.
+# answers. swallow_errors stays off: the fallback covers the storage, so all it would add is
+# letting a request through unlimited when a key function or limit raises.
 limiter = Limiter(
     key_func=identity_key,
     default_limits=[per_identity("200 per minute", "3000 per minute")],
@@ -50,7 +51,6 @@ limiter = Limiter(
     strategy="moving-window",
     storage_options={"key_prefix": LIMITER_KEY_PREFIX},
     in_memory_fallback_enabled=True,
-    swallow_errors=True,
 )
 
 

@@ -11,18 +11,9 @@ None of these tests require a live Postgres or Redis.
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-from app.services import redis_client
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 REDIS = "app.services.redis_client.get_redis_client"
-
-
-@pytest.fixture(autouse=True)
-def fresh_breaker():
-    redis_client.reset_client()
-    yield
-    redis_client.reset_client()
 
 
 def test_health_returns_ok_without_dependencies(client):
@@ -53,12 +44,11 @@ def test_ready_returns_200_when_db_ok_and_redis_ok(client):
     assert resp.get_json() == {"db": "ok", "redis": "ok"}
 
 
-def test_ready_reports_redis_disabled_when_client_none(client):
-    """DB reachable + Redis disabled (client None) → 200, redis 'disabled'."""
-    with (
-        patch("app.routes.api_routes.execute_query", return_value={"ok": 1}),
-        patch(REDIS, return_value=None),
-    ):
+def test_ready_reports_redis_disabled_without_redis_config(client, monkeypatch):
+    """DB reachable + no Redis configured → 200, redis 'disabled'."""
+    for name in ("REDIS_URL", "REDIS_SENTINELS", "REDIS_MASTER_NAME"):
+        monkeypatch.delenv(name, raising=False)
+    with patch("app.routes.api_routes.execute_query", return_value={"ok": 1}):
         resp = client.get("/api/health/ready")
 
     assert resp.status_code == 200

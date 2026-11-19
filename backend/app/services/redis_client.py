@@ -23,6 +23,7 @@ starts while Redis is away picks it up as soon as it answers.
 """
 
 import logging
+import math
 import os
 import random as _random
 import threading
@@ -43,6 +44,8 @@ logger = logging.getLogger(__name__)
 # caches sit on every request's path, so a stalled Redis must cost little.
 _DEFAULT_SOCKET_TIMEOUT = 0.5
 _DEFAULT_CONNECT_TIMEOUT = 0.5
+# socket.settimeout raises OverflowError on inf and on huge values.
+_MAX_TIMEOUT = 60.0
 BREAKER_OPEN_SECONDS = 5.0
 
 _DOWN_ERRORS = (RedisConnectionError, RedisTimeoutError, OSError)
@@ -74,15 +77,16 @@ def _redact_url(url: str) -> str:
 
 
 def _timeout_env(name: str, default: float) -> float:
-    """A positive number of seconds from env; blank or invalid means the default."""
+    """Seconds from env, above 0 and at most _MAX_TIMEOUT; blank or invalid means the
+    default."""
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
     try:
         value = float(raw)
     except ValueError:
-        value = 0.0
-    if not value > 0:
+        value = math.nan
+    if not (math.isfinite(value) and 0 < value <= _MAX_TIMEOUT):
         logger.warning("Invalid %s=%r, using the default %s", name, raw, default)
         return default
     return value
@@ -95,10 +99,11 @@ def _timeouts() -> tuple[float, float]:
     )
 
 
-def _retry_policy() -> Retry:
-    """One immediate retry when an open connection drops (a pooled socket Redis closed, a
-    failover), none on a timeout: a second wait on a stalled Redis only doubles the cost."""
-    return Retry(NoBackoff(), 1, supported_errors=(RedisConnectionError,))
+def _no_retry() -> Retry:
+    """redis-py otherwise retries connection errors and timeouts 3 times with backoff,
+    and in Sentinel mode at two levels, so one call could wait out many timeouts. A
+    pooled socket that Redis closed needs no retry: the pool replaces it at checkout."""
+    return Retry(NoBackoff(), 0)
 
 
 def _parse_sentinels(raw: str) -> list[tuple[str, int]]:
@@ -139,23 +144,22 @@ def _sentinel_config() -> tuple[list[tuple[str, int]], str] | None:
     return hosts, master_name
 
 
-def _build_client():
+def _build_client(timeouts: tuple[float, float] | None = None):
     """(client, what it points at) from env config, or (None, None) if Redis is not
-    configured.
+    configured. *timeouts* (socket, connect) overrides the env's.
 
     Nothing here talks to Redis, so a build never waits on or fails from an outage.
     Sentinel mode takes precedence over REDIS_URL when both are set.
     """
-    socket_timeout, connect_timeout = _timeouts()
+    socket_timeout, connect_timeout = timeouts or _timeouts()
     redis_password = os.environ.get("REDIS_PASSWORD", "").strip() or None
-    common_kwargs = {
+    connection_kwargs = {
         "socket_timeout": socket_timeout,
         "socket_connect_timeout": connect_timeout,
-        "retry": _retry_policy(),
-        "decode_responses": True,
+        "retry": _no_retry(),
     }
     if redis_password:
-        common_kwargs["password"] = redis_password
+        connection_kwargs["password"] = redis_password
 
     sentinel = _sentinel_config()
     if sentinel:
@@ -164,31 +168,37 @@ def _build_client():
         hosts, master_name = sentinel
         # The sentinel-query connections need their own timeouts and, when the deployment
         # password-protects the sentinels (Bitnami does with auth.enabled=true), the password.
-        sentinel_kwargs = {
-            "socket_timeout": socket_timeout,
-            "socket_connect_timeout": connect_timeout,
-            "retry": _retry_policy(),
-        }
-        if redis_password:
-            sentinel_kwargs["password"] = redis_password
-        client = Sentinel(hosts, sentinel_kwargs=sentinel_kwargs).master_for(
-            master_name, **common_kwargs
+        client = Sentinel(hosts, sentinel_kwargs=dict(connection_kwargs)).master_for(
+            master_name, decode_responses=True, **connection_kwargs
         )
         return client, f"Sentinel master {master_name}"
 
     redis_url = os.environ.get("REDIS_URL", "").strip()
     if redis_url:
-        return redis.from_url(redis_url, **common_kwargs), _redact_url(redis_url)
+        client = redis.from_url(redis_url, decode_responses=True, **connection_kwargs)
+        return client, _redact_url(redis_url)
 
     return None, None
+
+
+def new_client(timeout: float):
+    """A separate client with *timeout* for both timeouts, or None if Redis is not
+    configured or its config does not build. For one-off jobs such as the migration
+    runner, which may wait longer than a request and is not behind the breaker."""
+    try:
+        return _build_client((timeout, timeout))[0]
+    except Exception as exc:
+        logger.warning("Could not build a Redis client: %s", exc)
+        return None
 
 
 def get_redis_client():
     """Return the shared Redis client, or None if Redis is not configured.
 
-    The client is built once per process. A build that raises (a malformed URL) is
-    retried behind the breaker instead of turning Redis off for the process's life.
-    The raw client bypasses the breaker: request paths use the helpers below.
+    The client is built once per process. A build that raises (a malformed URL) opens
+    the breaker and is retried by its next probe, instead of turning Redis off for the
+    process's life. The raw client bypasses the breaker: request paths use the helpers
+    below.
     """
     global _client, _target, _built
     if _built:
@@ -219,6 +229,10 @@ def reset_client():
         _probing = False
 
 
+def _disabled() -> bool:
+    return _built and _client is None
+
+
 def _trip_locked(exc: BaseException) -> None:
     global _state, _down_until
     _down_until = _now() + BREAKER_OPEN_SECONDS
@@ -238,21 +252,29 @@ def _acquire():
     global _probing
     if _state == "up":
         return get_redis_client(), False
+    if _disabled():
+        return None, False
     with _lock:
         probe = _state == "down"
         if probe:
             if _now() < _down_until or _probing:
                 return None, False
             _probing = True
-    client = get_redis_client()
+    try:
+        client = get_redis_client()
+    except BaseException:
+        _release(probe)
+        raise
     if client is None:
         _release(probe)
     return client, probe
 
 
 def _succeeded(probe: bool) -> None:
-    global _state, _down_until, _probing
-    if _state == "up" and not probe:
+    """Only the probe closes an open breaker: a call that started before Redis went down
+    and answered late says nothing about Redis now."""
+    global _state, _down_until
+    if _state == "up" or (_state == "down" and not probe):
         return
     with _lock:
         if _state == "down":
@@ -261,16 +283,11 @@ def _succeeded(probe: bool) -> None:
             logger.info("✓ Redis connected (%s)", _target)
         _state = "up"
         _down_until = 0.0
-        if probe:
-            _probing = False
 
 
-def _failed(exc: BaseException, probe: bool) -> None:
-    global _probing
+def _failed(exc: BaseException) -> None:
     with _lock:
         _trip_locked(exc)
-        if probe:
-            _probing = False
 
 
 def _release(probe: bool) -> None:
@@ -280,23 +297,26 @@ def _release(probe: bool) -> None:
             _probing = False
 
 
-def _run(what: str, command: Callable, fallback):
+def _run(verb: str, key, command: Callable, fallback):
     """*command*(client) through the breaker, or *fallback* when Redis is not configured,
-    down or the command fails. Never raises."""
+    down or the command fails. Never raises an Exception; the probe slot is freed on
+    every way out, BaseExceptions included."""
     client, probe = _acquire()
     if client is None:
         return fallback
     try:
         result = command(client)
     except _DOWN_ERRORS as exc:
-        _failed(exc, probe)
+        _failed(exc)
         return fallback
     except Exception as exc:
-        _release(probe)
-        logger.warning("Redis %s failed, falling back: %s", what, exc)
+        logger.warning("Redis %s %s failed, falling back: %s", verb, key, exc)
         return fallback
-    _succeeded(probe)
-    return result
+    else:
+        _succeeded(probe)
+        return result
+    finally:
+        _release(probe)
 
 
 def jittered_ttl(base_seconds: int, jitter_seconds: int) -> int:
@@ -313,7 +333,7 @@ def jittered_ttl(base_seconds: int, jitter_seconds: int) -> int:
 
 def redis_get(key: str, default=None):
     """Fail-open GET. Returns the string value, or *default* on a miss or any error."""
-    value = _run(f"GET {key}", lambda c: c.get(key), None)
+    value = _run("GET", key, lambda c: c.get(key), None)
     return value if value is not None else default
 
 
@@ -327,7 +347,7 @@ def redis_set(key: str, value: str, ttl: int | None = None) -> bool:
             client.set(key, value)
         return True
 
-    return _run(f"SET {key}", command, False)
+    return _run("SET", key, command, False)
 
 
 def redis_del(*keys: str) -> bool:
@@ -343,7 +363,7 @@ def redis_del(*keys: str) -> bool:
         client.delete(*keys)
         return True
 
-    return _run(f"DEL {keys}", command, False)
+    return _run("DEL", keys, command, False)
 
 
 def redis_incr(key: str) -> bool:
@@ -357,19 +377,20 @@ def redis_incr(key: str) -> bool:
         client.incr(key)
         return True
 
-    return _run(f"INCR {key}", command, False)
+    return _run("INCR", key, command, False)
 
 
 def redis_exists(key: str) -> bool:
     """Fail-open EXISTS: False on a miss or any error."""
-    return _run(f"EXISTS {key}", lambda c: bool(c.exists(key)), False)
+    return _run("EXISTS", key, lambda c: bool(c.exists(key)), False)
 
 
 def redis_status() -> str:
-    """Redis's state for the readiness report: disabled, ok or down."""
-    if get_redis_client() is None and _state != "down":
-        return "disabled"
-    return "ok" if _run("PING", lambda c: bool(c.ping()), False) else "down"
+    """Redis's state for the readiness report: disabled, ok or down. The ping goes
+    through the breaker like any other call, the client build included."""
+    if _run("PING", "", lambda c: bool(c.ping()), False):
+        return "ok"
+    return "disabled" if _disabled() else "down"
 
 
 def build_limiter_storage_uri() -> str:
@@ -399,20 +420,21 @@ def build_limiter_storage_uri() -> str:
 
 
 def build_limiter_storage_options() -> dict:
-    """Timeouts and retry policy for the limiter's Redis connections.
+    """Timeouts and no retries for the limiter's Redis connections.
 
     Without them redis-py waits on a stalled Redis forever, and the limiter's in-memory
     fallback never starts, since only an error starts it. Sentinel mode needs them twice:
     on the data connections and on the sentinel-query connections.
     """
-    if build_limiter_storage_uri() == "memory://":
+    sentinel = _sentinel_config()
+    if not sentinel and not os.environ.get("REDIS_URL", "").strip():
         return {}
     socket_timeout, connect_timeout = _timeouts()
     options = {
         "socket_timeout": socket_timeout,
         "socket_connect_timeout": connect_timeout,
-        "retry": _retry_policy(),
+        "retry": _no_retry(),
     }
-    if _sentinel_config():
-        options["sentinel_kwargs"] = dict(options, retry=_retry_policy())
+    if sentinel:
+        options["sentinel_kwargs"] = dict(options)
     return options

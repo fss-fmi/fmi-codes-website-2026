@@ -18,6 +18,16 @@ BACKEND_DIR = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 
+@pytest.fixture(autouse=True)
+def _fresh_redis_breaker():
+    """The Redis breaker is per process, so one slow call would open it for later tests."""
+    from app.services import redis_client
+
+    redis_client.reset_client()
+    yield
+    redis_client.reset_client()
+
+
 # ---------------------------------------------------------------------------
 # App fixture — creates a Flask app with TESTING mode, no real DB
 # ---------------------------------------------------------------------------

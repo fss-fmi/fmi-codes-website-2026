@@ -288,14 +288,26 @@ def test_login_limits_and_their_reset_work_through_an_outage(login_app, proxy, m
 
 def test_the_limiter_is_built_to_survive_its_storage():
     assert limiter._in_memory_fallback_enabled is True
-    assert limiter._swallow_errors is True
+    assert not limiter._swallow_errors
+
+
+def test_a_limiter_bug_fails_the_request_instead_of_lifting_the_limit(app, monkeypatch):
+    """With errors swallowed, a key function that raises would let every login through
+    unlimited; a 500 is loud and lets nothing through."""
+
+    def broken(_role):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr("app.utils.rate_limits._account_key", broken)
+    body = {"email": "ana@example.com", "password": "x", "role": "participant"}
+    assert app.test_client().post("/api/auth/login", json=body).status_code == 500
 
 
 def test_the_limiters_redis_connections_carry_the_timeouts(app):
     pool = limiter.storage.storage.connection_pool
     assert pool.connection_kwargs["socket_timeout"] == 0.5
     assert pool.connection_kwargs["socket_connect_timeout"] == 0.5
-    assert pool.connection_kwargs["retry"].get_retries() == 1
+    assert pool.connection_kwargs["retry"].get_retries() == 0
 
 
 def test_the_limiters_sentinel_connections_carry_the_timeouts(monkeypatch):
@@ -315,4 +327,4 @@ def test_the_limiters_sentinel_connections_carry_the_timeouts(monkeypatch):
     for kwargs in (sentinel.sentinel_kwargs, sentinel.connection_kwargs):
         assert kwargs["socket_timeout"] == 0.5
         assert kwargs["socket_connect_timeout"] == 0.5
-        assert kwargs["retry"].get_retries() == 1
+        assert kwargs["retry"].get_retries() == 0
