@@ -13,7 +13,7 @@ from flask_limiter import Limiter
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from app.services.redis_client import build_limiter_storage_uri
+from app.services.redis_client import build_limiter_storage_options, build_limiter_storage_uri
 from app.utils.rate_limits import (
     LIMITER_KEY_PREFIX,
     identity_key,
@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 # A moving window allows a request only if fewer than the limit were accepted in the last
 # window length (#251): a fixed window lets twice the limit through across its reset and
 # reopens every slot at the same instant.
+# A Redis outage must never fail or stall a request (#256): on a storage error each worker
+# keeps the same limits in its own memory and pings Redis on a backoff (1 to 32 s) until it
+# answers, and any other limiter error lets the request through with a log line.
 limiter = Limiter(
     key_func=identity_key,
     default_limits=[per_identity("200 per minute", "3000 per minute")],
@@ -46,6 +49,8 @@ limiter = Limiter(
     application_limits_exempt_when=is_signed_in,
     strategy="moving-window",
     storage_options={"key_prefix": LIMITER_KEY_PREFIX},
+    in_memory_fallback_enabled=True,
+    swallow_errors=True,
 )
 
 
@@ -106,6 +111,7 @@ def create_app(config_name="development"):
     # attach the limiter. build_limiter_storage_uri() returns a redis+sentinel://
     # / redis:// / memory:// string depending on the Redis config present.
     app.config["RATELIMIT_STORAGE_URI"] = build_limiter_storage_uri()
+    app.config["RATELIMIT_STORAGE_OPTIONS"] = build_limiter_storage_options()
     app.config["RATELIMIT_MULTIPLIER"] = multiplier_from_env()
     limiter.init_app(app)
 

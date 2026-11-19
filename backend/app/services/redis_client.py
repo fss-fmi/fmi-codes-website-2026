@@ -7,38 +7,54 @@ differences between them:
   - Sentinel mode:  REDIS_SENTINELS ("host:port,host2:port2,...") + REDIS_MASTER_NAME
                     → redis.sentinel.Sentinel(...).master_for(name, ...)
                     This is the HA shape production (k8s + Helm-managed Sentinel)
-                    will use. Switching to a Helm-managed Sentinel later is an
-                    env-var change only — no code changes here.
+                    uses. The client re-resolves the master after a failover.
   - Single mode:    REDIS_URL → redis.from_url(...)
                     The simple single-instance shape for local/everyday dev.
   - Disabled:       neither set → get_redis_client() returns None, callers fall
-                    back to Postgres/file (same graceful degradation as before).
+                    back to Postgres/file.
 
-Timeouts, retry-on-timeout, and decode_responses are centralized here so every
-Redis consumer (blocklist, caches, epoch check) shares identical, well-behaved
-connection settings.
-
-All application read/write paths MUST go through the fail-open helpers
-(redis_get / redis_set / redis_del) rather than the raw client, so a Redis
-outage degrades to a logged warning and a DB/file fallback — never a 500.
+A Redis outage may only turn off what Redis provides, never slow down or break a
+request (#256). Every request-path use goes through the helpers below, which share
+one circuit breaker per process: the first connection error or timeout marks Redis
+down for BREAKER_OPEN_SECONDS, during which every helper returns its fallback without
+touching the network. After that one call tries Redis again and closes the breaker
+when it answers. The client is built without contacting Redis, so a process that
+starts while Redis is away picks it up as soon as it answers.
 """
 
 import logging
 import os
 import random as _random
 import threading
+import time
+from collections.abc import Callable
 from urllib.parse import quote, urlparse, urlunparse
+
+from redis.backoff import NoBackoff
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.retry import Retry
+
+import redis
 
 logger = logging.getLogger(__name__)
 
-# Defaults (seconds) — overridable via config/env. Kept short so a Redis blip
-# fails fast into the fallback path rather than stalling a request.
-_DEFAULT_SOCKET_TIMEOUT = 2
-_DEFAULT_CONNECT_TIMEOUT = 2
+# In-cluster Redis answers in well under a millisecond, and the limiter and the
+# caches sit on every request's path, so a stalled Redis must cost little.
+_DEFAULT_SOCKET_TIMEOUT = 0.5
+_DEFAULT_CONNECT_TIMEOUT = 0.5
+BREAKER_OPEN_SECONDS = 5.0
 
+_DOWN_ERRORS = (RedisConnectionError, RedisTimeoutError, OSError)
+
+_lock = threading.Lock()
 _client = None
-_client_initialized = False
-_client_lock = threading.Lock()
+_target = None
+_built = False
+_state = "unknown"  # "up" once Redis answered, "down" while the breaker is open
+_down_until = 0.0
+_probing = False
+_now = time.monotonic
 
 
 def _redact_url(url: str) -> str:
@@ -57,16 +73,32 @@ def _redact_url(url: str) -> str:
     return url
 
 
-def _int_env(name: str, default: int) -> int:
-    """Read an int from env, tolerating blank/garbage values by using the default."""
-    raw = os.environ.get(name, "")
+def _timeout_env(name: str, default: float) -> float:
+    """A positive number of seconds from env; blank or invalid means the default."""
+    raw = os.environ.get(name, "").strip()
     if not raw:
         return default
     try:
-        return int(raw)
-    except (TypeError, ValueError):
-        logger.warning("Invalid %s=%r — using default %d", name, raw, default)
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if not value > 0:
+        logger.warning("Invalid %s=%r, using the default %s", name, raw, default)
         return default
+    return value
+
+
+def _timeouts() -> tuple[float, float]:
+    return (
+        _timeout_env("REDIS_SOCKET_TIMEOUT", _DEFAULT_SOCKET_TIMEOUT),
+        _timeout_env("REDIS_CONNECT_TIMEOUT", _DEFAULT_CONNECT_TIMEOUT),
+    )
+
+
+def _retry_policy() -> Retry:
+    """One immediate retry when an open connection drops (a pooled socket Redis closed, a
+    failover), none on a timeout: a second wait on a stalled Redis only doubles the cost."""
+    return Retry(NoBackoff(), 1, supported_errors=(RedisConnectionError,))
 
 
 def _parse_sentinels(raw: str) -> list[tuple[str, int]]:
@@ -94,114 +126,177 @@ def _parse_sentinels(raw: str) -> list[tuple[str, int]]:
     return pairs
 
 
-def _build_client():
-    """Construct a redis client from env config, or None if Redis is disabled.
-
-    Sentinel mode takes precedence over REDIS_URL when both are set, so a
-    deployment that provides Sentinel config gets HA discovery even if a legacy
-    REDIS_URL is still floating around in the environment.
-    """
-    try:
-        from redis.sentinel import Sentinel  # type: ignore[import]
-
-        import redis  # type: ignore[import]
-    except Exception as exc:  # pragma: no cover - redis is a hard dependency
-        logger.error("redis-py import failed — Redis disabled: %s", exc)
+def _sentinel_config() -> tuple[list[tuple[str, int]], str] | None:
+    """(hosts, master name) when Sentinel mode is configured, else None."""
+    sentinels_raw = os.environ.get("REDIS_SENTINELS", "").strip()
+    master_name = os.environ.get("REDIS_MASTER_NAME", "").strip()
+    if not (sentinels_raw and master_name):
         return None
+    hosts = _parse_sentinels(sentinels_raw)
+    if not hosts:
+        logger.warning("REDIS_SENTINELS=%r parsed to zero valid hosts", sentinels_raw)
+        return None
+    return hosts, master_name
 
-    socket_timeout = _int_env("REDIS_SOCKET_TIMEOUT", _DEFAULT_SOCKET_TIMEOUT)
-    connect_timeout = _int_env("REDIS_CONNECT_TIMEOUT", _DEFAULT_CONNECT_TIMEOUT)
+
+def _build_client():
+    """(client, what it points at) from env config, or (None, None) if Redis is not
+    configured.
+
+    Nothing here talks to Redis, so a build never waits on or fails from an outage.
+    Sentinel mode takes precedence over REDIS_URL when both are set.
+    """
+    socket_timeout, connect_timeout = _timeouts()
     redis_password = os.environ.get("REDIS_PASSWORD", "").strip() or None
-
     common_kwargs = {
         "socket_timeout": socket_timeout,
         "socket_connect_timeout": connect_timeout,
-        "retry_on_timeout": True,
+        "retry": _retry_policy(),
         "decode_responses": True,
     }
     if redis_password:
         common_kwargs["password"] = redis_password
 
-    sentinels_raw = os.environ.get("REDIS_SENTINELS", "").strip()
-    master_name = os.environ.get("REDIS_MASTER_NAME", "").strip()
+    sentinel = _sentinel_config()
+    if sentinel:
+        from redis.sentinel import Sentinel
 
-    if sentinels_raw and master_name:
-        sentinel_hosts = _parse_sentinels(sentinels_raw)
-        if not sentinel_hosts:
-            logger.error(
-                "REDIS_SENTINELS=%r parsed to zero valid hosts — Redis disabled", sentinels_raw
-            )
-            return None
-        try:
-            # The Sentinel object needs its own connect timeout so a dead
-            # sentinel node doesn't hang master discovery. When the deployment
-            # password-protects the sentinels themselves (Bitnami does when
-            # auth.enabled=true), the sentinel-query connections need the
-            # password too — that goes via sentinel_kwargs, separate from the
-            # data-node password threaded through common_kwargs below.
-            sentinel_kwargs = {
-                "socket_timeout": socket_timeout,
-                "socket_connect_timeout": connect_timeout,
-            }
-            if redis_password:
-                sentinel_kwargs["password"] = redis_password
-            sentinel = Sentinel(sentinel_hosts, sentinel_kwargs=sentinel_kwargs)
-            # master_for returns a client that re-resolves the current master
-            # via the sentinels on each use, so a failover promotion is picked
-            # up automatically without a cached IP / app restart.
-            client = sentinel.master_for(master_name, **common_kwargs)
-            client.ping()  # Fail fast if discovery is misconfigured
-            logger.info(
-                "✓ Redis connected via Sentinel (master=%s, sentinels=%s)",
-                master_name,
-                sentinels_raw,
-            )
-            return client
-        except Exception as exc:
-            logger.error("Redis Sentinel connection failed — Redis disabled: %s", exc)
-            return None
+        hosts, master_name = sentinel
+        # The sentinel-query connections need their own timeouts and, when the deployment
+        # password-protects the sentinels (Bitnami does with auth.enabled=true), the password.
+        sentinel_kwargs = {
+            "socket_timeout": socket_timeout,
+            "socket_connect_timeout": connect_timeout,
+            "retry": _retry_policy(),
+        }
+        if redis_password:
+            sentinel_kwargs["password"] = redis_password
+        client = Sentinel(hosts, sentinel_kwargs=sentinel_kwargs).master_for(
+            master_name, **common_kwargs
+        )
+        return client, f"Sentinel master {master_name}"
 
     redis_url = os.environ.get("REDIS_URL", "").strip()
     if redis_url:
-        try:
-            client = redis.from_url(redis_url, **common_kwargs)
-            client.ping()  # Fail fast if the URL is wrong
-            logger.info("✓ Redis connected (%s)", _redact_url(redis_url))
-            return client
-        except Exception as exc:
-            logger.error("Redis connection failed — Redis disabled: %s", exc)
-            return None
+        return redis.from_url(redis_url, **common_kwargs), _redact_url(redis_url)
 
-    return None
+    return None, None
 
 
 def get_redis_client():
-    """Return the shared Redis client, or None if Redis is disabled/unreachable.
+    """Return the shared Redis client, or None if Redis is not configured.
 
-    Lazy singleton with double-checked locking so concurrent threads under a
-    threaded Gunicorn worker don't race on initialization.
-    The Sentinel-backed client re-resolves the master on each command, so reuse
-    does NOT pin us to a stale master after a failover.
+    The client is built once per process. A build that raises (a malformed URL) is
+    retried behind the breaker instead of turning Redis off for the process's life.
+    The raw client bypasses the breaker: request paths use the helpers below.
     """
-    global _client, _client_initialized
-    if _client_initialized:
+    global _client, _target, _built
+    if _built:
         return _client
-    with _client_lock:
-        if not _client_initialized:
-            _client = _build_client()
-            _client_initialized = True
+    with _lock:
+        if not _built:
+            try:
+                _client, _target = _build_client()
+            except Exception as exc:
+                _trip_locked(exc)
+                return None
+            _built = True
     return _client
 
 
 def reset_client():
-    """Drop the cached client so the next get_redis_client() rebuilds it.
+    """Forget the client and the breaker state; the next call rebuilds the client.
 
-    Used by tests that swap REDIS_URL between cases; not needed in production
-    since the Sentinel client already handles failover internally.
+    Used by tests that swap REDIS_URL between cases.
     """
-    global _client, _client_initialized
-    _client = None
-    _client_initialized = False
+    global _client, _target, _built, _state, _down_until, _probing
+    with _lock:
+        _client = None
+        _target = None
+        _built = False
+        _state = "unknown"
+        _down_until = 0.0
+        _probing = False
+
+
+def _trip_locked(exc: BaseException) -> None:
+    global _state, _down_until
+    _down_until = _now() + BREAKER_OPEN_SECONDS
+    if _state != "down":
+        logger.warning(
+            "Redis unreachable, so caching and token revocation are off in this process; "
+            "trying again every %ss: %s",
+            BREAKER_OPEN_SECONDS,
+            exc,
+        )
+    _state = "down"
+
+
+def _acquire():
+    """(client, whether this call is the probe), or (None, False) when the call must use
+    its fallback right away."""
+    global _probing
+    if _state == "up":
+        return get_redis_client(), False
+    with _lock:
+        probe = _state == "down"
+        if probe:
+            if _now() < _down_until or _probing:
+                return None, False
+            _probing = True
+    client = get_redis_client()
+    if client is None:
+        _release(probe)
+    return client, probe
+
+
+def _succeeded(probe: bool) -> None:
+    global _state, _down_until, _probing
+    if _state == "up" and not probe:
+        return
+    with _lock:
+        if _state == "down":
+            logger.warning("Redis reachable again; caching and token revocation are back on")
+        elif _state == "unknown":
+            logger.info("✓ Redis connected (%s)", _target)
+        _state = "up"
+        _down_until = 0.0
+        if probe:
+            _probing = False
+
+
+def _failed(exc: BaseException, probe: bool) -> None:
+    global _probing
+    with _lock:
+        _trip_locked(exc)
+        if probe:
+            _probing = False
+
+
+def _release(probe: bool) -> None:
+    global _probing
+    if probe:
+        with _lock:
+            _probing = False
+
+
+def _run(what: str, command: Callable, fallback):
+    """*command*(client) through the breaker, or *fallback* when Redis is not configured,
+    down or the command fails. Never raises."""
+    client, probe = _acquire()
+    if client is None:
+        return fallback
+    try:
+        result = command(client)
+    except _DOWN_ERRORS as exc:
+        _failed(exc, probe)
+        return fallback
+    except Exception as exc:
+        _release(probe)
+        logger.warning("Redis %s failed, falling back: %s", what, exc)
+        return fallback
+    _succeeded(probe)
+    return result
 
 
 def jittered_ttl(base_seconds: int, jitter_seconds: int) -> int:
@@ -217,76 +312,64 @@ def jittered_ttl(base_seconds: int, jitter_seconds: int) -> int:
 
 
 def redis_get(key: str, default=None):
-    """Fail-open GET. Returns the string value, or *default* on miss/any error.
-
-    Never raises — a Redis outage yields *default* (treated as a cache miss by
-    callers) plus a logged warning, so route handlers keep working off the DB.
-    """
-    client = get_redis_client()
-    if client is None:
-        return default
-    try:
-        value = client.get(key)
-        return value if value is not None else default
-    except Exception as exc:
-        logger.warning("Redis GET %s failed — falling back: %s", key, exc)
-        return default
+    """Fail-open GET. Returns the string value, or *default* on a miss or any error."""
+    value = _run(f"GET {key}", lambda c: c.get(key), None)
+    return value if value is not None else default
 
 
 def redis_set(key: str, value: str, ttl: int | None = None) -> bool:
-    """Fail-open SET (with optional TTL in seconds). Returns True on success.
+    """Fail-open SET (with optional TTL in seconds). Returns True on success."""
 
-    No-ops and returns False (with a logged warning) on any error, so a write
-    to the cache can never break the write path it decorates.
-    """
-    client = get_redis_client()
-    if client is None:
-        return False
-    try:
+    def command(client):
         if ttl is not None and ttl > 0:
             client.setex(key, ttl, value)
         else:
             client.set(key, value)
         return True
-    except Exception as exc:
-        logger.warning("Redis SET %s failed — ignoring: %s", key, exc)
-        return False
+
+    return _run(f"SET {key}", command, False)
 
 
 def redis_del(*keys: str) -> bool:
     """Fail-open DEL. Returns True if the delete command was issued successfully.
 
     Used for cache invalidation. A failure here means a stale key may linger
-    until its TTL expires — logged, but never fatal.
+    until its TTL expires.
     """
     if not keys:
         return False
-    client = get_redis_client()
-    if client is None:
-        return False
-    try:
+
+    def command(client):
         client.delete(*keys)
         return True
-    except Exception as exc:
-        logger.warning("Redis DEL %s failed — ignoring: %s", keys, exc)
-        return False
+
+    return _run(f"DEL {keys}", command, False)
 
 
 def redis_incr(key: str) -> bool:
     """Fail-open INCR. Returns True if the increment was issued successfully.
 
     Used to bump a cache version key; a failure leaves the old version in use
-    until its entries expire — logged, but never fatal.
+    until its entries expire.
     """
-    client = get_redis_client()
-    if client is None:
-        return False
-    try:
+
+    def command(client):
         client.incr(key)
         return True
-    except Exception as exc:
-        logger.warning("Redis INCR %s failed — ignoring: %s", key, exc)
-        return False
+
+    return _run(f"INCR {key}", command, False)
+
+
+def redis_exists(key: str) -> bool:
+    """Fail-open EXISTS: False on a miss or any error."""
+    return _run(f"EXISTS {key}", lambda c: bool(c.exists(key)), False)
+
+
+def redis_status() -> str:
+    """Redis's state for the readiness report: disabled, ok or down."""
+    if get_redis_client() is None and _state != "down":
+        return "disabled"
+    return "ok" if _run("PING", lambda c: bool(c.ping()), False) else "down"
 
 
 def build_limiter_storage_uri() -> str:
@@ -297,25 +380,39 @@ def build_limiter_storage_uri() -> str:
     threads the userinfo password into BOTH the sentinel-query connections and
     the data-node connections, so a password-protected Sentinel deployment
     authenticates correctly. Returns "memory://" when Redis is disabled so local
-    dev without Redis still rate-limits per-process (unchanged from prior
-    behaviour).
+    dev without Redis still rate-limits per-process.
     """
-    sentinels_raw = os.environ.get("REDIS_SENTINELS", "").strip()
-    master_name = os.environ.get("REDIS_MASTER_NAME", "").strip()
     redis_password = os.environ.get("REDIS_PASSWORD", "").strip() or None
 
-    if sentinels_raw and master_name:
-        hosts = _parse_sentinels(sentinels_raw)
-        if hosts:
-            host_list = ",".join(f"{h}:{p}" for h, p in hosts)
-            userinfo = f":{quote(redis_password, safe='')}@" if redis_password else ""
-            return f"redis+sentinel://{userinfo}{host_list}/{master_name}"
-        logger.warning(
-            "REDIS_SENTINELS=%r parsed to zero valid hosts — limiter falling back", sentinels_raw
-        )
+    sentinel = _sentinel_config()
+    if sentinel:
+        hosts, master_name = sentinel
+        host_list = ",".join(f"{h}:{p}" for h, p in hosts)
+        userinfo = f":{quote(redis_password, safe='')}@" if redis_password else ""
+        return f"redis+sentinel://{userinfo}{host_list}/{master_name}"
 
     redis_url = os.environ.get("REDIS_URL", "").strip()
     if redis_url:
         return redis_url
 
     return "memory://"
+
+
+def build_limiter_storage_options() -> dict:
+    """Timeouts and retry policy for the limiter's Redis connections.
+
+    Without them redis-py waits on a stalled Redis forever, and the limiter's in-memory
+    fallback never starts, since only an error starts it. Sentinel mode needs them twice:
+    on the data connections and on the sentinel-query connections.
+    """
+    if build_limiter_storage_uri() == "memory://":
+        return {}
+    socket_timeout, connect_timeout = _timeouts()
+    options = {
+        "socket_timeout": socket_timeout,
+        "socket_connect_timeout": connect_timeout,
+        "retry": _retry_policy(),
+    }
+    if _sentinel_config():
+        options["sentinel_kwargs"] = dict(options, retry=_retry_policy())
+    return options
