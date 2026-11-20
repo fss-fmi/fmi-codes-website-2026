@@ -209,7 +209,8 @@ The script exits 0 only when all of these hold, 1 otherwise. It prints a table p
 
 - No 5xx, no 429, no request without a complete answer (the client waits 75 s, past the ingress's 60 s; a body cut off after its status line counts too) and no status other than the one the real client gets. A 201 or 200 without the token cookie fails the run as well. The SPA retries a 429 on login and register after its `Retry-After`; the script doesn't, since any 429 already fails the run.
 - Register p95 under 3 s and p99 under 10 s, exact percentiles over every registration, failed ones included (`--register-p95`, `--register-p99`).
-- No pod restarts and no pod dropped from the Service: check by hand (below).
+- No pod restarts, no backend pod replaced and no pod dropped from the Service: check by hand (below; the pod names are compared after the run). A restarted or replaced pod also takes its old lines out of the log check below.
+- No `Rate limit storage unreachable - falling back to in-memory storage` and no `Redis unreachable, so caching and token revocation are off` line in any backend pod's log during the run: check by hand (below). The script only sees HTTP. A worker that loses Redis keeps answering, with rate limits counted in its own memory and caching off, so without this check a Redis failure would end in a false PASS on a limiter prod doesn't run.
 - `check.sql` returns no rows: as many registered teams as active ones up to 18, queue positions 1 to n with no gaps, no team over 6 members, team status matching its active members, `participant_count` matching every participant on the team and every captain in their own team and only there.
 
 ### Run it on staging
@@ -220,14 +221,32 @@ The script exits 0 only when all of these hold, 1 otherwise. It prints a table p
 - Staging Postgres at prod's `max_connections = 250` and 2Gi (`overlays/staging/postgresql-values.yaml`), in the same PR, or `test_capacity_budget.py` fails (6 pods during a rollout x 4 workers x 8 + 10 = 202 against staging's 150). The running database only gets it from a re-run of `deploy-stateful.sh`, which restarts Postgres.
 - `RATELIMIT_MULTIPLIER: "2"` in `overlays/staging/backend-config-patch.yaml`. Register and login allow 300/min per address at prod's values ([ADR-014](adr/014-rate-limits-keyed-on-account-and-user.md)), so 500 registrations from one address in 60 s at `"1"` get 429s from the 301st on: the moving window counts every request accepted in the last minute, and all 500 arrive inside one. At `"2"` the ceiling is 600 in any minute and 500 never reach it. 2 is the lowest value that fits, so any other limit the scenario gets close to still trips. This doesn't test 500 real people behind one address at prod's limits: that relies on ADR-014's bet that no more than 300 register or log in from one address in a minute.
 
-**Before the run**, from the repo root on the cluster machine:
+**Keep one WSL session open for the whole run** when the cluster runs in WSL: once no session is open the VM stops, and its next boot restarts every pod, which breaks the run.
+
+**Before the run**, from the repo root on the cluster machine, on an up-to-date `main` (`git pull --ff-only`: the commands below read `tests/load/`):
 
 ```bash
 NS=fmi-codes-staging
-DB="psql -U fmi_app -d fmi_hackathon_2026_staging -v ON_ERROR_STOP=1"
+# psql gets no password unless it is passed one ("fe_sendauth: no password supplied"). The pod's
+# POSTGRES_PASSWORD is the one it started with and goes stale after rotate-datastore-password.sh db,
+# so db() reads the current one from the Secret and sends it as stdin's first line, never in an argument.
+# On a terminal it sends only the password, so kubectl can't swallow the lines pasted after it.
+# Arguments pass through: db -c '...', db < file.
+db() {
+  { kubectl -n $NS get secret fmi-codes-db -o jsonpath='{.data.password}' | base64 -d; echo; [ -t 0 ] || cat; } |
+    kubectl -n $NS exec -i postgres-0 -- sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -U fmi_app -d fmi_hackathon_2026_staging -v ON_ERROR_STOP=1 "$@"' sh "$@"
+}
+
+# The backend must run the limiter fix (#261), or a Redis blip in the rush answers 500 on the
+# requests already in flight. No "image has #261" line means stop: the image is older, or
+# #263 isn't merged yet (then the git log lookup prints nothing).
+kubectl -n $NS rollout status deploy/backend
+IMAGE=$(kubectl -n $NS get deploy backend -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}')
+git fetch -q origin
+git merge-base --is-ancestor "$(git log origin/main --format=%H -1 --grep='(#263)$')" "${IMAGE##*-}" && echo "image has #261"
 
 # 0 teams: the cleanup would otherwise leave gaps in other teams' queue positions.
-kubectl -n $NS exec -i postgres-0 -- $DB -c 'SELECT COUNT(*) FROM teams'
+db -c 'SELECT COUNT(*) FROM teams'
 
 # CPU time of one bcrypt hash on this machine (#221's sizing assumed about 0.42 s at a pod's 500m limit).
 kubectl -n $NS exec deploy/backend -c backend -- python -c \
@@ -242,7 +261,10 @@ kubectl -n $NS exec deploy/backend -c backend -- python -c \
 ```bash
 kubectl -n $NS create configmap registration-rush --from-file=tests/load/registration_rush.py \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n $NS delete job registration-rush --ignore-not-found
+# Foreground: returns once the last run's pod is gone too, so the Redis check below finds this run's.
+kubectl -n $NS delete job registration-rush --ignore-not-found --cascade=foreground --timeout=120s
+START=$(date -u +%FT%TZ)                        # the log check after the run starts here
+PODS=$(kubectl -n $NS get pods -l app.kubernetes.io/name=fmi-codes-backend -o name | sort)
 kubectl apply -f tests/load/job.yaml
 # Retries until the pod's container has started, then follows it to the end.
 until kubectl -n $NS logs -f job/registration-rush 2>/dev/null; do sleep 2; done
@@ -253,28 +275,52 @@ The log ends with `RESULT: PASS` or `RESULT: FAIL`, or with a `preflight:` line 
 
 A failed Job also posts `KubeJobFailed` to `#cluster-alerts-staging` after a minute.
 
-**While it runs**, in other terminals:
+**While it runs**, in other terminals. Define `NS` and `db()` from **Before the run** in each one first.
 
 ```bash
 kubectl -n $NS get pods -w                      # RESTARTS stays 0, every backend pod stays 1/1
 kubectl -n $NS get endpoints backend -w         # all 4 backend pods stay listed
 while sleep 2; do
-  kubectl -n $NS exec -i postgres-0 -- $DB -tAc "SELECT now()::time(0), COUNT(*), COUNT(*) FILTER (WHERE wait_event_type = 'Lock' AND wait_event = 'advisory') FROM pg_stat_activity WHERE datname = current_database()"
+  db -tAc "SELECT now()::time(0), COUNT(*), COUNT(*) FILTER (WHERE wait_event_type = 'Lock' AND wait_event = 'advisory') FROM pg_stat_activity WHERE datname = current_database()"
 done                                            # time | connections | waiting on the advisory lock
 ```
 
-**After the run:**
+During the arrival minute (the key expires a minute after the last registration), check that every worker counts registrations in one shared bucket in Redis: a key of `TYPE` `list` (the moving window) under the Job pod's address.
 
 ```bash
-kubectl -n $NS exec -i postgres-0 -- $DB < tests/load/check.sql    # (0 rows) passes
+JOB_IP=$(kubectl -n $NS get pod -l job-name=registration-rush --field-selector=status.phase=Running -o jsonpath='{.items[0].status.podIP}')
+if [ -z "$JOB_IP" ]; then echo "no running Job pod yet: run this block again"; else
+  MASTER=$(kubectl -n $NS exec redis-node-0 -c sentinel -- sh -c 'REDISCLI_AUTH="$(cat $REDIS_PASSWORD_FILE)" exec redis-cli -p 26379 --no-auth-warning SENTINEL get-master-addr-by-name mymaster' | head -1 | cut -d. -f1)
+  kubectl -n $NS exec "$MASTER" -c redis -- sh -c 'export REDISCLI_AUTH="$(cat $REDIS_PASSWORD_FILE)"
+    for k in $(redis-cli --no-auth-warning --scan --pattern "LIMITS-MOVING:LIMITER/ip:$1/*register*"); do
+      echo "$(redis-cli --no-auth-warning TYPE "$k") $k"
+    done' sh "$JOB_IP"
+fi
+# list LIMITS-MOVING:LIMITER/ip:<JOB_IP>/auth.register_participant/600/1/minute
 ```
 
-Record, in #222: peak backend CPU and throttling (Grafana, **Kubernetes / Compute Resources / Pod** for each `backend` pod), peak Postgres connections and the most connections waiting on the registration advisory lock (the loop above), the CPU time per hash and how long the backlog took to drain (the script's `registrations:` line, against the 60 s of arrivals). If something fails, change the sizing in #221's files and run it again.
+The amount in the key is the register limit at the test's multiplier (300 x 2). With `JOB_IP` set, no key means the workers count in their own memory, so the run isn't testing prod's limiter. If nothing matches, pass `'*'` in place of `"$JOB_IP"` to list every address's register key and see the address the backend saw.
+
+**After the run**, in the terminal that ran it (it holds `START` and `PODS`):
+
+```bash
+db < tests/load/check.sql                       # (0 rows) passes
+# A replaced pod took its log lines with it, so the backend pods must be the ones from before the run.
+[ "$PODS" = "$(kubectl -n $NS get pods -l app.kubernetes.io/name=fmi-codes-backend -o name | sort)" ] &&
+  echo "same backend pods" || echo "FAIL: backend pods changed during the run"
+# Prints nothing when it passes: no backend worker lost Redis during the run. Without START it
+# prints an error for each pod instead of checking nothing.
+for p in $(kubectl -n $NS get pods -l app.kubernetes.io/name=fmi-codes-backend -o name); do
+  kubectl -n $NS logs $p -c backend --since-time="${START:?run this in the terminal that ran the Job}" | grep -E 'Rate limit storage unreachable|Redis unreachable, so caching'
+done
+```
+
+Record, in #222: peak backend CPU and throttling (Grafana, **Kubernetes / Compute Resources / Pod** for each `backend` pod), peak Redis CPU (the same dashboard, for the master `redis-node` pod), peak Postgres connections and the most connections waiting on the registration advisory lock (the loop above), the CPU time per hash and how long the backlog took to drain (the script's `registrations:` line, against the 60 s of arrivals). If something fails, change the sizing in #221's files and run it again.
 
 **Clean up:**
 
 ```bash
-kubectl -n $NS exec -i postgres-0 -- $DB < tests/load/cleanup.sql
+db < tests/load/cleanup.sql
 # The SQL bypasses the app, so drop the caches its writes would have cleared (the
 # registered teams list, the rankings): the migration runner's helper, with the pod's Redis.
 kubectl -n $NS exec deploy/backend -c backend -- python -c \

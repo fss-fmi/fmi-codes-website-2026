@@ -1939,7 +1939,10 @@ Rehearse on staging first.
 
 The runner and the Job connect as `fmi_app`, which works because `fmi_app` owns the tables.
 Confirm that on a live database with
-`kubectl -n $NS exec postgres-0 -- psql -U fmi_app -d <db> -c '\dt'` (the Owner column).
+`{ kubectl -n $NS get secret fmi-codes-db -o jsonpath='{.data.password}' | base64 -d; echo; } | kubectl -n $NS exec -i postgres-0 -- sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -U fmi_app -d <db> -c "\dt"'`
+(the Owner column). psql gets no password unless it is passed one (`fe_sendauth: no password supplied`),
+and the pod's `POSTGRES_PASSWORD` goes stale after `rotate-datastore-password.sh db`, so the current
+one comes from the Secret as the first line of stdin.
 
 ## Verify a running deployment
 
