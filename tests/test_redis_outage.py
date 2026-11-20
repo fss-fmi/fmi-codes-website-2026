@@ -7,6 +7,7 @@ need REDIS_URL (CI sets it) and skip without it. The database is stubbed per rou
 the way tests/test_rate_limits.py does it.
 """
 
+import importlib
 import inspect
 import os
 import threading
@@ -14,13 +15,20 @@ import time
 from unittest.mock import patch
 
 import bcrypt
+import flask
 import pytest
 from app import limiter
 from app.routes import auth as auth_routes
 from app.services import feature_flag_service, mentor_service, redis_client
 from app.utils import fail_open_limiter
 from app.utils.fail_open_limiter import FailOpenLimiter
-from app.utils.rate_limits import LIMITER_KEY_PREFIX
+from app.utils.rate_limits import (
+    LIMITER_KEY_PREFIX,
+    LOGIN_ACCOUNT_LIMIT,
+    forget_login_attempts,
+    login_account_key,
+    scaled,
+)
 from flask_limiter import Limiter
 from limits import parse
 from limits.storage import storage_from_string
@@ -77,9 +85,9 @@ def proxy():
     _clear_limiter_keys()
 
 
-# During an outage the limiter pings its storage once the hold after the last Redis error
-# is over, then on a backoff (1, 2, 4 ... 32 s after the last ping), and each ping makes one
-# request wait for it. The fixture pushes the next ping out of reach so timings don't depend
+# During an outage the limiter pings its storage as the hold after the last Redis error
+# ends, then 2, 4, 8, 16 and 32 s after each ping (then again from 1 s), and each ping makes
+# one request wait for it. The fixture pushes the next ping out of reach so timings don't depend
 # on when it lands; recheck_limiter_storage() lets the next request ping. Name-mangled
 # attributes: a rename fails these tests, never silently.
 def recheck_limiter_storage(monkeypatch):
@@ -103,6 +111,8 @@ def app(proxy, monkeypatch):
     monkeypatch.setattr(limiter, "_Limiter__check_backend_count", 0)
     monkeypatch.setattr(limiter, "_Limiter__last_check_backend", time.time() + 3600)
     monkeypatch.setattr(limiter, "_hold_until", 0.0)
+    monkeypatch.setattr(limiter, "_last_storage_error", float("-inf"))
+    monkeypatch.setattr(limiter, "_pending_clears", set())
     monkeypatch.setattr(feature_flag_service, "is_enabled", lambda name: False)
     monkeypatch.setattr(auth_routes, "execute_query", lambda *a, **k: None)
     monkeypatch.setattr(auth_routes, "_DUMMY_HASH", FAST_HASH)
@@ -346,6 +356,126 @@ def test_the_worker_holds_the_fallback_after_a_redis_error(app, proxy, monkeypat
     assert limiter._storage_dead is False
 
 
+def test_a_ping_answered_after_a_fresh_redis_error_is_ignored(app, proxy, monkeypatch):
+    """A ping can take a whole timeout; a Redis error while it is in flight means its
+    answer is stale, and taking it would put the worker back on a failing Redis."""
+    client = app.test_client()
+    proxy.refuse()
+    assert client.get("/test/plain").status_code == 200
+    proxy.up()
+    recheck_limiter_storage(monkeypatch)
+    in_flight, release = threading.Event(), threading.Event()
+
+    class SlowPing:
+        def ping(self):
+            in_flight.set()
+            release.wait(5)
+            return True
+
+    monkeypatch.setattr(limiter.storage, "get_connection", lambda: SlowPing())
+    result = {}
+    request = threading.Thread(target=lambda: result.update(response=client.get("/test/plain")))
+    request.start()
+    assert in_flight.wait(5)
+    limiter._switch_to_memory()  # what another request's failing Redis call does
+    release.set()
+    request.join(10)
+    assert result["response"].status_code == 200
+    assert limiter._storage_dead is True
+
+
+def test_a_request_counted_in_memory_stays_there(app, proxy):
+    """Another thread's ping can put the worker back on Redis mid-request. The rest of the
+    request (a later check, the 429's Retry-After) must read where it was counted."""
+
+    def store():
+        limiter._storage_dead = False  # another thread's ping answered
+        return "memory" if limiter.limiter is limiter._fallback_limiter else "redis"
+
+    app.add_url_rule("/test/store", "test_store", store)
+    client = app.test_client()
+    proxy.refuse()
+    assert client.get("/test/plain").status_code == 200
+    assert client.get("/test/store").get_data(as_text=True) == "memory"
+
+
+def test_a_request_refused_on_redis_reads_its_retry_after_there(app, proxy, monkeypatch):
+    """The worker can switch to memory between a refusal on Redis and the 429 handler. An
+    older window in memory could then make the Retry-After early."""
+    retry_after = importlib.import_module("app")._retry_after_seconds
+    seen = {}
+
+    def switched_first():
+        limiter._storage_dead = True  # another thread's Redis error lands
+        seen["store"] = "redis" if limiter.limiter is limiter._limiter else "memory"
+        return retry_after()
+
+    monkeypatch.setattr("app._retry_after_seconds", switched_first)
+    client = app.test_client()
+    assert [client.get("/test/two").status_code for _ in range(3)] == [200, 200, 429]
+    assert seen == {"store": "redis"}
+
+
+def _login_context(app):
+    body = {"email": "ana@example.com", "password": "x", "role": "participant"}
+    return app.test_request_context("/api/auth/login", method="POST", json=body)
+
+
+def _login_limit():
+    """The account limit's item and identifiers, inside _login_context."""
+    return parse(scaled(LOGIN_ACCOUNT_LIMIT)()), (login_account_key(), flask.request.endpoint)
+
+
+@pytest.mark.parametrize("on_fallback", [False, True])
+def test_a_good_login_clears_failed_attempts_in_both_stores(app, proxy, monkeypatch, on_fallback):
+    """On the fallback the Redis clear waits for recovery, so a hung Redis costs the login
+    no wait."""
+    with _login_context(app):
+        item, ids = _login_limit()
+        stores = {"memory": limiter._fallback_limiter, "redis": limiter._limiter}
+        for store in stores.values():
+            for _ in range(item.amount):
+                store.hit(item, *ids)
+        if on_fallback:
+            monkeypatch.setattr(limiter, "_storage_dead", True)
+            proxy.hang()
+        _, took = _timed(forget_login_attempts)
+        proxy.up()
+        cleared = {name: store.test(item, *ids) for name, store in stores.items()}
+    assert cleared == {"memory": True, "redis": not on_fallback}
+    assert took < LATER_REQUEST_BOUND
+
+
+def test_a_login_on_the_fallback_clears_redis_once_the_worker_is_back(app, proxy, monkeypatch):
+    """Typos counted in Redis just before an outage would otherwise still block the owner
+    for up to a minute once Redis is back."""
+    with _login_context(app):
+        item, ids = _login_limit()
+        for _ in range(item.amount):
+            limiter._limiter.hit(item, *ids)
+    client = app.test_client()
+    proxy.refuse()
+    assert client.get("/test/plain").status_code == 200
+    with _login_context(app):
+        forget_login_attempts()
+    proxy.up()
+    assert not limiter._limiter.test(item, *ids)
+
+    recheck_limiter_storage(monkeypatch)
+    assert client.get("/test/plain").status_code == 200
+    assert limiter._storage_dead is False
+    assert limiter._limiter.test(item, *ids)
+    assert limiter._pending_clears == set()
+
+
+def test_a_redis_error_while_clearing_switches_the_worker(app, proxy):
+    proxy.refuse()
+    with _login_context(app):
+        forget_login_attempts()
+    assert limiter._storage_dead is True
+    assert len(limiter._pending_clears) == 1
+
+
 # --- Login after an outage ---
 
 
@@ -426,6 +556,8 @@ def test_the_limiter_state_it_reads_exists(app):
         assert callable(limiter.context.seen_limits.clear)
     assert isinstance(limiter._storage_dead, bool)
     assert limiter._fallback_limiter is not None
+    assert limiter._limiter is not None
+    assert callable(limiter.storage.get_connection)
 
 
 def test_a_limiter_bug_fails_the_request_instead_of_lifting_the_limit(app, monkeypatch):

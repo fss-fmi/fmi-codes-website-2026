@@ -40,11 +40,11 @@ logger = logging.getLogger(__name__)
 # window length (#251): a fixed window lets twice the limit through across its reset and
 # reopens every slot at the same instant.
 # A Redis outage must never fail or stall a request (#256): on a Redis error each worker
-# keeps the same limits in its own memory, holds that for 5 s after its last Redis error and
-# then pings Redis on a backoff (1 to 32 s) until it answers. Every request a Redis error
-# hits reruns on memory, including the ones already in flight when the worker switched
-# (#261). swallow_errors stays off: the fallback covers the storage, so all it would add is
-# letting a request through unlimited when a key function or limit raises.
+# keeps the same limits in its own memory, holds that for 5 s after its last Redis error,
+# then pings Redis, and 2, 4, 8, 16 and 32 s after each ping (then from 1 s) until it answers.
+# a Redis error hits reruns on memory, including the ones already in flight when the worker
+# switched (#261). swallow_errors stays off: the fallback covers the storage, so all it would
+# add is letting a request through unlimited when a key function or limit raises.
 limiter = FailOpenLimiter(
     key_func=identity_key,
     default_limits=[per_identity("200 per minute", "3000 per minute")],
