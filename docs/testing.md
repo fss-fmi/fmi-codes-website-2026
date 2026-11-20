@@ -209,7 +209,7 @@ The script exits 0 only when all of these hold, 1 otherwise. It prints a table p
 
 - No 5xx, no 429, no request without a complete answer (the client waits 75 s, past the ingress's 60 s; a body cut off after its status line counts too) and no status other than the one the real client gets. A 201 or 200 without the token cookie fails the run as well. The SPA retries a 429 on login and register after its `Retry-After`; the script doesn't, since any 429 already fails the run.
 - Register p95 under 3 s and p99 under 10 s, exact percentiles over every registration, failed ones included (`--register-p95`, `--register-p99`).
-- No pod restarts and no pod dropped from the Service: check by hand (below). A restart also drops the old container's lines from the log check below.
+- No pod restarts, no backend pod replaced and no pod dropped from the Service: check by hand (below; the pod names are compared after the run). A restarted or replaced pod also takes its old lines out of the log check below.
 - No `Rate limit storage unreachable - falling back to in-memory storage` and no `Redis unreachable, so caching and token revocation are off` line in any backend pod's log during the run: check by hand (below). The script only sees HTTP. A worker that loses Redis keeps answering, with rate limits counted in its own memory and caching off, so without this check a Redis failure would end in a false PASS on a limiter prod doesn't run.
 - `check.sql` returns no rows: as many registered teams as active ones up to 18, queue positions 1 to n with no gaps, no team over 6 members, team status matching its active members, `participant_count` matching every participant on the team and every captain in their own team and only there.
 
@@ -227,9 +227,15 @@ The script exits 0 only when all of these hold, 1 otherwise. It prints a table p
 
 ```bash
 NS=fmi-codes-staging
-# psql in the pod needs the password over TCP; without -h it tries the socket and fails
-# with "fe_sendauth: no password supplied". Arguments pass through unchanged: db -c '...', db < file.
-db() { kubectl -n $NS exec -i postgres-0 -- sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h 127.0.0.1 -U fmi_app -d fmi_hackathon_2026_staging -v ON_ERROR_STOP=1 "$@"' sh "$@"; }
+# psql gets no password unless it is passed one ("fe_sendauth: no password supplied"). The pod's
+# POSTGRES_PASSWORD is the one it started with and goes stale after rotate-datastore-password.sh db,
+# so db() reads the current one from the Secret and sends it as stdin's first line, never in an argument.
+# On a terminal it sends only the password, so kubectl can't swallow the lines pasted after it.
+# Arguments pass through: db -c '...', db < file.
+db() {
+  { kubectl -n $NS get secret fmi-codes-db -o jsonpath='{.data.password}' | base64 -d; echo; [ -t 0 ] || cat; } |
+    kubectl -n $NS exec -i postgres-0 -- sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql -h 127.0.0.1 -U fmi_app -d fmi_hackathon_2026_staging -v ON_ERROR_STOP=1 "$@"' sh "$@"
+}
 
 # The backend must run the limiter fix (#261), or a Redis blip in the rush answers 500 on the
 # requests already in flight. No "image has #261" line means stop: the image is older, or
@@ -255,8 +261,10 @@ kubectl -n $NS exec deploy/backend -c backend -- python -c \
 ```bash
 kubectl -n $NS create configmap registration-rush --from-file=tests/load/registration_rush.py \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n $NS delete job registration-rush --ignore-not-found
+# Foreground: returns once the last run's pod is gone too, so the Redis check below finds this run's.
+kubectl -n $NS delete job registration-rush --ignore-not-found --cascade=foreground --timeout=120s
 START=$(date -u +%FT%TZ)                        # the log check after the run starts here
+PODS=$(kubectl -n $NS get pods -l app.kubernetes.io/name=fmi-codes-backend -o name | sort)
 kubectl apply -f tests/load/job.yaml
 # Retries until the pod's container has started, then follows it to the end.
 until kubectl -n $NS logs -f job/registration-rush 2>/dev/null; do sleep 2; done
@@ -280,24 +288,30 @@ done                                            # time | connections | waiting o
 During the arrival minute (the key expires a minute after the last registration), check that every worker counts registrations in one shared bucket in Redis: a key of `TYPE` `list` (the moving window) under the Job pod's address.
 
 ```bash
-JOB_IP=$(kubectl -n $NS get pod -l job-name=registration-rush -o jsonpath='{.items[0].status.podIP}')
-MASTER=$(kubectl -n $NS exec redis-node-0 -c sentinel -- sh -c 'REDISCLI_AUTH="$(cat $REDIS_PASSWORD_FILE)" exec redis-cli -p 26379 --no-auth-warning SENTINEL get-master-addr-by-name mymaster' | head -1 | cut -d. -f1)
-kubectl -n $NS exec "$MASTER" -c redis -- sh -c 'export REDISCLI_AUTH="$(cat $REDIS_PASSWORD_FILE)"
-  for k in $(redis-cli --no-auth-warning --scan --pattern "LIMITS-MOVING:LIMITER/ip:$1/*register*"); do
-    echo "$(redis-cli --no-auth-warning TYPE "$k") $k"
-  done' sh "$JOB_IP"
+JOB_IP=$(kubectl -n $NS get pod -l job-name=registration-rush --field-selector=status.phase=Running -o jsonpath='{.items[0].status.podIP}')
+if [ -z "$JOB_IP" ]; then echo "no running Job pod yet: run this block again"; else
+  MASTER=$(kubectl -n $NS exec redis-node-0 -c sentinel -- sh -c 'REDISCLI_AUTH="$(cat $REDIS_PASSWORD_FILE)" exec redis-cli -p 26379 --no-auth-warning SENTINEL get-master-addr-by-name mymaster' | head -1 | cut -d. -f1)
+  kubectl -n $NS exec "$MASTER" -c redis -- sh -c 'export REDISCLI_AUTH="$(cat $REDIS_PASSWORD_FILE)"
+    for k in $(redis-cli --no-auth-warning --scan --pattern "LIMITS-MOVING:LIMITER/ip:$1/*register*"); do
+      echo "$(redis-cli --no-auth-warning TYPE "$k") $k"
+    done' sh "$JOB_IP"
+fi
 # list LIMITS-MOVING:LIMITER/ip:<JOB_IP>/auth.register_participant/600/1/minute
 ```
 
-The amount in the key is the register limit at the test's multiplier (300 x 2). No key means the workers count in their own memory, so the run isn't testing prod's limiter. If nothing matches, pass `'*'` in place of `"$JOB_IP"` to list every address's register key and see the address the backend saw.
+The amount in the key is the register limit at the test's multiplier (300 x 2). With `JOB_IP` set, no key means the workers count in their own memory, so the run isn't testing prod's limiter. If nothing matches, pass `'*'` in place of `"$JOB_IP"` to list every address's register key and see the address the backend saw.
 
-**After the run**, in the terminal that ran it (it holds `START`):
+**After the run**, in the terminal that ran it (it holds `START` and `PODS`):
 
 ```bash
 db < tests/load/check.sql                       # (0 rows) passes
-# Prints nothing when it passes: no backend worker lost Redis during the run.
+# A replaced pod took its log lines with it, so the backend pods must be the ones from before the run.
+[ "$PODS" = "$(kubectl -n $NS get pods -l app.kubernetes.io/name=fmi-codes-backend -o name | sort)" ] &&
+  echo "same backend pods" || echo "FAIL: backend pods changed during the run"
+# Prints nothing when it passes: no backend worker lost Redis during the run. Without START it
+# prints an error for each pod instead of checking nothing.
 for p in $(kubectl -n $NS get pods -l app.kubernetes.io/name=fmi-codes-backend -o name); do
-  kubectl -n $NS logs $p -c backend --since-time=$START | grep -E 'Rate limit storage unreachable|Redis unreachable, so caching'
+  kubectl -n $NS logs $p -c backend --since-time="${START:?run this in the terminal that ran the Job}" | grep -E 'Rate limit storage unreachable|Redis unreachable, so caching'
 done
 ```
 
