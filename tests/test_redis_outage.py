@@ -2,14 +2,15 @@
 
 The limiter and the app's Redis client run against a real Redis behind a TCP proxy
 (tests/redis_proxy.py) that each test switches between up, hanging and refusing, so
-the timeouts, the limiter's in-memory fallback and its recovery run for real. They
-need REDIS_URL (CI sets it) and skip without it. The database is stubbed per route
-the way tests/test_rate_limits.py does it.
+the timeouts, the limiter's in-memory fallback and its recovery run for real. Those
+need REDIS_URL (CI sets it) and skip without it; the proxy's own tests run anywhere.
+The database is stubbed per route the way tests/test_rate_limits.py does it.
 """
 
 import importlib
 import inspect
 import os
+import socket
 import threading
 import time
 from unittest.mock import patch
@@ -38,6 +39,8 @@ import redis
 from tests.redis_proxy import RedisProxy
 
 REDIS_URL = os.environ.get("REDIS_URL")
+# Nothing listens on port 1, so the proxy's own tests never reach a real local Redis.
+CLOSED_UPSTREAM = "redis://127.0.0.1:1/0"
 RIGHT_GUESS = "right-guess-1234"
 FAST_HASH = bcrypt.hashpw(RIGHT_GUESS.encode(), bcrypt.gensalt(rounds=4)).decode()
 # A request that meets the outage first waits out one limiter timeout and one app-client
@@ -83,6 +86,54 @@ def proxy():
     yield proxy
     proxy.close()
     _clear_limiter_keys()
+
+
+def _ephemeral_port_floor():
+    try:
+        with open("/proc/sys/net/ipv4/ip_local_port_range") as ports:
+            return int(ports.read().split()[0])
+    except OSError:
+        return 32768
+
+
+def test_the_proxy_port_sits_below_the_ephemeral_range():
+    proxy = RedisProxy(CLOSED_UPSTREAM)
+    try:
+        assert proxy.port < _ephemeral_port_floor()
+    finally:
+        proxy.close()
+
+
+def test_a_refuse_frees_the_port_even_when_nothing_connects_before_up():
+    proxy = RedisProxy(CLOSED_UPSTREAM)
+    try:
+        proxy.refuse()
+        proxy.up()
+        with socket.create_connection(("127.0.0.1", proxy.port), timeout=2):
+            pass
+    finally:
+        proxy.close()
+
+
+def test_a_failed_rebind_leaves_the_proxy_refusing_and_names_the_port():
+    proxy = RedisProxy(CLOSED_UPSTREAM)
+    try:
+        proxy.refuse()
+        squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            squatter.bind(("127.0.0.1", proxy.port))
+            squatter.listen(1)
+            with pytest.raises(OSError, match=f"port {proxy.port}"):
+                proxy.up()
+            assert proxy.mode == "refuse"
+        finally:
+            squatter.close()
+        proxy.up()
+        assert proxy.mode == "up"
+        with socket.create_connection(("127.0.0.1", proxy.port), timeout=2):
+            pass
+    finally:
+        proxy.close()
 
 
 # During an outage the limiter pings its storage as the hold after the last Redis error
