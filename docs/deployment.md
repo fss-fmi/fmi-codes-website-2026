@@ -38,6 +38,19 @@ graph LR
 
 `docker-cd.yaml` ignores `infra/**` so the Flux bump commits do not trigger new builds in a loop. Keep build inputs (Dockerfiles, build scripts) in `backend/` and `frontend/`.
 
+## Rollouts
+
+An image bump, a restart or a config change rolls the backend and the frontend one pod at a time, built to drop no request ([ADR-015](adr/015-rolling-surge-rollouts.md)):
+
+- **Capacity never drops.** Both Deployments set `maxSurge: 1` and `maxUnavailable: 0`: a new pod starts next to the old ones, and one old pod stops only once the new one passes readiness. Prod's backend steps through its 4 pods one at a time (staging's 2 took about 30 s), so the scripts that restart the backend wait up to 300 s for it.
+- **Stopping pods drain.** A stopping pod first sleeps 10 s (`preStop`) and keeps serving, so the ingress has dropped it from its endpoints before its server stops listening. Then Gunicorn finishes the requests in flight within `graceful_timeout` (30 s), inside the backend's 45 s grace period, and nginx stops gracefully on `SIGQUIT`. Without the sleep, requests that reached a stopping frontend pod on staging waited about 5 s (ingress-nginx's connect timeout, then a retry on another pod), and a POST already sent to a stopping backend pod is not retried (#267).
+- **Two versions serve at once for a few seconds.** The frontend and the backend roll independently, and within each one old and new pods both serve until the last old pod stops.
+  - Old backend pods run on the migrated schema, because the migrate initContainer runs before the first new pod starts. Every migration has to work with the previous release's code ([Schema management](data.md#schema-management)).
+  - A new SPA can briefly call an endpoint the old backend doesn't have yet. Ship a new endpoint before the page that needs it, or let the page tolerate a 404.
+  - A page from one frontend version can ask a pod running the other for its hashed bundle, which isn't there. Nginx answers 404 (never `index.html`), and `frontend/public/asset-guard.js`, loaded before the bundle, reloads the page after 2 s, waiting 2 s longer on each try, at most 5 times per tab. `index.html` and the guard are sent with `Cache-Control: no-cache` and the hashed `/assets/` files as immutable, so a browser never keeps a page that names files no longer deployed.
+  - The first rollout that ships the guard runs with old pods that have neither the guard nor the 404, so a page caught in that rollout can still stay blank until it is reloaded.
+- **Don't roll out prod during the registration rush.** The connection budget (`tests/test_capacity_budget.py`) counts the surge pod plus one old pod still draining. Under heavy load a draining pod can hold its pool for the whole 40 s while new pods keep stepping in about every 15 s, so three can drain at once: on prod that is 8 pods, 266 connections against 250 ([runbook](runbook.md#2--stateful-tier-postgres--redis-sentinel)).
+
 ## Database migrations
 
 Pending migrations ship inside the backend image and are applied two ways ([ADR-007](adr/007-recorded-migrations-runner.md)):
@@ -136,6 +149,7 @@ After any deploy also confirm the two invariants from the runbook: a push to `ma
 ## Rollback
 
 - **Production:** `git revert` the promote PR's merge commit (or open a new promote run with the previous tags) and merge. Flux redeploys the old images.
+- **Every rollback is a rollout.** It drains and mixes versions like any other (see [Rollouts](#rollouts)), and the older code runs on the current schema, which is why migrations have to stay backward compatible.
 - **Staging:** revert the Flux bump commit on `main`. Flux will bump forward again on the next build, so fix forward if the bad commit is still the newest.
 - **Database:** image rollbacks do not touch data, and migrations have no down scripts. Undo a migration with a new forward migration, or restore the `pg_dump` the manual migration Job took (see [Restore a migration backup](runbook.md#restore-a-migration-backup)). There are no off-site backups.
 

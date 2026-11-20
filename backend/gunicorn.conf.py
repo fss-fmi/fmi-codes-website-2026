@@ -5,6 +5,8 @@ bind = "0.0.0.0:5001"
 workers = 4
 threads = 8
 timeout = 120
+# Must fit in the Deployment's terminationGracePeriodSeconds after its preStop sleep.
+graceful_timeout = 30
 
 # Must be set before any worker imports prometheus_client, which picks its storage at import.
 # Only Gunicorn gets multiprocess metrics; run_server.py and the tests keep the plain registry.

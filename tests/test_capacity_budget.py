@@ -5,7 +5,6 @@ backend requirements don't include. A pattern that stops matching fails loudly. 
 overlay's patches set win over the base, as they do when Kustomize renders it.
 """
 
-import math
 import re
 from pathlib import Path
 
@@ -43,9 +42,11 @@ def _overlay_value(env: str, pattern: str) -> int:
 
 def _budget(env: str) -> tuple[int, int]:
     replicas = _overlay_value(env, r"^  replicas: (\d+)$")
-    # A rollout runs up to maxSurge new pods (25%, rounded up) while old pods, terminating
-    # ones included, still hold their connections. Counting the surge twice covers both.
-    pods = replicas + 2 * math.ceil(replicas / 4)
+    # A rollout runs maxSurge new pods on top of the old ones, and an old pod keeps its pool
+    # through its preStop sleep and drain. Counting the surge twice covers one terminating pod
+    # per step. A rollout under heavy load can overlap more (docs/runbook.md).
+    surge = _overlay_value(env, r"^      maxSurge: (\d+)$")
+    pods = replicas + 2 * surge
     workers = _int(GUNICORN, r"^workers = (\d+)$")
     pool = _overlay_value(env, r'^  DB_POOL_MAX: "(\d+)"$')
     max_connections = _int(POSTGRES_VALUES[env], r"^\s*max_connections = (\d+)$", default=100)

@@ -35,6 +35,13 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
 spec:
   replicas: 2
+  # A new pod has to be ready before an old one stops, so a rollout never serves on fewer pods.
+  # The surge pod and the old pods' pools must fit Postgres (tests/test_capacity_budget.py).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: fmi-codes-backend
@@ -45,6 +52,8 @@ spec:
         app.kubernetes.io/part-of: fmi-codes-website-2026
         app.kubernetes.io/managed-by: kubectl
     spec:
+      # The preStop sleep, then Gunicorn's graceful_timeout, then a margin.
+      terminationGracePeriodSeconds: 45
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -170,6 +179,13 @@ spec:
                   name: fmi-codes-app
                   key: SLACK_EVENTS_WEBHOOK_URL
                   optional: true
+          # Gunicorn closes its socket the moment SIGTERM lands, but the ingress keeps sending
+          # requests until it sees the pod leave the endpoints. Serving on through the sleep
+          # covers that gap.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
           startupProbe:
             httpGet:
               path: /api/health

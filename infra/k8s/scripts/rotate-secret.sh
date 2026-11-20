@@ -260,7 +260,7 @@ elif [ -z "$RESTART_TARGET" ]; then
   echo "updates the mounted Secret within a minute or two."
 elif [ "$RESTART" = "true" ]; then
   log "Restarting $RESTART_TARGET so pods pick up the rotated value"
-  rollout_restart "$NAMESPACE" "$RESTART_TARGET" 120
+  rollout_restart "$NAMESPACE" "$RESTART_TARGET" 300
 else
   echo "RESTART=false — skipping rollout restart. Restart manually to apply:"
   rollout_restart_hint "$NAMESPACE" "$RESTART_TARGET"
