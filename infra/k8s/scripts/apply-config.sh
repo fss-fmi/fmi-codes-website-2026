@@ -73,7 +73,7 @@ kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 \
 restart_backend() {
   if [ "$RESTART" = "true" ]; then
     log "Restarting backend so pods pick up the change"
-    rollout_restart "$NAMESPACE" deployment/backend 120
+    rollout_restart "$NAMESPACE" deployment/backend 300
   else
     echo "RESTART=false — skipping rollout restart. Restart manually to apply:"
     rollout_restart_hint "$NAMESPACE" deployment/backend
@@ -116,7 +116,7 @@ if [ $# -eq 0 ]; then
     flux reconcile kustomization "$FLUX_KUSTOMIZATION" -n flux-system --with-source
     if [ -n "$before" ] && [ "$(pod_template)" != "$before" ]; then
       log "main also changed the backend's pod template, so Flux is rolling it; the new pods read the new config"
-      kubectl -n "$NAMESPACE" rollout status deployment/backend --timeout=120s
+      kubectl -n "$NAMESPACE" rollout status deployment/backend --timeout=300s
     else
       restart_backend
     fi

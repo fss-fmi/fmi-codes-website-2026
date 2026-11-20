@@ -9,6 +9,11 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: fmi-codes-frontend
@@ -35,6 +40,11 @@ spec:
           ports:
             - name: http
               containerPort: 80
+          # Nginx stops listening on SIGQUIT, before the ingress has dropped the pod.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
           livenessProbe:
             httpGet:
               path: /

@@ -139,7 +139,7 @@ class TestApplyConfigWithFlux:
         result = run(flux="active", bump=True)
         assert result.returncode == 0, result.stderr
         assert mutating(result.calls) == [RECONCILE]
-        assert result.calls[-1].endswith("rollout status deployment/backend --timeout=120s")
+        assert result.calls[-1].endswith("rollout status deployment/backend --timeout=300s")
 
     def test_no_arguments_refuses_while_suspended(self, run):
         result = run(flux="suspended")

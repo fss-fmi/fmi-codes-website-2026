@@ -557,13 +557,16 @@ loaded into the `postgres-initdb` ConfigMap and run once by Postgres `initdb`.
 Prod's Postgres runs with `max_connections = 250`, a 1-CPU request, no CPU limit and a 2Gi
 memory limit (`helm-values/postgresql-values.yaml`); staging's with 150 and 1Gi. The
 backend's pools have to fit: each Gunicorn worker keeps up to `DB_POOL_MAX` connections (8,
-one per thread, in the backend ConfigMap), 4 workers a pod, and a rollout can briefly run
-the surge pods on top of old ones still shutting down, plus the migrate initContainer,
-backups and an operator. That is 202 on prod and 138 on staging, and
+one per thread, in the backend ConfigMap), 4 workers a pod, and a rollout runs its surge pod
+(`maxSurge: 1`) on top of the old ones while one old pod is still draining (its 10 s
+`preStop` sleep, then up to 30 s of Gunicorn drain), plus the migrate initContainer, backups
+and an operator. That is 202 on prod and 138 on staging, and
 `tests/test_capacity_budget.py` fails when the pods outgrow `max_connections` or the pool
-drops below the thread count. A change to these values reaches a running database only by
-re-running this script, which restarts the Postgres pod for a few seconds, so do it well
-before registration opens.
+drops below the thread count. Under heavy load more old pods can drain at once (three is 266
+on prod), so don't roll out prod during the registration rush
+([Rollouts](deployment.md#rollouts)). A change to these values reaches a running database
+only by re-running this script, which restarts the Postgres pod for a few seconds, so do it
+well before registration opens.
 
 In-cluster addresses the app tier uses: `postgres.<ns>.svc.cluster.local:5432` and
 `redis.<ns>.svc.cluster.local:26379`.

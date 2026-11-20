@@ -1,18 +1,17 @@
 """The backend's database connections fit Postgres, and probes don't drop a busy pod (#219).
 
-Reads the committed manifests with targeted patterns rather than a YAML parser, which the
-backend requirements don't include. A pattern that stops matching fails loudly. Values an
-overlay's patches set win over the base, as they do when Kustomize renders it.
+Reads the committed manifests through tests/k8s_manifests.py, with targeted patterns rather than
+a YAML parser. A pattern that stops matching fails loudly. Values an overlay's patches set for that
+object win over the base, as they do when Kustomize renders it.
 """
 
-import math
 import re
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-K8S = ROOT / "infra" / "k8s"
+from tests.k8s_manifests import K8S, ROOT, overlay_value
+
 BASE = K8S / "base" / "app" / "backend.yaml"
 GUNICORN = ROOT / "backend" / "gunicorn.conf.py"
 # Superuser slots (Postgres keeps 3), the migrate initContainer or Job, a backup and an operator.
@@ -31,23 +30,23 @@ def _int(path: Path, pattern: str, default: int | None = None) -> int:
     return default
 
 
-def _overlay_value(env: str, pattern: str) -> int:
-    """The base's value unless a patch the overlay lists sets its own."""
-    overlay = K8S / "overlays" / env
-    kustomization = (overlay / "kustomization.yaml").read_text(encoding="utf-8")
-    value = _int(BASE, pattern)
-    for patch in re.findall(r"^\s*-? *path: (\S+)$", kustomization, re.MULTILINE):
-        value = _int(overlay / patch, pattern, default=value)
-    return value
+def _deployment(env: str, pattern: str) -> int:
+    return overlay_value(env, BASE, "Deployment", "backend", pattern)
+
+
+def _config(env: str, pattern: str) -> int:
+    return overlay_value(env, BASE, "ConfigMap", "fmi-codes-backend-config", pattern)
 
 
 def _budget(env: str) -> tuple[int, int]:
-    replicas = _overlay_value(env, r"^  replicas: (\d+)$")
-    # A rollout runs up to maxSurge new pods (25%, rounded up) while old pods, terminating
-    # ones included, still hold their connections. Counting the surge twice covers both.
-    pods = replicas + 2 * math.ceil(replicas / 4)
+    replicas = _deployment(env, r"^  replicas: (\d+)$")
+    # A rollout runs maxSurge new pods on top of the old ones, and an old pod keeps its pool
+    # through its preStop sleep and drain. Counting the surge twice covers one terminating pod
+    # per step. A rollout under heavy load can overlap more (docs/runbook.md).
+    surge = _deployment(env, r"^      maxSurge: (\d+)$")
+    pods = replicas + 2 * surge
     workers = _int(GUNICORN, r"^workers = (\d+)$")
-    pool = _overlay_value(env, r'^  DB_POOL_MAX: "(\d+)"$')
+    pool = _config(env, r'^  DB_POOL_MAX: "(\d+)"$')
     max_connections = _int(POSTGRES_VALUES[env], r"^\s*max_connections = (\d+)$", default=100)
     return pods * workers * pool + RESERVED_CONNECTIONS, max_connections
 
@@ -65,7 +64,7 @@ def test_every_thread_can_get_a_connection(env):
     """With fewer connections than threads, a thread waits DB_POOL_TIMEOUT and fails, and team
     changes hold theirs while queued on the global advisory lock."""
     threads = _int(GUNICORN, r"^threads = (\d+)$")
-    assert _overlay_value(env, r'^  DB_POOL_MAX: "(\d+)"$') >= threads
+    assert _config(env, r'^  DB_POOL_MAX: "(\d+)"$') >= threads
 
 
 def _probe(name: str) -> dict[str, int]:
