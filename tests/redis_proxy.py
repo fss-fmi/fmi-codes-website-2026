@@ -7,9 +7,16 @@
 - cut():   drops every open connection now, whatever the mode, to kill Redis mid-request.
 """
 
+import random
 import socket
 import threading
 from urllib.parse import urlparse
+
+# refuse() closes the port and up() binds the same one again. A port from the ephemeral
+# range (32768 and up on Linux, 49152 on Windows) can be handed to an outgoing connection
+# in between, and the rebind then fails with "Address already in use".
+_PORTS_BELOW_EPHEMERAL = range(20000, 32768)
+_BIND_ATTEMPTS = 50
 
 
 class RedisProxy:
@@ -31,7 +38,13 @@ class RedisProxy:
     def up(self) -> None:
         self.mode = "up"
         if self._listener is None:
-            self._listen()
+            try:
+                self._listen()
+            except OSError as error:
+                self.mode = "refuse"
+                raise OSError(
+                    error.errno, f"proxy could not listen on port {self.port} again: {error}"
+                ) from error
 
     def hang(self) -> None:
         self.mode = "hang"
@@ -53,11 +66,11 @@ class RedisProxy:
         self.refuse()
 
     def _listen(self) -> None:
-        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        listener.bind(("127.0.0.1", self.port))
+        if self.port:
+            listener = _bind(self.port)
+        else:
+            listener, self.port = _bind_below_ephemeral()
         listener.listen(64)
-        self.port = listener.getsockname()[1]
         self._listener = listener
         threading.Thread(target=self._accept, args=(listener,), daemon=True).start()
 
@@ -97,6 +110,26 @@ class RedisProxy:
             _close(source)
             if target is not None:
                 _close(target)
+
+
+def _bind(port: int) -> socket.socket:
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        listener.bind(("127.0.0.1", port))
+    except OSError:
+        listener.close()
+        raise
+    return listener
+
+
+def _bind_below_ephemeral() -> tuple[socket.socket, int]:
+    for port in random.sample(_PORTS_BELOW_EPHEMERAL, _BIND_ATTEMPTS):
+        try:
+            return _bind(port), port
+        except OSError:
+            continue
+    raise OSError(f"no free port in {_PORTS_BELOW_EPHEMERAL} after {_BIND_ATTEMPTS} tries")
 
 
 def _close(sock: socket.socket) -> None:
