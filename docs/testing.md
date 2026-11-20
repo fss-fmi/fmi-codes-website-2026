@@ -6,17 +6,17 @@ How the test suite is built and how to extend it. For setup and single-test comm
 
 - The backend carries almost all of the testing weight. The riskiest logic (registration queue under concurrency, matching, auth and revocation, data leakage) is covered through real HTTP calls against a real PostgreSQL database.
 - Pure logic with no I/O (the matching algorithm core, Redis helpers, JWT and bcrypt helpers) is unit tested directly.
-- The frontend has ten component test files (navbar height, login role picker, profile panels, Regulations chapter nav, config polling, Mission Control's SITE and MATCHING tabs, the team page's MENTORS panel, the registration gate, the submission confirmation and closed submissions on choosing mentors, the submission confirmation and closed submissions on the mentor dashboard). Other UI behaviour is untested.
+- The frontend has 14 Vitest files. Eleven render components (navbar height, login role picker, error messages and rate-limit retry, the registration rate-limit retry, profile panels, Regulations chapter nav, config polling, Mission Control's SITE and MATCHING tabs, the team page's MENTORS panel, the registration gate, the submission confirmation and closed submissions on choosing mentors, the submission confirmation and closed submissions on the mentor dashboard). Three test `src/lib` directly (the API client's errors, error messages, the rate-limit retry). Other UI behaviour is untested.
 - There is no coverage tool configured (no `pytest-cov`, no Vitest coverage) and no coverage threshold.
 - No browser end-to-end tests exist.
 
-| Layer                   | Location                     | Tests | Needs                               |
-| ----------------------- | ---------------------------- | ----- | ----------------------------------- |
-| Backend unit            | `tests/*.py`                 | 616   | Nothing (Redis optional)            |
-| Backend API integration | `tests/e2e/*.py`             | 238   | PostgreSQL test DB (Redis optional) |
-| Frontend component      | `frontend/src/**/*.test.tsx` | 32    | Node only                           |
+| Layer                   | Location                          | Tests | Needs                               |
+| ----------------------- | --------------------------------- | ----- | ----------------------------------- |
+| Backend unit            | `tests/*.py`                      | 616   | Nothing (Redis optional)            |
+| Backend API integration | `tests/e2e/*.py`                  | 238   | PostgreSQL test DB (Redis optional) |
+| Frontend component      | `frontend/src/**/*.test.{ts,tsx}` | 90    | Node only                           |
 
-Counts are `def test_` occurrences, so parametrised tests run more cases than listed. The [load test](#load-test) in `tests/load/` is run by hand on staging, not by pytest.
+Counts are `def test_` occurrences (`test(` calls in the frontend), so parametrised tests run more cases than listed. The [load test](#load-test) in `tests/load/` is run by hand on staging, not by pytest.
 
 ## Test layers
 
@@ -87,7 +87,7 @@ Vitest with jsdom and Testing Library (`vite.config.ts` `test` block, setup in `
 pytest tests/ --ignore=tests/e2e -v
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fmi_hackathon_2026_test pytest tests/e2e/ -v
 
-# Frontend (not run in CI)
+# Frontend (CI's Frontend tests job)
 cd frontend && npm test
 ```
 
@@ -295,14 +295,14 @@ The bcrypt numbers depend on the CPUs, so measure CPU per hash again on the prod
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Unit & E2E tests     | Python 3.12, Postgres 16 and Redis 7 service containers, `pytest tests/ --ignore=tests/e2e`, then `pytest tests/e2e/` with `TEST_DATABASE_URL` pointing at the service DB          |
 | Lint                 | `ruff check .` (blocking), `ruff format --check .` (blocking), `npm install`, `npx eslint .`, `npx tsc -p tsconfig.app.json --noEmit`                                              |
+| Frontend tests       | Node 22, `npm ci`, `npm test` (`vitest run`)                                                                                                                                       |
 | Flux kustomize build | `kubectl kustomize infra/k8s/flux`                                                                                                                                                 |
 | Prometheus rules     | `bash infra/k8s/scripts/test-prometheus-rules.sh`: extracts the `fmi-codes` rules from the kps HelmRelease and runs `promtool test rules` on `infra/k8s/base/observability/tests/` |
 
-The jobs run in parallel. CI does not run on pushes to `main`, and it does not run the frontend Vitest suite.
+The jobs run in parallel. CI does not run on pushes to `main`.
 
 ## Known gaps
 
-- Frontend tests are not part of CI; add `cd frontend && npm test` to the Lint job (or a new job) to gate them.
 - No coverage measurement.
 - `test_team_service.py` only checks constants and join codes; all queue logic is tested only at the integration layer.
 - No tests for the email sender.

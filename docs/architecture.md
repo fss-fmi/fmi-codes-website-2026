@@ -135,7 +135,7 @@ Two layers, both pytest, plus a few frontend component tests and a load test:
 
 - **Unit** (`tests/*.py`): app created with `create_app("testing")` and the DB pool patched out; services tested with mocked DB helpers. The matching algorithm is tested directly through its pure core.
 - **API integration** (`tests/e2e/`): a real Flask app against a real PostgreSQL test database, driven through Flask's test client. Despite the folder name these are not browser tests.
-- **Frontend** (`frontend/src/**/*.test.tsx`): Vitest + Testing Library. Not run in CI today.
+- **Frontend** (`frontend/src/**/*.test.{ts,tsx}`): Vitest + Testing Library.
 - **Load** (`tests/load/`): the registration rush, 500 users registering and forming teams in the first minute, run by hand as a Job on staging. It fails with an exit code on the pass criteria, and SQL files check and clean the database after.
 
 No browser end-to-end tests exist. Full detail in [Testing](testing.md).
