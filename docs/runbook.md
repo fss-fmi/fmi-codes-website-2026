@@ -263,7 +263,7 @@ so without the app every staging bump stalls. One-time setup, by an org admin:
    key on the app page, set the secret again and delete the old key there.
 
 Also turn on **Settings → General → Allow auto-merge**. The repo's required checks (Lint, Unit
-& E2E tests) still gate every merge; the app gets no bypass.
+& E2E tests, Frontend tests) still gate every merge; the app gets no bypass.
 
 #### Slack PR feed
 
