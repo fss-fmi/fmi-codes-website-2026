@@ -246,6 +246,86 @@ def test_redis_dying_inside_a_cache_call_still_answers(proxy, monkeypatch):
         connection.close()
 
 
+# --- Switching to the fallback (#261) ---
+
+
+def _wait_for(condition, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "condition never became true"
+        time.sleep(0.01)
+
+
+@pytest.mark.parametrize("outage", ["hang", "refuse"])
+def test_a_request_in_flight_when_its_worker_falls_back_still_answers(app, proxy, outage):
+    """The first request whose Redis call fails switches the worker to memory. A second
+    one whose call was already in flight fails after that and used to answer 500, since
+    Flask-Limiter only fell back for the first. Whichever fails second is the one."""
+    proxy.hang()
+    statuses = {}
+
+    def call(name):
+        statuses[name] = app.test_client().get("/test/two").status_code
+
+    requests = [threading.Thread(target=call, args=(name,)) for name in ("a", "b")]
+    requests[0].start()
+    time.sleep(0.2)
+    requests[1].start()
+    if outage == "refuse":
+        # The first call has timed out; the second is still waiting on its socket.
+        _wait_for(lambda: limiter._storage_dead)
+        proxy.refuse()
+    for request in requests:
+        request.join(10)
+
+    assert statuses == {"a": 200, "b": 200}
+    third = app.test_client().get("/test/two")
+    assert third.status_code == 429
+    assert 55 <= int(third.headers["Retry-After"]) <= 60
+    assert _limiter_keys() == []
+
+
+def test_a_ping_that_answers_while_hits_fail_cannot_loop(app, proxy, monkeypatch):
+    """During a failover the storage ping can answer while every hit still fails. A rerun
+    that went back to Redis on that answer could fail and rerun again with no end."""
+    proxy.refuse()
+    monkeypatch.setattr(limiter.storage, "check", lambda: True)
+    monkeypatch.setattr(limiter, "_Limiter__should_check_backend", lambda: True)
+    client = app.test_client()
+    assert [client.get("/test/two").status_code for _ in range(3)] == [200, 200, 429]
+
+
+def test_a_limiter_bug_leaves_the_worker_on_redis(app, monkeypatch, caplog):
+    """A key function that raises is not a storage outage: no switch to memory and no
+    "storage unreachable" line, which would send an operator after Redis."""
+
+    def broken(_role):
+        raise RuntimeError("bug")
+
+    caplog.set_level("INFO", logger="flask-limiter")
+    monkeypatch.setattr("app.utils.rate_limits._account_key", broken)
+    body = {"email": "ana@example.com", "password": "x", "role": "participant"}
+    assert app.test_client().post("/api/auth/login", json=body).status_code == 500
+    assert limiter._storage_dead is False
+    assert [r for r in caplog.records if r.name == "flask-limiter"] == []
+
+
+def test_the_worker_holds_the_fallback_after_a_redis_error(app, proxy, monkeypatch):
+    """Pinging right after a switch let a failover flip the worker back and forth within
+    milliseconds. The ping now waits out a hold after the last Redis error."""
+    client = app.test_client()
+    proxy.refuse()
+    assert client.get("/test/plain").status_code == 200
+    proxy.up()
+    pings = []
+    check = limiter.storage.check
+    monkeypatch.setattr(limiter.storage, "check", lambda: pings.append(1) or check())
+    monkeypatch.setattr(limiter, "_Limiter__last_check_backend", 0.0)
+    assert client.get("/test/plain").status_code == 200
+    assert pings == []
+    assert limiter._storage_dead is True
+
+
 # --- Login after an outage ---
 
 
