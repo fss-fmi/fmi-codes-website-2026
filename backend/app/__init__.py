@@ -9,11 +9,11 @@ from importlib import import_module
 from config import get_config
 from flask import Flask, jsonify
 from flask_cors import CORS
-from flask_limiter import Limiter
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.services.redis_client import build_limiter_storage_options, build_limiter_storage_uri
+from app.utils.fail_open_limiter import FailOpenLimiter
 from app.utils.rate_limits import (
     LIMITER_KEY_PREFIX,
     identity_key,
@@ -39,11 +39,13 @@ logger = logging.getLogger(__name__)
 # A moving window allows a request only if fewer than the limit were accepted in the last
 # window length (#251): a fixed window lets twice the limit through across its reset and
 # reopens every slot at the same instant.
-# A Redis outage must never fail or stall a request (#256): on a storage error each worker
-# keeps the same limits in its own memory and pings Redis on a backoff (1 to 32 s) until it
-# answers. swallow_errors stays off: the fallback covers the storage, so all it would add is
-# letting a request through unlimited when a key function or limit raises.
-limiter = Limiter(
+# A Redis outage must never fail or stall a request (#256): on a Redis error each worker
+# keeps the same limits in its own memory, holds that for 5 s after its last Redis error,
+# then pings Redis, and 2, 4, 8, 16 and 32 s after each ping (then from 1 s) until it answers.
+# a Redis error hits reruns on memory, including the ones already in flight when the worker
+# switched (#261). swallow_errors stays off: the fallback covers the storage, so all it would
+# add is letting a request through unlimited when a key function or limit raises.
+limiter = FailOpenLimiter(
     key_func=identity_key,
     default_limits=[per_identity("200 per minute", "3000 per minute")],
     application_limits=[scaled("6000 per minute")],

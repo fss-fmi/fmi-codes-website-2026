@@ -154,6 +154,6 @@ def forget_login_attempts() -> None:
 
     item = parse(scaled(LOGIN_ACCOUNT_LIMIT)())
     try:
-        limiter.limiter.clear(item, login_account_key(), request.endpoint)
+        limiter.clear_everywhere(item, login_account_key(), request.endpoint)
     except Exception as e:
         logger.warning("Could not clear failed logins: %s", e)

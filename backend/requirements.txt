@@ -4,7 +4,8 @@ bcrypt==4.1.1
 python-dotenv==1.0.0
 PyJWT>=2.8.0
 gunicorn==21.2.0
-flask-limiter>=3.5.0
+# FailOpenLimiter overrides private methods; tests/test_redis_outage.py checks their signatures.
+flask-limiter>=4.1.1,<4.2
 # Before 4.0 the Redis moving window returns the oldest hit truncated to a whole second.
 limits>=4.0
 flask-cors>=4.0.0
