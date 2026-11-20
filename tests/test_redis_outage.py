@@ -200,6 +200,12 @@ def test_counts_land_in_redis_again_after_recovery(app, proxy, monkeypatch):
 
     proxy.up()
     recheck_limiter_storage(monkeypatch)
+    # A decorated route pings in its own check, after the app-wide check has already
+    # counted the request in memory, so this request stays there (#261) and the next one
+    # lands in Redis.
+    assert client.get("/test/two").status_code == 200
+    assert limiter._storage_dead is False
+    assert _limiter_keys() == []
     assert client.get("/test/two").status_code == 200
     assert _limiter_keys() != []
 
