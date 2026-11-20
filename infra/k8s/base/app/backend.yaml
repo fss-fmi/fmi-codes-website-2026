@@ -35,7 +35,6 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
 spec:
   replicas: 2
-  # A new pod has to be ready before an old one stops, so a rollout never serves on fewer pods.
   # The surge pod and the old pods' pools must fit Postgres (tests/test_capacity_budget.py).
   strategy:
     type: RollingUpdate

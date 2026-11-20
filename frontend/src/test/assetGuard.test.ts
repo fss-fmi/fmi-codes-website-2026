@@ -13,19 +13,19 @@ function makeStore(initial?: string) {
   };
 }
 
-function runGuard(store: unknown, target: Window | Record<string, unknown> = {}) {
+// The fake window records the listeners so a test can call them; realWindow wires the guard to
+// jsdom's window to show a real load error reaches it.
+function runGuard(store: unknown, { realWindow = false } = {}) {
   const listeners: Record<string, Listener> = {};
-  const fakeWindow =
-    target instanceof Window
-      ? target
-      : {
-          HTMLScriptElement: window.HTMLScriptElement,
-          HTMLLinkElement: window.HTMLLinkElement,
-          addEventListener: (type: string, fn: Listener['fn'], capture: unknown) => {
-            listeners[type] = { fn, capture };
-          },
-          ...target,
-        };
+  const fakeWindow = realWindow
+    ? window
+    : {
+        HTMLScriptElement: window.HTMLScriptElement,
+        HTMLLinkElement: window.HTMLLinkElement,
+        addEventListener: (type: string, fn: Listener['fn'], capture: unknown) => {
+          listeners[type] = { fn, capture };
+        },
+      };
   const fakeLocation = {
     href: window.location.href,
     origin: window.location.origin,
@@ -57,7 +57,7 @@ describe('asset-guard.js', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('reloads 2 s after a build script fails and counts the reload', () => {
+  test('reloads 2 s after a build script fails and counts the reload', () => {
     const store = makeStore();
     const { listeners, reload } = runGuard(store);
     expect(listeners.error.capture).toBe(true);
@@ -70,7 +70,7 @@ describe('asset-guard.js', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('treats a failed build stylesheet the same way', () => {
+  test('treats a failed build stylesheet the same way', () => {
     const store = makeStore();
     const { listeners, reload } = runGuard(store);
     listeners.error.fn({ target: stylesheet('/assets/index-abc.css') });
@@ -78,7 +78,7 @@ describe('asset-guard.js', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('schedules one reload however many files fail on the page', () => {
+  test('schedules one reload however many files fail on the page', () => {
     const store = makeStore();
     const { listeners, reload } = runGuard(store);
     listeners.error.fn({ target: script('/assets/index-abc.js') });
@@ -88,7 +88,7 @@ describe('asset-guard.js', () => {
     expect(store.data.get('asset-guard-reloads')).toBe('1');
   });
 
-  it('ignores other origins, other paths and errors that are not file loads', () => {
+  test('ignores other origins, other paths and errors that are not file loads', () => {
     const store = makeStore();
     const { listeners, reload } = runGuard(store);
     listeners.error.fn({ target: stylesheet('https://fonts.googleapis.com/assets/x.css') });
@@ -100,7 +100,7 @@ describe('asset-guard.js', () => {
     expect(store.data.has('asset-guard-reloads')).toBe(false);
   });
 
-  it('waits longer on each reload in a row', () => {
+  test('waits longer on each reload in a row', () => {
     const store = makeStore('2');
     const { listeners, reload } = runGuard(store);
     listeners.error.fn({ target: script('/assets/index-abc.js') });
@@ -111,7 +111,7 @@ describe('asset-guard.js', () => {
     expect(store.data.get('asset-guard-reloads')).toBe('3');
   });
 
-  it('gives up after 5 reloads', () => {
+  test('gives up after 5 reloads', () => {
     const store = makeStore('5');
     const { listeners, reload } = runGuard(store);
     listeners.error.fn({ target: script('/assets/index-abc.js') });
@@ -120,7 +120,7 @@ describe('asset-guard.js', () => {
     expect(store.data.get('asset-guard-reloads')).toBe('5');
   });
 
-  it('resets the count only after a load with no failed file', () => {
+  test('resets the count only after a load with no failed file', () => {
     const clean = makeStore('3');
     runGuard(clean).listeners.load.fn({ target: window });
     expect(clean.data.has('asset-guard-reloads')).toBe(false);
@@ -132,7 +132,7 @@ describe('asset-guard.js', () => {
     expect(broken.data.get('asset-guard-reloads')).toBe('4');
   });
 
-  it('does nothing when storage is blocked', () => {
+  test('does nothing when storage is blocked', () => {
     const blocked = {
       getItem: () => {
         throw new DOMException('denied', 'SecurityError');
@@ -143,7 +143,7 @@ describe('asset-guard.js', () => {
     expect(listeners.load).toBeUndefined();
   });
 
-  it('stops without reloading when storage refuses the write', () => {
+  test('stops without reloading when storage refuses the write', () => {
     const full = {
       ...makeStore(),
       setItem: () => {
@@ -156,9 +156,9 @@ describe('asset-guard.js', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('sees a real load error, which does not bubble, through its capturing listener', () => {
+  test('sees a real load error, which does not bubble, through its capturing listener', () => {
     const store = makeStore();
-    const { reload } = runGuard(store, window);
+    const { reload } = runGuard(store, { realWindow: true });
     const el = script('/assets/index-abc.js');
     document.head.appendChild(el);
     el.dispatchEvent(new Event('error'));
