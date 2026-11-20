@@ -55,6 +55,9 @@ def outage_app(flask_app, proxy, monkeypatch):
     monkeypatch.setattr(limiter, "_Limiter__check_backend_count", 0)
     # Flask-Limiter's recovery pings run on a backoff; the test triggers them explicitly.
     monkeypatch.setattr(limiter, "_Limiter__last_check_backend", time.time() + 3600)
+    monkeypatch.setattr(limiter, "_hold_until", 0.0)
+    monkeypatch.setattr(limiter, "_last_storage_error", float("-inf"))
+    monkeypatch.setattr(limiter, "_pending_clears", set())
     monkeypatch.setattr(redis_client, "BREAKER_OPEN_SECONDS", 1.0)
     redis_client.reset_client()
 
@@ -68,7 +71,12 @@ def outage_app(flask_app, proxy, monkeypatch):
         SLACK_EVENTS_WEBHOOK_URL="",
         MAIL_PASSWORD="",
     )
-    app.recheck_limiter = lambda: monkeypatch.setattr(limiter, "_Limiter__last_check_backend", 0.0)
+
+    def recheck_limiter():
+        monkeypatch.setattr(limiter, "_hold_until", 0.0)
+        monkeypatch.setattr(limiter, "_Limiter__last_check_backend", 0.0)
+
+    app.recheck_limiter = recheck_limiter
     yield app
     redis_client.reset_client()
 
