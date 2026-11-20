@@ -1939,7 +1939,8 @@ Rehearse on staging first.
 
 The runner and the Job connect as `fmi_app`, which works because `fmi_app` owns the tables.
 Confirm that on a live database with
-`kubectl -n $NS exec postgres-0 -- psql -U fmi_app -d <db> -c '\dt'` (the Owner column).
+`kubectl -n $NS exec postgres-0 -- sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -h 127.0.0.1 -U fmi_app -d <db> "$@"' sh -c '\dt'`
+(the Owner column; without the password over TCP psql fails with `fe_sendauth: no password supplied`).
 
 ## Verify a running deployment
 
