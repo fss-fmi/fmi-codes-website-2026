@@ -7,6 +7,7 @@ need REDIS_URL (CI sets it) and skip without it. The database is stubbed per rou
 the way tests/test_rate_limits.py does it.
 """
 
+import inspect
 import os
 import threading
 import time
@@ -17,7 +18,10 @@ import pytest
 from app import limiter
 from app.routes import auth as auth_routes
 from app.services import feature_flag_service, mentor_service, redis_client
+from app.utils import fail_open_limiter
+from app.utils.fail_open_limiter import FailOpenLimiter
 from app.utils.rate_limits import LIMITER_KEY_PREFIX
+from flask_limiter import Limiter
 from limits import parse
 from limits.storage import storage_from_string
 from limits.strategies import MovingWindowRateLimiter
@@ -73,11 +77,13 @@ def proxy():
     _clear_limiter_keys()
 
 
-# During an outage Flask-Limiter pings its storage on a backoff (1, 2, 4 ... 32 s after the
-# last ping), and each ping makes one request wait for it. The fixture pushes the next ping
-# out of reach so timings don't depend on when it lands; recheck_limiter_storage() lets the
-# next request ping. Name-mangled attributes: a rename fails these tests, never silently.
+# During an outage the limiter pings its storage once the hold after the last Redis error
+# is over, then on a backoff (1, 2, 4 ... 32 s after the last ping), and each ping makes one
+# request wait for it. The fixture pushes the next ping out of reach so timings don't depend
+# on when it lands; recheck_limiter_storage() lets the next request ping. Name-mangled
+# attributes: a rename fails these tests, never silently.
 def recheck_limiter_storage(monkeypatch):
+    monkeypatch.setattr(limiter, "_hold_until", 0.0)
     monkeypatch.setattr(limiter, "_Limiter__last_check_backend", 0.0)
 
 
@@ -96,6 +102,7 @@ def app(proxy, monkeypatch):
     monkeypatch.setattr(limiter, "_storage_options", {"key_prefix": LIMITER_KEY_PREFIX})
     monkeypatch.setattr(limiter, "_Limiter__check_backend_count", 0)
     monkeypatch.setattr(limiter, "_Limiter__last_check_backend", time.time() + 3600)
+    monkeypatch.setattr(limiter, "_hold_until", 0.0)
     monkeypatch.setattr(feature_flag_service, "is_enabled", lambda name: False)
     monkeypatch.setattr(auth_routes, "execute_query", lambda *a, **k: None)
     monkeypatch.setattr(auth_routes, "_DUMMY_HASH", FAST_HASH)
@@ -325,6 +332,19 @@ def test_the_worker_holds_the_fallback_after_a_redis_error(app, proxy, monkeypat
     assert pings == []
     assert limiter._storage_dead is True
 
+    switched = time.monotonic()
+    monkeypatch.setattr(
+        fail_open_limiter, "_now", lambda: switched + redis_client.BREAKER_OPEN_SECONDS - 0.2
+    )
+    assert client.get("/test/plain").status_code == 200
+    assert pings == []
+    monkeypatch.setattr(
+        fail_open_limiter, "_now", lambda: switched + redis_client.BREAKER_OPEN_SECONDS + 0.1
+    )
+    assert client.get("/test/plain").status_code == 200
+    assert pings == [1]
+    assert limiter._storage_dead is False
+
 
 # --- Login after an outage ---
 
@@ -367,8 +387,45 @@ def test_login_limits_and_their_reset_work_through_an_outage(login_app, proxy, m
 
 
 def test_the_limiter_is_built_to_survive_its_storage():
+    assert isinstance(limiter, FailOpenLimiter)
     assert limiter._in_memory_fallback_enabled is True
     assert not limiter._swallow_errors
+
+
+def _signature(function):
+    return [(p.name, p.default) for p in inspect.signature(function).parameters.values()]
+
+
+def test_the_private_flask_limiter_api_it_overrides_is_unchanged():
+    """FailOpenLimiter overrides and calls these; a Flask-Limiter release that changes them
+    must fail here before it can change how an outage is handled."""
+    empty = inspect.Parameter.empty
+    assert _signature(Limiter._check_request_limit) == [
+        ("self", empty),
+        ("callable_name", None),
+        ("in_middleware", True),
+    ]
+    assert _signature(Limiter._Limiter__filter_limits) == [
+        ("self", empty),
+        ("endpoint", empty),
+        ("blueprint", empty),
+        ("callable_name", empty),
+        ("in_middleware", False),
+    ]
+    assert _signature(Limiter._Limiter__evaluate_limits) == [
+        ("self", empty),
+        ("endpoint", empty),
+        ("limits", empty),
+    ]
+    assert _signature(Limiter._Limiter__should_check_backend) == [("self", empty)]
+    assert isinstance(Limiter.__dict__["limiter"], property)
+
+
+def test_the_limiter_state_it_reads_exists(app):
+    with app.test_request_context("/"):
+        assert callable(limiter.context.seen_limits.clear)
+    assert isinstance(limiter._storage_dead, bool)
+    assert limiter._fallback_limiter is not None
 
 
 def test_a_limiter_bug_fails_the_request_instead_of_lifting_the_limit(app, monkeypatch):
