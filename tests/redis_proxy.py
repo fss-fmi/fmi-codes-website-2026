@@ -53,7 +53,10 @@ class RedisProxy:
         self.mode = "refuse"
         listener, self._listener = self._listener, None
         if listener is not None:
-            listener.close()
+            # On Linux close() alone doesn't wake the thread blocked in accept(), which keeps
+            # the port listening until a client happens to connect; the shutdown wakes it.
+            _close(listener)
+            self._accept_thread.join(timeout=5)
         self.cut()
 
     def cut(self) -> None:
@@ -72,7 +75,8 @@ class RedisProxy:
             listener, self.port = _bind_below_ephemeral()
         listener.listen(64)
         self._listener = listener
-        threading.Thread(target=self._accept, args=(listener,), daemon=True).start()
+        self._accept_thread = threading.Thread(target=self._accept, args=(listener,), daemon=True)
+        self._accept_thread.start()
 
     def _accept(self, listener: socket.socket) -> None:
         while True:

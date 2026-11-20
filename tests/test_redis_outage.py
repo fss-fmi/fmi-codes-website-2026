@@ -84,10 +84,17 @@ def _ephemeral_port_floor():
         return 32768
 
 
-def test_the_proxy_port_sits_below_the_ephemeral_range_and_survives_a_refuse():
+def test_the_proxy_port_sits_below_the_ephemeral_range():
     proxy = RedisProxy(CLOSED_UPSTREAM)
     try:
         assert proxy.port < _ephemeral_port_floor()
+    finally:
+        proxy.close()
+
+
+def test_a_refuse_frees_the_port_even_when_nothing_connects_before_up():
+    proxy = RedisProxy(CLOSED_UPSTREAM)
+    try:
         proxy.refuse()
         proxy.up()
         with socket.create_connection(("127.0.0.1", proxy.port), timeout=2):
