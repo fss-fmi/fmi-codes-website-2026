@@ -2,4 +2,16 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../../base/ingress
-  - clusterissuer.yaml
+  - cloudflared.yaml
+# cloudflared reads its config only at start; the generated name changes with the content, so a
+# routing change rolls the pods.
+configMapGenerator:
+  - name: cloudflared
+    namespace: fmi-codes
+    files:
+      - config.yaml=cloudflared-config.yaml
+    options:
+      labels:
+        app.kubernetes.io/name: cloudflared
+        app.kubernetes.io/part-of: fmi-codes-website-2026
+        app.kubernetes.io/managed-by: flux

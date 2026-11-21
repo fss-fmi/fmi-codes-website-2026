@@ -4,10 +4,6 @@ namespace: fmi-codes-staging
 resources:
   - ../../../base/ingress
 patches:
-  - path: certificate-delete.yaml
-    target:
-      kind: Certificate
-      name: fmi-codes-tls
   - path: ingress-patch.yaml
     target:
       kind: Ingress

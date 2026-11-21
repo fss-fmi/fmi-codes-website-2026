@@ -36,6 +36,9 @@ for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/ale
   "$SECRETS_DIR/flux-relay-slack.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
 done
+if [ "$ENV" = "prod" ] && [ -f "$SECRETS_DIR/cloudflared-tunnel.enc.yaml" ]; then
+  ENC_FILES+=("$SECRETS_DIR/cloudflared-tunnel.enc.yaml")
+fi
 if [ "$ENV" = "staging" ] && [ -f "$TS_FILE" ]; then ENC_FILES+=("$TS_FILE"); fi
 
 log()  { printf '\n\033[1;36m### %s\033[0m\n' "$1"; }
@@ -371,34 +374,12 @@ export ENV
 bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
 
 if grep -qi microsoft /proc/version 2>/dev/null; then
-  # Run for staging too: it removes the fmi-forward-staging unit older setups installed.
-  log "Installing boot-persistent forward services (prod only; staging is on the tailnet)"
-  INSTALL_SVC_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh"
-  # A bare wsl.exe targets the Windows default distro (docker-desktop when Docker Desktop is installed), not this one.
-  if [ -n "${WSL_DISTRO_NAME:-}" ] \
-    && wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash -c "bash '${INSTALL_SVC_SCRIPT}' install"; then
-    FWD_STATUS="The forward services are now installed (auto-start on every boot, no terminal needed).
-One manual step remains — map"
-  else
-    warn "forward services install failed — run manually: wsl.exe -d \"\$WSL_DISTRO_NAME\" -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
-    FWD_STATUS="The forward services did NOT install: run the command from the warning above first.
-Then map"
-  fi
-
   if [ "$ENV" = "prod" ]; then
     cat <<EOF
 
-$(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
-
-${FWD_STATUS} the hostnames to loopback in the WINDOWS hosts file
-(C:\\Windows\\System32\\drivers\\etc\\hosts). Editing WSL's /etc/hosts does not help
-the Windows browser. From an elevated PowerShell:
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 fmicodes.com"
-
-Then browse to https://fmicodes.com
-
-Note: adding fmicodes.com to your hosts file overrides public DNS on this machine.
-Remove this line when you want your browser to reach the production server instead.
+Prod needs no Windows hosts entry: the Windows browser reaches https://fmicodes.com through the
+Cloudflare Tunnel like everyone else. If an older setup added "127.0.0.1 fmicodes.com" to the
+Windows hosts file, delete that line, or this machine never reaches the real site.
 EOF
   else
     cat <<EOF

@@ -23,7 +23,7 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   2. bootstrap-k3s.sh    k3s cluster + target namespace
   3. deploy-stateful.sh  Postgres + Redis Sentinel (Helm)
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
-  5. deploy-ingress.sh   ingress-nginx (+ cert-manager and TLS for prod; staging's tailnet Ingress)
+  5. deploy-ingress.sh   ingress-nginx (+ prod's Cloudflare Tunnel; staging's tailnet Ingress)
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
   7. deploy-observability.sh  Grafana admin + Tailscale OAuth secrets (Flux installs kube-prometheus-stack
                               and the Tailscale operator; runs whenever step 6 does). Staging is
@@ -68,8 +68,6 @@ case "$ENV" in
   prod)
     NAMESPACE="${NAMESPACE:-fmi-codes}"
     HOST="${HOST:-fmicodes.com}"
-    INGRESS_NAMESPACE="ingress-nginx"
-    INGRESS_RELEASE="ingress-nginx"
     HOST_URL="https://$HOST"
     ;;
   staging)
@@ -150,23 +148,16 @@ EOF
   exit 0
 fi
 
-INGRESS_IP="$(kubectl -n "$INGRESS_NAMESPACE" get svc "${INGRESS_RELEASE}-controller" \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-[ -n "$INGRESS_IP" ] || INGRESS_IP="<ingress-external-ip>"
-
-TLS_NOTE="For production, point the $HOST A record at $INGRESS_IP in DNS.
-Let's Encrypt issues the cert automatically once DNS resolves."
-
 cat <<EOF
 
 $(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
 
-Point the host name at the ingress so clients can reach it. On this host:
-  echo "$INGRESS_IP $HOST" | sudo tee -a /etc/hosts
-
-$TLS_NOTE
+Prod is reachable only through the Cloudflare Tunnel, at $HOST_URL from anywhere (no hosts
+entry, no DNS record to set here). The first time, point $HOST at the tunnel
+(docs/runbook.md 'Cloudflare Tunnel'). Only one cluster may run the prod tunnel at a time.
 
 Verify the stack:
   kubectl -n $NAMESPACE get pods
+  kubectl -n $NAMESPACE get deployment cloudflared    # READY 2/2 = connected
   curl ${HOST_URL}/api/health
 EOF

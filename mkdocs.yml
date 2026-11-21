@@ -93,6 +93,7 @@ nav:
           - ADR-014 Rate limits by account and user: adr/014-rate-limits-keyed-on-account-and-user.md
           - ADR-015 Rolling surge rollouts: adr/015-rolling-surge-rollouts.md
           - ADR-016 Shed password hashes: adr/016-shed-password-hashes.md
+          - ADR-017 Prod through a Cloudflare Tunnel: adr/017-prod-through-cloudflare-tunnel.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md
