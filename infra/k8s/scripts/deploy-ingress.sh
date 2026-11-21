@@ -61,16 +61,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 INGRESS_OVERLAY="$K8S_DIR/overlays/$ENV/ingress"
 TUNNEL_SECRET_ENC="${TUNNEL_SECRET_ENC:-$K8S_DIR/secrets/cloudflared-tunnel.enc.yaml}"
+TUNNEL_SECRET_NAME="cloudflared-tunnel"
+# Every cluster holding the tunnel's credentials becomes a connector of the one prod tunnel, and
+# Cloudflare splits visitors between them, so serving it is a deliberate opt-in.
+SERVE_PROD_TUNNEL="${SERVE_PROD_TUNNEL:-false}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$1"; }
+warn() { printf '\033[1;33mWarning: %s\033[0m\n' "$1" >&2; }
 die() { echo "Error: $1" >&2; exit 1; }
+
+case "$SERVE_PROD_TUNNEL" in
+  true|false) : ;;
+  *) die "SERVE_PROD_TUNNEL must be 'true' or 'false', got '$SERVE_PROD_TUNNEL'." ;;
+esac
 
 command -v kubectl >/dev/null 2>&1 || die "kubectl not found — run install-tools.sh first."
 command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.sh first."
 [ -f "$INGRESS_OVERLAY/kustomization.yaml" ] || die "missing $INGRESS_OVERLAY/kustomization.yaml"
 [ -z "$TAILNET_OVERLAY" ] || [ -f "$K8S_DIR/$TAILNET_OVERLAY/kustomization.yaml" ] \
   || die "missing $K8S_DIR/$TAILNET_OVERLAY/kustomization.yaml"
-if [ "$ENV" = "prod" ]; then
+if [ "$ENV" = "prod" ] && [ "$SERVE_PROD_TUNNEL" = "true" ]; then
   command -v sops >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
   [ -f "$TUNNEL_SECRET_ENC" ] \
     || die "missing $TUNNEL_SECRET_ENC — create the tunnel first (docs/runbook.md 'Cloudflare Tunnel')."
@@ -109,25 +119,43 @@ if [ "$ENV" = "staging" ]; then
   log "Applying staging's tailnet Ingress (the Tailscale operator serves it)"
   kubectl apply -k "$K8S_DIR/$TAILNET_OVERLAY"
 else
-  log "Applying the Cloudflare Tunnel credentials"
-  sops --decrypt "$TUNNEL_SECRET_ENC" >/dev/null 2>&1 \
-    || die "could not decrypt $TUNNEL_SECRET_ENC — is your prod age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 5'."
-  secret_ns="$(sops --decrypt "$TUNNEL_SECRET_ENC" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
-  [ "$secret_ns" = "$NAMESPACE" ] \
-    || die "$TUNNEL_SECRET_ENC targets namespace '$secret_ns', expected '$NAMESPACE'."
-  sops --decrypt "$TUNNEL_SECRET_ENC" | kubectl apply -f -
+  if [ "$SERVE_PROD_TUNNEL" = "true" ]; then
+    log "Applying the Cloudflare Tunnel credentials"
+    sops --decrypt "$TUNNEL_SECRET_ENC" >/dev/null 2>&1 \
+      || die "could not decrypt $TUNNEL_SECRET_ENC — is your prod age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 5'."
+    secret_ns="$(sops --decrypt "$TUNNEL_SECRET_ENC" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
+    [ "$secret_ns" = "$NAMESPACE" ] \
+      || die "$TUNNEL_SECRET_ENC targets namespace '$secret_ns', expected '$NAMESPACE'."
+    sops --decrypt "$TUNNEL_SECRET_ENC" | kubectl apply -f -
+  fi
 
   log "Applying the security-headers ConfigMap, the Ingress and cloudflared"
   kubectl apply -k "$INGRESS_OVERLAY"
 
-  log "Waiting for cloudflared to connect to Cloudflare"
-  if ! kubectl -n "$NAMESPACE" rollout status deployment/cloudflared --timeout "${READY_TIMEOUT}s"; then
-    echo "" >&2
-    echo "cloudflared is not ready within ${READY_TIMEOUT}s — continuing anyway." >&2
-    echo "A pod is ready only while it holds a connection to Cloudflare. Check:" >&2
-    echo "  kubectl -n $NAMESPACE logs deploy/cloudflared --tail=20" >&2
-    echo "'Failed to get tunnel' means the credentials don't match the tunnel ID in" >&2
-    echo "overlays/prod/ingress/cloudflared.yaml." >&2
+  # Pods that waited past the progress deadline for the Secret make 'rollout status' fail at
+  # once, so wait on availability instead.
+  if [ "$SERVE_PROD_TUNNEL" = "true" ]; then
+    TUNNEL_SERVED=true
+    log "Waiting for cloudflared to connect to Cloudflare"
+    if ! kubectl -n "$NAMESPACE" wait --for=condition=Available deployment/cloudflared --timeout "${READY_TIMEOUT}s"; then
+      echo "" >&2
+      echo "cloudflared is not ready within ${READY_TIMEOUT}s — continuing anyway." >&2
+      echo "A pod is ready only while it holds a connection to Cloudflare. Check:" >&2
+      echo "  kubectl -n $NAMESPACE logs deploy/cloudflared --tail=20" >&2
+      echo "'Failed to get tunnel' means the credentials don't match the tunnel ID in" >&2
+      echo "overlays/prod/ingress/cloudflared-config.yaml." >&2
+    fi
+  elif ! held="$(kubectl -n "$NAMESPACE" get secret "$TUNNEL_SECRET_NAME" --ignore-not-found -o name)"; then
+    die "could not check whether this cluster holds the tunnel's Secret ($NAMESPACE/$TUNNEL_SECRET_NAME)."
+  elif [ -n "$held" ]; then
+    TUNNEL_SERVED=true
+    warn "SERVE_PROD_TUNNEL is not true, but this cluster already holds the tunnel's credentials
+  from an earlier run, so it still serves $HOST. If another cluster serves prod, stop this one:
+  docs/runbook.md 'Move prod to another cluster', step 1."
+  else
+    TUNNEL_SERVED=false
+    log "Not serving the Cloudflare Tunnel (SERVE_PROD_TUNNEL is not true)"
+    echo "cloudflared stays waiting for its credentials, so $HOST never reaches this cluster."
   fi
 fi
 
@@ -160,6 +188,21 @@ EOF
 fi
 
 kubectl -n "$NAMESPACE" get deployment cloudflared
+
+if [ "$TUNNEL_SERVED" != "true" ]; then
+  cat <<EOF
+
+Networking is up (Phase 4), but prod is not on the internet from this cluster: it doesn't hold
+the tunnel's credentials. Reach it with a port-forward:
+  kubectl -n $INGRESS_NAMESPACE port-forward svc/${INGRESS_RELEASE}-controller 8081:80
+  curl -H 'Host: $HOST' http://127.0.0.1:8081/api/health
+
+To make this the cluster that serves $HOST, stop the tunnel on any cluster that runs it now
+(only one may), then (docs/runbook.md 'Move prod to another cluster'):
+  SERVE_PROD_TUNNEL=true ENV=prod bash $SCRIPT_DIR/deploy-ingress.sh
+EOF
+  exit 0
+fi
 
 cat <<EOF
 

@@ -67,12 +67,15 @@ From the repo root: `./bootstrap.sh` (staging) or `./bootstrap.sh --env prod`. I
 pre-flight (asks for the age key, the admin password and, with `--with-flux`, the Tailscale
 OAuth client for Grafana and staging), then installs tools → k3s → Postgres/Redis → app → ingress, plus
 Flux and the monitoring stack with `--with-flux`. Idempotent and resumable (`--from N`,
-N = 1–7). Full walkthrough below.
+N = 1–7). Prod serves `fmicodes.com` only with `SERVE_PROD_TUNNEL=true`, which only the one
+cluster that runs prod sets ([Move prod to another cluster](#move-prod-to-another-cluster)).
+Full walkthrough below.
 
 ## Set up on a brand-new machine — step by step
 
 End-to-end, bare server → running cluster. Do it for staging first, then repeat with
-`--env prod` for production.
+`--env prod` for production (`SERVE_PROD_TUNNEL=true ./bootstrap.sh --env prod` on the server
+that serves `fmicodes.com`).
 
 ### 0. Prerequisites
 
@@ -126,7 +129,7 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                                                  | **staging's file only**, used by every cluster ([why](#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                                    |
 | `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                                                    | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](#cluster-alerts))                                                                            |
 | `flux-relay-slack` (SOPS, in git)   | `bot_token`, `cluster_channel`, `staging_channel` (the Flux Relay Slack app's token and the two channel IDs)                                                                                                           | committed **empty**; `deploy-observability.sh` applies it to `flux-system`. Until it's filled the relay idles and Flux errors get no "recovered" reply. Set them with `rotate-secret.sh --flux-relay <key>` ([Recovery replies](#recovery-replies))                                                |
-| `cloudflared-tunnel` (SOPS, in git) | `credentials.json` (the prod tunnel's credentials file)                                                                                                                                                                | **prod only**, committed encrypted; `deploy-ingress.sh` applies it. Made once per tunnel ([Cloudflare Tunnel](#cloudflare-tunnel))                                                                                                                                                                 |
+| `cloudflared-tunnel` (SOPS, in git) | `credentials.json` (the prod tunnel's credentials file)                                                                                                                                                                | **prod only**, committed encrypted; `deploy-ingress.sh` applies it only with `SERVE_PROD_TUNNEL=true`, on the one cluster that serves prod. Made once per tunnel ([Cloudflare Tunnel](#cloudflare-tunnel))                                                                                         |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -141,8 +144,9 @@ changes, ranking submissions and matching) in Slack.
 Postgres/Redis → app → ingress in order.
 
 ```bash
-./bootstrap.sh              # staging (default)
-./bootstrap.sh --env prod   # production
+./bootstrap.sh                                     # staging (default)
+./bootstrap.sh --env prod                          # production, off the internet
+SERVE_PROD_TUNNEL=true ./bootstrap.sh --env prod   # production that serves fmicodes.com
 ```
 
 The pre-flight first installs `sops` and `age` if they're missing (so it can verify keys on a
@@ -655,13 +659,25 @@ exactly one way in.
 visitor → Cloudflare (TLS, https://fmicodes.com) → cloudflared (fmi-codes, 2 pods) → ingress-nginx-controller:80 (HTTP) → app
 ```
 
-The script also applies the tunnel's credentials (`secrets/cloudflared-tunnel.enc.yaml`, with the
-prod age key) and `overlays/prod/ingress`, which holds `cloudflared`'s Deployment and its routing
-config; Flux reconciles the same overlay as `fmi-codes-ingress`. Then it waits for `cloudflared`
-to be ready, which means connected: a pod passes readiness (`/ready`) only while it holds a
-connection to Cloudflare. The tunnel itself, its DNS record and the Cloudflare settings are made
-once ([Cloudflare Tunnel](#cloudflare-tunnel)). Prod's controller requests 500m CPU, so proxying
-keeps its share during the registration rush.
+The script also applies `overlays/prod/ingress`, which holds `cloudflared`'s Deployment and its
+routing config; Flux reconciles the same overlay as `fmi-codes-ingress`. Prod's controller
+requests 500m CPU, so proxying keeps its share during the registration rush.
+
+**Serving the tunnel is opt-in: `SERVE_PROD_TUNNEL=true`.** Every cluster that holds the
+tunnel's credentials becomes a connector of the one prod tunnel, and Cloudflare splits visitors
+between them: two prods with two databases. So only with the flag does the script apply the
+credentials (`secrets/cloudflared-tunnel.enc.yaml`, with the prod age key) and wait for
+`cloudflared` to be ready, which means connected: a pod passes readiness (`/ready`) only while
+it holds a connection to Cloudflare. Set it only on the one cluster that runs prod
+([Move prod to another cluster](#move-prod-to-another-cluster)). Without it, Flux still runs
+`cloudflared`, but its pods wait for the missing Secret, `fmicodes.com` never reaches that
+cluster, and the script prints how to reach prod there with a port-forward.
+`CloudflareTunnelDown` fires only where the Secret exists, so such a cluster doesn't report the
+real site down; the stock warnings for the waiting pods (`KubePodNotReady`,
+`KubeDeploymentReplicasMismatch`, `KubeDeploymentRolloutStuck`) still post, titled `prod`, and
+repeat every 12 hours while that prod runs. A cluster that already holds
+the Secret from an earlier run keeps serving, and the script warns. The tunnel itself, its DNS
+record and the Cloudflare settings are made once ([Cloudflare Tunnel](#cloudflare-tunnel)).
 
 Cloudflare terminates TLS and sends http to https at its edge, so the Ingress has no TLS block
 and `ssl-redirect` is off. Cloudflare puts the visitor's address in `CF-Connecting-IP`, and prod's
@@ -723,8 +739,9 @@ curl http://127.0.0.1:8080/api/health
 
 **WSL2 boxes set up before the tunnel** may still run the old forward services, which bridged a
 `127.0.0.1 fmicodes.com` Windows hosts line to prod's controller. They have nothing left to
-forward. Remove them, then delete that hosts line (elevated PowerShell), or the Windows browser
-never reaches the real site:
+forward. `./bootstrap.sh` removes them on its next run on WSL2 (either env). Then delete that
+hosts line (elevated PowerShell), or the Windows browser never reaches the real site. To remove
+them by hand instead:
 
 ```bash
 for u in fmi-forward-prod fmi-tls-prod fmi-forward-staging; do sudo systemctl disable --now "$u" 2>/dev/null; sudo rm -f "/etc/systemd/system/$u.service"; done
@@ -737,7 +754,8 @@ sudo rm -f /etc/sysctl.d/99-unpriv443.conf && sudo sysctl -w net.ipv4.ip_unprivi
 `fmicodes.com` is a zone on Cloudflare's free plan. The repo already holds the tunnel
 `fmi-codes-prod`: its ID is in `overlays/prod/ingress/cloudflared-config.yaml` and its encrypted
 credentials in `secrets/cloudflared-tunnel.enc.yaml`. A new server needs none of steps 1 to 3,
-only the prod age key. Steps 1 to 3 are for a new tunnel (a fork, or
+only the prod age key and `SERVE_PROD_TUNNEL=true`
+([Move prod to another cluster](#move-prod-to-another-cluster)). Steps 1 to 3 are for a new tunnel (a fork, or
 [replacing leaked credentials](#cloudflare-tunnel-credentials)); steps 4 to 6 are done once per
 zone and checked after any change in the Cloudflare dashboard.
 
@@ -818,21 +836,24 @@ ready pod for 3 minutes posts `CloudflareTunnelDown` ([Cluster alerts](#cluster-
 
 **Rule: one cluster runs the prod tunnel at a time.** Every cluster that runs prod's ingress
 overlay with the tunnel's credentials registers as a connector of the same tunnel, and Cloudflare
-splits visitors between them: two prods with two databases. Moving prod (to the event server,
-say) means stopping the old tunnel first:
+splits visitors between them: two prods with two databases. That is why only a run with
+`SERVE_PROD_TUNNEL=true` applies the credentials. Moving prod (to the event server, say) means
+stopping the old tunnel first:
 
 1. **On the old cluster**, delete the tunnel's Secret and pods. Flux doesn't manage the Secret, so
-   it stays gone, and the new pods wait for it and never connect. That cluster's
-   `CloudflareTunnelDown` then fires until its prod is torn down. Don't re-run
-   `deploy-ingress.sh` for prod there: it applies the Secret again.
+   it stays gone, and the new pods wait for it and never connect. Without the Secret
+   `CloudflareTunnelDown` stays quiet there; the stock warnings for the waiting pods
+   (`KubePodNotReady`, `KubeDeploymentReplicasMismatch`) post until its prod is torn down.
+   Never run `deploy-ingress.sh` with `SERVE_PROD_TUNNEL=true` there again: it applies the
+   Secret again.
 
    ```bash
    kubectl -n fmi-codes delete secret cloudflared-tunnel
    kubectl -n fmi-codes delete pod -l app.kubernetes.io/name=cloudflared
    ```
 
-2. **On the new cluster**, run `./bootstrap.sh --env prod` (with `--with-flux`). `deploy-ingress.sh`
-   applies the Secret and waits for the tunnel. DNS doesn't change.
+2. **On the new cluster**, run `SERVE_PROD_TUNNEL=true ./bootstrap.sh --env prod --with-flux`.
+   `deploy-ingress.sh` applies the Secret and waits for the tunnel. DNS doesn't change.
 3. **Tear down the old cluster's prod** ([Tear down](#tear-down)). The database doesn't move with
    the tunnel: there are no off-site backups, so move it with a `pg_dump` first if it holds data.
 
@@ -1093,20 +1114,20 @@ bootstrapped before the label existed run `kubectl apply -f infra/k8s/flux/self.
 
 The alerts most likely to matter:
 
-| Alert                                                                                             | Fires when                                                                                                                    | After   |
-| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `KubePodCrashLooping`                                                                             | a container is in CrashLoopBackOff                                                                                            | 5m      |
-| `KubeInitContainerCrashLooping`                                                                   | an initContainer is, like the backend's `migrate` step when Postgres stays unreachable (the step itself no longer posts that) | 5m      |
-| `ContainerOOMKilled`                                                                              | a container was restarted after running out of memory                                                                         | at once |
-| `KubePodNotReady`                                                                                 | a pod stays Pending, Unknown or Failed: ImagePullBackOff, unschedulable, stuck in Init                                        | 10m     |
-| `KubeContainerWaiting`                                                                            | a container stays waiting for any other reason                                                                                | 1h      |
-| `KubeDeploymentRolloutStuck`, `KubeDeploymentReplicasMismatch`, `KubeStatefulSetReplicasMismatch` | a rollout stops progressing or replicas stay unavailable                                                                      | 15m     |
-| `KubeJobFailed`                                                                                   | a Job failed (the manual `db-migrate` Job also posts its own result)                                                          | 1m      |
-| `KubePersistentVolumeFillingUp`                                                                   | a PVC (Postgres, Prometheus, Grafana) is almost full, or will be within 4 days                                                | 1m / 1h |
-| `KubeNodeNotReady`                                                                                | the node is not ready                                                                                                         | 15m     |
-| `TargetDown`                                                                                      | a scrape target, like the backend's `/metrics`, is unreachable                                                                | 10m     |
-| `BackendHighErrorRate`                                                                            | over 5% of backend requests in a namespace return a 5xx (health probes not counted)                                           | 10m     |
-| `CloudflareTunnelDown` (critical)                                                                 | prod's `cloudflared` has no ready pod, so no connection to Cloudflare and `fmicodes.com` shows Cloudflare's error page        | 3m      |
+| Alert                                                                                             | Fires when                                                                                                                           | After   |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `KubePodCrashLooping`                                                                             | a container is in CrashLoopBackOff                                                                                                   | 5m      |
+| `KubeInitContainerCrashLooping`                                                                   | an initContainer is, like the backend's `migrate` step when Postgres stays unreachable (the step itself no longer posts that)        | 5m      |
+| `ContainerOOMKilled`                                                                              | a container was restarted after running out of memory                                                                                | at once |
+| `KubePodNotReady`                                                                                 | a pod stays Pending, Unknown or Failed: ImagePullBackOff, unschedulable, stuck in Init                                               | 10m     |
+| `KubeContainerWaiting`                                                                            | a container stays waiting for any other reason                                                                                       | 1h      |
+| `KubeDeploymentRolloutStuck`, `KubeDeploymentReplicasMismatch`, `KubeStatefulSetReplicasMismatch` | a rollout stops progressing or replicas stay unavailable                                                                             | 15m     |
+| `KubeJobFailed`                                                                                   | a Job failed (the manual `db-migrate` Job also posts its own result)                                                                 | 1m      |
+| `KubePersistentVolumeFillingUp`                                                                   | a PVC (Postgres, Prometheus, Grafana) is almost full, or will be within 4 days                                                       | 1m / 1h |
+| `KubeNodeNotReady`                                                                                | the node is not ready                                                                                                                | 15m     |
+| `TargetDown`                                                                                      | a scrape target, like the backend's `/metrics`, is unreachable                                                                       | 10m     |
+| `BackendHighErrorRate`                                                                            | over 5% of backend requests in a namespace return a 5xx (health probes not counted)                                                  | 10m     |
+| `CloudflareTunnelDown` (critical)                                                                 | prod's `cloudflared` has no ready pod on the cluster that holds the tunnel's Secret, so `fmicodes.com` shows Cloudflare's error page | 3m      |
 
 The custom rules (`additionalPrometheusRulesMap` in `base/observability/helmrelease.yaml`) have
 promtool unit tests in `base/observability/tests/`. CI runs them; locally, with Docker running:
@@ -1146,7 +1167,14 @@ Not covered:
 - **The whole cluster down.** Nothing inside a cluster can report its own death. A dead
   cluster also takes the site down, which is noticed anyway, so there is no external dead
   man's switch. `CloudflareTunnelDown` runs in the same cluster, so a dead server posts it
-  neither; visitors get Cloudflare's tunnel error page.
+  neither; visitors get Cloudflare's tunnel error page. An outside check is
+  [#282](https://github.com/fss-fmi/fmi-codes-website-2026/issues/282).
+- **The tunnel's Secret lost on the live cluster.** `CloudflareTunnelDown` fires only where the
+  `cloudflared-tunnel` Secret exists, so it reads a Secret deleted by mistake (the
+  [Move prod](#move-prod-to-another-cluster) or teardown commands run on the wrong cluster) as
+  "not serving". The site goes down at the next `cloudflared` restart and only the stock
+  `KubePodNotReady` warning posts, after 10 minutes. Inside the cluster this can't be told
+  apart from a deliberate stop ([#282](https://github.com/fss-fmi/fmi-codes-website-2026/issues/282)).
 - **5xx answers Flask never produced.** `BackendHighErrorRate` counts only responses the
   backend finished. A 502 or 504 from ingress-nginx (a worker stuck until Gunicorn's 120s
   timeout) or a 503 with no ready pod is not in it. Partly covered elsewhere: when every
@@ -1195,7 +1223,8 @@ has run.
 
 **Adding prod to a staging-only box.** The usual order on one machine is staging first
 (`./bootstrap.sh`), then prod next to it (`ENV=prod bash bootstrap.sh`, which the staging run
-suggests). That second run sets up prod's namespace, data, app and ingress (steps 1 to 5) and
+suggests; with `SERVE_PROD_TUNNEL=true` only if this box is the one that serves `fmicodes.com`).
+That second run sets up prod's namespace, data, app and ingress (steps 1 to 5) and
 leaves the cluster-wide Secrets alone, so they still hold staging's copies. With `--with-flux`
 its step 7 stops on the env guard instead (`monitoring/grafana-admin holds the staging
 credentials`). Either way `cluster_url` is still the staging webhook, so on the now-shared box:
@@ -1824,7 +1853,7 @@ with the fix (reinstall the version `install-tools.sh` pins).
 | Flux Relay bot token           | `rotate-secret.sh --flux-relay bot_token`                                                         | Nothing; no restart.                                                                                                                     | It leaked (it can read and post in both alert channels)                                                                                                                        |
 | `FRONTEND_ORIGIN` (staging)    | `ENV=staging rotate-secret.sh FRONTEND_ORIGIN`                                                    | New reset and verification emails link to the new address.                                                                               | Staging's tailnet address changed (new tailnet, or it joined as `staging-1`)                                                                                                   |
 | age private keys               | [manual, below](#rotate-an-age-key)                                                               | Nothing.                                                                                                                                 | A key leaked, or someone holding it leaves                                                                                                                                     |
-| Cloudflare Tunnel credentials  | a new tunnel, [below](#cloudflare-tunnel-credentials)                                             | Nothing, if DNS moves as soon as the first new pod is ready.                                                                             | They leaked (anyone with them can serve `fmicodes.com`)                                                                                                                        |
+| Cloudflare Tunnel credentials  | a new tunnel, [below](#cloudflare-tunnel-credentials)                                             | Nothing: a temporary second `cloudflared` serves the new tunnel while DNS moves.                                                         | They leaked (anyone with them can serve `fmicodes.com`)                                                                                                                        |
 | DB / Redis passwords           | `rotate-datastore-password.sh` `db`, `db-admin`, `redis` ([below](#db-and-redis-passwords))       |                                                                                                                                          |                                                                                                                                                                                |
 
 !!! warning "If the admin password leaks, rotate `JWT_SECRET_KEY` too"
@@ -1876,26 +1905,60 @@ refuses to write a file whose manifest namespace doesn't match `ENV`.
 
 ### Cloudflare Tunnel credentials
 
-A tunnel's credentials can't be rotated in place, so replace the tunnel:
+A tunnel's credentials can't be rotated in place, so replace the tunnel. Don't just merge the
+new tunnel and move DNS after: the rollout (`maxSurge: 1`, `maxUnavailable: 0`) ends the old
+tunnel's last connector seconds after the first new pod is ready, before DNS can follow, and
+visitors get Cloudflare's error 1033 in between. A temporary second Deployment,
+`cloudflared-next`, serves the new tunnel first, so DNS moves to a tunnel that is already
+connected. Run every step from the PR's branch, on a machine with `kubectl` access to prod and
+step 1's `cert.pem`:
 
 1. Steps 1 to 3 of [Cloudflare Tunnel](#cloudflare-tunnel) with a new name
    (`fmi-codes-prod-2`). Open the PR, but don't merge it yet.
-2. Apply the new Secret from the PR's branch. Running pods keep the credentials they started
-   with, so nothing changes yet:
+2. **Start the bridge**: the new credentials as `cloudflared-tunnel-next`, the PR's config and a
+   copy of the Deployment that reads both. None of it is in git, so Flux leaves it alone. Wait
+   until it is ready, which means connected to the new tunnel:
+
+   ```bash
+   sops --decrypt infra/k8s/secrets/cloudflared-tunnel.enc.yaml \
+     | sed -E 's/^( +name: )cloudflared-tunnel$/\1cloudflared-tunnel-next/' | kubectl apply -f -
+   kubectl -n fmi-codes create configmap cloudflared-next --dry-run=client -o yaml \
+     --from-file=config.yaml=infra/k8s/overlays/prod/ingress/cloudflared-config.yaml \
+     | kubectl apply -f -
+   sed -E -e 's/^( +(name|app\.kubernetes\.io\/name): )cloudflared$/\1cloudflared-next/' \
+       -e 's/^( +secretName: )cloudflared-tunnel$/\1cloudflared-tunnel-next/' \
+       -e 's/^( +app\.kubernetes\.io\/managed-by: )flux$/\1kubectl/' \
+       infra/k8s/overlays/prod/ingress/cloudflared.yaml | kubectl apply -f -
+   kubectl -n fmi-codes rollout status deployment/cloudflared-next
+   ```
+
+3. **Move the DNS record.** Visitors now reach the bridge. The old pods still hold the old
+   tunnel, which gets no traffic:
+
+   ```bash
+   cloudflared tunnel route dns --overwrite-dns fmi-codes-prod-2 fmicodes.com
+   ```
+
+4. **Apply the new credentials under the real name, then merge the PR.** Until the merge, the
+   running pods keep the old credentials they started with, and one that restarts reads the new
+   ones with the old tunnel ID and stays unready, which no longer matters: the bridge serves.
+   After the merge the config's generated name changes, so Flux rolls `cloudflared` onto the new
+   tunnel next to the bridge:
 
    ```bash
    sops --decrypt infra/k8s/secrets/cloudflared-tunnel.enc.yaml | kubectl apply -f -
+   # merge the PR, then:
+   flux reconcile kustomization fmi-codes-ingress -n flux-system --with-source
+   kubectl -n fmi-codes rollout status deployment/cloudflared
    ```
 
-3. Merge the PR. The config's generated name changes, so Flux rolls `cloudflared` onto the new
-   tunnel one pod at a time. As soon as the first new pod is ready, move the DNS record; the old
-   pods keep serving the old tunnel until then. Once the rollout is done, delete the old tunnel,
-   which ends the leaked credentials:
+5. **Remove the bridge and delete the old tunnel**, which ends the leaked credentials.
+   `tunnel delete` refuses while anything is still connected to the old tunnel:
 
    ```bash
-   kubectl -n fmi-codes get pods -l app.kubernetes.io/name=cloudflared -w   # wait for a new pod 1/1
-   cloudflared tunnel route dns --overwrite-dns fmi-codes-prod-2 fmicodes.com
-   kubectl -n fmi-codes rollout status deployment/cloudflared
+   kubectl -n fmi-codes delete deployment cloudflared-next
+   kubectl -n fmi-codes delete configmap cloudflared-next
+   kubectl -n fmi-codes delete secret cloudflared-tunnel-next
    cloudflared tunnel delete fmi-codes-prod
    ```
 

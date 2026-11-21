@@ -199,10 +199,14 @@ spec:
           - name: fmi-codes.tunnel
             rules:
               # A cloudflared pod is ready only while it holds a connection to Cloudflare, so this
-              # reads readiness, not cloudflared's own connection gauge. A cluster without prod has
-              # no Deployment and no series, so it never fires there.
+              # reads readiness, not cloudflared's own connection gauge. Only a cluster holding the
+              # tunnel's Secret serves it, so one running prod without it (SERVE_PROD_TUNNEL off)
+              # never reports the real site down.
               - alert: CloudflareTunnelDown
-                expr: kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="fmi-codes", deployment="cloudflared"} < 1
+                expr: |-
+                  kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="fmi-codes", deployment="cloudflared"} < 1
+                  and on (namespace)
+                  kube_secret_info{job="kube-state-metrics", namespace="fmi-codes", secret="cloudflared-tunnel"}
                 for: 3m
                 labels:
                   severity: critical

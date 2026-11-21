@@ -131,6 +131,8 @@ The full step-by-step runbook — with per-phase verification, secret rotation, 
 ./bootstrap.sh --env prod   # production — deliberate opt-in
 ```
 
+Prod serves `fmicodes.com` only when run with `SERVE_PROD_TUNNEL=true`, on the one cluster that runs prod ([runbook](docs/runbook.md#move-prod-to-another-cluster)).
+
 It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: `bash infra/k8s/scripts/init-linux.sh --with-flux` after a one-time SSH deploy-key setup.
 
 ### What changes to hit _your own_ cluster

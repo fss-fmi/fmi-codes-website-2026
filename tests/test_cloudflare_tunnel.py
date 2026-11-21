@@ -1,13 +1,19 @@
 """Prod is served only through the Cloudflare Tunnel, and rate limits still see the visitor (#271).
 
-Reads the committed manifests and deploy-ingress.sh as text, like tests/k8s_manifests.py.
+Reads the committed manifests and deploy-ingress.sh as text, like tests/k8s_manifests.py, and
+runs deploy-ingress.sh with kubectl, helm and sops stubbed, like tests/test_k8s_scripts.py.
 """
 
+import os
 import re
+import stat
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
-from tests.k8s_manifests import K8S
+from tests.k8s_manifests import K8S, ROOT
 
 CLOUDFLARED = K8S / "overlays" / "prod" / "ingress" / "cloudflared.yaml"
 TUNNEL_CONFIG = K8S / "overlays" / "prod" / "ingress" / "cloudflared-config.yaml"
@@ -129,3 +135,153 @@ def test_the_ingress_serves_plain_http_to_the_tunnel():
     ingress = _read(BASE_INGRESS)
     assert not re.search(r"^  tls:", ingress, re.M)
     assert re.search(r'^    nginx\.ingress\.kubernetes\.io/ssl-redirect: "false"$', ingress, re.M)
+
+
+@pytest.mark.parametrize(
+    ("script", "first_step"),
+    [
+        (K8S / "scripts" / "init-linux.sh", 'run_step 1 "install tooling"'),
+        (ROOT / "bootstrap.sh", 'log "Pre-flight: tools (sops, age)"'),
+    ],
+)
+def test_a_mistyped_opt_in_stops_the_run_before_anything_is_installed(script, first_step):
+    text = _read(script)
+    check = text.find("SERVE_PROD_TUNNEL must be 'true' or 'false'")
+    assert check != -1, f"{script.name} doesn't check SERVE_PROD_TUNNEL"
+    assert check < text.index(first_step)
+
+
+def test_the_failed_tunnel_hint_names_the_file_with_the_tunnel_id():
+    hint = re.search(
+        r"'Failed to get tunnel'.*?\n.*?(overlays/prod/ingress/\S+\.yaml)", _read(DEPLOY_INGRESS)
+    )
+    assert hint
+    assert re.search(r"^tunnel: \S+$", _read(K8S / hint[1]), re.M)
+
+
+# The script reads these from the environment; a caller's shell must not leak them in.
+DEPLOY_ENV = (
+    "ENV",
+    "NAMESPACE",
+    "HOST",
+    "INGRESS_NAMESPACE",
+    "INGRESS_RELEASE",
+    "POD_CIDR",
+    "READY_TIMEOUT",
+    "TUNNEL_SECRET_ENC",
+    "SERVE_PROD_TUNNEL",
+    "HEADERS_CONFIGMAP",
+)
+
+KUBECTL_STUB = """#!/usr/bin/env bash
+printf 'kubectl %s\\n' "$*" >> "$FAKE_LOG"
+case " $* " in
+  *" apply -f - "*) cat >> "$FAKE_LOG.stdin" ;;
+  *" get secret cloudflared-tunnel "*)
+    case "$FAKE_SECRET" in
+      present) echo secret/cloudflared-tunnel ;;
+      error) echo 'Unable to connect to the server: i/o timeout' >&2; exit 1 ;;
+    esac ;;
+esac
+"""
+
+SOPS_STUB = """#!/usr/bin/env bash
+printf 'sops %s\\n' "$*" >> "$FAKE_LOG"
+printf 'kind: Secret\\nmetadata:\\n    name: cloudflared-tunnel\\n    namespace: fmi-codes\\n'
+"""
+
+needs_bash = pytest.mark.skipif(
+    sys.platform == "win32", reason="runs deploy-ingress.sh under a POSIX bash"
+)
+
+
+@pytest.fixture
+def deploy(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, body in (
+        ("kubectl", KUBECTL_STUB),
+        ("helm", "#!/usr/bin/env bash\n"),
+        ("sops", SOPS_STUB),
+    ):
+        stub = bin_dir / name
+        stub.write_text(body, newline="\n")
+        stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+    log = tmp_path / "calls.log"
+    stdin_log = Path(f"{log}.stdin")
+
+    def _run(secret="absent", **env):
+        log.write_text("")
+        stdin_log.write_text("")
+        base_env = {k: v for k, v in os.environ.items() if k not in DEPLOY_ENV}
+        result = subprocess.run(
+            ["bash", str(DEPLOY_INGRESS)],
+            capture_output=True,
+            text=True,
+            env={
+                **base_env,
+                "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                "FAKE_LOG": str(log),
+                "FAKE_SECRET": secret,
+                "ENV": "prod",
+                **env,
+            },
+        )
+        result.calls = log.read_text().splitlines()
+        result.applied = stdin_log.read_text()
+        return result
+
+    return _run
+
+
+@needs_bash
+def test_prod_without_the_opt_in_never_applies_the_tunnel_credentials(deploy):
+    result = deploy()
+    assert result.returncode == 0, result.stderr
+    assert not [c for c in result.calls if c.startswith("sops ")]
+    assert "kubectl apply -f -" not in result.calls
+    assert result.applied == ""
+    assert any(
+        c.startswith("kubectl apply -k ") and c.endswith("overlays/prod/ingress")
+        for c in result.calls
+    )
+    assert not [c for c in result.calls if "deployment/cloudflared" in c]
+    assert "not on the internet" in result.stdout
+
+
+@needs_bash
+def test_prod_with_the_opt_in_applies_the_credentials_and_waits(deploy):
+    result = deploy(SERVE_PROD_TUNNEL="true")
+    assert result.returncode == 0, result.stderr
+    assert "kubectl apply -f -" in result.calls
+    assert "name: cloudflared-tunnel" in result.applied
+    # rollout status fails at once on a Deployment already past its progress deadline.
+    assert [c for c in result.calls if "wait --for=condition=Available deployment/cloudflared" in c]
+    assert not [c for c in result.calls if "rollout status" in c]
+    assert "not on the internet" not in result.stdout
+
+
+@needs_bash
+def test_a_failed_secret_check_is_not_taken_as_no_secret(deploy):
+    result = deploy(secret="error")
+    assert result.returncode != 0
+    assert "could not check whether this cluster holds the tunnel's Secret" in result.stderr
+    assert "not on the internet" not in result.stdout
+
+
+@needs_bash
+def test_a_cluster_still_holding_the_credentials_is_warned_it_serves(deploy):
+    result = deploy(secret="present")
+    assert result.returncode == 0, result.stderr
+    assert "kubectl apply -f -" not in result.calls
+    assert "still serves fmicodes.com" in result.stderr
+    assert "not on the internet" not in result.stdout
+
+
+@needs_bash
+@pytest.mark.parametrize("value", ["yes", "1", "TRUE"])
+def test_an_unknown_opt_in_value_is_refused_before_touching_the_cluster(deploy, value):
+    result = deploy(SERVE_PROD_TUNNEL=value)
+    assert result.returncode != 0
+    assert "SERVE_PROD_TUNNEL must be 'true' or 'false'" in result.stderr
+    assert result.calls == []

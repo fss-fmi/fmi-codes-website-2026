@@ -23,7 +23,7 @@ All-in-one bring-up of the whole stack on a Debian/Ubuntu Linux host, in order:
   2. bootstrap-k3s.sh    k3s cluster + target namespace
   3. deploy-stateful.sh  Postgres + Redis Sentinel (Helm)
   4. deploy-app.sh       backend + frontend + app secret (SOPS)
-  5. deploy-ingress.sh   ingress-nginx (+ prod's Cloudflare Tunnel; staging's tailnet Ingress)
+  5. deploy-ingress.sh   ingress-nginx (+ prod's cloudflared; staging's tailnet Ingress)
   6. flux-bootstrap.sh   GitOps CD (only with --with-flux)
   7. deploy-observability.sh  Grafana admin + Tailscale OAuth secrets (Flux installs kube-prometheus-stack
                               and the Tailscale operator; runs whenever step 6 does). Staging is
@@ -43,12 +43,16 @@ fix the cause and resume without redoing earlier steps:
                           address. --with-observability is still accepted and is the
                           default with --with-flux. See docs/runbook.md 'Phase 7'.
 
+  SERVE_PROD_TUNNEL=true  prod only: step 5 applies the Cloudflare Tunnel's credentials, so this
+                          cluster serves fmicodes.com. Only one cluster may (docs/runbook.md
+                          'Move prod to another cluster'); without it prod stays off the internet.
+
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
 this in a terminal, not a headless context.
 
 Runs on native Debian/Ubuntu Linux and on WSL2 (Ubuntu). On WSL2, run
 bootstrap.sh from the repo root instead — it handles the age key pre-flight,
-runs this script, and auto-installs the boot-persistent port-forward services (prod).
+runs this script, and removes the port-forward services older setups installed.
 EOF
 }
 
@@ -81,6 +85,15 @@ case "$FROM" in
   1|2|3|4|5|6|7) : ;;
   *) die "--from must be 1-7, got '$FROM'" ;;
 esac
+
+# Checked here too, so a typo stops the run before k3s is installed, not at step 5.
+case "${SERVE_PROD_TUNNEL:-false}" in
+  true|false) : ;;
+  *) die "SERVE_PROD_TUNNEL must be 'true' or 'false', got '$SERVE_PROD_TUNNEL'" ;;
+esac
+if [ "$ENV" = "staging" ] && [ "${SERVE_PROD_TUNNEL:-false}" = "true" ]; then
+  echo "Note: SERVE_PROD_TUNNEL only applies to prod; ignored for staging." >&2
+fi
 
 if [ "$FROM" = "6" ]; then
   WITH_FLUX=true
@@ -144,6 +157,26 @@ Staging is reachable only over the tailnet. $ACCESS_NOTE
 Verify the stack:
   kubectl -n $NAMESPACE get pods
   curl https://${TAILNET_HOST:-staging.<tailnet>.ts.net}/api/health
+EOF
+  exit 0
+fi
+
+if ! TUNNEL_HELD="$(kubectl -n "$NAMESPACE" get secret cloudflared-tunnel --ignore-not-found -o name)"; then
+  die "could not check whether this cluster holds the tunnel's Secret ($NAMESPACE/cloudflared-tunnel)."
+fi
+if [ -z "$TUNNEL_HELD" ]; then
+  cat <<EOF
+
+$(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
+
+Prod is not on the internet from this cluster: it doesn't hold the Cloudflare Tunnel's
+credentials (SERVE_PROD_TUNNEL=true applies them; only one cluster may, see docs/runbook.md
+'Move prod to another cluster').
+
+Verify the stack:
+  kubectl -n $NAMESPACE get pods
+  kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8081:80
+  curl -H 'Host: $HOST' http://127.0.0.1:8081/api/health
 EOF
   exit 0
 fi

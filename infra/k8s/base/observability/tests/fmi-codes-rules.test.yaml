@@ -75,6 +75,8 @@ tests:
     input_series:
       - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="fmi-codes", deployment="cloudflared"}'
         values: '2x5 0x15'
+      - series: 'kube_secret_info{job="kube-state-metrics", namespace="fmi-codes", secret="cloudflared-tunnel"}'
+        values: '1x20'
     alert_rule_test:
       - eval_time: 8m
         alertname: CloudflareTunnelDown
@@ -97,6 +99,8 @@ tests:
     input_series:
       - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="fmi-codes", deployment="cloudflared"}'
         values: '2x5 0x1 2x13'
+      - series: 'kube_secret_info{job="kube-state-metrics", namespace="fmi-codes", secret="cloudflared-tunnel"}'
+        values: '1x20'
     alert_rule_test:
       - eval_time: 9m
         alertname: CloudflareTunnelDown
@@ -112,7 +116,38 @@ tests:
         values: '0x15'
       - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="fmi-codes-staging", deployment="cloudflared"}'
         values: '0x15'
+      - series: 'kube_secret_info{job="kube-state-metrics", namespace="fmi-codes-staging", secret="cloudflared-tunnel"}'
+        values: '1x15'
+      - series: 'kube_secret_info{job="kube-state-metrics", namespace="fmi-codes", secret="cloudflared-tunnel"}'
+        values: '1x20'
     alert_rule_test:
       - eval_time: 12m
         alertname: CloudflareTunnelDown
         exp_alerts: []
+
+  # A cluster that runs prod without serving the tunnel (no Secret, or another Secret) posts
+  # nothing; once the Secret is applied and the pods still can't connect, it fires.
+  - interval: 1m
+    input_series:
+      - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="fmi-codes", deployment="cloudflared"}'
+        values: '0x30'
+      - series: 'kube_secret_info{job="kube-state-metrics", namespace="fmi-codes", secret="fmi-codes-app"}'
+        values: '1x30'
+      - series: 'kube_secret_info{job="kube-state-metrics", namespace="fmi-codes", secret="cloudflared-tunnel"}'
+        values: '_x15 1x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: CloudflareTunnelDown
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: CloudflareTunnelDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: kube-state-metrics
+              namespace: fmi-codes
+              deployment: cloudflared
+            exp_annotations:
+              summary: 'Prod is unreachable: the Cloudflare Tunnel has no connection.'
+              description: "No cloudflared pod in fmi-codes holds a connection to Cloudflare, so https://fmicodes.com shows Cloudflare's tunnel error page."
+              runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cloudflare-tunnel
