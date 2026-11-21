@@ -73,9 +73,39 @@ def _probe(name: str) -> dict[str, int]:
     return {k: int(v) for k, v in re.findall(r"(\w+Seconds|failureThreshold): (\d+)", block[1])}
 
 
-@pytest.mark.parametrize(("name", "acts_after"), [("readinessProbe", 30), ("livenessProbe", 60)])
-def test_a_busy_pod_is_not_dropped_or_restarted(name, acts_after):
-    """A probe queued behind password hashing gets 10 s, and several misses before it acts."""
+def _acts_after(name: str) -> int:
     probe = _probe(name)
-    assert probe["timeoutSeconds"] >= 10
-    assert probe["periodSeconds"] * probe["failureThreshold"] >= acts_after
+    return probe["periodSeconds"] * probe["failureThreshold"]
+
+
+@pytest.mark.parametrize(("name", "acts_after"), [("readinessProbe", 120), ("livenessProbe", 300)])
+def test_a_busy_pod_is_not_dropped_or_restarted(name, acts_after):
+    """Overload reaches every pod at once, so a probe that acts on a busy pod drops or restarts
+    all of them (#269). Shedding keeps the hash paths from queueing; the thresholds cover any
+    other pile-up, and liveness only restarts a pod whose every thread is stuck."""
+    assert _probe(name)["timeoutSeconds"] >= 10
+    assert _acts_after(name) >= acts_after
+
+
+def test_liveness_acts_only_after_readiness():
+    assert _acts_after("livenessProbe") > _acts_after("readinessProbe")
+
+
+def test_hash_slots_follow_the_cpu_limit():
+    """One hash slot per core of the pod's own CPU limit, read through the downward API."""
+    env = re.search(
+        r"^ +- name: HASH_SLOTS\n +valueFrom:\n +resourceFieldRef:\n((?: {18,}.*\n)+)",
+        BASE.read_text(encoding="utf-8"),
+        re.M,
+    )
+    assert env, "HASH_SLOTS not set from a resourceFieldRef"
+    fields = dict(re.findall(r"^ +(\w+): \"?([^\"\n]+)\"?$", env[1], re.M))
+    assert fields == {"containerName": "backend", "resource": "limits.cpu", "divisor": "1"}
+
+
+@pytest.mark.parametrize("env", ["prod", "staging"])
+def test_backend_cpu_limit_is_whole_cores(env):
+    """The downward API rounds a CPU limit up, so half a core would still get a whole slot and
+    hash at half prod's speed. Whole cores keep staging's load test a stand-in for prod's."""
+    cores = _deployment(env, r'^ {12}limits:\n(?: {14}memory: \S+\n)? {14}cpu: "?(\d+)"?$')
+    assert cores >= 1
