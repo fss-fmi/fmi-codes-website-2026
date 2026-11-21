@@ -1,8 +1,8 @@
 """Dead pooled connections after a Postgres restart (#277).
 
 The real ThreadedConnectionPool runs with psycopg2.connect patched to hand out fake
-connections that fail the way psycopg2's do once the server is gone: the next query
-raises OperationalError and sets `closed` to 2, and a closed connection raises
+connections that fail the way psycopg2's do once the server is gone: the next query or
+rollback raises OperationalError and sets `closed` to 2, and a closed connection raises
 InterfaceError on rollback and on cursor(). Every test also checks that no connection
 is left checked out, since a leaked one shrinks the worker's pool for good.
 """
@@ -18,6 +18,11 @@ from psycopg2.extensions import TRANSACTION_STATUS_IDLE, TRANSACTION_STATUS_INTR
 from psycopg2.pool import ThreadedConnectionPool
 
 MINCONN = 2
+MAXCONN = 8
+
+
+class Interrupted(BaseException):
+    pass
 
 
 class FakeCursor:
@@ -29,9 +34,13 @@ class FakeCursor:
             raise self.conn.ping_error
         if self.conn.dead:
             self.conn.closed = 2
+            if self.conn.on_failure is not None:
+                self.conn.on_failure()
             raise psycopg2.OperationalError("terminating connection due to administrator command")
         self.conn.executed.append(sql)
         self.conn.info.transaction_status = TRANSACTION_STATUS_INTRANS
+        if self.conn.lost_after_ping and sql == "SELECT 1":
+            self.conn.closed = 2
 
     def close(self):
         pass
@@ -44,6 +53,8 @@ class FakeConnection:
         self.executed = []
         self.ping_error = None
         self.rollback_error = None
+        self.on_failure = None
+        self.lost_after_ping = False
         self.info = SimpleNamespace(transaction_status=TRANSACTION_STATUS_IDLE)
 
     def cursor(self):
@@ -59,6 +70,9 @@ class FakeConnection:
     def rollback(self):
         if self.closed:
             raise psycopg2.InterfaceError("connection already closed")
+        if self.dead:
+            self.closed = 2
+            raise psycopg2.OperationalError("server closed the connection unexpectedly")
         if self.rollback_error is not None:
             raise self.rollback_error
         self.info.transaction_status = TRANSACTION_STATUS_IDLE
@@ -82,7 +96,7 @@ def make_pool(monkeypatch):
             return item
 
         with patch("psycopg2.pool.psycopg2.connect", side_effect=fake_connect):
-            pool = ThreadedConnectionPool(MINCONN, 8, "postgresql://unused")
+            pool = ThreadedConnectionPool(MINCONN, MAXCONN, "postgresql://unused")
         monkeypatch.setattr(database, "_pool", pool)
         monkeypatch.setattr(database, "_pool_timeout", 0.2)
         return pool, fake_connect
@@ -105,7 +119,29 @@ def test_checkout_replaces_dead_idle_connections(make_pool, caplog):
 
     assert conn is fresh
     assert dead_a.closed and dead_b.closed
-    assert "Discarded a dead pooled database connection" in caplog.text
+    assert "Discarded a pooled database connection whose ping failed" in caplog.text
+    database.return_db_connection(conn)
+    assert pool._used == {}
+
+
+def test_dead_connections_returned_by_other_threads_are_replaced_too(make_pool):
+    """Requests that committed just before the restart hand back dead connections that
+    still look idle, so one checkout can meet more dead ones than the pool keeps idle."""
+    dead = [FakeConnection(dead=True) for _ in range(4)]
+    fresh = FakeConnection()
+    pool, fake_connect = make_pool(*dead, fresh)
+    with patch("psycopg2.pool.psycopg2.connect", side_effect=fake_connect):
+        held = [pool.getconn() for _ in range(4)]  # the two idle ones, then two opened
+    pool.putconn(held[0])
+    pool.putconn(held[1])
+    # Each failed ping lets another thread finish and return its connection.
+    held[1].on_failure = lambda: pool.putconn(held[2])
+    held[2].on_failure = lambda: pool.putconn(held[3])
+
+    conn = checkout(fake_connect)
+
+    assert conn is fresh
+    assert all(c.closed for c in dead)
     database.return_db_connection(conn)
     assert pool._used == {}
 
@@ -137,7 +173,9 @@ def test_connect_error_after_dead_connections_is_raised(make_pool):
     assert pool._used == {}
 
 
-def test_gives_up_after_more_failed_pings_than_idle_connections(make_pool):
+def test_new_connection_failing_its_ping_is_raised_at_once(make_pool):
+    """Postgres accepts connections but every query fails: after the dead idle ones the
+    checkout opens one new connection, not one after another."""
     conns = [FakeConnection(dead=True) for _ in range(MINCONN + 2)]
     pool, fake_connect = make_pool(*conns)
 
@@ -149,12 +187,49 @@ def test_gives_up_after_more_failed_pings_than_idle_connections(make_pool):
     assert pool._used == {}
 
 
+def test_pooled_ping_failure_after_the_timeout_is_raised(make_pool, monkeypatch):
+    first, second = FakeConnection(dead=True), FakeConnection(dead=True)
+    pool, fake_connect = make_pool(first, second)
+    monkeypatch.setattr(database, "_pool_timeout", 0)
+
+    with pytest.raises(psycopg2.OperationalError, match="administrator command"):
+        checkout(fake_connect)
+
+    assert second.closed and not first.closed
+    assert pool._used == {}
+
+
+def test_cursor_error_after_the_ping_frees_the_slot(make_pool):
+    pool, fake_connect = make_pool(FakeConnection(), FakeConnection())
+    pool._pool[-1].lost_after_ping = True
+
+    with pytest.raises(psycopg2.InterfaceError, match="connection already closed"):
+        with patch("psycopg2.pool.psycopg2.connect", side_effect=fake_connect):
+            with database.get_db_cursor():
+                pass
+
+    assert pool._used == {}
+
+
+def test_any_psycopg2_error_on_the_ping_replaces_the_connection(make_pool):
+    fresh, broken = FakeConnection(), FakeConnection()
+    pool, fake_connect = make_pool(fresh, broken)
+    broken.ping_error = psycopg2.DatabaseError("SSL error: decryption failed or bad record mac")
+
+    conn = checkout(fake_connect)
+
+    assert conn is fresh
+    assert broken.closed
+    database.return_db_connection(conn)
+    assert pool._used == {}
+
+
 def test_other_ping_error_returns_the_slot_and_is_raised(make_pool):
     first, second = FakeConnection(), FakeConnection()
     pool, fake_connect = make_pool(first, second)
-    second.ping_error = psycopg2.DatabaseError("unexpected")
+    second.ping_error = RuntimeError("unexpected")
 
-    with pytest.raises(psycopg2.DatabaseError, match="unexpected"):
+    with pytest.raises(RuntimeError, match="unexpected"):
         checkout(fake_connect)
 
     assert second.closed
@@ -189,5 +264,22 @@ def test_failed_rollback_discards_the_connection_and_keeps_the_error(make_pool, 
 
     assert conn.closed
     assert "Rollback failed, discarding the connection" in caplog.text
+    assert pool._used == {}
+    assert conn not in pool._pool
+
+
+def test_interrupt_on_a_dead_connection_frees_the_slot(make_pool):
+    """A BaseException skips the rollback branch, so putconn rolls back the ping's open
+    transaction itself, which raises on a dead connection before it frees the slot."""
+    pool, fake_connect = make_pool(FakeConnection(), FakeConnection())
+
+    with pytest.raises(Interrupted):
+        with patch("psycopg2.pool.psycopg2.connect", side_effect=fake_connect):
+            with database.get_db_cursor() as cursor:
+                conn = cursor.conn
+                conn.dead = True
+                raise Interrupted()
+
+    assert conn.closed
     assert pool._used == {}
     assert conn not in pool._pool

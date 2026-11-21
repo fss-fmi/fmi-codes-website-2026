@@ -94,21 +94,28 @@ def get_db_connection(app=None):
 
     Every connection is pinged before it is handed out: after a Postgres restart the
     idle ones in the pool are dead, and psycopg2 only finds out on their next query.
-    The ping opens the caller's transaction, which saves a round trip. A dead one is
-    closed and the next one tried. The pool keeps at most `minconn` idle connections,
-    so more failed pings than that mean Postgres itself is failing, and the last error
-    is raised.
+    The ping opens the caller's transaction, which saves a round trip. A pooled one
+    that fails its ping is closed and the next one tried; other threads may keep
+    returning dead ones while this one clears them. A connection the pool has just
+    opened that fails its ping means Postgres itself is failing, so that error is
+    raised at once instead of opening connection after connection.
 
-    Raises psycopg2.pool.PoolError if no connection is available within the timeout.
+    Raises psycopg2.pool.PoolError if no connection is available within the timeout,
+    the connect error when the pool can't open a new connection and the ping's
+    psycopg2.Error when a new connection fails it or the timeout has passed. Any other
+    error during a ping is raised after the connection is closed.
     """
     if _pool is None:
         raise RuntimeError("Connection pool not initialized — call init_database first")
 
     deadline = time.monotonic() + _pool_timeout
-    failed_pings = 0
     while True:
         try:
-            conn = _pool.getconn()
+            # getconn under the pool's own lock, so whether the connection was idle in
+            # the pool or opened for this call is known exactly.
+            with _pool._lock:
+                fresh = not _pool._pool
+                conn = _pool._getconn()
         except psycopg2.pool.PoolError:
             if time.monotonic() >= deadline:
                 raise
@@ -117,12 +124,13 @@ def get_db_connection(app=None):
         try:
             _ping(conn)
             return conn
-        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        except psycopg2.Error as e:
             # Closed before the next getconn, or a full pool would refuse the replacement.
             _pool.putconn(conn, close=True)
-            failed_pings += 1
-            logger.warning(f"Discarded a dead pooled database connection: {e}")
-            if failed_pings > _pool.minconn:
+            logger.warning(
+                f"Discarded a pooled database connection whose ping failed: {type(e).__name__}: {e}"
+            )
+            if fresh or time.monotonic() >= deadline:
                 raise
         except BaseException:
             _pool.putconn(conn, close=True)
@@ -136,8 +144,14 @@ def return_db_connection(conn):
 
 
 def _discard_db_connection(conn):
-    if _pool is not None and conn is not None:
+    """Close a connection and free its slot. Only runs while cleaning up, so a failure
+    here (the pool closed under it) is logged and never replaces the caller's outcome."""
+    if _pool is None or conn is None:
+        return
+    try:
         _pool.putconn(conn, close=True)
+    except Exception as e:
+        logger.error(f"Discarding a connection failed: {e}")
 
 
 @contextmanager
@@ -150,9 +164,10 @@ def get_db_cursor(app=None, commit=True):
             results = cursor.fetchall()
     """
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = None
     discard = False
     try:
+        cursor = conn.cursor()
         yield cursor
         if commit:
             conn.commit()
@@ -171,11 +186,19 @@ def get_db_cursor(app=None, commit=True):
                 discard = True
         raise
     finally:
-        cursor.close()
+        if cursor is not None:
+            cursor.close()
         if discard:
             _discard_db_connection(conn)
         else:
-            return_db_connection(conn)
+            # putconn rolls back a connection still in a transaction (commit=False, or a
+            # BaseException after the ping opened one), and on a dead one that rollback
+            # raises before it frees the slot.
+            try:
+                return_db_connection(conn)
+            except Exception as return_error:
+                logger.error(f"Returning a connection failed, discarding it: {return_error}")
+                _discard_db_connection(conn)
 
 
 def execute_query(app, query, params=None, fetch_one=False, fetch_all=False):

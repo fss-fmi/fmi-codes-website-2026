@@ -19,6 +19,8 @@ from tests.e2e.conftest import register
 
 pytestmark = pytest.mark.e2e
 
+DISCARDED = "Discarded a pooled database connection whose ping failed"
+
 
 def _terminate(db_conn, pids):
     with db_conn.cursor() as cur:
@@ -49,7 +51,7 @@ def test_requests_succeed_after_the_pools_connections_are_killed(client, db_conn
             assert resp.status_code == 200, resp.get_json()
         assert register(client, 1, seeds).status_code == 201
 
-    assert caplog.text.count("Discarded a dead pooled database connection") == len(idle)
+    assert caplog.text.count(DISCARDED) == len(idle)
     assert "Database transaction error" not in caplog.text
     assert all(c.closed for c in idle)
     assert database._pool._used == {}
