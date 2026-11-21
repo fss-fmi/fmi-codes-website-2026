@@ -81,8 +81,23 @@ def close_pool():
         logger.info("Connection pool closed")
 
 
+def _ping(conn):
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT 1")
+    finally:
+        cursor.close()
+
+
 def get_db_connection(app=None):
-    """Get a connection from the pool with a timeout.
+    """Get a live connection from the pool with a timeout.
+
+    Every connection is pinged before it is handed out: after a Postgres restart the
+    idle ones in the pool are dead, and psycopg2 only finds out on their next query.
+    The ping opens the caller's transaction, which saves a round trip. A dead one is
+    closed and the next one tried. The pool keeps at most `minconn` idle connections,
+    so more failed pings than that mean Postgres itself is failing, and the last error
+    is raised.
 
     Raises psycopg2.pool.PoolError if no connection is available within the timeout.
     """
@@ -90,19 +105,39 @@ def get_db_connection(app=None):
         raise RuntimeError("Connection pool not initialized — call init_database first")
 
     deadline = time.monotonic() + _pool_timeout
+    failed_pings = 0
     while True:
         try:
-            return _pool.getconn()
+            conn = _pool.getconn()
         except psycopg2.pool.PoolError:
             if time.monotonic() >= deadline:
                 raise
             time.sleep(0.05)
+            continue
+        try:
+            _ping(conn)
+            return conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            # Closed before the next getconn, or a full pool would refuse the replacement.
+            _pool.putconn(conn, close=True)
+            failed_pings += 1
+            logger.warning(f"Discarded a dead pooled database connection: {e}")
+            if failed_pings > _pool.minconn:
+                raise
+        except BaseException:
+            _pool.putconn(conn, close=True)
+            raise
 
 
 def return_db_connection(conn):
     """Return a connection to the pool."""
     if _pool is not None and conn is not None:
         _pool.putconn(conn)
+
+
+def _discard_db_connection(conn):
+    if _pool is not None and conn is not None:
+        _pool.putconn(conn, close=True)
 
 
 @contextmanager
@@ -116,17 +151,31 @@ def get_db_cursor(app=None, commit=True):
     """
     conn = get_db_connection()
     cursor = conn.cursor()
+    discard = False
     try:
         yield cursor
         if commit:
             conn.commit()
     except Exception as e:
-        conn.rollback()
         logger.error(f"Database transaction error: {e}")
+        # A rollback on a closed connection raises "connection already closed", which
+        # would replace the real error. One that fails on an open connection would fail
+        # again inside putconn, so that connection is discarded too.
+        if conn.closed:
+            discard = True
+        else:
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Rollback failed, discarding the connection: {rollback_error}")
+                discard = True
         raise
     finally:
         cursor.close()
-        return_db_connection(conn)
+        if discard:
+            _discard_db_connection(conn)
+        else:
+            return_db_connection(conn)
 
 
 def execute_query(app, query, params=None, fetch_one=False, fetch_all=False):

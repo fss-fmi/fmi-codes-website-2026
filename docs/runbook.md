@@ -567,7 +567,8 @@ drops below the thread count. Under heavy load more old pods can drain at once (
 on prod), so don't roll out prod during the registration rush
 ([Rollouts](deployment.md#rollouts)). A change to these values reaches a running database
 only by re-running this script, which restarts the Postgres pod for a few seconds, so do it
-well before registration opens.
+well before registration opens. The backend needs no restart after it: each checkout pings its
+pooled connection and replaces the ones the restart killed (#277).
 
 In-cluster addresses the app tier uses: `postgres.<ns>.svc.cluster.local:5432` and
 `redis.<ns>.svc.cluster.local:26379`.
