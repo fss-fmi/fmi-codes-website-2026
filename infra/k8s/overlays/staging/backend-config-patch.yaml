@@ -11,4 +11,4 @@ data:
   # Anonymous staging visitors share one address bucket behind the Tailscale proxy, and staging
   # is for testing.
   # Set "1" (in git: Flux reverts kubectl patches) to test prod's exact limits.
-  RATELIMIT_MULTIPLIER: "10"
+  RATELIMIT_MULTIPLIER: "2"
