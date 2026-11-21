@@ -12,7 +12,7 @@ How a change gets from a merged PR to staging and `fmicodes.com`, and how to ver
 | Deploys   | Manual promote (human-merged PR) | Automatic after every merge to `main`                       |
 | Database  | `fmi_hackathon_2026`             | `fmi_hackathon_2026_staging`                                |
 
-Both run on one self-hosted single-node k3s server, built from the same `infra/k8s/base/` with Kustomize overlays. Probes, the frontend (2 replicas), the backend's memory, its connection pool and feature-flag defaults are identical by design. The differences are deliberate. Prod is sized for the registration rush (#219): its backend runs 4 pods, each requesting 1 CPU and allowed up to 3 (`overlays/prod/backend-capacity-patch.yaml`), against staging's 2 pods at 100m and 500m; its Postgres allows 250 connections with a 1-CPU request, no CPU limit and 2Gi, against staging's 150 and 1Gi; and its ingress controller requests 500m CPU. And `RATELIMIT_MULTIPLIER`: staging's rate limits are 10 times prod's, because every anonymous staging visitor shares one address bucket behind the Tailscale proxy. Staging is reached only from a device on the tailnet; its Tailscale proxy forwards to staging's own ingress-nginx, so requests take prod's path through the security headers and routing ([ADR-009](adr/009-staging-over-tailscale.md), [access details](runbook.md#access-grafana-and-staging)).
+Both run on one self-hosted single-node k3s server, built from the same `infra/k8s/base/` with Kustomize overlays. Probes, the frontend (2 replicas), the backend's memory, its connection pool and feature-flag defaults are identical by design. The differences are deliberate. Prod is sized for the registration rush (#219): its backend runs 4 pods, each requesting 1 CPU and allowed up to 3 (`overlays/prod/backend-capacity-patch.yaml`), against staging's 2 pods at 100m and 1 (whole cores on both, so each pod gets one hash slot per core and staging sheds load the way prod does, [ADR-016](adr/016-shed-password-hashes.md)); its Postgres allows 250 connections with a 1-CPU request, no CPU limit and 2Gi, against staging's 150 and 1Gi; and its ingress controller requests 500m CPU. And `RATELIMIT_MULTIPLIER`: staging's rate limits are 10 times prod's, because every anonymous staging visitor shares one address bucket behind the Tailscale proxy. Staging is reached only from a device on the tailnet; its Tailscale proxy forwards to staging's own ingress-nginx, so requests take prod's path through the security headers and routing ([ADR-009](adr/009-staging-over-tailscale.md), [access details](runbook.md#access-grafana-and-staging)).
 
 ## Release flow
 
@@ -129,6 +129,7 @@ The complete list with defaults is `.env.example` (local) plus the ConfigMap and
 | `SLACK_EVENTS_WEBHOOK_URL`                            | no          | Slack incoming webhook for the event feed (feature flag changes, ranking submissions, matching runs and confirmation), one channel per environment; without it events are only logged |
 | `REDIS_SENTINELS` + `REDIS_MASTER_NAME` / `REDIS_URL` | no          | Without them rate limits are per-process and token revocation is off                                                                                                                  |
 | `RATELIMIT_MULTIPLIER`                                | no          | Multiplies every rate limit. Default 1 (prod), 10 on staging. Anything but a positive whole number refuses to boot                                                                    |
+| `HASH_SLOTS`                                          | no          | Password hashes a pod runs at once ([ADR-016](adr/016-shed-password-hashes.md)). The Deployment sets it to the CPU limit in cores; unset means no cap. A bad value refuses to boot    |
 
 ## Health checks
 
@@ -136,6 +137,8 @@ The complete list with defaults is `.env.example` (local) plus the ConfigMap and
 | ----------------------- | -------------------- | ------------------------------------------------------------ |
 | `GET /api/health`       | liveness and startup | 200 `{"status": "ok"}`                                       |
 | `GET /api/health/ready` | readiness            | 200 `{"db": "ok", "redis": "ok"}`; 503 when Postgres is down |
+
+Probes wait for a Gunicorn thread like any request, and overload reaches every backend pod at once, so they give a busy pod time ([ADR-016](adr/016-shed-password-hashes.md)): each request gets 10 s, readiness drops a pod from the Service after 2 min of misses and liveness restarts it after 5. Password hashes past a pod's cap get a fast 429 instead of queueing, which keeps threads free for the probes during the registration rush. A pod that stays unready for minutes is broken, not busy: check `kubectl -n <namespace> describe pod` and its logs before restarting it.
 
 ```bash
 kubectl -n fmi-codes get pods

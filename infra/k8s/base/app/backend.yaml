@@ -178,6 +178,13 @@ spec:
                   name: fmi-codes-app
                   key: SLACK_EVENTS_WEBHOOK_URL
                   optional: true
+            # Rounds the CPU limit up, so keep that limit whole cores (ADR-016).
+            - name: HASH_SLOTS
+              valueFrom:
+                resourceFieldRef:
+                  containerName: backend
+                  resource: limits.cpu
+                  divisor: "1"
           # Gunicorn closes its socket the moment SIGTERM lands, but the ingress keeps sending
           # requests until it sees the pod leave the endpoints. Serving on through the sleep
           # covers that gap.
@@ -192,10 +199,8 @@ spec:
             periodSeconds: 2
             timeoutSeconds: 3
             failureThreshold: 30
-          # Under a registration rush every Gunicorn thread can be busy hashing passwords, so a
-          # probe waits in line for one. Each gets 10 s. Readiness drops a pod after 30 s of
-          # misses, so a busy one stays and a broken one goes; liveness restarts after a minute
-          # (Gunicorn's own 120 s worker timeout handles a single hung worker).
+          # Probes queue behind requests and overload hits every pod at once, so shorter
+          # thresholds drop or restart all of them together (ADR-016).
           livenessProbe:
             httpGet:
               path: /api/health
@@ -203,7 +208,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 10
-            failureThreshold: 6
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /api/health/ready
@@ -211,13 +216,13 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 12
           resources:
             requests:
               cpu: 100m
               memory: 256Mi
             limits:
-              cpu: 500m
+              cpu: "1"
               memory: 512Mi
       volumes:
         - name: prometheus-multiproc

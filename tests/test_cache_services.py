@@ -370,7 +370,7 @@ def test_mentor_seed_loader_invalidates_mentor_cache(monkeypatch, app_ctx, tmp_p
     fake = FakeRedis({"cache:mentors:all": "[]"})
     _wire(monkeypatch, "app.services.mentor_service", fake)
     monkeypatch.setattr("app.services.mentor_service.mentor_exists", lambda *a, **k: False)
-    monkeypatch.setattr("app.services.auth_service.hash_password", lambda pw: "hashed")
+    monkeypatch.setattr("app.services.auth_service.hash_password", lambda pw, **_: "hashed")
     monkeypatch.setattr("app.services.mentor_service.get_db_cursor", _fake_cursor(1))
     assert mentor_service.load_mentors_from_file(seed_file) == 1
     assert fake.del_calls == [("cache:mentors:all",)]

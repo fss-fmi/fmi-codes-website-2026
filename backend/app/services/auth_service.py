@@ -2,24 +2,33 @@
 
 import logging
 import uuid
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
 from flask import current_app
 
+from app.utils.hash_slots import hash_slot
+
 logger = logging.getLogger(__name__)
 
 
-def hash_password(password: str) -> str:
-    """Hash a password using bcrypt"""
+def hash_password(password: str, *, shed: bool = True) -> str:
+    """Hash a password using bcrypt, inside one of the pod's hash slots.
+
+    Raises HashSlotsFullError (answered 429) when every slot stays busy. shed=False is for
+    hashes a worker runs while it boots, which must never fail.
+    """
     salt = bcrypt.gensalt(rounds=12)
-    return bcrypt.hashpw(password.encode(), salt).decode()
+    with hash_slot() if shed else nullcontext():
+        return bcrypt.hashpw(password.encode(), salt).decode()
 
 
 def verify_password(password: str, hash_value: str) -> bool:
-    """Verify a password against its bcrypt hash"""
-    return bcrypt.checkpw(password.encode(), hash_value.encode())
+    """Verify a password against its bcrypt hash, inside one of the pod's hash slots."""
+    with hash_slot():
+        return bcrypt.checkpw(password.encode(), hash_value.encode())
 
 
 def generate_token(user_id: int, role: str) -> str:

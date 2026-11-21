@@ -233,7 +233,8 @@ def load_mentors_from_file(json_path: Path) -> int:
             technologies = []
         availability_text = str(mentor.get("availability_text", "")).strip() or None
         raw_password = mentor.get("password", "mentor123")
-        pw_hash = _hash_pw(raw_password)
+        # Never shed: every worker loads the seed while it boots (wsgi.py).
+        pw_hash = _hash_pw(raw_password, shed=False)
 
         query = """
             INSERT INTO mentors (first_name, last_name, company_name, email, phone_number,

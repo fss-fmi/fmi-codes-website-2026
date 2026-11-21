@@ -50,11 +50,12 @@ Everything else (probes, the frontend, feature-flag defaults, `FLASK_ENV`) is id
 design: staging mirrors prod so it catches problems before prod does. The exceptions are
 deliberate. Prod is sized for the registration rush: its backend runs 4 pods at 1 CPU
 requested and up to 3 (`overlays/prod/backend-capacity-patch.yaml`; staging 2 pods at 100m
-and 500m), its Postgres allows 250 connections (staging 150) and its ingress controller
-requests 500m CPU. Staging multiplies every rate limit by 10 (`RATELIMIT_MULTIPLIER`). The
-two ingress controllers are fully independent, so a staging deploy never touches prod's
-routing or headers. Staging's Tailscale proxy forwards to the staging controller, not to the
-app, so staging still exercises prod's `security-headers` and `/api` routing
+and 1, whole cores on both so staging gets prod's hash slots per core), its Postgres allows
+250 connections (staging 150) and its ingress controller requests 500m CPU. Staging
+multiplies every rate limit by 10 (`RATELIMIT_MULTIPLIER`). The two ingress controllers are
+fully independent, so a staging deploy never touches prod's routing or headers. Staging's
+Tailscale proxy forwards to the staging controller, not to the app, so staging still
+exercises prod's `security-headers` and `/api` routing
 ([ADR-009](adr/009-staging-over-tailscale.md)). Verify an overlay renders with
 `kubectl kustomize infra/k8s/overlays/<env>`.
 
@@ -609,10 +610,19 @@ without it never blocks a rollout; the backend then falls back to `http://localh
 
 Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready`
 (readiness — pooled `SELECT 1` + Redis ping; Postgres gates readiness, Redis is fail-open).
-Both probes give a request 10 s, since during the rush a probe can wait for a thread that is
-hashing a password. Readiness drops a pod from the Service after 3 misses (30 s), liveness
-restarts it after 6 (a minute); Gunicorn's own 120 s worker timeout replaces a single hung
-worker inside a pod.
+Both probes give a request 10 s, since under load a probe waits for a thread like any request.
+Overload reaches every pod at once, so readiness drops a pod from the Service only after 12
+misses (2 min) and liveness restarts it after 30 (5 min); Gunicorn's own 120 s worker timeout
+replaces a single hung worker inside a pod
+([ADR-016](adr/016-shed-password-hashes.md)).
+
+Password hashes are capped per pod: `HASH_SLOTS` comes from the container's CPU limit through
+the downward API, one slot per core, so keep the limit whole cores (`test_capacity_budget.py`
+fails otherwise). Past the cap a hash waits up to 2 s or gets a 429 `The server is busy`, and
+`password_hash_shed_total{reason}` counts each one in Prometheus. Sheds mean the pods are out
+of hashing CPU: during the rush they are expected at the peak, and a steady rate means the
+backend needs more CPU (raise the limit and with it the slots, or add pods within the
+connection budget above).
 
 ### 4 — Ingress + TLS
 

@@ -47,8 +47,9 @@ async function countdown(ms: number, onWait: RetryOptions['onWait'], signal: Abo
 }
 
 /**
- * Sends `attempt` again after a 429. The limiter answers before the route runs, so the
- * request did nothing and is safe to repeat; a 5xx or a lost answer may have gone through
+ * Sends `attempt` again after a 429. The limiter answers before the route runs, and a busy
+ * server's 429 comes before the route has written anything (ADR-016), so the request did
+ * nothing and is safe to repeat; a 5xx or a lost answer may have gone through
  * and is never retried. Each wait is Retry-After plus 0 to 3 s of jitter, so everyone limited
  * in one window doesn't come back at the same instant. The last 429, one without Retry-After
  * or one asking for more than a minute is thrown for the caller to show.
