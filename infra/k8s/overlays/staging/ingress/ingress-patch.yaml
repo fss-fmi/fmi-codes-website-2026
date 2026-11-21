@@ -1,5 +1,5 @@
 # Tailscale terminates TLS and forwards plain HTTP with the ts.net Host header kept, so the rule
-# matches any host and has no TLS block. ssl-redirect goes off explicitly: a host-less rule lands
+# matches any host. ssl-redirect stays off explicitly: a host-less rule lands
 # in ingress-nginx's catch-all server, which carries the default certificate and would otherwise
 # redirect every plain-HTTP request back to itself.
 - op: replace
@@ -8,7 +8,5 @@
 - op: replace
   path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-redirect
   value: 'false'
-- op: remove
-  path: /spec/tls
 - op: remove
   path: /spec/rules/0/host

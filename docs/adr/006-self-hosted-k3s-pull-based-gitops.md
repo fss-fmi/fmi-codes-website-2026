@@ -16,5 +16,5 @@ The platform is run by a student council with no cloud budget and must be live a
 ## Consequences
 
 - **Easier**: no hosting bill; staging catches problems with prod-identical config; `git revert` of a promote commit is a rollback; the prod gate holds structurally (the prod overlay has no Flux image markers).
-- **Harder**: one physical node is a single point of failure for both environments. The team operates the whole stack (k3s, ingress, cert-manager, Prometheus, Grafana) itself. Bitnami images are pinned to the frozen `bitnamilegacy` registry.
+- **Harder**: one physical node is a single point of failure for both environments. The team operates the whole stack (k3s, ingress, the Cloudflare Tunnel, Prometheus, Grafana; cert-manager until [ADR-017](017-prod-through-cloudflare-tunnel.md)) itself. Bitnami images are pinned to the frozen `bitnamilegacy` registry.
 - **Technical debt**: no automated database backups; the Postgres PVC is the source of truth. Migrating off `bitnamilegacy` images is open work.

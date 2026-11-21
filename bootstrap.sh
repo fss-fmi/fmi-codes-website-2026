@@ -26,6 +26,10 @@ case "$ENV" in
   staging) SECRETS_DIR="$SCRIPT_DIR/infra/k8s/overlays/staging/secrets"; ENV_KEY_VAR="SOPS_AGE_KEY_STAGING" ;;
   *)       echo "Error: --env must be 'staging' or 'prod', got '$ENV'" >&2; exit 1 ;;
 esac
+case "${SERVE_PROD_TUNNEL:-false}" in
+  true|false) : ;;
+  *) echo "Error: SERVE_PROD_TUNNEL must be 'true' or 'false', got '$SERVE_PROD_TUNNEL'" >&2; exit 1 ;;
+esac
 SECRETS_ENC="$SECRETS_DIR/secrets.enc.yaml"
 # shellcheck source=infra/k8s/scripts/lib/tailscale-client.sh
 . "$SCRIPT_DIR/infra/k8s/scripts/lib/tailscale-client.sh"
@@ -36,6 +40,9 @@ for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/ale
   "$SECRETS_DIR/flux-relay-slack.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
 done
+if [ "$ENV" = "prod" ] && [ -f "$SECRETS_DIR/cloudflared-tunnel.enc.yaml" ]; then
+  ENC_FILES+=("$SECRETS_DIR/cloudflared-tunnel.enc.yaml")
+fi
 if [ "$ENV" = "staging" ] && [ -f "$TS_FILE" ]; then ENC_FILES+=("$TS_FILE"); fi
 
 log()  { printf '\n\033[1;36m### %s\033[0m\n' "$1"; }
@@ -365,40 +372,48 @@ EOF
   fi
 fi
 
+# The tunnel and the tailnet replaced these, but WSL boxes set up before them still bridge
+# 127.0.0.1:443 to prod's controller, which now answers with its fake certificate.
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  OLD_FORWARD_FILES=()
+  for f in /etc/systemd/system/fmi-forward-prod.service /etc/systemd/system/fmi-tls-prod.service \
+    /etc/systemd/system/fmi-forward-staging.service /etc/sysctl.d/99-unpriv443.conf; do
+    if [ -e "$f" ]; then OLD_FORWARD_FILES+=("$f"); fi
+  done
+  if [ "${#OLD_FORWARD_FILES[@]}" -gt 0 ]; then
+    log "Removing the WSL forward services an older setup installed"
+    if sudo bash -c '
+      set -e
+      units="fmi-forward-prod.service fmi-tls-prod.service fmi-forward-staging.service"
+      for u in $units; do
+        systemctl disable --now "$u" 2>/dev/null || true
+        rm -f "/etc/systemd/system/$u"
+      done
+      systemctl daemon-reload
+      systemctl reset-failed $units 2>/dev/null || true
+      if [ -e /etc/sysctl.d/99-unpriv443.conf ]; then
+        rm -f /etc/sysctl.d/99-unpriv443.conf
+        sysctl -w net.ipv4.ip_unprivileged_port_start=1024 >/dev/null
+      fi'; then
+      ok "removed ${OLD_FORWARD_FILES[*]}"
+    else
+      warn "could not remove them; see docs/runbook.md 'Phase 4' (WSL2 boxes set up before the tunnel)"
+    fi
+  fi
+fi
+
 log "Handing off to init-linux.sh"
 
 export ENV
 bash "$INIT_SCRIPT" --env "$ENV" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
 
 if grep -qi microsoft /proc/version 2>/dev/null; then
-  # Run for staging too: it removes the fmi-forward-staging unit older setups installed.
-  log "Installing boot-persistent forward services (prod only; staging is on the tailnet)"
-  INSTALL_SVC_SCRIPT="$SCRIPT_DIR/infra/k8s/scripts/install-forward-services.sh"
-  # A bare wsl.exe targets the Windows default distro (docker-desktop when Docker Desktop is installed), not this one.
-  if [ -n "${WSL_DISTRO_NAME:-}" ] \
-    && wsl.exe -d "$WSL_DISTRO_NAME" -u root -- bash -c "bash '${INSTALL_SVC_SCRIPT}' install"; then
-    FWD_STATUS="The forward services are now installed (auto-start on every boot, no terminal needed).
-One manual step remains — map"
-  else
-    warn "forward services install failed — run manually: wsl.exe -d \"\$WSL_DISTRO_NAME\" -u root -- bash infra/k8s/scripts/install-forward-services.sh install"
-    FWD_STATUS="The forward services did NOT install: run the command from the warning above first.
-Then map"
-  fi
-
   if [ "$ENV" = "prod" ]; then
     cat <<EOF
 
-$(printf '\033[1;36m### WSL2 -> Windows host resolution\033[0m')
-
-${FWD_STATUS} the hostnames to loopback in the WINDOWS hosts file
-(C:\\Windows\\System32\\drivers\\etc\\hosts). Editing WSL's /etc/hosts does not help
-the Windows browser. From an elevated PowerShell:
-  Add-Content -Path \$env:WINDIR\\System32\\drivers\\etc\\hosts -Value "127.0.0.1 fmicodes.com"
-
-Then browse to https://fmicodes.com
-
-Note: adding fmicodes.com to your hosts file overrides public DNS on this machine.
-Remove this line when you want your browser to reach the production server instead.
+Prod needs no Windows hosts entry: the Windows browser reaches https://fmicodes.com through the
+Cloudflare Tunnel like everyone else. If an older setup added "127.0.0.1 fmicodes.com" to the
+Windows hosts file, delete that line, or this machine never reaches the real site.
 EOF
   else
     cat <<EOF
@@ -409,8 +424,10 @@ Staging needs no Windows hosts entry: open its tailnet address from any tailnet 
 
 $(printf '\033[1;33m### Next step: bootstrap prod\033[0m')
 
-Staging is up. To bring up prod, run:
+Staging is up. To bring up prod on this machine too, run:
   ENV=prod bash bootstrap.sh
+That prod stays off the internet. Only the one cluster that serves fmicodes.com adds
+SERVE_PROD_TUNNEL=true (docs/runbook.md 'Move prod to another cluster').
 EOF
   fi
 fi

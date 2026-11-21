@@ -105,12 +105,12 @@ Everything else (mail, the email-verification flag, contact links, Redis timeout
 
 The app is deployed to a self-hosted single-node **k3s** cluster. Staging and prod live on the same node, isolated by namespace, built from one shared `base/` via Kustomize overlays:
 
-|           | prod                             | staging                                     |
-| --------- | -------------------------------- | ------------------------------------------- |
-| namespace | `fmi-codes`                      | `fmi-codes-staging`                         |
-| host      | `fmicodes.com` (443)             | `staging.<tailnet>.ts.net` (tailnet only)   |
-| TLS       | Let's Encrypt (browser-trusted)  | the Tailscale proxy's certificate (trusted) |
-| deploy    | manual promote (human-merged PR) | automatic on every push to `main`           |
+|           | prod                               | staging                                     |
+| --------- | ---------------------------------- | ------------------------------------------- |
+| namespace | `fmi-codes`                        | `fmi-codes-staging`                         |
+| host      | `fmicodes.com` (Cloudflare Tunnel) | `staging.<tailnet>.ts.net` (tailnet only)   |
+| TLS       | Cloudflare's edge certificate      | the Tailscale proxy's certificate (trusted) |
+| deploy    | manual promote (human-merged PR)   | automatic on every push to `main`           |
 
 Images are built and pushed to Docker Hub (`fssfmi/fmi-codes-backend`, `fssfmi/fmi-codes-frontend`) by `.github/workflows/docker-cd.yaml` on each push to `main`. Flux, running **inside** the cluster, pulls: it auto-bumps the **staging** overlay to the newest tag; **prod** only moves when the `promote-to-prod` workflow opens a PR and a human merges it.
 
@@ -121,7 +121,7 @@ The full step-by-step runbook — with per-phase verification, secret rotation, 
 **Prerequisites**
 
 - Debian/Ubuntu Linux (the scripts are apt + bash; k3s is Linux-native).
-- For **prod**: a public DNS A-record for `fmicodes.com` → the server's IP, resolving _before_ you deploy ingress (Let's Encrypt verifies it over HTTP-01). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook.md#access-grafana-and-staging)).
+- For **prod**: nothing on the server or router. Prod is reached only through a Cloudflare Tunnel that `cloudflared` in the cluster dials out to, so it needs outbound internet only; the tunnel and its DNS record are set up once ([runbook](docs/runbook.md#cloudflare-tunnel)). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook.md#access-grafana-and-staging)).
 - The **age private key** for the environment you're deploying (SOPS decrypts the committed secrets with it). Generate/obtain per the runbook's Phase 5.
 
 **Bring it up** — one front-door script runs the whole sequence (tools → k3s → Postgres/Redis → app → ingress) in order:
@@ -130,6 +130,8 @@ The full step-by-step runbook — with per-phase verification, secret rotation, 
 ./bootstrap.sh              # staging (the default)
 ./bootstrap.sh --env prod   # production — deliberate opt-in
 ```
+
+Prod serves `fmicodes.com` only when run with `SERVE_PROD_TUNNEL=true`, on the one cluster that runs prod ([runbook](docs/runbook.md#move-prod-to-another-cluster)).
 
 It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: `bash infra/k8s/scripts/init-linux.sh --with-flux` after a one-time SSH deploy-key setup.
 

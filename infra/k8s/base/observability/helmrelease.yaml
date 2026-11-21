@@ -68,6 +68,17 @@ spec:
             target_matchers:
               - alertname =~ "KubeDeploymentReplicasMismatch|KubeDeploymentRolloutStuck|KubeStatefulSetReplicasMismatch"
             equal: [namespace]
+          # One tunnel outage is one message, not a second one about cloudflared's pods later.
+          - source_matchers: [alertname = CloudflareTunnelDown]
+            target_matchers:
+              - alertname =~ "KubeDeploymentReplicasMismatch|KubeDeploymentRolloutStuck"
+              - deployment = cloudflared
+            equal: [namespace]
+          - source_matchers: [alertname = CloudflareTunnelDown]
+            target_matchers:
+              - alertname =~ "KubePodNotReady|KubeContainerWaiting"
+              - pod =~ "cloudflared-.*"
+            equal: [namespace]
         route:
           receiver: slack
           group_by: [alertname, namespace]
@@ -185,6 +196,24 @@ spec:
                 annotations:
                   summary: Backend is answering with 5xx errors.
                   description: '{{ $value | humanizePercentage }} of backend requests in {{ $labels.namespace }} returned a 5xx over the last 5 minutes.'
+          - name: fmi-codes.tunnel
+            rules:
+              # A cloudflared pod is ready only while it holds a connection to Cloudflare, so this
+              # reads readiness, not cloudflared's own connection gauge. Only a cluster holding the
+              # tunnel's Secret serves it, so one running prod without it (SERVE_PROD_TUNNEL off)
+              # never reports the real site down.
+              - alert: CloudflareTunnelDown
+                expr: |-
+                  kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="fmi-codes", deployment="cloudflared"} < 1
+                  and on (namespace)
+                  kube_secret_info{job="kube-state-metrics", namespace="fmi-codes", secret="cloudflared-tunnel"}
+                for: 3m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Prod is unreachable: the Cloudflare Tunnel has no connection.'
+                  description: 'No cloudflared pod in {{ $labels.namespace }} holds a connection to Cloudflare, so https://fmicodes.com shows Cloudflare''s tunnel error page.'
+                  runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cloudflare-tunnel
     grafana:
       admin:
         existingSecret: grafana-admin
