@@ -37,7 +37,8 @@ _verification_mail = ThreadPoolExecutor(max_workers=4, thread_name_prefix="verif
 _COOKIE_MAX_AGE = 3 * 24 * 60 * 60  # 3 days, matches JWT expiry
 # Bcrypt hash generated once at startup and used as a timing equaliser when
 # no account exists, so response time is indistinguishable from a wrong-password attempt.
-_DUMMY_HASH: str = hash_password("__timing_dummy__")
+# Never shed: every worker hashes it while it boots, and a shed would fail the boot.
+_DUMMY_HASH: str = hash_password("__timing_dummy__", shed=False)
 _VERIFICATION_TTL = timedelta(hours=24)
 
 

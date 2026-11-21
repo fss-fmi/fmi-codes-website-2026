@@ -13,6 +13,7 @@ from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.services.redis_client import build_limiter_storage_options, build_limiter_storage_uri
+from app.utils import hash_slots
 from app.utils.fail_open_limiter import FailOpenLimiter
 from app.utils.rate_limits import (
     LIMITER_KEY_PREFIX,
@@ -116,6 +117,7 @@ def create_app(config_name="development"):
     app.config["RATELIMIT_STORAGE_OPTIONS"] = build_limiter_storage_options()
     app.config["RATELIMIT_MULTIPLIER"] = multiplier_from_env()
     limiter.init_app(app)
+    hash_slots.check_config()
 
     # The SPA shows a response's `error` field; without one a 429 reads "HTTP 429".
     @app.errorhandler(429)
@@ -125,6 +127,17 @@ def create_app(config_name="development"):
         )
         response.status_code = 429
         response.headers["Retry-After"] = str(_retry_after_seconds())
+        return response
+
+    # A 429, not a 503: the login and registration pages already wait out a 429's Retry-After
+    # and send again, and nothing was written, so sending again is safe.
+    @app.errorhandler(hash_slots.HashSlotsFullError)
+    def server_busy(_e):
+        response = jsonify(
+            {"success": False, "error": "The server is busy. Wait a moment and try again."}
+        )
+        response.status_code = 429
+        response.headers["Retry-After"] = str(hash_slots.RETRY_AFTER_SECONDS)
         return response
 
     @app.errorhandler(InvalidJsonFieldError)

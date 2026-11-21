@@ -25,6 +25,8 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 **Rate limits.** Each limit keys on what it protects ([ADR-014](adr/014-rate-limits-keyed-on-account-and-user.md)). The default is 200 requests per minute per signed-in user (from a token with a valid signature) and, for anonymous requests, 3000 per minute per client address on each route and 6000 per minute across all routes together. Login and password reset also key on the account the request names, and a few public routes key on the address alone; each endpoint lists its own. Counters are shared across workers when Redis is configured. Windows move: a request is allowed if fewer than the limit were accepted in the last window length, so "300 per minute" never lets more than 300 through in any 60 s. A request takes a slot in each of its route's limits in turn and stops at the first full one: that limit doesn't count it, but the ones before it do (a login refused for its account still counts against the address). Exceeding a limit returns 429 `{"success": false, "error": "Too many requests. Wait a moment and try again."}` with a `Retry-After` header: the seconds until the oldest request counted against the breached limit is a window old, plus half a second (a request still counts at exactly that moment) rounded up, never more than the limit's own window, or 60 if its window can't be read. Slots free one at a time as earlier requests age out, not all at once. No other response carries rate-limit headers, so a client never sees how much budget is left. The login and registration pages wait out `Retry-After` plus 0 to 3 s of random jitter and send again on their own, up to 3 times, counting down on the button with a note below it that explains the wait; they show the message instead when a wait would be over 60 s. Editing the form during the countdown drops the pending retry, so it never sends the old values. The backend takes the address from the last `X-Forwarded-For` entry, the one its single trusted proxy sets (ingress-nginx in k3s, the frontend's nginx in Compose), so a client can't pick its own bucket by sending the header. Everyone behind one NAT shares an address, which is why address limits are sized for a whole venue and the two polled reads, `GET /api/config` and `GET /api/teams/rankings`, are exempt: at the venue every phone is on the same Wi-Fi. On staging every visitor arrives through the Tailscale proxy and shares one address, so staging multiplies every limit listed here by 10 (`RATELIMIT_MULTIPLIER`).
 
+**Busy server.** Register, login, change-password and reset-password/confirm each run bcrypt, and a backend pod runs only as many hashes at once as its CPU limit has cores ([ADR-016](adr/016-shed-password-hashes.md)). When every slot is taken a request waits up to 2 s for one, or none if the pod already has two waiting for each slot, and then returns 429 `{"success": false, "error": "The server is busy. Wait a moment and try again."}` with `Retry-After: 2`. It comes before the route has written anything, so sending the same request again is safe, and the login and registration pages retry it the same way as a rate-limit 429.
+
 **Feature flags.** `registration_open`, `preferences_open`, `rankings_live` and `mentors_stay_tuned` live in the `feature_flags` table; the admin switches or schedules them through `/api/admin/flags*` and every request reads the current value, so no restart is needed. `REQUIRE_EMAIL_VERIFICATION` comes from server config. Four are enforced by the API: `registration_open` (registration returns 403 when closed), `preferences_open` (both ranking POSTs return 403 when closed), `rankings_live` (team scores stay hidden from everyone but the admin until rankings are live) and `REQUIRE_EMAIL_VERIFICATION` (see below). `mentors_stay_tuned` only changes what the SPA renders.
 
 **Email verification.** While `REQUIRE_EMAIL_VERIFICATION` is on, `POST /api/teams`, `POST /api/teams/join` and `POST /api/teams/{team_id}/apply` return 403 `{"success": false, "error": "Verify your email address before creating or joining a team.", "code": "email_unverified"}` for a participant whose email is not verified.
@@ -113,6 +115,7 @@ Every field is required and follows the same name rules. The entry is created wi
 | 400  | Missing fields or validation error                                                      |
 | 403  | Registration is closed                                                                  |
 | 409  | `An account with these details already exists.` (deliberately does not say which field) |
+| 429  | Rate limited, or the server is busy (see Conventions)                                   |
 
 The `user` profile shape is the same as `GET /api/auth/me`.
 
@@ -131,6 +134,7 @@ Public. 15 attempts per minute per account (email and role), counted when each a
 | 200  | `{"success": true, "user_id": 7, "role": "participant", "user": {...}}` plus `token` cookie |
 | 400  | Missing email/password or invalid role                                                      |
 | 401  | `Invalid email or password` / `Invalid admin credentials`                                   |
+| 429  | Rate limited, or the server is busy (see Conventions)                                       |
 | 503  | Admin login attempted but `ADMIN_PASSWORD_HASH` is unset                                    |
 
 ### POST /api/auth/logout
@@ -184,6 +188,7 @@ Revokes the current token, invalidates every other session for the user and sets
 | 200  | `Password changed successfully`                                                                                                       |
 | 400  | Missing fields, new password under 12 characters, or `Current password is incorrect` (not 401, which the SPA reads as a dead session) |
 | 403  | Admin (admin password is config-only)                                                                                                 |
+| 429  | Rate limited, or the server is busy (see Conventions); a busy 429 after the current password was checked still changes nothing        |
 
 ### POST /api/auth/reset-password
 
@@ -207,6 +212,7 @@ Public, 100/min per address.
 | ---- | ----------------------------------------------------------------------------------------------- |
 | 200  | `Password has been reset. You can now log in.` (all existing sessions are invalidated)          |
 | 400  | Missing fields, password too short, `Invalid or expired reset token`, `Reset token has expired` |
+| 429  | Rate limited, or the server is busy (see Conventions); the token stays unused                   |
 
 ### POST /api/auth/verify-email
 

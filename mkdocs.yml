@@ -92,6 +92,7 @@ nav:
           - ADR-013 Feature flags in the database: adr/013-feature-flags-in-database.md
           - ADR-014 Rate limits by account and user: adr/014-rate-limits-keyed-on-account-and-user.md
           - ADR-015 Rolling surge rollouts: adr/015-rolling-surge-rollouts.md
+          - ADR-016 Shed password hashes: adr/016-shed-password-hashes.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md
