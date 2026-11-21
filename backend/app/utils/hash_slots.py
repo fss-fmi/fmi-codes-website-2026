@@ -99,11 +99,14 @@ def _wait_for_slot(slots: int) -> int:
         _shed("waiting_room_full")
     try:
         deadline = time.monotonic() + WAIT_SECONDS
-        while time.monotonic() < deadline:
-            time.sleep(POLL_SECONDS)
+        while True:
+            # Before the first sleep too: a slot may have freed while this took its waiting slot.
             held = _take("hash", slots)
             if held is not None:
                 return held
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(POLL_SECONDS)
     finally:
         os.close(waiting)
     _shed("wait_timeout")

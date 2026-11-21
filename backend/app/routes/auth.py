@@ -376,10 +376,14 @@ def login():
         if not admin_password_hash:
             logger.error("ADMIN_PASSWORD_HASH is not configured — admin login disabled")
             return jsonify({"success": False, "error": "Admin login not configured"}), 503
-        # Timing-safe email comparison, then bcrypt verify for password
-        if hmac.compare_digest(email.encode(), admin_email.encode()) and verify_password(
-            password, admin_password_hash
-        ):
+        # The hash runs whatever the email, so neither its time nor a shed 429 tells a
+        # caller whether they guessed the admin email.
+        try:
+            password_ok = verify_password(password, admin_password_hash)
+        except ValueError:
+            logger.error("ADMIN_PASSWORD_HASH is not a bcrypt hash, so admin login is disabled")
+            return jsonify({"success": False, "error": "Admin login not configured"}), 503
+        if hmac.compare_digest(email.encode(), admin_email.encode()) and password_ok:
             forget_login_attempts()
             token = generate_token(0, "admin")
             resp = make_response(

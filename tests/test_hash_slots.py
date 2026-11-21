@@ -14,6 +14,7 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import bcrypt
@@ -239,6 +240,23 @@ def test_a_killed_worker_frees_its_slot(slots):
         holder.wait(5)
 
 
+def test_a_waiter_tries_for_a_slot_before_it_sleeps(monkeypatch, tmp_path):
+    """A slot can free while a request takes its waiting slot; it shouldn't sleep past it."""
+    fds = []
+
+    def take(kind, count):
+        fds.append(os.open(tmp_path / f"{kind}-{len(fds)}", os.O_RDWR | os.O_CREAT, 0o600))
+        return fds[-1]
+
+    sleeps = []
+    monkeypatch.setattr(hash_slots, "_take", take)
+    clock = SimpleNamespace(monotonic=time.monotonic, sleep=sleeps.append)
+    monkeypatch.setattr(hash_slots, "time", clock)
+    held = hash_slots._wait_for_slot(1)
+    os.close(held)
+    assert sleeps == []
+
+
 def test_shed_counters_are_exported_before_any_shed(client):
     body = client.get("/metrics").get_data(as_text=True)
     for reason in ("waiting_room_full", "wait_timeout"):
@@ -361,6 +379,26 @@ def test_a_shed_hash_answers_429_and_writes_nothing(app, client, db, monkeypatch
     monkeypatch.setattr(auth_service, "hash_slot", _always_shed)
     _expect_shed(_send(app, client, name))
     assert db.writes == []
+
+
+def test_an_admin_login_hashes_whatever_the_email(app, client, db, monkeypatch):
+    """Otherwise only the real admin email could be shed, and the 429 would confirm it."""
+    monkeypatch.setitem(app.config, "ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setitem(app.config, "ADMIN_PASSWORD_HASH", FAST_HASH)
+    body = {"email": "guess@example.com", "password": RIGHT_GUESS, "role": "admin"}
+    assert client.post("/api/auth/login", json=body).status_code == 401
+    monkeypatch.setattr(auth_service, "hash_slot", _always_shed)
+    _expect_shed(client.post("/api/auth/login", json=body))
+
+
+def test_a_malformed_admin_hash_answers_503_whatever_the_email(app, client, monkeypatch):
+    monkeypatch.setitem(app.config, "ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setitem(app.config, "ADMIN_PASSWORD_HASH", "not-a-bcrypt-hash")
+    for email in ("admin@example.com", "guess@example.com"):
+        body = {"email": email, "password": RIGHT_GUESS, "role": "admin"}
+        response = client.post("/api/auth/login", json=body)
+        assert response.status_code == 503
+        assert response.get_json()["error"] == "Admin login not configured"
 
 
 def test_a_change_shed_after_its_check_still_writes_nothing(app, client, db, monkeypatch):

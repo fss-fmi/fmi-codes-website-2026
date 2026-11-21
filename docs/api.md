@@ -135,7 +135,7 @@ Public. 15 attempts per minute per account (email and role), counted when each a
 | 400  | Missing email/password or invalid role                                                      |
 | 401  | `Invalid email or password` / `Invalid admin credentials`                                   |
 | 429  | Rate limited, or the server is busy (see Conventions)                                       |
-| 503  | Admin login attempted but `ADMIN_PASSWORD_HASH` is unset                                    |
+| 503  | Admin login attempted but `ADMIN_PASSWORD_HASH` is unset or not a bcrypt hash               |
 
 ### POST /api/auth/logout
 
