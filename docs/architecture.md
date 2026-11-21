@@ -57,7 +57,7 @@ In production the cluster ingress routes `/api` straight to the backend Service 
 - `app/services/`: business logic. `team_service.py` (team mutations and the registration queue), `matching_service.py` (the matching algorithm), `mentor_selection_service.py` (preferences, from registered teams and active mentors only), `matching_events.py` (event feed messages for the matching phase), `ranking_service.py`, `mentor_service.py` (mentor reads and JSON seed loaders), `auth_service.py` (bcrypt, JWT), `token_blocklist.py`, `redis_client.py`, `email_service.py`, `bug_report_service.py`, `regulations_service.py`, `feature_flag_service.py` (registration, preference submission, rankings and roster switches, with schedules), `event_notifier.py` (the Slack event feed).
 - `app/utils/auth_decorators.py`: `token_required`, `participant_required`, `mentor_required`, `captain_required`, `admin_required`.
 - `app/utils/hash_slots.py`: the per-pod cap on concurrent password hashes, shedding the rest with a 429 ([ADR-016](adr/016-shed-password-hashes.md)).
-- `app/database.py`: a `ThreadedConnectionPool` per Gunicorn worker plus small helpers (`execute_query`, `execute_insert`, `get_db_cursor`). No ORM.
+- `app/database.py`: a `ThreadedConnectionPool` per Gunicorn worker plus small helpers (`execute_query`, `execute_insert`, `get_db_cursor`). Every checkout pings its connection (`SELECT 1`, the first statement of the caller's transaction) and replaces a dead one, so a Postgres restart costs no request once Postgres is back. No ORM.
 
 **PostgreSQL**. All durable state. `backend/database/schema.sql` is the authoritative schema; numbered migrations bring existing databases up to date and are recorded in `schema_migrations`. See [Data Model](data.md).
 
