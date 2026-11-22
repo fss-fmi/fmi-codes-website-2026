@@ -1,8 +1,9 @@
 """Postgres connections fail in seconds when the peer goes silent, on both ends (#280).
 
 Without these options a connection whose peer stops answering (packets dropped, no reset)
-hangs every query on it for the kernel's retransmit timeout, minutes, and Postgres keeps a
-silently vanished client's locks until its own keepalive notices, about 2 h on OS defaults.
+hangs a query being sent for the kernel's retransmit timeout (about 15 min) and one waiting on
+its reply until libpq's default keepalives notice (about 2 h on the OS timers), and Postgres
+keeps a silently vanished client's locks for the same 2 h.
 The real behaviour on Linux sockets is checked in tests/e2e/test_connection_timeouts_e2e.py.
 """
 
@@ -13,7 +14,7 @@ from unittest.mock import patch
 import pytest
 from app import database
 from database import migrate
-from psycopg2.extensions import TRANSACTION_STATUS_IDLE
+from psycopg2.extensions import TRANSACTION_STATUS_IDLE, make_dsn, parse_dsn
 
 from tests.k8s_manifests import K8S, ROOT
 
@@ -88,6 +89,13 @@ def test_every_pool_connection_gets_the_options(monkeypatch):
 
 def test_the_migration_runner_uses_the_same_options():
     assert migrate.CONNECT_OPTIONS == database.CONNECT_OPTIONS == EXPECTED
+
+
+def test_the_options_win_over_the_same_keys_in_the_url():
+    """psycopg2.connect builds its DSN this way, so a DATABASE_URL can't turn them off."""
+    url = "postgresql://u@h/db?connect_timeout=60&keepalives=0&tcp_user_timeout=0"
+    merged = parse_dsn(make_dsn(url, **database.CONNECT_OPTIONS))
+    assert {k: merged[k] for k in EXPECTED} == {k: str(v) for k, v in EXPECTED.items()}
 
 
 def _server_settings(path):

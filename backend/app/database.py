@@ -16,11 +16,12 @@ _pool = None
 _pool_timeout = 5
 
 # libpq options for every connection the pool opens. A connect gets 5 s; it runs under the
-# pool's lock, so an unbounded one would block every thread of the worker. Keepalives find a
-# silently dead idle connection in about 40 s (on Linux tcp_user_timeout cuts the probes short),
-# and tcp_user_timeout fails a query whose packets go unacknowledged for 10 s. Neither limits a
-# slow query or a lock wait: a live server acknowledges at once. The migration runner uses the
-# same set and Postgres mirrors the TCP ones (tests/test_connection_timeouts.py).
+# pool's lock, so an unbounded one would block every thread of the worker. tcp_user_timeout fails
+# a query whose packets go unacknowledged for 10 s. Keepalives find a silent peer when nothing is
+# in flight, an idle connection or one waiting on a reply, in about 40 s (on Linux
+# tcp_user_timeout cuts the probes short). Neither limits a slow query or a lock wait: a live
+# server acknowledges at once. These win over the same keys in DATABASE_URL. The migration runner
+# uses the same set and Postgres mirrors the TCP ones (tests/test_connection_timeouts.py).
 CONNECT_OPTIONS = {
     "connect_timeout": 5,
     "keepalives": 1,

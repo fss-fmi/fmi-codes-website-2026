@@ -48,6 +48,7 @@ CONNECT_RETRY_SECONDS = 2
 # Per attempt; without it a dropped SYN hangs on the OS TCP timeout and blows the wait window.
 CONNECT_ATTEMPT_TIMEOUT = 5
 # app.database.CONNECT_OPTIONS, copied so the runner never imports the app package to connect.
+# Like there, they win over the same keys in DATABASE_URL.
 CONNECT_OPTIONS = {
     "connect_timeout": CONNECT_ATTEMPT_TIMEOUT,
     "keepalives": 1,
