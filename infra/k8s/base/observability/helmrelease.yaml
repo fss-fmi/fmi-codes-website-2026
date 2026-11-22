@@ -196,6 +196,36 @@ spec:
                 annotations:
                   summary: Backend is answering with 5xx errors.
                   description: '{{ $value | humanizePercentage }} of backend requests in {{ $labels.namespace }} returned a 5xx over the last 5 minutes.'
+              # A rate limit or a shed password hash (ADR-016). The rush's short peak stays under
+              # the hold, and the floor keeps one throttled visitor on a quiet night from firing.
+              - alert: BackendHighThrottleRate
+                expr: |-
+                  (
+                    sum by (namespace) (rate(flask_http_request_total{status="429"}[5m]))
+                    /
+                    sum by (namespace) (rate(flask_http_request_total[5m]))
+                    > 0.1
+                  )
+                  and
+                  sum by (namespace) (rate(flask_http_request_total{status="429"}[5m])) >= 0.2
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Backend is turning requests away with 429s.
+                  description: '{{ $value | humanizePercentage }} of backend requests in {{ $labels.namespace }} got a 429 over the last 5 minutes. The 429s by route and hash shed panels tell a rate limit from pods out of hashing CPU.'
+                  runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/event-day/#when-to-act
+          - name: fmi-codes.mail
+            rules:
+              # Skipped sends (no SMTP credentials, like a staging box without MAIL_PASSWORD) don't count.
+              - alert: MailSendFailing
+                expr: sum by (namespace) (increase(mail_sent_total{result="failed"}[15m])) >= 3
+                labels:
+                  severity: warning
+                annotations:
+                  summary: The backend can't send email.
+                  description: '{{ $value | humanize }} emails failed to send in {{ $labels.namespace }} over the last 15 minutes, so verification links, password resets and join-request mail are being lost.'
+                  runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/event-day/#mail
           - name: fmi-codes.tunnel
             rules:
               # A cloudflared pod is ready only while it holds a connection to Cloudflare, so this
@@ -313,9 +343,136 @@ spec:
                         "expr": "(sum(rate(flask_http_request_total{namespace=\"fmi-codes\", status=~\"5..\"}[5m])) or vector(0)) / sum(rate(flask_http_request_total{namespace=\"fmi-codes\"}[5m]))",
                         "legendFormat": "5xx share",
                         "refId": "A"
+                      },
+                      {
+                        "expr": "(sum(rate(flask_http_request_total{namespace=\"fmi-codes\", status=~\"5..\"}[2m])) or vector(0)) / sum(rate(flask_http_request_total{namespace=\"fmi-codes\"}[2m]))",
+                        "legendFormat": "5xx share (2m)",
+                        "refId": "B"
                       }
                     ],
                     "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 } }
+                  },
+                  {
+                    "id": 4,
+                    "title": "429s by Route (rate limits and hash sheds)",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+                    "targets": [
+                      {
+                        "expr": "sum by (url_rule) (rate(flask_http_request_duration_seconds_count{namespace=\"fmi-codes\", status=\"429\"}[2m]))",
+                        "legendFormat": "{{url_rule}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 } }
+                  },
+                  {
+                    "id": 5,
+                    "title": "Register and Login p95",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+                    "targets": [
+                      {
+                        "expr": "histogram_quantile(0.95, sum by (le, url_rule) (rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes\", url_rule=~\"/api/auth/(register|login)\"}[2m])))",
+                        "legendFormat": "{{url_rule}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "s", "min": 0 } }
+                  },
+                  {
+                    "id": 6,
+                    "title": "Password Hash Sheds",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+                    "targets": [
+                      {
+                        "expr": "sum by (reason) (rate(password_hash_shed_total{namespace=\"fmi-codes\"}[2m]))",
+                        "legendFormat": "{{reason}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 } }
+                  },
+                  {
+                    "id": 7,
+                    "title": "Backend CPU per Pod (cores)",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+                    "targets": [
+                      {
+                        "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"fmi-codes\", container=\"backend\"}[2m]))",
+                        "legendFormat": "{{pod}}",
+                        "refId": "A"
+                      },
+                      {
+                        "expr": "max(kube_pod_container_resource_limits{namespace=\"fmi-codes\", container=\"backend\", resource=\"cpu\"})",
+                        "legendFormat": "limit per pod",
+                        "refId": "B"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+                  },
+                  {
+                    "id": 8,
+                    "title": "Backend CPU Throttled",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+                    "targets": [
+                      {
+                        "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"fmi-codes\", container=\"backend\"}[2m])) / sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"fmi-codes\", container=\"backend\"}[2m]))",
+                        "legendFormat": "{{pod}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
+                  },
+                  {
+                    "id": 9,
+                    "title": "Backend Pods Ready and Restarts",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+                    "targets": [
+                      {
+                        "expr": "sum(kube_pod_container_status_ready{namespace=\"fmi-codes\", container=\"backend\"})",
+                        "legendFormat": "ready",
+                        "refId": "A"
+                      },
+                      {
+                        "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"fmi-codes\", container=\"backend\"}[10m]))",
+                        "legendFormat": "restarts (10m)",
+                        "refId": "B"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 } }
+                  },
+                  {
+                    "id": 10,
+                    "title": "Emails (5m)",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+                    "targets": [
+                      {
+                        "expr": "sum by (kind, result) (increase(mail_sent_total{namespace=\"fmi-codes\"}[5m]))",
+                        "legendFormat": "{{kind}} {{result}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+                  },
+                  {
+                    "id": 11,
+                    "title": "Node CPU Busy",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+                    "targets": [
+                      {
+                        "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[2m]))",
+                        "legendFormat": "node CPU busy (shared with staging and monitoring)",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
                   }
                 ]
               }
@@ -377,9 +534,136 @@ spec:
                         "expr": "(sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\", status=~\"5..\"}[5m])) or vector(0)) / sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[5m]))",
                         "legendFormat": "5xx share",
                         "refId": "A"
+                      },
+                      {
+                        "expr": "(sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\", status=~\"5..\"}[2m])) or vector(0)) / sum(rate(flask_http_request_total{namespace=\"fmi-codes-staging\"}[2m]))",
+                        "legendFormat": "5xx share (2m)",
+                        "refId": "B"
                       }
                     ],
                     "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 } }
+                  },
+                  {
+                    "id": 4,
+                    "title": "429s by Route (rate limits and hash sheds)",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+                    "targets": [
+                      {
+                        "expr": "sum by (url_rule) (rate(flask_http_request_duration_seconds_count{namespace=\"fmi-codes-staging\", status=\"429\"}[2m]))",
+                        "legendFormat": "{{url_rule}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 } }
+                  },
+                  {
+                    "id": 5,
+                    "title": "Register and Login p95",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+                    "targets": [
+                      {
+                        "expr": "histogram_quantile(0.95, sum by (le, url_rule) (rate(flask_http_request_duration_seconds_bucket{namespace=\"fmi-codes-staging\", url_rule=~\"/api/auth/(register|login)\"}[2m])))",
+                        "legendFormat": "{{url_rule}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "s", "min": 0 } }
+                  },
+                  {
+                    "id": 6,
+                    "title": "Password Hash Sheds",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+                    "targets": [
+                      {
+                        "expr": "sum by (reason) (rate(password_hash_shed_total{namespace=\"fmi-codes-staging\"}[2m]))",
+                        "legendFormat": "{{reason}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 } }
+                  },
+                  {
+                    "id": 7,
+                    "title": "Backend CPU per Pod (cores)",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+                    "targets": [
+                      {
+                        "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"fmi-codes-staging\", container=\"backend\"}[2m]))",
+                        "legendFormat": "{{pod}}",
+                        "refId": "A"
+                      },
+                      {
+                        "expr": "max(kube_pod_container_resource_limits{namespace=\"fmi-codes-staging\", container=\"backend\", resource=\"cpu\"})",
+                        "legendFormat": "limit per pod",
+                        "refId": "B"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+                  },
+                  {
+                    "id": 8,
+                    "title": "Backend CPU Throttled",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+                    "targets": [
+                      {
+                        "expr": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"fmi-codes-staging\", container=\"backend\"}[2m])) / sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"fmi-codes-staging\", container=\"backend\"}[2m]))",
+                        "legendFormat": "{{pod}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
+                  },
+                  {
+                    "id": 9,
+                    "title": "Backend Pods Ready and Restarts",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+                    "targets": [
+                      {
+                        "expr": "sum(kube_pod_container_status_ready{namespace=\"fmi-codes-staging\", container=\"backend\"})",
+                        "legendFormat": "ready",
+                        "refId": "A"
+                      },
+                      {
+                        "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"fmi-codes-staging\", container=\"backend\"}[10m]))",
+                        "legendFormat": "restarts (10m)",
+                        "refId": "B"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "short", "min": 0, "decimals": 0 } }
+                  },
+                  {
+                    "id": 10,
+                    "title": "Emails (5m)",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+                    "targets": [
+                      {
+                        "expr": "sum by (kind, result) (increase(mail_sent_total{namespace=\"fmi-codes-staging\"}[5m]))",
+                        "legendFormat": "{{kind}} {{result}}",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+                  },
+                  {
+                    "id": 11,
+                    "title": "Node CPU Busy",
+                    "type": "timeseries",
+                    "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+                    "targets": [
+                      {
+                        "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[2m]))",
+                        "legendFormat": "node CPU busy (shared with staging and monitoring)",
+                        "refId": "A"
+                      }
+                    ],
+                    "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
                   }
                 ]
               }

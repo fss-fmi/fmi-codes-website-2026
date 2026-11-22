@@ -70,6 +70,110 @@ tests:
         alertname: BackendHighErrorRate
         exp_alerts: []
 
+  # 1 request in 5 answered 429 at 1/s fires after the 10m hold; healthy staging doesn't.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="POST", status="201"}'
+        values: '0+120x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-b", method="GET", status="200"}'
+        values: '0+120x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="POST", status="429"}'
+        values: '0+60x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes-staging", pod="backend-c", method="GET", status="200"}'
+        values: '0+20x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BackendHighThrottleRate
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: BackendHighThrottleRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: fmi-codes
+            exp_annotations:
+              summary: Backend is turning requests away with 429s.
+              description: '20% of backend requests in fmi-codes got a 429 over the last 5 minutes. The 429s by route and hash shed panels tell a rate limit from pods out of hashing CPU.'
+              runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/event-day/#when-to-act
+
+  # 5% of requests answered 429 stays under the 10% share.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="GET", status="200"}'
+        values: '0+570x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="POST", status="429"}'
+        values: '0+30x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: BackendHighThrottleRate
+        exp_alerts: []
+
+  # A quiet night: half of a trickle throttled, but 0.1 429s a second is under the 0.2/s floor.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="GET", status="200"}'
+        values: '0+6x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="POST", status="429"}'
+        values: '0+6x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: BackendHighThrottleRate
+        exp_alerts: []
+
+  # The rush's peak: 4 minutes of 429s leave the 5m window before the 10m hold is up.
+  - interval: 1m
+    input_series:
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="POST", status="201"}'
+        values: '0+120x30'
+      - series: 'flask_http_request_total{namespace="fmi-codes", pod="backend-a", method="POST", status="429"}'
+        values: '0x5 120+120x3 480x21'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: BackendHighThrottleRate
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: BackendHighThrottleRate
+        exp_alerts: []
+
+  # 5 failed sends inside 15 minutes fire at once (the series starts at 0, so increase() is exact).
+  - interval: 1m
+    input_series:
+      - series: 'mail_sent_total{namespace="fmi-codes", pod="backend-a", kind="verification", result="failed"}'
+        values: '0x5 1 2 3 4 5 5x20'
+      - series: 'mail_sent_total{namespace="fmi-codes", pod="backend-a", kind="verification", result="sent"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: MailSendFailing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: MailSendFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: fmi-codes
+            exp_annotations:
+              summary: The backend can't send email.
+              description: '5 emails failed to send in fmi-codes over the last 15 minutes, so verification links, password resets and join-request mail are being lost.'
+              runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/event-day/#mail
+
+  # 2 failures, or failures 10 minutes apart, don't; skipped sends (no MAIL_PASSWORD) never do.
+  - interval: 1m
+    input_series:
+      - series: 'mail_sent_total{namespace="fmi-codes", pod="backend-a", kind="reset", result="failed"}'
+        values: '0x5 1 2 2x30'
+      - series: 'mail_sent_total{namespace="fmi-codes-staging", pod="backend-c", kind="verification", result="failed"}'
+        values: '0x9 1x9 2x9 3x9'
+      - series: 'mail_sent_total{namespace="fmi-codes-staging", pod="backend-c", kind="verification", result="skipped"}'
+        values: '0+5x40'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: MailSendFailing
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: MailSendFailing
+        exp_alerts: []
+
   # Prod's tunnel with no ready pod (disconnected, or scaled to 0) fires after the 3m hold.
   - interval: 1m
     input_series:

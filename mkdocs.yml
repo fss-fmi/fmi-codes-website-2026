@@ -103,5 +103,6 @@ nav:
           - Cluster Alerts: runbook/alerts.md
           - Tailscale: runbook/tailscale.md
           - Cloudflare Tunnel: runbook/cloudflare.md
+          - Event Day: runbook/event-day.md
       - GitHub Automation: github-automation.md
   - Glossary: glossary.md
