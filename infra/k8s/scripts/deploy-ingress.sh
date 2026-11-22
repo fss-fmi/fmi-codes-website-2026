@@ -83,7 +83,7 @@ command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.
 if [ "$ENV" = "prod" ] && [ "$SERVE_PROD_TUNNEL" = "true" ]; then
   command -v sops >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
   [ -f "$TUNNEL_SECRET_ENC" ] \
-    || die "missing $TUNNEL_SECRET_ENC — create the tunnel first (docs/runbook.md 'Cloudflare Tunnel')."
+    || die "missing $TUNNEL_SECRET_ENC — create the tunnel first (docs/runbook/cloudflare.md 'Cloudflare Tunnel')."
 fi
 
 kubectl cluster-info >/dev/null 2>&1 \
@@ -122,7 +122,7 @@ else
   if [ "$SERVE_PROD_TUNNEL" = "true" ]; then
     log "Applying the Cloudflare Tunnel credentials"
     sops --decrypt "$TUNNEL_SECRET_ENC" >/dev/null 2>&1 \
-      || die "could not decrypt $TUNNEL_SECRET_ENC — is your prod age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 5'."
+      || die "could not decrypt $TUNNEL_SECRET_ENC — is your prod age key at ~/.config/sops/age/keys.txt? See docs/runbook/secrets.md 'SOPS and age'."
     secret_ns="$(sops --decrypt "$TUNNEL_SECRET_ENC" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
     [ "$secret_ns" = "$NAMESPACE" ] \
       || die "$TUNNEL_SECRET_ENC targets namespace '$secret_ns', expected '$NAMESPACE'."
@@ -151,7 +151,7 @@ else
     TUNNEL_SERVED=true
     warn "SERVE_PROD_TUNNEL is not true, but this cluster already holds the tunnel's credentials
   from an earlier run, so it still serves $HOST. If another cluster serves prod, stop this one:
-  docs/runbook.md 'Move prod to another cluster', step 1."
+  docs/runbook/cloudflare.md 'Move prod to another cluster', step 1."
   else
     TUNNEL_SERVED=false
     log "Not serving the Cloudflare Tunnel (SERVE_PROD_TUNNEL is not true)"
@@ -180,7 +180,7 @@ deploy-observability.sh applies the client). Until then, or without Tailscale:
   kubectl -n $INGRESS_NAMESPACE port-forward svc/${INGRESS_RELEASE}-controller 8080:80
   curl http://127.0.0.1:8080/api/health
 
-Verify from a tailnet device (see docs/runbook.md 'Phase 4'):
+Verify from a tailnet device (see docs/runbook/index.md 'Phase 4'):
   curl https://$TAILNET_HOST/api/health
   curl -I https://$TAILNET_HOST/api/health    # security headers present
 EOF
@@ -198,7 +198,7 @@ the tunnel's credentials. Reach it with a port-forward:
   curl -H 'Host: $HOST' http://127.0.0.1:8081/api/health
 
 To make this the cluster that serves $HOST, stop the tunnel on any cluster that runs it now
-(only one may), then (docs/runbook.md 'Move prod to another cluster'):
+(only one may), then (docs/runbook/cloudflare.md 'Move prod to another cluster'):
   SERVE_PROD_TUNNEL=true ENV=prod bash $SCRIPT_DIR/deploy-ingress.sh
 EOF
   exit 0
@@ -212,9 +212,9 @@ Networking is up (Phase 4). Prod is reachable only through the Cloudflare Tunnel
     /        -> frontend:80
 
 The first time, point the hostname at the tunnel from a machine signed in with cloudflared
-(docs/runbook.md 'Cloudflare Tunnel'). Only one cluster may run the prod tunnel at a time.
+(docs/runbook/cloudflare.md 'Cloudflare Tunnel'). Only one cluster may run the prod tunnel at a time.
 
-Verify against the issue's acceptance criteria (see docs/runbook.md 'Phase 4'):
+Verify against the issue's acceptance criteria (see docs/runbook/cloudflare.md 'Serving the tunnel'):
 
   The tunnel is connected (READY 2/2):
     kubectl -n $NAMESPACE get deployment cloudflared

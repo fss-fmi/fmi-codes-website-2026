@@ -42,7 +42,7 @@ def _budget(env: str) -> tuple[int, int]:
     replicas = _deployment(env, r"^  replicas: (\d+)$")
     # A rollout runs maxSurge new pods on top of the old ones, and an old pod keeps its pool
     # through its preStop sleep and drain. Counting the surge twice covers one terminating pod
-    # per step. A rollout under heavy load can overlap more (docs/runbook.md).
+    # per step. A rollout under heavy load can overlap more (docs/runbook/index.md, Phase 2).
     surge = _deployment(env, r"^      maxSurge: (\d+)$")
     pods = replicas + 2 * surge
     workers = _int(GUNICORN, r"^workers = (\d+)$")

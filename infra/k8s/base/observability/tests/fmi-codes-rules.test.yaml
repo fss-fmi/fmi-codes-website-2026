@@ -92,7 +92,7 @@ tests:
             exp_annotations:
               summary: 'Prod is unreachable: the Cloudflare Tunnel has no connection.'
               description: "No cloudflared pod in fmi-codes holds a connection to Cloudflare, so https://fmicodes.com shows Cloudflare's tunnel error page."
-              runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cloudflare-tunnel
+              runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/cloudflare/
 
   # A 2-minute drop (an edge reconnect) recovers before the hold is up.
   - interval: 1m
@@ -150,4 +150,4 @@ tests:
             exp_annotations:
               summary: 'Prod is unreachable: the Cloudflare Tunnel has no connection.'
               description: "No cloudflared pod in fmi-codes holds a connection to Cloudflare, so https://fmicodes.com shows Cloudflare's tunnel error page."
-              runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cloudflare-tunnel
+              runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/cloudflare/

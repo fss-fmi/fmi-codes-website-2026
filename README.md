@@ -12,7 +12,7 @@ The full documentation is published at **https://fss-fmi.github.io/fmi-codes-web
 | [docs/onboarding.md](docs/onboarding.md)     | Get it running locally, run tests, make a change                   |
 | [docs/testing.md](docs/testing.md)           | Test layers, fixtures, mocking boundary, CI                        |
 | [docs/deployment.md](docs/deployment.md)     | How a change reaches staging and prod (summary of the k3s runbook) |
-| [docs/runbook.md](docs/runbook.md)           | Full operator runbook for the cluster                              |
+| [docs/runbook/](docs/runbook/index.md)       | Full operator runbook for the cluster                              |
 | [docs/glossary.md](docs/glossary.md)         | Domain terms: teams, queue, captain, preferences, matching         |
 | [docs/api.md](docs/api.md)                   | Every REST endpoint with auth, request and response shapes         |
 | [docs/data.md](docs/data.md)                 | Database schema, ER diagram, seeds, migrations                     |
@@ -32,7 +32,7 @@ backend/     Flask API — app/ (routes, services, utils), database/ (schema.sql
              config.py, run_server.py (dev), wsgi.py + gunicorn.conf.py (gunicorn), Dockerfile
 frontend/    React + Vite SPA — src/, vite.config.ts, nginx.conf, Dockerfile
 infra/k8s/   Full cluster deployment — scripts/, base/, overlays/{prod,staging}, helm-values/, flux/
-docs/        All documentation (published to GitHub Pages via mkdocs.yml), incl. runbook.md
+docs/        All documentation (published to GitHub Pages via mkdocs.yml), incl. the cluster runbook in runbook/
 dev.py       One-command local dev: backend hot-reload + frontend HMR together
 docker-compose.dev.yml   Local full stack in Docker (single Redis, hot reload)
 docker-compose.yml       Prod-like stack (Redis Sentinel HA — for exercising failover locally)
@@ -116,13 +116,13 @@ Images are built and pushed to Docker Hub (`fssfmi/fmi-codes-backend`, `fssfmi/f
 
 ### Stand it up on a fresh Linux server
 
-The full step-by-step runbook — with per-phase verification, secret rotation, GitOps wiring, and teardown — is **[`docs/runbook.md`](docs/runbook.md)**. The short version:
+The full step-by-step runbook — with per-phase verification, secret rotation, GitOps wiring, and teardown — is **[`docs/runbook/`](docs/runbook/index.md)**. The short version:
 
 **Prerequisites**
 
 - Debian/Ubuntu Linux (the scripts are apt + bash; k3s is Linux-native).
-- For **prod**: nothing on the server or router. Prod is reached only through a Cloudflare Tunnel that `cloudflared` in the cluster dials out to, so it needs outbound internet only; the tunnel and its DNS record are set up once ([runbook](docs/runbook.md#cloudflare-tunnel)). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook.md#access-grafana-and-staging)).
-- The **age private key** for the environment you're deploying (SOPS decrypts the committed secrets with it). Generate/obtain per the runbook's Phase 5.
+- For **prod**: nothing on the server or router. Prod is reached only through a Cloudflare Tunnel that `cloudflared` in the cluster dials out to, so it needs outbound internet only; the tunnel and its DNS record are set up once ([runbook](docs/runbook/cloudflare.md)). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook/tailscale.md#access-grafana-and-staging)).
+- The **age private key** for the environment you're deploying (SOPS decrypts the committed secrets with it). Generate/obtain per the runbook's [Secrets](docs/runbook/secrets.md) page.
 
 **Bring it up** — one front-door script runs the whole sequence (tools → k3s → Postgres/Redis → app → ingress) in order:
 
@@ -131,7 +131,7 @@ The full step-by-step runbook — with per-phase verification, secret rotation, 
 ./bootstrap.sh --env prod   # production — deliberate opt-in
 ```
 
-Prod serves `fmicodes.com` only when run with `SERVE_PROD_TUNNEL=true`, on the one cluster that runs prod ([runbook](docs/runbook.md#move-prod-to-another-cluster)).
+Prod serves `fmicodes.com` only when run with `SERVE_PROD_TUNNEL=true`, on the one cluster that runs prod ([runbook](docs/runbook/cloudflare.md#move-prod-to-another-cluster)).
 
 It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: `bash infra/k8s/scripts/init-linux.sh --with-flux` after a one-time SSH deploy-key setup.
 
@@ -139,8 +139,8 @@ It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: 
 
 Runtime config is split in two — this is what you edit to point the deployment at your infrastructure:
 
-- **Non-secret config → the `fmi-codes-backend-config` ConfigMap.** Keys: `FLASK_ENV`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `REDIS_URL`, `FRONTEND_ORIGIN` (prod only; staging's is in its SOPS secret), `REQUIRE_EMAIL_VERIFICATION`. Registration, preference submission, rankings and the mentor roster are not config: the admin switches or schedules them in Mission Control (SITE tab) and they live in the database ([ADR-013](docs/adr/013-feature-flags-in-database.md)). Global values live in `infra/k8s/base/app/backend.yaml`; staging's overrides in `infra/k8s/overlays/staging/backend-config-patch.yaml`. With Flux, change one in git, merge it, then run `bash infra/k8s/scripts/apply-config.sh` to apply `main` and restart the backend; without Flux, `apply-config.sh <KEY> <VALUE>` patches it live (see [Change a config value](docs/runbook.md#change-a-config-value)).
-- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`, and on staging `FRONTEND_ORIGIN` (its tailnet URL). Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; never pass it as an argument). Per-secret rotation guide: [docs/runbook.md](docs/runbook.md#rotate-a-secret).
+- **Non-secret config → the `fmi-codes-backend-config` ConfigMap.** Keys: `FLASK_ENV`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `REDIS_URL`, `FRONTEND_ORIGIN` (prod only; staging's is in its SOPS secret), `REQUIRE_EMAIL_VERIFICATION`. Registration, preference submission, rankings and the mentor roster are not config: the admin switches or schedules them in Mission Control (SITE tab) and they live in the database ([ADR-013](docs/adr/013-feature-flags-in-database.md)). Global values live in `infra/k8s/base/app/backend.yaml`; staging's overrides in `infra/k8s/overlays/staging/backend-config-patch.yaml`. With Flux, change one in git, merge it, then run `bash infra/k8s/scripts/apply-config.sh` to apply `main` and restart the backend; without Flux, `apply-config.sh <KEY> <VALUE>` patches it live (see [Change a config value](docs/runbook/index.md#change-a-config-value)).
+- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`, and on staging `FRONTEND_ORIGIN` (its tailnet URL). Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; never pass it as an argument). Per-secret rotation guide: [docs/runbook/secrets.md](docs/runbook/secrets.md#rotate-a-secret).
 - **DB / Redis passwords** are generated in-cluster by `deploy-stateful.sh` and never committed (they're coupled to the datastore PVC). Rotate them without data loss with `bash infra/k8s/scripts/rotate-datastore-password.sh db|db-admin|redis`.
 
 Forking this to a different domain or registry means updating the hostname (`base/ingress/ingress.yaml` and `FRONTEND_ORIGIN`; staging's comes from your tailnet), the image names (`base/app/*.yaml`, `overlays/*/kustomization.yaml`, `docker-cd.yaml`, `flux/image-automation.yaml`), the age recipients in `.sops.yaml`, and the Flux git URL/deploy key. Details in the runbook.

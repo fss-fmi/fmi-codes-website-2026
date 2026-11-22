@@ -56,7 +56,7 @@ graph LR
 | Know why things are built the way they are           | [Decision Records](adr/001-raw-sql-no-orm.md) |
 | Write or run tests                                   | [Testing](testing.md)                         |
 | Release to staging and prod, configure, roll back    | [Deployment](deployment.md)                   |
-| Stand up or operate the k3s cluster from scratch     | [Cluster Runbook](runbook.md)                 |
+| Stand up or operate the k3s cluster from scratch     | [Cluster Runbook](runbook/index.md)           |
 | Look up a domain term (captain, queue, assignment)   | [Glossary](glossary.md)                       |
 
 ## Repository

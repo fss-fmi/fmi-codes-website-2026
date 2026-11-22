@@ -21,4 +21,4 @@ Both checks fail open when Redis is unavailable.
 
 - **Easier**: no session storage; tokens are unreadable from JavaScript; a password reset evicts an attacker's existing sessions.
 - **Harder**: revocation depends on Redis; without it, logout only clears the cookie and a stolen token stays valid until expiry. Every protected request makes up to two Redis calls and, on a cache miss, one DB read.
-- **Technical debt**: the role is taken on trust from the token payload, so `JWT_SECRET_KEY` must stay secret and strong (production refuses to boot with known weak values). Optional-auth endpoints must use `extract_token()`; `/api/bug-report` does not, which is why SPA bug reports arrive anonymous.
+- **Technical debt**: the role is taken on trust from the token payload, so `JWT_SECRET_KEY` must stay secret and strong (production refuses to boot with known weak values). Optional-auth endpoints, like `/api/bug-report`, must go through `get_optional_user()`, which applies every check `token_required` does and treats a missing or rejected token as anonymous.

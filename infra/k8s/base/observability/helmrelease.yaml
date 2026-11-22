@@ -105,7 +105,7 @@ spec:
                 send_resolved: true
                 # The default links to Alertmanager's in-cluster URL, which nobody can open, and
                 # the operator drops an empty value.
-                title_link: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cluster-alerts
+                title_link: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/alerts/
                 color: '{{ template "fmi.color" . }}'
                 title: '{{ template "fmi.title" . }}'
                 text: '{{ template "fmi.text" . }}'
@@ -113,7 +113,7 @@ spec:
             slack_configs:
               - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/staging_url
                 send_resolved: true
-                title_link: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cluster-alerts
+                title_link: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/alerts/
                 color: '{{ template "fmi.color" . }}'
                 title: '{{ template "fmi.title" . }}'
                 text: '{{ template "fmi.text" . }}'
@@ -213,7 +213,7 @@ spec:
                 annotations:
                   summary: 'Prod is unreachable: the Cloudflare Tunnel has no connection.'
                   description: 'No cloudflared pod in {{ $labels.namespace }} holds a connection to Cloudflare, so https://fmicodes.com shows Cloudflare''s tunnel error page.'
-                  runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/#cloudflare-tunnel
+                  runbook_url: https://fss-fmi.github.io/fmi-codes-website-2026/runbook/cloudflare/
     grafana:
       admin:
         existingSecret: grafana-admin
