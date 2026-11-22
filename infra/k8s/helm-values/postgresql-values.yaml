@@ -32,9 +32,14 @@ primary:
   # Every backend pod's pools during a rollout, the migrate initContainer and backups must fit
   # (tests/test_capacity_budget.py), and memory grows with connections. No CPU limit: team
   # changes queue on one advisory lock, so a throttled Postgres slows every queued request.
+  # The tcp_ lines match the backend's connection options (tests/test_connection_timeouts.py).
   # Re-run deploy-stateful.sh to apply; it restarts Postgres, so not during registration (#219).
   extendedConfiguration: |
     max_connections = 250
+    tcp_keepalives_idle = 30
+    tcp_keepalives_interval = 10
+    tcp_keepalives_count = 3
+    tcp_user_timeout = 10000
   resources:
     requests:
       cpu: "1"

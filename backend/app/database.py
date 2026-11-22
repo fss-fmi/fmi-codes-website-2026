@@ -15,6 +15,21 @@ _pool = None
 # How long to wait for a pooled connection before giving up (seconds)
 _pool_timeout = 5
 
+# libpq options for every connection the pool opens. A connect gets 5 s; it runs under the
+# pool's lock, so an unbounded one would block every thread of the worker. Keepalives find a
+# silently dead idle connection in about 40 s (on Linux tcp_user_timeout cuts the probes short),
+# and tcp_user_timeout fails a query whose packets go unacknowledged for 10 s. Neither limits a
+# slow query or a lock wait: a live server acknowledges at once. The migration runner uses the
+# same set and Postgres mirrors the TCP ones (tests/test_connection_timeouts.py).
+CONNECT_OPTIONS = {
+    "connect_timeout": 5,
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+    "tcp_user_timeout": 10_000,
+}
+
 
 def init_database(app):
     """Initialize a ThreadedConnectionPool and verify the schema exists."""
@@ -34,6 +49,7 @@ def init_database(app):
                 max_conn,
                 app.config["DATABASE_URL"],
                 cursor_factory=RealDictCursor,
+                **CONNECT_OPTIONS,
             )
 
             # Quick schema check using a pooled connection
@@ -98,7 +114,9 @@ def get_db_connection(app=None):
     that fails its ping is closed and the next one tried; other threads may keep
     returning dead ones while this one clears them. A connection the pool has just
     opened that fails its ping means Postgres itself is failing, so that error is
-    raised at once instead of opening connection after connection.
+    raised at once instead of opening connection after connection. A connection whose
+    peer went silent fails its ping only after tcp_user_timeout (CONNECT_OPTIONS), past
+    the deadline, so that one request fails; keepalives clear idle ones before that.
 
     Raises psycopg2.pool.PoolError if no connection is available within the timeout,
     the connect error when the pool can't open a new connection and the ping's
