@@ -5,7 +5,21 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from prometheus_client import Counter
+
 logger = logging.getLogger(__name__)
+
+_KINDS = ("verification", "reset", "join_request")
+_RESULTS = ("sent", "failed", "skipped")
+
+MAIL_SENT = Counter(
+    "mail_sent",
+    "Emails the backend tried to send, by kind and result (skipped: no SMTP credentials)",
+    ["kind", "result"],
+)
+for _kind in _KINDS:
+    for _result in _RESULTS:
+        MAIL_SENT.labels(kind=_kind, result=_result)
 
 
 def send_password_reset_link_email(
@@ -16,17 +30,6 @@ def send_password_reset_link_email(
     The plaintext password is never included.  The link expires in 1 hour.
     Returns True on success, False on any failure (never raises).
     """
-    host = app_config.get("MAIL_HOST", "smtp.gmail.com")
-    port = app_config.get("MAIL_PORT", 587)
-    username = app_config.get("MAIL_USERNAME", "")
-    password = app_config.get("MAIL_PASSWORD", "")
-    use_tls = app_config.get("MAIL_USE_TLS", True)
-    from_addr = app_config.get("ADMIN_EMAIL", username)
-
-    if not username or not password:
-        logger.warning("SMTP credentials not configured — cannot send password reset link email")
-        return False
-
     role_label = role.capitalize()
     subject = "FMI Codes 2026 — Reset your password"
 
@@ -74,24 +77,10 @@ def send_password_reset_link_email(
   <p style="margin:0;font-size:13px;color:#475569;">— FMI Codes Team 💻</p>
 </div>"""
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = from_addr
-    msg["To"] = to_email
-    msg.attach(MIMEText(plain_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
-    try:
-        with smtplib.SMTP(host, port, timeout=10) as server:
-            if use_tls:
-                server.starttls()
-            server.login(username, password)
-            server.sendmail(from_addr, [to_email], msg.as_string())
+    sent = _smtp_send(app_config, "reset", to_email, subject, plain_body, html_body)
+    if sent:
         logger.info("Password reset link email sent (role=%s)", role)
-        return True
-    except Exception as e:
-        logger.error("Failed to send password reset link email: %s", e)
-        return False
+    return sent
 
 
 def send_join_request_notification(
@@ -106,17 +95,6 @@ def send_join_request_notification(
 
     Returns True on success, False on any failure (never raises).
     """
-    host = app_config.get("MAIL_HOST", "smtp.gmail.com")
-    port = app_config.get("MAIL_PORT", 587)
-    username = app_config.get("MAIL_USERNAME", "")
-    password = app_config.get("MAIL_PASSWORD", "")
-    use_tls = app_config.get("MAIL_USE_TLS", True)
-    from_addr = app_config.get("ADMIN_EMAIL", username)
-
-    if not username or not password:
-        logger.warning("SMTP credentials not configured — cannot send join request notification")
-        return False
-
     applicant_full = f"{applicant_first_name} {applicant_last_name}"
     subject = f"FMI Codes 2026 — New join request for {team_name}"
 
@@ -188,28 +166,16 @@ def send_join_request_notification(
 
 </div>"""
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = from_addr
-    msg["To"] = captain_email
-    msg.attach(MIMEText(plain_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
-    try:
-        with smtplib.SMTP(host, port, timeout=10) as server:
-            if use_tls:
-                server.starttls()
-            server.login(username, password)
-            server.sendmail(from_addr, [captain_email], msg.as_string())
+    sent = _smtp_send(app_config, "join_request", captain_email, subject, plain_body, html_body)
+    if sent:
         logger.info("Join request notification sent (team=%s)", team_name)
-        return True
-    except Exception as e:
-        logger.error("Failed to send join request notification: %s", e)
-        return False
+    return sent
 
 
-def _smtp_send(app_config: dict, to_email: str, subject: str, plain: str, html: str) -> bool:
-    """Send one multipart email. Returns True on success, False on any failure."""
+def _smtp_send(
+    app_config: dict, kind: str, to_email: str, subject: str, plain: str, html: str
+) -> bool:
+    """Send one multipart email and count it. Returns True on success, False on any failure."""
     host = app_config.get("MAIL_HOST", "smtp.gmail.com")
     port = app_config.get("MAIL_PORT", 587)
     username = app_config.get("MAIL_USERNAME", "")
@@ -219,6 +185,7 @@ def _smtp_send(app_config: dict, to_email: str, subject: str, plain: str, html: 
 
     if not username or not password:
         logger.warning("SMTP credentials not configured — cannot send %r", subject)
+        MAIL_SENT.labels(kind=kind, result="skipped").inc()
         return False
 
     msg = MIMEMultipart("alternative")
@@ -234,10 +201,12 @@ def _smtp_send(app_config: dict, to_email: str, subject: str, plain: str, html: 
                 server.starttls()
             server.login(username, password)
             server.sendmail(from_addr, [to_email], msg.as_string())
-        return True
     except Exception as e:
         logger.error("Failed to send %r: %s", subject, e)
+        MAIL_SENT.labels(kind=kind, result="failed").inc()
         return False
+    MAIL_SENT.labels(kind=kind, result="sent").inc()
+    return True
 
 
 def send_verification_email(app_config: dict, to_email: str, verify_url: str) -> bool:
@@ -286,7 +255,7 @@ def send_verification_email(app_config: dict, to_email: str, verify_url: str) ->
   <p style="margin:0;font-size:13px;color:#475569;">— FMI Codes Team 💻</p>
 </div>"""
 
-    sent = _smtp_send(app_config, to_email, subject, plain_body, html_body)
+    sent = _smtp_send(app_config, "verification", to_email, subject, plain_body, html_body)
     if sent:
         logger.info("Verification email sent")
     return sent

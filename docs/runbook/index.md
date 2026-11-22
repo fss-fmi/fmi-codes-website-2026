@@ -602,7 +602,8 @@ which Flux picks up as one whole release.
 Metrics, dashboards and alerts for both environments, fully self-hosted: the
 `kube-prometheus-stack` Helm chart (Prometheus operator, Grafana, Alertmanager, node-exporter,
 kube-state-metrics) runs in its own `monitoring` namespace, and the backend's `/metrics` endpoint
-feeds request, latency, 5xx and hash-shedding series alongside the cluster resource metrics.
+feeds request, latency, 5xx, 429, hash-shedding and mail series alongside the cluster resource
+metrics.
 Alertmanager posts cluster failures to Slack
 ([Cluster alerts](alerts.md#cluster-alerts)). The one outside service besides Slack is
 [Tailscale](https://tailscale.com), which is how people reach Grafana and staging (see
@@ -684,9 +685,13 @@ Reaching Grafana and staging, the tailnet setup and moving them to another clust
 #### Dashboards and checks
 
 **App-only dashboards:** Grafana → Dashboards → **FMI Codes** folder → **FMI Production** or
-**FMI Staging**. Each shows request rate, request duration (p50/p95/p99), and the share of
-requests answered with a 5xx (what `BackendHighErrorRate` alerts on) for its namespace,
-hardcoded so there is no shared dropdown or data mixing between envs. They are provisioned
+**FMI Staging**. Each shows, for its namespace: request rate, request duration (p50/p95/p99),
+the share of requests answered with a 5xx (what `BackendHighErrorRate` alerts on, plus a
+2-minute line), 429s by route, register and login p95, password hash sheds, backend CPU per
+pod against its limit and how throttled it is, backend pods ready and restarted, emails by
+kind and result plus the node's CPU. The namespace is hardcoded, so there is no shared
+dropdown or data mixing between envs. They are the screen for the registration rush
+([Event day](event-day.md#during)). They are provisioned
 from `grafana.dashboards` in the Helm values on every chart reconcile, so there is nothing to
 import. On a staging-only cluster **FMI Production** is simply empty.
 

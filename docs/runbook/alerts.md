@@ -50,6 +50,8 @@ The alerts most likely to matter:
 | `KubeNodeNotReady`                                                                                | the node is not ready                                                                                                                | 15m     |
 | `TargetDown`                                                                                      | a scrape target, like the backend's `/metrics`, is unreachable                                                                       | 10m     |
 | `BackendHighErrorRate`                                                                            | over 5% of backend requests in a namespace return a 5xx (health probes not counted)                                                  | 10m     |
+| `BackendHighThrottleRate`                                                                         | over 10% of backend requests in a namespace get a 429 (a rate limit or a shed password hash), at least 0.2 a second                  | 10m     |
+| `MailSendFailing`                                                                                 | 3 or more emails failed to send in a namespace within 15 minutes; skipped sends (no `MAIL_PASSWORD`) don't count                     | at once |
 | `CloudflareTunnelDown` (critical)                                                                 | prod's `cloudflared` has no ready pod on the cluster that holds the tunnel's Secret, so `fmicodes.com` shows Cloudflare's error page | 3m      |
 
 The custom rules (`additionalPrometheusRulesMap` in `base/observability/helmrelease.yaml`) have
