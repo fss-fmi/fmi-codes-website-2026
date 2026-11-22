@@ -36,15 +36,15 @@ fix the cause and resume without redoing earlier steps:
                           promoted via the workflow action, not hand-bootstrapped.
   --from N                start at step N (1-7). Default 1.
   --with-flux             also run step 6 (Flux GitOps). Off by default because it needs an
-                          SSH deploy key present — see README 'Phase 6' before enabling.
+                          SSH deploy key present — see docs/runbook/index.md 'Phase 6' before enabling.
   --without-observability skip step 7 even with Flux (Grafana admin + Tailscale OAuth secrets;
                           Flux reconciles kube-prometheus-stack and the Tailscale operator
                           either way). Without the OAuth secret staging gets no tailnet
                           address. --with-observability is still accepted and is the
-                          default with --with-flux. See docs/runbook.md 'Phase 7'.
+                          default with --with-flux. See docs/runbook/index.md 'Phase 7'.
 
   SERVE_PROD_TUNNEL=true  prod only: step 5 applies the Cloudflare Tunnel's credentials, so this
-                          cluster serves fmicodes.com. Only one cluster may (docs/runbook.md
+                          cluster serves fmicodes.com. Only one cluster may (docs/runbook/cloudflare.md
                           'Move prod to another cluster'); without it prod stays off the internet.
 
 Steps 1-2 need interactive sudo (k3s install, /usr/local/bin writes), so run
@@ -124,18 +124,18 @@ run_step 1 "install tooling"        install-tools.sh
 run_step 2 "bootstrap k3s cluster"  bootstrap-k3s.sh
 run_step 3 "stateful tier"          deploy-stateful.sh
 run_step 4 "app tier"               deploy-app.sh
-run_step 5 "networking + TLS"       deploy-ingress.sh
+run_step 5 "networking"             deploy-ingress.sh
 
 if [ "$WITH_FLUX" = "true" ]; then
   run_step 6 "GitOps CD (Flux)"     flux-bootstrap.sh
 else
-  log "Step 6 (GitOps CD) — skipped (pass --with-flux to enable; see README 'Phase 6')"
+  log "Step 6 (GitOps CD) — skipped (pass --with-flux to enable; see docs/runbook/index.md 'Phase 6')"
 fi
 
 if [ "$WITH_OBSERVABILITY" = "true" ]; then
   run_step 7 "observability (Prometheus + Grafana)"  deploy-observability.sh
 else
-  log "Step 7 (observability) — skipped (it runs with --with-flux unless --without-observability; see docs/runbook.md 'Phase 7')"
+  log "Step 7 (observability) — skipped (it runs with --with-flux unless --without-observability; see docs/runbook/index.md 'Phase 7')"
 fi
 
 if [ "$ENV" = "staging" ]; then
@@ -145,7 +145,7 @@ if [ "$ENV" = "staging" ]; then
     ACCESS_NOTE="Open https://$TAILNET_HOST from a device on the tailnet (no hosts entry)."
   else
     ACCESS_NOTE="Staging has no tailnet address yet. It gets one once Flux runs the Tailscale
-operator and step 7 applies its OAuth client (docs/runbook.md 'Phase 7'); then:
+operator and step 7 applies its OAuth client (docs/runbook/tailscale.md 'Tailscale setup'); then:
   kubectl -n $INGRESS_NAMESPACE get ingress staging    # ADDRESS = staging's URL"
   fi
   cat <<EOF
@@ -170,7 +170,7 @@ if [ -z "$TUNNEL_HELD" ]; then
 $(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPACE'.$(printf '\033[0m')
 
 Prod is not on the internet from this cluster: it doesn't hold the Cloudflare Tunnel's
-credentials (SERVE_PROD_TUNNEL=true applies them; only one cluster may, see docs/runbook.md
+credentials (SERVE_PROD_TUNNEL=true applies them; only one cluster may, see docs/runbook/cloudflare.md
 'Move prod to another cluster').
 
 Verify the stack:
@@ -187,7 +187,7 @@ $(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPAC
 
 Prod is reachable only through the Cloudflare Tunnel, at $HOST_URL from anywhere (no hosts
 entry, no DNS record to set here). The first time, point $HOST at the tunnel
-(docs/runbook.md 'Cloudflare Tunnel'). Only one cluster may run the prod tunnel at a time.
+(docs/runbook/cloudflare.md 'Set up the tunnel'). Only one cluster may run the prod tunnel at a time.
 
 Verify the stack:
   kubectl -n $NAMESPACE get pods

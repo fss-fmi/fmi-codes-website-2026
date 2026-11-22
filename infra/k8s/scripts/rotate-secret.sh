@@ -179,7 +179,7 @@ if [ "$GRAFANA" = "true" ] || [ "$TAILSCALE" = "true" ] || [ "$ALERTMANAGER" = "
   live_env="${live_env#<no value>}"
   if [ -n "$live_env" ] && [ "$live_env" != "$SECRET_ENV" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ]; then
     [ "$TAILSCALE" != "true" ] \
-      || die "$NAMESPACE/$SECRET_NAME is labelled $live_env, but it always comes from staging's file, whatever ENV is. Release it first (docs/runbook.md 'Move Grafana and staging to another cluster'), or set ALLOW_ENV_SWITCH=true to replace it in place."
+      || die "$NAMESPACE/$SECRET_NAME is labelled $live_env, but it always comes from staging's file, whatever ENV is. Release it first (docs/runbook/tailscale.md 'Move Grafana and staging to another cluster'), or set ALLOW_ENV_SWITCH=true to replace it in place."
     die "$NAMESPACE/$SECRET_NAME holds the $live_env credentials; refusing to replace them with $ENV's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose."
   fi
 fi

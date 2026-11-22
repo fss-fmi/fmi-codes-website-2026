@@ -300,7 +300,7 @@ NEW_CLIENT_STEPS="Create an OAuth client for THIS cluster in the Tailscale admin
   scopes: General -> Services, Devices -> Core, Keys -> Auth Keys (read + write each)
   tag:    tag:k8s-operator
 Save the client ID and secret in the password manager; you paste them below.
-First time on this tailnet? Do docs/runbook.md 'Tailscale setup' (steps 1 to 4) first."
+First time on this tailnet? Do docs/runbook/tailscale.md 'Tailscale setup' (steps 1 to 4) first."
 
 # set_ts_client: run 'tailscale-oauth.sh set', offering another try after a typo.
 set_ts_client() {
@@ -338,7 +338,7 @@ elif ! ts_client_incomplete "$TS_FILE"; then
         cat <<EOF
 
 Only one cluster may hold the 'grafana' and 'staging' tailnet names. Before this one takes over
-(details: docs/runbook.md 'Move Grafana and staging to another cluster'):
+(details: docs/runbook/tailscale.md 'Move Grafana and staging to another cluster'):
   1. On the old cluster, if it still runs:
        bash infra/k8s/scripts/tailscale-oauth.sh release
      and commit the emptied file it names.
@@ -372,36 +372,6 @@ EOF
   fi
 fi
 
-# The tunnel and the tailnet replaced these, but WSL boxes set up before them still bridge
-# 127.0.0.1:443 to prod's controller, which now answers with its fake certificate.
-if grep -qi microsoft /proc/version 2>/dev/null; then
-  OLD_FORWARD_FILES=()
-  for f in /etc/systemd/system/fmi-forward-prod.service /etc/systemd/system/fmi-tls-prod.service \
-    /etc/systemd/system/fmi-forward-staging.service /etc/sysctl.d/99-unpriv443.conf; do
-    if [ -e "$f" ]; then OLD_FORWARD_FILES+=("$f"); fi
-  done
-  if [ "${#OLD_FORWARD_FILES[@]}" -gt 0 ]; then
-    log "Removing the WSL forward services an older setup installed"
-    if sudo bash -c '
-      set -e
-      units="fmi-forward-prod.service fmi-tls-prod.service fmi-forward-staging.service"
-      for u in $units; do
-        systemctl disable --now "$u" 2>/dev/null || true
-        rm -f "/etc/systemd/system/$u"
-      done
-      systemctl daemon-reload
-      systemctl reset-failed $units 2>/dev/null || true
-      if [ -e /etc/sysctl.d/99-unpriv443.conf ]; then
-        rm -f /etc/sysctl.d/99-unpriv443.conf
-        sysctl -w net.ipv4.ip_unprivileged_port_start=1024 >/dev/null
-      fi'; then
-      ok "removed ${OLD_FORWARD_FILES[*]}"
-    else
-      warn "could not remove them; see docs/runbook.md 'Phase 4' (WSL2 boxes set up before the tunnel)"
-    fi
-  fi
-fi
-
 log "Handing off to init-linux.sh"
 
 export ENV
@@ -427,7 +397,7 @@ $(printf '\033[1;33m### Next step: bootstrap prod\033[0m')
 Staging is up. To bring up prod on this machine too, run:
   ENV=prod bash bootstrap.sh
 That prod stays off the internet. Only the one cluster that serves fmicodes.com adds
-SERVE_PROD_TUNNEL=true (docs/runbook.md 'Move prod to another cluster').
+SERVE_PROD_TUNNEL=true (docs/runbook/cloudflare.md 'Move prod to another cluster').
 EOF
   fi
 fi
@@ -437,7 +407,7 @@ cat <<EOF
 Grafana and staging (with --with-flux) need no hosts entry: they are reachable only over
 Tailscale, at the addresses \`kubectl -n monitoring get ingress grafana\` and
 \`kubectl -n ingress-nginx-staging get ingress staging\` show.
-Setup and handover: docs/runbook.md 'Phase 7'.
+Setup and handover: docs/runbook/tailscale.md.
 EOF
 
 # Without --with-flux this run never touches the cluster-wide Secrets, so on a staging-only box
@@ -448,5 +418,5 @@ if [ "$ENV" = "prod" ] && [ "$(kubectl -n monitoring get secret grafana-admin --
   warn "this cluster's shared Secrets (Grafana admin, Slack alert webhooks) are still staging's, so
   prod's alerts post to the staging Slack channel. Switch them to prod:
     ALLOW_ENV_SWITCH=true ENV=prod bash infra/k8s/scripts/deploy-observability.sh
-  Details, including the Grafana password: docs/runbook.md 'Adding prod to a staging-only box'."
+  Details, including the Grafana password: docs/runbook/alerts.md 'Adding prod to a staging-only box'."
 fi

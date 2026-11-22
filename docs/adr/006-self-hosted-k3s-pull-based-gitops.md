@@ -8,7 +8,7 @@ The platform is run by a student council with no cloud budget and must be live a
 
 ## Decision
 
-- One self-hosted single-node **k3s** server runs both environments, isolated by namespace (`fmi-codes`, `fmi-codes-staging`) with separate ingress controllers, databases and SOPS age keys. Both are built from one `infra/k8s/base/` through Kustomize overlays that differ only in namespace, hostname, TLS issuer and DB host.
+- One self-hosted single-node **k3s** server runs both environments, isolated by namespace (`fmi-codes`, `fmi-codes-staging`) with separate ingress controllers, databases and SOPS age keys. Both are built from one `infra/k8s/base/` through Kustomize overlays. They differ in namespace, hostname, DB host and the way in (a Cloudflare Tunnel for prod, the tailnet for staging), and on purpose in capacity and the rate-limit multiplier; everything else is identical so staging mirrors prod.
 - Postgres and Redis Sentinel come from Bitnami Helm charts inside the cluster. App secrets are SOPS-encrypted in git; DB and Redis passwords are generated in-cluster.
 - Deployment is **pull-based**: Flux runs in the cluster, watches Docker Hub and git, and auto-bumps only the staging overlay. Production moves only when the `promote-to-prod` workflow opens a PR and a human merges it.
 - `bootstrap.sh` takes a bare Debian/Ubuntu box to a running cluster in resumable phases.
@@ -16,5 +16,5 @@ The platform is run by a student council with no cloud budget and must be live a
 ## Consequences
 
 - **Easier**: no hosting bill; staging catches problems with prod-identical config; `git revert` of a promote commit is a rollback; the prod gate holds structurally (the prod overlay has no Flux image markers).
-- **Harder**: one physical node is a single point of failure for both environments. The team operates the whole stack (k3s, ingress, the Cloudflare Tunnel, Prometheus, Grafana; cert-manager until [ADR-017](017-prod-through-cloudflare-tunnel.md)) itself. Bitnami images are pinned to the frozen `bitnamilegacy` registry.
+- **Harder**: one physical node is a single point of failure for both environments. The team operates the whole stack (k3s, ingress, the Cloudflare Tunnel, Prometheus, Grafana) itself. Bitnami images are pinned to the frozen `bitnamilegacy` registry.
 - **Technical debt**: no automated database backups; the Postgres PVC is the source of truth. Migrating off `bitnamilegacy` images is open work.
