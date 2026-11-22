@@ -429,10 +429,9 @@ def test_registered_route_keeps_per_user_flags_out_of_cache(monkeypatch, client)
     fake = FakeRedis()
     _wire(monkeypatch, "app.services.team_service", fake)
     monkeypatch.setattr("app.services.team_service.execute_query", lambda *a, **k: rows)
-    monkeypatch.setattr("app.routes.teams.extract_token", lambda: "token")
     monkeypatch.setattr(
-        "app.services.auth_service.decode_token",
-        lambda t: {"role": "participant", "user_id": 42},
+        "app.routes.teams.get_optional_user",
+        lambda: {"role": "participant", "user_id": 42},
     )
     route_results = iter([{"team_id": None}, [{"team_id": 1}]])
     monkeypatch.setattr("app.routes.teams.execute_query", lambda *a, **k: next(route_results))

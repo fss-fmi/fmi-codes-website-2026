@@ -18,7 +18,7 @@ usage() {
 Usage: $(basename "$0") set|release|check
 
 Manages the cluster's Tailscale OAuth client, which lets the operator put Grafana and staging
-on the tailnet. Only one cluster may hold it at a time (docs/runbook.md 'Move Grafana and
+on the tailnet. Only one cluster may hold it at a time (docs/runbook/tailscale.md 'Move Grafana and
 staging to another cluster'). It always lives in staging's tailscale-oauth.enc.yaml, on every
 cluster, prod's included, so this needs the staging age key.
 
@@ -50,7 +50,7 @@ K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/tailscale-client.sh
 . "$SCRIPT_DIR/lib/tailscale-client.sh"
 TS_FILE="${TAILSCALE_SECRET_ENC:-$K8S_DIR/$TS_CLIENT_REL}"
-RUNBOOK="docs/runbook.md 'Move Grafana and staging to another cluster'"
+RUNBOOK="docs/runbook/tailscale.md 'Move Grafana and staging to another cluster'"
 
 need_sops_file() {
   command -v sops >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
@@ -175,7 +175,7 @@ check_ingress() {
 
   if [ -z "$TS_HOST" ]; then
     warn "$label has no tailnet address yet. Check: kubectl -n $TAILSCALE_NS get pods,statefulsets
-  and kubectl -n $ns describe ingress $ingress. See docs/runbook.md 'Access Grafana and staging'."
+  and kubectl -n $ns describe ingress $ingress. See docs/runbook/tailscale.md 'Access Grafana and staging'."
     return 4
   fi
   if [ "${TS_HOST%%.*}" != "$name" ]; then

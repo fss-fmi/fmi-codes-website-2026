@@ -97,5 +97,11 @@ nav:
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md
-      - Cluster Runbook: runbook.md
+      - Cluster Runbook:
+          - Bootstrap and Operations: runbook/index.md
+          - Secrets: runbook/secrets.md
+          - Cluster Alerts: runbook/alerts.md
+          - Tailscale: runbook/tailscale.md
+          - Cloudflare Tunnel: runbook/cloudflare.md
+      - GitHub Automation: github-automation.md
   - Glossary: glossary.md

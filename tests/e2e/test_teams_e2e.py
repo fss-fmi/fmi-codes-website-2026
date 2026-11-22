@@ -11,14 +11,18 @@ Covers:
 """
 
 import sys
+import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import jwt
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
 from tests.e2e.conftest import (
     DEFAULT_PW,
+    _extract_token,
     admin_token,
     bearer,
     new_client,
@@ -488,6 +492,49 @@ class TestTeamActivation:
 
 
 class TestRegisteredTeamsEndpoint:
+    def test_teamless_participant_gets_apply_view(self, client, seeds):
+        token = register_and_token(client, 1, seeds)
+        with new_client(client.application) as c2:
+            rv = c2.get("/api/teams/registered", headers=bearer(token))
+        assert rv.get_json()["can_apply"] is True
+
+    def test_logged_out_token_gets_read_only_view(self, client, seeds):
+        token = register_and_token(client, 1, seeds)
+        assert client.post("/api/auth/logout").status_code == 200
+        with new_client(client.application) as c2:
+            rv = c2.get("/api/teams/registered", headers=bearer(token))
+        assert rv.status_code == 200
+        assert rv.get_json()["can_apply"] is False
+
+    def test_token_revoked_by_password_change_gets_read_only_view(self, client, seeds):
+        rv = register(client, 1, seeds)
+        user_id = rv.get_json()["user_id"]
+        token = _extract_token(rv)
+        # Backdated: a token minted in the same second as the password change
+        # legitimately survives the epoch check (whole-second `iat`).
+        now = datetime.now(UTC)
+        old_token = jwt.encode(
+            {
+                "user_id": user_id,
+                "role": "participant",
+                "jti": str(uuid.uuid4()),
+                "iat": now - timedelta(minutes=5),
+                "exp": now + timedelta(days=1),
+            },
+            client.application.config["JWT_SECRET_KEY"],
+            algorithm="HS256",
+        )
+        rv = client.patch(
+            "/api/auth/change-password",
+            json={"current_password": DEFAULT_PW, "new_password": DEFAULT_PW + "-new"},
+            headers=bearer(token),
+        )
+        assert rv.status_code == 200, rv.get_json()
+        with new_client(client.application) as c2:
+            rv = c2.get("/api/teams/registered", headers=bearer(old_token))
+        assert rv.status_code == 200
+        assert rv.get_json()["can_apply"] is False
+
     def test_public_endpoint_accessible_without_auth(self, client):
         rv = client.get("/api/teams/registered")
         assert rv.status_code == 200

@@ -55,9 +55,9 @@ if sops_can_decrypt; then
   sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
 elif [ -f "$SECRETS_ENC" ]; then
   if command -v sops >/dev/null 2>&1; then
-    die "found $SECRETS_ENC but could not decrypt it — is your age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 5'."
+    die "found $SECRETS_ENC but could not decrypt it — is your age key at ~/.config/sops/age/keys.txt? See docs/runbook/secrets.md 'SOPS and age'."
   else
-    die "found $SECRETS_ENC but sops is not installed — run install-tools.sh, then ensure your age key is at ~/.config/sops/age/keys.txt. See docs/runbook.md 'Phase 5'."
+    die "found $SECRETS_ENC but sops is not installed — run install-tools.sh, then ensure your age key is at ~/.config/sops/age/keys.txt. See docs/runbook/secrets.md 'SOPS and age'."
   fi
 else
   log "Ensuring app secret '$APP_SECRET' (generated in-cluster; no SOPS file present)"
@@ -96,7 +96,7 @@ if [ "$ENV" = "staging" ]; then
     -o jsonpath='{.data.FRONTEND_ORIGIN}' 2>/dev/null || true)"
   if [ -z "$frontend_origin" ]; then
     log "FRONTEND_ORIGIN is empty — staging's password-reset and verification links will be dead"
-    echo "Set it to staging's tailnet URL, https://staging.<tailnet>.ts.net (docs/runbook.md"
+    echo "Set it to staging's tailnet URL, https://staging.<tailnet>.ts.net (docs/runbook/tailscale.md"
     echo "'Access Grafana and staging'). The key must exist in $SECRETS_ENC:"
     echo "  ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh FRONTEND_ORIGIN"
   fi
@@ -153,5 +153,5 @@ DISCORD_BUG_WEBHOOK_URL, SLACK_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL) in
 command (prompts for the value; --generate for a random one):
     ENV=$ENV bash infra/k8s/scripts/rotate-secret.sh <KEY>
 
-See docs/runbook.md 'Phase 3' and 'Phase 5' for the full checklists.
+See docs/runbook/index.md 'Phase 3' and docs/runbook/secrets.md for the full checklists.
 EOF

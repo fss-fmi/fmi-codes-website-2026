@@ -53,7 +53,7 @@ ensure_namespace() {
 decrypt_secret() {
   local file="$1" ns="$2" env="$3" manifest
   manifest="$(sops --decrypt "$file" 2>/dev/null)" \
-    || die "could not decrypt $file — is your $env age key at ~/.config/sops/age/keys.txt? See docs/runbook.md 'Phase 7'."
+    || die "could not decrypt $file — is your $env age key at ~/.config/sops/age/keys.txt? See docs/runbook/secrets.md 'SOPS and age'."
   # printf is a builtin: the plaintext goes through a pipe, never argv or a here-string temp file.
   [ "$(printf '%s\n' "$manifest" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}')" = "$ns" ] \
     || die "$file does not target namespace '$ns' — refusing to apply a secret across targets."
@@ -71,10 +71,10 @@ check_secret() {
   live_env="${live_env#<no value>}"
   [ -n "$live_env" ] && [ "$live_env" != "$env" ] && [ "${ALLOW_ENV_SWITCH:-false}" != "true" ] || return 0
   if [ -n "${3:-}" ]; then
-    die "$ns/$name is labelled $live_env, but it always comes from $env's file ($file), whatever ENV is. Release it first (docs/runbook.md 'Move Grafana and staging to another cluster'), or set ALLOW_ENV_SWITCH=true to replace it in place."
+    die "$ns/$name is labelled $live_env, but it always comes from $env's file ($file), whatever ENV is. Release it first (docs/runbook/tailscale.md 'Move Grafana and staging to another cluster'), or set ALLOW_ENV_SWITCH=true to replace it in place."
   fi
   local hint=""
-  [ "$env" = "prod" ] && hint=" A staging-only box that now runs prod too should switch: docs/runbook.md 'Adding prod to a staging-only box'."
+  [ "$env" = "prod" ] && hint=" A staging-only box that now runs prod too should switch: docs/runbook/alerts.md 'Adding prod to a staging-only box'."
   die "$ns/$name holds the $live_env credentials; refusing to replace them with $env's. Run with ENV=$live_env, or set ALLOW_ENV_SWITCH=true to switch on purpose.$hint"
 }
 
@@ -93,13 +93,13 @@ TAILSCALE_STATUS="applied"
 if ! sops --decrypt "$TAILSCALE_SECRET_ENC" >/dev/null 2>&1; then
   TAILSCALE_STATUS="skipped (no staging age key)"
   warn "cannot decrypt $TAILSCALE_SECRET_ENC. The Tailscale client is staging's on every cluster, so
-  this machine needs the staging age key too (docs/runbook.md 'One Tailscale client for every
+  this machine needs the staging age key too (docs/runbook/tailscale.md 'One Tailscale client for every
   cluster'). The live tailscale/operator-oauth, if any, is left as it is. Add the key, then re-run:
     ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
 elif ts_client_incomplete "$TAILSCALE_SECRET_ENC"; then
   TAILSCALE_STATUS="skipped"
   warn "$TAILSCALE_SECRET_ENC has no Tailscale OAuth client yet; the operator stays idle and Grafana and staging have no tailnet address.
-  Create the OAuth client (docs/runbook.md 'Phase 7'), then:
+  Create the OAuth client (docs/runbook/tailscale.md 'Tailscale setup'), then:
     bash $SCRIPT_DIR/tailscale-oauth.sh set
     ENV=$ENV bash $SCRIPT_DIR/deploy-observability.sh"
 fi
@@ -135,7 +135,7 @@ if [ -n "$SLACK_EMPTY_KEYS" ]; then
   SLACK_STATUS="missing: $SLACK_EMPTY_KEYS"
   warn "$ALERTMANAGER_SECRET_ENC has no webhook for: $SLACK_EMPTY_KEYS. Set both keys: with only one,
   every send to the other fails and AlertmanagerFailedToSendAlerts posts to the cluster's channel.
-  Create the webhooks (docs/runbook.md 'Cluster alerts'), then for each key:
+  Create the webhooks (docs/runbook/alerts.md 'Cluster alerts'), then for each key:
     ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --alertmanager <cluster_url|staging_url>"
 fi
 
@@ -146,7 +146,7 @@ if [ "$FLUX_RELAY_STATUS" = "applied" ]; then
   if [ -n "$FLUX_RELAY_EMPTY" ]; then
     FLUX_RELAY_STATUS="applied, missing: $FLUX_RELAY_EMPTY"
     warn "$FLUX_RELAY_SECRET_ENC has no value for: $FLUX_RELAY_EMPTY. Flux errors still post, but
-  get no \"recovered\" reply. Set up the Flux Relay app (docs/runbook.md 'Cluster alerts'), then for each key:
+  get no \"recovered\" reply. Set up the Flux Relay app (docs/runbook/alerts.md 'Recovery replies'), then for each key:
     ENV=$ENV bash $SCRIPT_DIR/rotate-secret.sh --flux-relay <bot_token|cluster_channel|staging_channel>"
   fi
 else
@@ -185,5 +185,5 @@ if [ "$ENV" = "staging" ] && kubectl get namespace "$PROD_NS" >/dev/null 2>&1; t
   warn "this cluster also runs prod (namespace $PROD_NS) but now holds staging's cluster-wide
   Secrets, so prod's alerts post to the staging Slack channel. Switch them to prod:
     ALLOW_ENV_SWITCH=true ENV=prod bash $SCRIPT_DIR/deploy-observability.sh
-  Details: docs/runbook.md 'Adding prod to a staging-only box'."
+  Details: docs/runbook/alerts.md 'Adding prod to a staging-only box'."
 fi
