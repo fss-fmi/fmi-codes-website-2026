@@ -124,7 +124,7 @@ run_step 1 "install tooling"        install-tools.sh
 run_step 2 "bootstrap k3s cluster"  bootstrap-k3s.sh
 run_step 3 "stateful tier"          deploy-stateful.sh
 run_step 4 "app tier"               deploy-app.sh
-run_step 5 "networking + TLS"       deploy-ingress.sh
+run_step 5 "networking"             deploy-ingress.sh
 
 if [ "$WITH_FLUX" = "true" ]; then
   run_step 6 "GitOps CD (Flux)"     flux-bootstrap.sh
