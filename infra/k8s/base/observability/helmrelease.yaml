@@ -467,8 +467,8 @@ spec:
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
                     "targets": [
                       {
-                        "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[2m]))",
-                        "legendFormat": "node CPU busy (shared with staging and monitoring)",
+                        "expr": "1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[2m]))",
+                        "legendFormat": "{{instance}}",
                         "refId": "A"
                       }
                     ],
@@ -658,8 +658,8 @@ spec:
                     "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
                     "targets": [
                       {
-                        "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[2m]))",
-                        "legendFormat": "node CPU busy (shared with staging and monitoring)",
+                        "expr": "1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[2m]))",
+                        "legendFormat": "{{instance}}",
                         "refId": "A"
                       }
                     ],

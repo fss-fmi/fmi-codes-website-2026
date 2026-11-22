@@ -27,7 +27,7 @@ Anything here that restarts something is done now, not on the day.
 
 - **Prod runs the sized release.** Prod is bootstrapped and promoted with a release carrying
   #220 and #221, #267's zero-downtime rollouts ([Rollouts](../deployment.md#rollouts)) and #223's
-  mail counter: the dashboards and alerts reach Grafana through Flux on their own, but the
+  mail counter: Flux delivers the dashboards to Grafana and the alerts to Prometheus on its own, but the
   **Emails** panel and `MailSendFailing` stay empty until prod's backend image exports
   `mail_sent_total`. The backend is 4 pods at a 1-CPU request and a 3-CPU limit:
 
@@ -36,17 +36,19 @@ Anything here that restarts something is done now, not on the day.
   # 4 {"limits":{"cpu":"3","memory":"512Mi"},"requests":{"cpu":"1","memory":"256Mi"}}
   ```
 
-- **CPU time per password hash on the prod machine.** Staging measured 0.39 CPU s at a 3-core
-  limit (#222), and the sizing rests on it. On the prod machine:
+- **CPU time per password hash on the prod machine.** The sizing assumes about 0.42 CPU s a
+  hash (`infra/k8s/overlays/prod/backend-capacity-patch.yaml`,
+  [ADR-016](../adr/016-shed-password-hashes.md)); staging measured 0.39 s at a 3-core limit in
+  the load test (#222). On the prod machine:
 
   ```bash
   kubectl -n $NS exec deploy/backend -c backend -- python -c \
     'import time, bcrypt; t = time.process_time(); bcrypt.hashpw(b"x" * 12, bcrypt.gensalt(12)); print(time.process_time() - t)'
   ```
 
-  Run it three times. If it is more than 20% above 0.39 s (over 0.47 s), the machine's cores
-  are slower than staging's: rerun the [load test](../testing.md#load-test) on that machine's
-  staging before trusting the sizing.
+  Run it three times. If it is more than 20% above the 0.42 s the sizing assumes (over 0.50 s),
+  the machine hashes slower than the sizing allows for: rerun the
+  [load test](../testing.md#load-test) on that machine's staging before trusting it.
 
 - **The load test passed on the prod machine.** Its staging, in the test window that
   [Run it on staging](../testing.md#run-it-on-staging) describes, then the revert.
@@ -135,10 +137,14 @@ One person can hold several roles; every role has a name next to it before the d
 | Dashboard       | Grafana **FMI Codes → FMI Production**: request rate, latency, 5xx share, 429s by route, register and login p95, hash sheds, backend CPU and throttling, pods ready and restarts, emails, node CPU | Calls a threshold out to the other two                       |
 | Cluster         | `#cluster-alerts-prod` and a terminal on the cluster machine: the pods and Postgres connections (below)                                                                                            | Runs the levers on the cluster ([When to act](#when-to-act)) |
 
-The cluster terminal:
+The cluster machine needs two terminals, each with `NS` and `db` defined first (top of this
+page), since the first command never returns:
 
 ```bash
 kubectl -n $NS get pods -w                      # RESTARTS stays 0, every backend pod 1/1
+```
+
+```bash
 while sleep 5; do
   db -tAc "SELECT now()::time(0), COUNT(*) FILTER (WHERE backend_type = 'client backend'), COUNT(*) FILTER (WHERE wait_event_type = 'Lock' AND wait_event = 'advisory') FROM pg_stat_activity"
 done                                            # time | connections (all databases) | waiting on the registration lock
@@ -164,10 +170,13 @@ Reading the panels:
   ingress-nginx (a worker stuck until Gunicorn's 120 s timeout) is in neither
   ([Not covered](alerts.md#cluster-alerts)). A climbing p95 with flat 5xx can be that.
 - **Backend Pods Ready** lags: readiness drops a pod only after 2 minutes of failed probes.
-- **Node CPU Busy** is the whole machine, staging and monitoring included.
+- **Node CPU Busy** has one line per machine, each its whole CPU with staging and monitoring
+  included.
 
 The rush is over when **Request Rate** has been back to its everyday level and **429s by
-Route** near zero for 15 minutes. Then the ground rules below lift.
+Route** near zero for 15 minutes. Then the ground rules below lift, but if the backend was
+[scaled to 6](#scale-the-backend), resume Flux and wait for 4 pods first: every rollout or
+restart after the rush waits for that.
 
 ## Ground rules
 
@@ -213,8 +222,9 @@ kubectl -n $NS scale deployment/backend --replicas=6
 kubectl -n $NS rollout status deployment/backend --timeout=300s
 ```
 
-6 pods' pools are 192 connections, 202 with the migrate step, backups and the operator, inside 250. **No rollout while at 6:** a surge pod plus a draining one make 8 pods, 256 connections
-and 266 with the reserve, against 250. While Flux is suspended nothing deploys to prod, image
+6 pods' pools are 192 connections, 202 with the migrate step, backups and the operator,
+inside 250. **No rollout while at 6:** a surge pod plus a draining one make 8 pods, 256
+connections and 266 with the reserve, against 250. While Flux is suspended nothing deploys to prod, image
 bumps included. Don't commit `replicas: 6` either: `test_capacity_budget.py` fails it for the
 same reason.
 
@@ -223,6 +233,7 @@ rollout):
 
 ```bash
 flux resume kustomization fmi-codes -n flux-system   # Flux drops kubectl's replicas and scales back to 4
+kubectl -n $NS get deploy backend -o jsonpath='{.status.replicas} {.status.readyReplicas}{"\n"}'   # 4 4 before anything else rolls
 ```
 
 ### Close registration
@@ -282,12 +293,12 @@ kubectl -n $NS logs -l app.kubernetes.io/name=fmi-codes-backend -c backend --sin
   grep 'Failed to send'
 ```
 
-| The error contains                                            | Means                                                                                       |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `5.4.5` (a daily sending limit or quota exceeded)             | The day's quota is spent                                                                    |
-| `421 4.7.0` or `454 4.7.0` (try again later, too many logins) | Gmail is throttling the account for now; sends recover by themselves                        |
-| `5.7.8` (username and password not accepted)                  | The app password was revoked or changed: set it again with `rotate-secret.sh MAIL_PASSWORD` |
-| a timeout or connection error                                 | SMTP unreachable from the cluster                                                           |
+| The error contains                                            | Means                                                                                                                                                                               |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `5.4.5` (a daily sending limit or quota exceeded)             | The day's quota is spent                                                                                                                                                            |
+| `421 4.7.0` or `454 4.7.0` (try again later, too many logins) | Gmail is throttling the account for now; sends recover by themselves                                                                                                                |
+| `5.7.8` (username and password not accepted)                  | The app password was revoked or changed: set it again with `ENV=prod bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD`, after the rush and at 4 pods (it restarts the backend) |
+| a timeout or connection error                                 | SMTP unreachable from the cluster                                                                                                                                                   |
 
 **What to do when the quota is spent.**
 
@@ -296,9 +307,26 @@ kubectl -n $NS logs -l app.kubernetes.io/name=fmi-codes-backend -c backend --sin
   day. A reset request still answers that the email was sent, so expect questions.
 - Wait it out: the limit lifts within 24 hours, and participants resend their verification
   link from **PROFILE**.
-- Or switch to a second Gmail account once the rush is over: set `MAIL_USERNAME` in
-  `infra/k8s/base/app/backend.yaml` (it is not in the ConfigMap today, so the backend uses the
-  default in `backend/config.py`), merge it, then set that account's app password with
-  `ENV=prod bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD`. Both restart the backend,
-  which is why it waits. Keep that account and its app password ready in the password manager
-  before the day if you want this option.
+- Or switch to a second Gmail account once the rush is over (below). Keep that account and its
+  app password ready in the password manager before the day if you want this option.
+
+**Switch to a second account.** After the rush, and with Flux resumed and the backend back at 4
+pods if it was [scaled](#scale-the-backend): a suspended Kustomization never applies the
+change, and a restart at 6 pods breaks the connection budget. First set `MAIL_USERNAME` in
+`infra/k8s/base/app/backend.yaml` (it is not in the ConfigMap today, so the backend uses the
+default in `backend/config.py`) and merge it. Staging inherits the base, which is harmless
+while its `MAIL_PASSWORD` stays empty. The change alone restarts nothing, and a restart before
+Flux applies it would pair the old username with the new password, so wait for it:
+
+```bash
+flux reconcile kustomization fmi-codes -n flux-system --with-source
+kubectl -n $NS get configmap fmi-codes-backend-config -o jsonpath='{.data.MAIL_USERNAME}{"\n"}'   # the new account
+```
+
+Then set the new account's app password right away, which restarts the backend onto both. Until
+it does, a pod that restarts for any other reason pairs the new username with the old password,
+so keep the gap short:
+
+```bash
+ENV=prod bash infra/k8s/scripts/rotate-secret.sh MAIL_PASSWORD
+```

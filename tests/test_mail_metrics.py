@@ -1,8 +1,15 @@
 """mail_sent_total: every send counted once by kind and result, so a spent quota shows up."""
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from app.services import email_service
 from prometheus_client import REGISTRY
+
+BACKEND_DIR = Path(__file__).parent.parent / "backend"
 
 CONFIG = {"MAIL_USERNAME": "sender@test", "MAIL_PASSWORD": "pw"}
 
@@ -81,8 +88,34 @@ def test_no_credentials_counts_as_skipped_not_failed(monkeypatch, kind):
     assert delta == {"sent": 0.0, "failed": 0.0, "skipped": 1.0}
 
 
-def test_every_series_is_exported_before_any_send(client):
+def test_every_series_is_exported_at_zero_before_any_send():
+    """In a fresh process: the tests above have sent mail in this one, which creates the series.
+
+    Without a 0 sample before its first failure, increase() misses that failure.
+    """
+    env = {k: v for k, v in os.environ.items() if k != "PROMETHEUS_MULTIPROC_DIR"}
+    env["PYTHONPATH"] = str(BACKEND_DIR)
+    code = (
+        "from app.services import email_service\n"
+        "from prometheus_client import generate_latest\n"
+        "print(generate_latest().decode())\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    for kind in SENDERS:
+        for outcome in ("sent", "failed", "skipped"):
+            assert f'mail_sent_total{{kind="{kind}",result="{outcome}"}} 0.0' in result.stdout
+
+
+def test_the_app_exports_every_series(client):
     body = client.get("/metrics").get_data(as_text=True)
     for kind in SENDERS:
-        for result in ("sent", "failed", "skipped"):
-            assert f'mail_sent_total{{kind="{kind}",result="{result}"}}' in body
+        for outcome in ("sent", "failed", "skipped"):
+            assert f'mail_sent_total{{kind="{kind}",result="{outcome}"}}' in body
