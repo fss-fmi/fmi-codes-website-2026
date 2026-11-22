@@ -45,6 +45,10 @@ spec:
               ls -1t /backups/*.sql.gz | tail -n +6 | xargs -r rm --
               echo "Backup written: $file"
           env:
+            # Postgres's tcp_user_timeout ends a session whose reader stalls longer than it,
+            # and pg_dump stops reading whenever gzip's writes to the volume fall behind.
+            - name: PGOPTIONS
+              value: "-c tcp_user_timeout=0"
             - name: PGHOST
               valueFrom:
                 configMapKeyRef:

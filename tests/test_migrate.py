@@ -340,11 +340,16 @@ class TestConnect:
             migrate._connect("bogus")
         assert len(calls) == 1
 
-    def test_every_attempt_has_a_timeout(self, monkeypatch, clock):
+    def test_every_attempt_gets_the_connect_options(self, monkeypatch, clock):
         calls = self._refuse(monkeypatch, refusals=1)
         migrate._connect("postgresql://u:p@h/db")
         migrate._connect({"host": "postgres"})
-        assert all(kw["connect_timeout"] == migrate.CONNECT_ATTEMPT_TIMEOUT for _, kw in calls)
+        assert migrate.CONNECT_OPTIONS["connect_timeout"] == migrate.CONNECT_ATTEMPT_TIMEOUT
+        assert calls == [
+            (("postgresql://u:p@h/db",), migrate.CONNECT_OPTIONS),
+            (("postgresql://u:p@h/db",), migrate.CONNECT_OPTIONS),
+            ((), {"host": "postgres", **migrate.CONNECT_OPTIONS}),
+        ]
 
 
 class TestNotify:

@@ -12,7 +12,9 @@ their own BEGIN/COMMIT.
 Connection: DATABASE_URL if set, otherwise DB_HOST/DB_PORT/DB_NAME/DB_USER/
 DB_PASSWORD (the backend's own variables). The first connection is retried for
 up to CONNECT_WAIT_SECONDS, because after a node or k3s restart the backend's
-initContainer starts alongside Postgres. Results go to the Slack incoming
+initContainer starts alongside Postgres. Every connection gets the backend pool's
+libpq options (CONNECT_OPTIONS), so a silently dead one fails in seconds instead
+of hanging a run that holds the lock. Results go to the Slack incoming
 webhook in SLACK_MIGRATIONS_WEBHOOK_URL when set, labelled with MIGRATION_ENV.
 --notify changes (the initContainer) only logs an unreachable database: every
 replica and every restart hits the same error, and CrashLoopBackOff shows it.
@@ -45,6 +47,16 @@ CONNECT_WAIT_SECONDS = 60
 CONNECT_RETRY_SECONDS = 2
 # Per attempt; without it a dropped SYN hangs on the OS TCP timeout and blows the wait window.
 CONNECT_ATTEMPT_TIMEOUT = 5
+# app.database.CONNECT_OPTIONS, copied so the runner never imports the app package to connect.
+# Like there, they win over the same keys in DATABASE_URL.
+CONNECT_OPTIONS = {
+    "connect_timeout": CONNECT_ATTEMPT_TIMEOUT,
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+    "tcp_user_timeout": 10_000,
+}
 
 _CREATE_TABLE = """
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -97,8 +109,8 @@ def _connect(params: str | dict):
     while True:
         try:
             if isinstance(params, str):
-                return psycopg2.connect(params, connect_timeout=CONNECT_ATTEMPT_TIMEOUT)
-            return psycopg2.connect(**params, connect_timeout=CONNECT_ATTEMPT_TIMEOUT)
+                return psycopg2.connect(params, **CONNECT_OPTIONS)
+            return psycopg2.connect(**{**params, **CONNECT_OPTIONS})
         except psycopg2.OperationalError as e:
             if time.monotonic() + CONNECT_RETRY_SECONDS > deadline:
                 raise

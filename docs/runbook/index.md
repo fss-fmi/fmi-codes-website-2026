@@ -367,6 +367,23 @@ only by re-running this script, which restarts the Postgres pod for a few second
 well before registration opens. The backend needs no restart after it: each checkout pings its
 pooled connection and replaces the ones the restart killed (#277).
 
+Both values files also set Postgres's TCP keepalives (30 s idle, 10 s probes, 3 probes) and
+`tcp_user_timeout = 10000`, the same values the backend's connections use
+(`CONNECT_OPTIONS` in `backend/app/database.py`, checked by `tests/test_connection_timeouts.py`).
+Without them Postgres keeps a silently vanished client's session, and its locks, for about 2 h
+(the OS default keepalive), so one backend pod lost mid-transaction would freeze every team
+change. Like `max_connections`, they reach a running database only through this script. Check
+the live values over TCP, `psql -h 127.0.0.1` as in
+[Restore a migration backup](#restore-a-migration-backup): a Unix-socket session reads 0 for
+all four whether the file is applied or not.
+`SELECT name, setting FROM pg_settings WHERE name LIKE 'tcp_%' ORDER BY name` then returns
+`tcp_keepalives_count` 3, `tcp_keepalives_idle` 30, `tcp_keepalives_interval` 10 and
+`tcp_user_timeout` 10000; an unapplied file shows 9, 7200, 75 and 0. The server's
+`tcp_user_timeout` also ends a session whose client stops reading for more than 10 s, so any
+client that can stall that long sets `PGOPTIONS=-c tcp_user_timeout=0`: the migrate Job's
+`pg_dump` does (gzip's writes to the volume can fall behind), and a `pg_dump`, `\copy` or big
+`SELECT` you run by hand over TCP, a `kubectl port-forward` included, needs the same.
+
 In-cluster addresses the app tier uses: `postgres.<ns>.svc.cluster.local:5432` and
 `redis.<ns>.svc.cluster.local:26379`.
 
