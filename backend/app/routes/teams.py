@@ -11,7 +11,7 @@ from app.services.email_service import send_join_request_notification
 from app.services.team_service import MAX_TEAM_MEMBERS, TeamService
 from app.utils.auth_decorators import (
     captain_required,
-    extract_token,
+    get_optional_user,
     participant_required,
     token_required,
     verified_email_required,
@@ -32,28 +32,21 @@ def get_registered_teams():
     can_apply = False
     participant_id = None
 
-    # Optional auth: try to read JWT (cookie-first, like token_required) but
-    # don't fail if absent/invalid. Reading the cookie is essential — the SPA
-    # authenticates via httpOnly cookie and never sends an Authorization header.
-    token = extract_token()
-    if token:
-        try:
-            from app.services.auth_service import decode_token
-
-            payload = decode_token(token)
-            if payload.get("role") == "participant":
-                participant_id = payload["user_id"]
-                # Check if participant already has a team
-                p = execute_query(
-                    current_app,
-                    "SELECT team_id FROM participants WHERE id = %s AND status = 'active'",
-                    (participant_id,),
-                    fetch_one=True,
-                )
-                if p and not p["team_id"]:
-                    can_apply = True
-        except Exception:
-            pass  # Invalid/expired token — just show read-only view
+    try:
+        payload = get_optional_user()
+        if payload and payload.get("role") == "participant":
+            participant_id = payload["user_id"]
+            p = execute_query(
+                current_app,
+                "SELECT team_id FROM participants WHERE id = %s AND status = 'active'",
+                (participant_id,),
+                fetch_one=True,
+            )
+            if p and not p["team_id"]:
+                can_apply = True
+    except Exception:
+        # The list is public: a failed lookup only costs the caller the Apply view.
+        pass
 
     if can_apply and participant_id:
         # Enrich with already_applied flag
