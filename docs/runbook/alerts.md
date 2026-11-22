@@ -267,12 +267,18 @@ What an operator needs to know (the design is in [ADR-012](../adr/012-flux-recov
   and exclusions, sending the same errors to the relay (`base/flux-relay`, Kustomization
   `fmi-codes-flux-relay`) at `/cluster` or `/staging`. Change both together:
   `tests/test_flux_relay.py` fails if a twin drifts from its Slack Alert.
-- The relay claims an error's post within 3 minutes. An error that never reached Slack
-  (excluded, or the webhook failed) gets no reply.
-- It checks each open incident's `Ready` condition every 15 seconds. An error that never made
-  the object unready (a Helm drift, a failed prune) closes after 15 quiet minutes.
+- The relay finds the error's post in that route's channel by the object (`kind/name.namespace`,
+  the post's author line) and the message as a reader sees it (Slack stores a URL as `<url>`
+  link markup), within 3 minutes. An error that never reached Slack (excluded, or the webhook
+  failed) gets no reply.
+- It reads each open incident's object every 15 seconds. The object has recovered when `Ready`
+  is `True` for its current generation and either turned `True` after the error or was seen
+  `False` since. Recovery comes from the object, not from Flux's info events, because a
+  HelmRelease that comes back in sync without a Helm action sends none. An error that never
+  made the object unready (a Helm drift, a failed prune) closes after 15 quiet minutes.
 - Open incidents live in the ConfigMap `flux-system/flux-relay-state`, so a restart (every WSL
-  boot) picks up where it left off.
+  boot) picks up where it left off. Flux creates it once and never resets it.
+- If the incident's first post was deleted, the recovery gets only the reactions, no reply.
 - Two clusters posting to one channel (the prod server and a staging-only box in
   `#cluster-alerts-staging`) can swap posts only if the same object fails with the same message
   on both within seconds.

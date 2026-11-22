@@ -57,6 +57,7 @@ graph LR
 | Write or run tests                                   | [Testing](testing.md)                         |
 | Release to staging and prod, configure, roll back    | [Deployment](deployment.md)                   |
 | Stand up or operate the k3s cluster from scratch     | [Cluster Runbook](runbook/index.md)           |
+| Set up the bot app, Slack PR feed and CI alerts      | [GitHub Automation](github-automation.md)     |
 | Look up a domain term (captain, queue, assignment)   | [Glossary](glossary.md)                       |
 
 ## Repository

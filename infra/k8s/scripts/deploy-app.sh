@@ -153,5 +153,5 @@ DISCORD_BUG_WEBHOOK_URL, SLACK_BUG_WEBHOOK_URL, SLACK_MIGRATIONS_WEBHOOK_URL) in
 command (prompts for the value; --generate for a random one):
     ENV=$ENV bash infra/k8s/scripts/rotate-secret.sh <KEY>
 
-See docs/runbook/index.md 'Phase 3' and 'Phase 5' for the full checklists.
+See docs/runbook/index.md 'Phase 3' and docs/runbook/secrets.md for the full checklists.
 EOF

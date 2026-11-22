@@ -407,7 +407,7 @@ cat <<EOF
 Grafana and staging (with --with-flux) need no hosts entry: they are reachable only over
 Tailscale, at the addresses \`kubectl -n monitoring get ingress grafana\` and
 \`kubectl -n ingress-nginx-staging get ingress staging\` show.
-Setup and handover: docs/runbook/index.md 'Phase 7'.
+Setup and handover: docs/runbook/tailscale.md.
 EOF
 
 # Without --with-flux this run never touches the cluster-wide Secrets, so on a staging-only box

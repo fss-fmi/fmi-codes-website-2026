@@ -83,7 +83,7 @@ command -v helm    >/dev/null 2>&1 || die "helm not found — run install-tools.
 if [ "$ENV" = "prod" ] && [ "$SERVE_PROD_TUNNEL" = "true" ]; then
   command -v sops >/dev/null 2>&1 || die "sops not found — run install-tools.sh first."
   [ -f "$TUNNEL_SECRET_ENC" ] \
-    || die "missing $TUNNEL_SECRET_ENC — create the tunnel first (docs/runbook/cloudflare.md 'Cloudflare Tunnel')."
+    || die "missing $TUNNEL_SECRET_ENC — create the tunnel first (docs/runbook/cloudflare.md 'Set up the tunnel')."
 fi
 
 kubectl cluster-info >/dev/null 2>&1 \
@@ -212,7 +212,7 @@ Networking is up (Phase 4). Prod is reachable only through the Cloudflare Tunnel
     /        -> frontend:80
 
 The first time, point the hostname at the tunnel from a machine signed in with cloudflared
-(docs/runbook/cloudflare.md 'Cloudflare Tunnel'). Only one cluster may run the prod tunnel at a time.
+(docs/runbook/cloudflare.md 'Set up the tunnel'). Only one cluster may run the prod tunnel at a time.
 
 Verify against the issue's acceptance criteria (see docs/runbook/cloudflare.md 'Serving the tunnel'):
 

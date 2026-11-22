@@ -187,7 +187,7 @@ $(printf '\033[1;32m')Bring-up complete. The stack is up in namespace '$NAMESPAC
 
 Prod is reachable only through the Cloudflare Tunnel, at $HOST_URL from anywhere (no hosts
 entry, no DNS record to set here). The first time, point $HOST at the tunnel
-(docs/runbook/cloudflare.md 'Cloudflare Tunnel'). Only one cluster may run the prod tunnel at a time.
+(docs/runbook/cloudflare.md 'Set up the tunnel'). Only one cluster may run the prod tunnel at a time.
 
 Verify the stack:
   kubectl -n $NAMESPACE get pods

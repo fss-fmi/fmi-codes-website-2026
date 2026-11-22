@@ -15,7 +15,7 @@ DB/Redis passwords are deliberately **not** in SOPS — they're PVC-coupled and 
 in-cluster ([Phase 2](index.md#2--stateful-tier-postgres--redis-sentinel)). SOPS owns the
 `fmi-codes-app` values, the cluster-wide Grafana admin, Tailscale OAuth, Alertmanager webhook
 and Flux Relay secrets ([Phase 7](index.md#7--observability-prometheus--grafana)) and prod's
-Cloudflare Tunnel credentials ([Cloudflare Tunnel](cloudflare.md)).
+Cloudflare Tunnel credentials ([Set up the tunnel](cloudflare.md#set-up-the-tunnel)).
 
 Getting the age key onto a machine is covered in the setup guide (paste it when bootstrap
 prompts) and [Forking: use your own keys](#forking-use-your-own-keys) (mint your own). Back
@@ -277,9 +277,10 @@ sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/flux-relay-slack.enc.yaml
 # (prod: the same files under infra/k8s/secrets/, minus tailscale-oauth; prod's
-# cloudflared-tunnel.enc.yaml comes from your own tunnel, see Cloudflare Tunnel). tailscale-oauth can
-# stay empty until your tailnet exists (Phase 7), alertmanager-slack until you have a Slack webhook
-# (Cluster alerts), flux-relay-slack until you have the Flux Relay app (Recovery replies).
+# cloudflared-tunnel.enc.yaml comes from your own tunnel, see cloudflare.md 'Set up the tunnel').
+# tailscale-oauth can stay empty until your tailnet exists (tailscale.md 'Tailscale setup'),
+# alertmanager-slack until you have a Slack webhook (alerts.md 'Setup'), flux-relay-slack until
+# you have the Flux Relay app (alerts.md 'Set up the Flux Relay').
 # Staging's secrets.enc.yaml also needs a FRONTEND_ORIGIN key: your
 # https://staging.<tailnet>.ts.net, or "" until you know it.
 

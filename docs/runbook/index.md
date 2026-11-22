@@ -106,7 +106,7 @@ that serves `fmicodes.com`).
 - **Prod needs outbound internet only.** No public address, no open port, no router setup and
   no DNS change per server: prod is reached through the Cloudflare Tunnel that `cloudflared` in
   the cluster dials out to. The tunnel and its DNS record are made once, not per server
-  ([Cloudflare Tunnel](cloudflare.md#cloudflare-tunnel)). Staging needs no DNS or hosts entry: it is reached
+  ([Set up the tunnel](cloudflare.md#set-up-the-tunnel)). Staging needs no DNS or hosts entry: it is reached
   over the tailnet.
 - **For staging, the `fss-fmi` tailnet** ([Tailscale setup](tailscale.md#tailscale-setup-once-per-tailnet))
   and `--with-flux`: Flux installs the Tailscale operator that serves staging. Without them
@@ -131,7 +131,7 @@ Nothing to create by hand — the passwords split three ways and every one is ha
 | `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                                                  | **staging's file only**, used by every cluster ([why](tailscale.md#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](tailscale.md#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                        |
 | `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                                                    | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](alerts.md#cluster-alerts))                                                                               |
 | `flux-relay-slack` (SOPS, in git)   | `bot_token`, `cluster_channel`, `staging_channel` (the Flux Relay Slack app's token and the two channel IDs)                                                                                                           | committed **empty**; `deploy-observability.sh` applies it to `flux-system`. Until it's filled the relay idles and Flux errors get no "recovered" reply. Set them with `rotate-secret.sh --flux-relay <key>` ([Recovery replies](alerts.md#recovery-replies))                                                   |
-| `cloudflared-tunnel` (SOPS, in git) | `credentials.json` (the prod tunnel's credentials file)                                                                                                                                                                | **prod only**, committed encrypted; `deploy-ingress.sh` applies it only with `SERVE_PROD_TUNNEL=true`, on the one cluster that serves prod. Made once per tunnel ([Cloudflare Tunnel](cloudflare.md#cloudflare-tunnel))                                                                                        |
+| `cloudflared-tunnel` (SOPS, in git) | `credentials.json` (the prod tunnel's credentials file)                                                                                                                                                                | **prod only**, committed encrypted; `deploy-ingress.sh` applies it only with `SERVE_PROD_TUNNEL=true`, on the one cluster that serves prod. Made once per tunnel ([Set up the tunnel](cloudflare.md#set-up-the-tunnel))                                                                                        |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -187,7 +187,7 @@ It's idempotent and resumable — if a step fails, fix the cause and re-run with
 ### 4. Point the host at the cluster
 
 **Prod:** nothing per server. `fmicodes.com` points at the tunnel, not at a machine, so once its
-DNS record exists ([Cloudflare Tunnel](cloudflare.md#cloudflare-tunnel), step 4) whichever cluster runs the
+DNS record exists ([Set up the tunnel](cloudflare.md#set-up-the-tunnel), step 4) whichever cluster runs the
 tunnel serves it. Only one cluster may run it at a time
 ([Move prod to another cluster](cloudflare.md#move-prod-to-another-cluster)).
 
@@ -742,7 +742,7 @@ To deploy this under your own project — your Docker Hub, your domain, your key
   staging's `secrets.enc.yaml` to your `https://staging.<tailnet>.ts.net`.
 - **Cloudflare Tunnel** — your own zone and tunnel, with its ID in `cloudflared-config.yaml`
   and its credentials in `secrets/cloudflared-tunnel.enc.yaml`, per
-  [Cloudflare Tunnel](cloudflare.md#cloudflare-tunnel).
+  [Set up the tunnel](cloudflare.md#set-up-the-tunnel).
 - **Flux git URL / deploy key** — `flux-bootstrap.sh` defaults to
   `ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git`; override with
   `GIT_URL=… bash …` and add your own deploy key (step 6).

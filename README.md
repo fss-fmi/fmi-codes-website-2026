@@ -6,18 +6,19 @@ The **FMI{Codes} hackathon platform**: one web app for participants, mentors and
 
 The full documentation is published at **https://fss-fmi.github.io/fmi-codes-website-2026/**. The source is the Markdown in [`docs/`](docs/):
 
-| Doc                                          | What it covers                                                     |
-| -------------------------------------------- | ------------------------------------------------------------------ |
-| [docs/architecture.md](docs/architecture.md) | Components, request flow, matching algorithm, key decisions        |
-| [docs/onboarding.md](docs/onboarding.md)     | Get it running locally, run tests, make a change                   |
-| [docs/testing.md](docs/testing.md)           | Test layers, fixtures, mocking boundary, CI                        |
-| [docs/deployment.md](docs/deployment.md)     | How a change reaches staging and prod (summary of the k3s runbook) |
-| [docs/runbook/](docs/runbook/index.md)       | Full operator runbook for the cluster                              |
-| [docs/glossary.md](docs/glossary.md)         | Domain terms: teams, queue, captain, preferences, matching         |
-| [docs/api.md](docs/api.md)                   | Every REST endpoint with auth, request and response shapes         |
-| [docs/data.md](docs/data.md)                 | Database schema, ER diagram, seeds, migrations                     |
-| [docs/user-guide.md](docs/user-guide.md)     | How participants, mentors and admins use the site                  |
-| [docs/adr/](docs/adr/)                       | Architecture Decision Records                                      |
+| Doc                                                    | What it covers                                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------------ |
+| [docs/architecture.md](docs/architecture.md)           | Components, request flow, matching algorithm, key decisions        |
+| [docs/onboarding.md](docs/onboarding.md)               | Get it running locally, run tests, make a change                   |
+| [docs/testing.md](docs/testing.md)                     | Test layers, fixtures, mocking boundary, CI                        |
+| [docs/deployment.md](docs/deployment.md)               | How a change reaches staging and prod (summary of the k3s runbook) |
+| [docs/runbook/](docs/runbook/index.md)                 | Full operator runbook for the cluster                              |
+| [docs/github-automation.md](docs/github-automation.md) | The GitHub bot app, Slack PR feed and CI alerts                    |
+| [docs/glossary.md](docs/glossary.md)                   | Domain terms: teams, queue, captain, preferences, matching         |
+| [docs/api.md](docs/api.md)                             | Every REST endpoint with auth, request and response shapes         |
+| [docs/data.md](docs/data.md)                           | Database schema, ER diagram, seeds, migrations                     |
+| [docs/user-guide.md](docs/user-guide.md)               | How participants, mentors and admins use the site                  |
+| [docs/adr/](docs/adr/)                                 | Architecture Decision Records                                      |
 
 Preview the site locally with `pip install -r docs/requirements.txt` then `mkdocs serve`.
 
@@ -121,7 +122,7 @@ The full step-by-step runbook — with per-phase verification, secret rotation, 
 **Prerequisites**
 
 - Debian/Ubuntu Linux (the scripts are apt + bash; k3s is Linux-native).
-- For **prod**: nothing on the server or router. Prod is reached only through a Cloudflare Tunnel that `cloudflared` in the cluster dials out to, so it needs outbound internet only; the tunnel and its DNS record are set up once ([runbook](docs/runbook/cloudflare.md)). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook/tailscale.md#access-grafana-and-staging)).
+- For **prod**: nothing on the server or router. Prod is reached only through a Cloudflare Tunnel that `cloudflared` in the cluster dials out to, so it needs outbound internet only; the tunnel and its DNS record are set up once ([runbook](docs/runbook/cloudflare.md#set-up-the-tunnel)). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook/tailscale.md#access-grafana-and-staging)).
 - The **age private key** for the environment you're deploying (SOPS decrypts the committed secrets with it). Generate/obtain per the runbook's [Secrets](docs/runbook/secrets.md) page.
 
 **Bring it up** — one front-door script runs the whole sequence (tools → k3s → Postgres/Redis → app → ingress) in order:
