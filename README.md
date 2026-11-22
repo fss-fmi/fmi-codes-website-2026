@@ -1,181 +1,25 @@
 # FMI{Codes} 2026
 
-The **FMI{Codes} hackathon platform**: one web app for participants, mentors and the organizers. Participants register, form teams (join by code or browse-and-apply) and land on the registration queue. Mentors publish their profiles and rank teams. An admin runs a Gale-Shapley matching pass that gives every team 2-3 mentors (never more than 3) from their mutual preferences, then enters final scores that publish to a live leaderboard.
+The platform behind **FMI{Codes}**, a 48-hour student hackathon. It runs everything around the coding itself: participant registration, team formation, the 18 event slots and their waiting queue, mentor and team preferences, mentor matching and the published results. Code lives in public GitHub repos, team chat happens on Discord and judging is done by an in-person jury.
+
+One web app serves three kinds of users:
+
+- **Participants** register, create or join a team (by join code or by applying) and, as captain, rank mentors.
+- **Mentors** publish a profile, rank teams and see the teams they are assigned.
+- **The admin** runs Mission Control: registration slots, feature switches, mentor matching (Gale-Shapley plus a greedy fill, 2 or 3 mentors per team) and the final scores for the live leaderboard.
+
+**Stack:** React 19 + TypeScript SPA (Vite, Tailwind) · Flask 3 API on Python 3.12 · PostgreSQL 16 · Redis (optional). Deployed to a self-hosted k3s cluster with a staging and prod split, Kustomize, SOPS and Flux GitOps.
+
+## Repository
+
+```
+backend/     Flask API, schema, migrations and seed data
+frontend/    React SPA and its Nginx image
+tests/       Backend unit tests and API integration tests (tests/e2e/)
+infra/k8s/   Cluster manifests and scripts (bootstrap.sh runs them)
+docs/        All documentation, published to GitHub Pages
+```
 
 ## Documentation
 
-The full documentation is published at **https://fss-fmi.github.io/fmi-codes-website-2026/**. The source is the Markdown in [`docs/`](docs/):
-
-| Doc                                                    | What it covers                                                     |
-| ------------------------------------------------------ | ------------------------------------------------------------------ |
-| [docs/architecture.md](docs/architecture.md)           | Components, request flow, matching algorithm, key decisions        |
-| [docs/onboarding.md](docs/onboarding.md)               | Get it running locally, run tests, make a change                   |
-| [docs/testing.md](docs/testing.md)                     | Test layers, fixtures, mocking boundary, CI                        |
-| [docs/deployment.md](docs/deployment.md)               | How a change reaches staging and prod (summary of the k3s runbook) |
-| [docs/runbook/](docs/runbook/index.md)                 | Full operator runbook for the cluster                              |
-| [docs/github-automation.md](docs/github-automation.md) | The GitHub bot app, Slack PR feed and CI alerts                    |
-| [docs/glossary.md](docs/glossary.md)                   | Domain terms: teams, queue, captain, preferences, matching         |
-| [docs/api.md](docs/api.md)                             | Every REST endpoint with auth, request and response shapes         |
-| [docs/data.md](docs/data.md)                           | Database schema, ER diagram, seeds, migrations                     |
-| [docs/user-guide.md](docs/user-guide.md)               | How participants, mentors and admins use the site                  |
-| [docs/adr/](docs/adr/)                                 | Architecture Decision Records                                      |
-
-Preview the site locally with `pip install -r docs/requirements.txt` then `mkdocs serve`.
-
-**Stack:** Flask 3 / Python 3.12 (Gunicorn in prod) · PostgreSQL 16 · Redis (rate limiting, JWT revocation, caches) · React 19 + TypeScript + Vite + Tailwind SPA. Deployed to a self-hosted **k3s** cluster with a staging/prod split (Kustomize + SOPS + Flux GitOps).
-
----
-
-## Repo layout
-
-```
-backend/     Flask API — app/ (routes, services, utils), database/ (schema.sql, migrations, seeds),
-             config.py, run_server.py (dev), wsgi.py + gunicorn.conf.py (gunicorn), Dockerfile
-frontend/    React + Vite SPA — src/, vite.config.ts, nginx.conf, Dockerfile
-infra/k8s/   Full cluster deployment — scripts/, base/, overlays/{prod,staging}, helm-values/, flux/
-docs/        All documentation (published to GitHub Pages via mkdocs.yml), incl. the cluster runbook in runbook/
-dev.py       One-command local dev: backend hot-reload + frontend HMR together
-docker-compose.dev.yml   Local full stack in Docker (single Redis, hot reload)
-docker-compose.yml       Prod-like stack (Redis Sentinel HA — for exercising failover locally)
-.env.example             Environment template — copy to .env
-```
-
----
-
-## Local development
-
-**1. Configure env**
-
-```bash
-cp .env.example .env
-```
-
-Fill in `SECRET_KEY`, `JWT_SECRET_KEY`, `DB_PASSWORD`, and `ADMIN_PASSWORD_HASH` (the file has the generator commands inline). Everything else has a sane local default. `.env` is gitignored.
-
-**2. Pick a way to run it**
-
-| Command                                      | What you get                                                                                                                                                                                               |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `python dev.py`                              | Backend (`:5001`, Flask reload) + frontend (`:5173`, Vite HMR) together. Needs Python 3.12, Node 22, and a reachable Postgres. **The daily driver.**                                                       |
-| `docker compose up --build`                  | The whole stack in Docker — Postgres + single Redis + backend + frontend, all hot-reloading. Only needs Docker.                                                                                            |
-| `docker compose -f docker-compose.yml up -d` | Prod-like stack with the Redis Sentinel topology (1 master + 2 replicas + 3 sentinels). Use it to rehearse a failover: `docker kill fmi-codes-redis-master` and watch the app follow the promoted replica. |
-
-API → **http://localhost:5001** (JSON only, every route lives under `/api`), SPA dev server → **http://localhost:5173** (proxies `/api` to the backend). Seed data (universities, specialties, mentors) loads automatically on first backend start.
-
-**Database (for `python dev.py`)** — create it once and apply the authoritative schema; `schema.sql` already folds in every migration, so a fresh setup needs nothing from `database/migrations/`:
-
-```bash
-psql -U postgres -c "CREATE DATABASE fmi_hackathon_2026;"
-psql -U postgres -d fmi_hackathon_2026 -f backend/database/schema.sql
-```
-
----
-
-## Tests
-
-```bash
-# Run from the repo root (tests/ lives there, not under backend/)
-# Backend unit tests: no DB or .env needed
-pytest tests/ --ignore=tests/e2e -v
-# Backend API integration tests: need a reachable Postgres with an existing
-# fmi_hackathon_2026_test database (schema is applied automatically; the suite
-# skips itself if Postgres is unreachable). Override with TEST_DATABASE_URL.
-pytest tests/e2e/ -v
-
-# Frontend
-cd frontend && npm test
-```
-
----
-
-## Environment variables
-
-`.env.example` is the complete list with inline notes — copy it and fill in the blanks. The ones with no safe default that **must** be set:
-
-| Variable                       | Notes                                                                                    |
-| ------------------------------ | ---------------------------------------------------------------------------------------- |
-| `SECRET_KEY`, `JWT_SECRET_KEY` | Flask/JWT signing. Production **hard-fails at startup** if unset or weak.                |
-| `ADMIN_PASSWORD_HASH`          | bcrypt hash of the admin password (never the plaintext). Production hard-fails if unset. |
-| `DB_PASSWORD`                  | Postgres password.                                                                       |
-
-Everything else (mail, the email-verification flag, contact links, Redis timeouts, pool sizes) has a default and is optional for local dev. Redis is optional entirely — leave every `REDIS_*` unset and the app degrades gracefully (in-memory rate limiting, DB/file fallbacks), though token revocation is effectively off without a shared Redis, so configure it in production.
-
----
-
-## Deployment (k3s: staging + prod)
-
-The app is deployed to a self-hosted single-node **k3s** cluster. Staging and prod live on the same node, isolated by namespace, built from one shared `base/` via Kustomize overlays:
-
-|           | prod                               | staging                                     |
-| --------- | ---------------------------------- | ------------------------------------------- |
-| namespace | `fmi-codes`                        | `fmi-codes-staging`                         |
-| host      | `fmicodes.com` (Cloudflare Tunnel) | `staging.<tailnet>.ts.net` (tailnet only)   |
-| TLS       | Cloudflare's edge certificate      | the Tailscale proxy's certificate (trusted) |
-| deploy    | manual promote (human-merged PR)   | automatic on every push to `main`           |
-
-Images are built and pushed to Docker Hub (`fssfmi/fmi-codes-backend`, `fssfmi/fmi-codes-frontend`) by `.github/workflows/docker-cd.yaml` on each push to `main`. Flux, running **inside** the cluster, pulls: it auto-bumps the **staging** overlay to the newest tag; **prod** only moves when the `promote-to-prod` workflow opens a PR and a human merges it.
-
-### Stand it up on a fresh Linux server
-
-The full step-by-step runbook — with per-phase verification, secret rotation, GitOps wiring, and teardown — is **[`docs/runbook/`](docs/runbook/index.md)**. The short version:
-
-**Prerequisites**
-
-- Debian/Ubuntu Linux (the scripts are apt + bash; k3s is Linux-native).
-- For **prod**: nothing on the server or router. Prod is reached only through a Cloudflare Tunnel that `cloudflared` in the cluster dials out to, so it needs outbound internet only; the tunnel and its DNS record are set up once ([runbook](docs/runbook/cloudflare.md#set-up-the-tunnel)). **Staging** needs no DNS: it is reached over the `fss-fmi` Tailscale tailnet ([runbook](docs/runbook/tailscale.md#access-grafana-and-staging)).
-- The **age private key** for the environment you're deploying (SOPS decrypts the committed secrets with it). Generate/obtain per the runbook's [Secrets](docs/runbook/secrets.md) page.
-
-**Bring it up** — one front-door script runs the whole sequence (tools → k3s → Postgres/Redis → app → ingress) in order:
-
-```bash
-./bootstrap.sh              # staging (the default)
-./bootstrap.sh --env prod   # production — deliberate opt-in
-```
-
-Prod serves `fmicodes.com` only when run with `SERVE_PROD_TUNNEL=true`, on the one cluster that runs prod ([runbook](docs/runbook/cloudflare.md#move-prod-to-another-cluster)).
-
-It's idempotent and resumable (`--from N`). Flux (continuous deploy) is opt-in: `bash infra/k8s/scripts/init-linux.sh --with-flux` after a one-time SSH deploy-key setup.
-
-### What changes to hit _your own_ cluster
-
-Runtime config is split in two — this is what you edit to point the deployment at your infrastructure:
-
-- **Non-secret config → the `fmi-codes-backend-config` ConfigMap.** Keys: `FLASK_ENV`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `REDIS_SENTINELS`, `REDIS_MASTER_NAME`, `REDIS_URL`, `FRONTEND_ORIGIN` (prod only; staging's is in its SOPS secret), `REQUIRE_EMAIL_VERIFICATION`. Registration, preference submission, rankings and the mentor roster are not config: the admin switches or schedules them in Mission Control (SITE tab) and they live in the database ([ADR-013](docs/adr/013-feature-flags-in-database.md)). Global values live in `infra/k8s/base/app/backend.yaml`; staging's overrides in `infra/k8s/overlays/staging/backend-config-patch.yaml`. With Flux, change one in git, merge it, then run `bash infra/k8s/scripts/apply-config.sh` to apply `main` and restart the backend; without Flux, `apply-config.sh <KEY> <VALUE>` patches it live (see [Change a config value](docs/runbook/index.md#change-a-config-value)).
-- **App secrets → SOPS-encrypted `Secret` (`fmi-codes-app`).** Keys: `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`, and on staging `FRONTEND_ORIGIN` (its tailnet URL). Edit with `sops infra/k8s/secrets/secrets.enc.yaml` (prod) or `sops infra/k8s/overlays/staging/secrets/secrets.enc.yaml` (staging), or rotate one key with `bash infra/k8s/scripts/rotate-secret.sh <KEY>` (prompts for the value; never pass it as an argument). Per-secret rotation guide: [docs/runbook/secrets.md](docs/runbook/secrets.md#rotate-a-secret).
-- **DB / Redis passwords** are generated in-cluster by `deploy-stateful.sh` and never committed (they're coupled to the datastore PVC). Rotate them without data loss with `bash infra/k8s/scripts/rotate-datastore-password.sh db|db-admin|redis`.
-
-Forking this to a different domain or registry means updating the hostname (`base/ingress/ingress.yaml` and `FRONTEND_ORIGIN`; staging's comes from your tailnet), the image names (`base/app/*.yaml`, `overlays/*/kustomization.yaml`, `docker-cd.yaml`, `flux/image-automation.yaml`), the age recipients in `.sops.yaml`, and the Flux git URL/deploy key. Details in the runbook.
-
----
-
-## How it works
-
-### Teams & registration queue
-
-A participant who creates a team becomes its **captain** and gets a unique `join_code`. Others join by entering that code, or by browsing `/browseTeams` and applying for the captain to accept. Teams auto-activate at 3 members, auto-deactivate below 3, and cap at 6. The first 18 active teams are auto-**registered**; the rest sit in a numbered queue, and when a registered team drops out the first queued team is promoted. All queue mutations take `pg_advisory_xact_lock(1)` for concurrency safety.
-
-### Mentors & Gale-Shapley matching
-
-Mentors are seeded from `backend/database/seeds/mentors.json` and shown on `/mentors`. Captains rank exactly 3 mentors; mentors rank exactly 3 registered teams. An admin triggers `POST /api/admin/run-matching`, which runs in two phases:
-
-1. **Gale-Shapley (mentor-proposing, many-to-many).** Each team holds at most 3 mentors, each mentor at most 3 teams. Teams keep the mentors they ranked highest and bump the rest.
-2. **Greedy fill.** Any team still below 3 mentors is topped up with the least-loaded mentors that have room, even ones the team did not rank.
-
-The goal is 2-3 mentors per team and never more than 3. If there are not enough mentor slots, the run succeeds with a warning naming how many teams came up short. Results go to `team_mentors`; teams and mentors only see them after the admin confirms. Full walkthrough in [docs/architecture.md](docs/architecture.md#matching-algorithm).
-
-### Auth
-
-JWT (HS256, 3-day expiry) issued on login and set as an **httpOnly `token` cookie** (`SameSite=Lax`, `Secure` in production). The backend also accepts `Authorization: Bearer <token>` for tooling. Tokens are validated by the `@token_required` decorator family. Logout and password changes revoke the token's `jti` in a Redis blocklist; a password change or reset also bumps a per-user `tokens_valid_from` epoch that kills every older session. Password reset uses a one-hour emailed link.
-
-### Bug reporting
-
-The bug bubble on every page posts to `/api/bug-report`, which forwards to Discord via `DISCORD_BUG_WEBHOOK_URL` and to Slack via `SLACK_BUG_WEBHOOK_URL`, to each one that is set (fire-and-forget on a bounded thread pool, never blocks the request; one failing doesn't affect the other). Neither configured means the report is dropped with a logged warning. Reports from logged-in users carry their name and email; everyone else, including visitors on the registration page, reports anonymously.
-
----
-
-## Default credentials
-
-| Role   | Email                                       | Password                                                                                       |
-| ------ | ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Admin  | `ADMIN_EMAIL` (default `admin@fmicodes.bg`) | Whatever plaintext you bcrypt-hashed into `ADMIN_PASSWORD_HASH`. There is no built-in default. |
-| Mentor | see `backend/database/seeds/mentors.json`   | `mentor123` (the seed loader's default when an entry has no `password`)                        |
+Everything else (local setup, architecture, API, data model, testing, deployment and the cluster runbook) is at **https://fss-fmi.github.io/fmi-codes-website-2026/**, built from the Markdown in [`docs/`](docs/). Start with [Getting Started](docs/onboarding.md) to run it locally.
