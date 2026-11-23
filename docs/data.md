@@ -127,7 +127,7 @@ Trigger `trig_prevent_team_deletion` blocks deleting a team that still has activ
 
 ### team_join_requests
 
-One row per (participant, team) pair; re-applying reopens the row. `status`: `pending`, `accepted`, `declined`, `invalidated` (applicant joined another team, or the team was disbanded), `cancelled` (withdrawn by the applicant).
+One row per (participant, team) pair; re-applying reopens the row. `status`: `pending`, `accepted`, `declined`, `invalidated` (the applicant got onto a team first: accepted elsewhere, joined with a code or created a team), `cancelled` (withdrawn by the applicant). Disbanding a team deletes all its rows (`ON DELETE CASCADE` on `team_id`), whatever their status.
 
 ### team_mentor_preferences / mentor_team_preferences
 

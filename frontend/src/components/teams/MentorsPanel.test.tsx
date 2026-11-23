@@ -57,4 +57,19 @@ test('a submitted ranking still shows while submissions are closed', () => {
   renderPanel({ isRegistered: true, withPrefs: true, preferencesOpen: false });
   expect(screen.getByText('Ana Petrova')).toBeInTheDocument();
   expect(screen.getByText(/waiting for matching/i)).toBeInTheDocument();
+  expect(screen.queryByText('UPDATE PREFERENCES')).toBeNull();
+});
+
+test('the captain can go back and update a submitted ranking while submissions are open', () => {
+  renderPanel({ isRegistered: true, withPrefs: true });
+  expect(screen.getByText('UPDATE PREFERENCES').closest('a')).toHaveAttribute(
+    'href',
+    '/chooseMentor',
+  );
+});
+
+test('a member who is not captain gets no update link', () => {
+  renderPanel({ isRegistered: true, withPrefs: true, isCaptain: false });
+  expect(screen.getByText(/waiting for matching/i)).toBeInTheDocument();
+  expect(screen.queryByText('UPDATE PREFERENCES')).toBeNull();
 });

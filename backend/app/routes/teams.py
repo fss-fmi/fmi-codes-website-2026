@@ -153,6 +153,8 @@ def join_team():
 
     success, message, team = TeamService.join_team(g.current_user["user_id"], join_code)
     if success:
+        if team:
+            team.pop("join_code", None)
         return jsonify({"success": True, "message": message, "team": team}), 200
     return jsonify({"success": False, "error": message}), 400
 
@@ -207,8 +209,11 @@ def get_team(team_id):
     )
     team_dict["mentors"] = [dict(mt) for mt in mentors]
 
-    # Only show join_code to team members
-    if not is_member and user["role"] != "admin":
+    # Anyone holding the code joins without approval, so only the captain and the admin get it.
+    is_team_captain = (
+        user["role"] == "participant" and team_dict.get("captain_id") == user["user_id"]
+    )
+    if not is_team_captain and user["role"] != "admin":
         team_dict.pop("join_code", None)
     team_dict.pop("password_hash", None)
 

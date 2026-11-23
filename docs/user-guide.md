@@ -51,7 +51,7 @@ Teams have 3 to 6 members. The team page offers three ways in:
 
 **Join with a code.** Click **JOIN WITH CODE**, enter the code your captain sent you and click **JOIN TEAM**. You join immediately, no approval needed.
 
-**Apply to a team.** Click **BROWSE TEAMS** to see teams with free spots, then click **APPLY TO JOIN**. The captain gets an email and decides. Your applications and their status appear under **MY APPLICATIONS** on the team page. Click **WITHDRAW** to cancel one that is still pending. When a captain accepts you, your other pending applications are cancelled automatically.
+**Apply to a team.** Click **BROWSE TEAMS** to see teams with free spots, then click **APPLY TO JOIN**. The captain gets an email and decides. Your applications and their status appear under **MY APPLICATIONS** on the team page. Click **WITHDRAW** to cancel one that is still pending. Once you are on a team (a captain accepted you, you joined with a code or you created one), your other pending applications close by themselves and show **INVALIDATED**. If a team you applied to is disbanded, your application to it disappears.
 
 You can also apply from the public **TEAMS** page when you do not have a team yet.
 
@@ -85,7 +85,7 @@ Once your team is registered (it holds one of the 18 event slots), the **MENTORS
 3. Drag them into order (**STEP 2**), with your first choice at the top. You can also use Space and the arrow keys.
 4. Click **SUBMIT PREFERENCES**.
 
-The page switches to **SUBMISSION ACCEPTED** with "Preferences saved successfully." and your ranking in order, and shows it again whenever you come back. Until the organizers confirm the matching you can click **UPDATE PREFERENCES** to reopen both steps with your saved ranking filled in (a mentor who has left the event drops out, so pick a replacement); the last button then reads **UPDATE PREFERENCES** and the panel comes back with the new ranking and "Preferences updated." **CANCEL** on the first step keeps your saved ranking. If a submission fails, the form stays open with the error above it. Teammates see "Preferences submitted. Waiting for matching."
+The page switches to **SUBMISSION ACCEPTED** with "Preferences saved successfully." and your ranking in order, and shows it again whenever you come back. Until the organizers confirm the matching you can click **UPDATE PREFERENCES** to reopen both steps with your saved ranking filled in (a mentor who has left the event drops out, so pick a replacement); the last button then reads **UPDATE PREFERENCES** and the panel comes back with the new ranking and "Preferences updated." **CANCEL** on the first step keeps your saved ranking. If a submission fails, the form stays open with the error above it. Back on the team page, the **MENTORS** panel lists the ranking with "Preferences submitted. Waiting for matching." for the whole team; while submissions are open and the matching isn't confirmed, you also get an **UPDATE PREFERENCES** button there that brings you back to this page.
 
 Rankings can only be submitted while the organizers have preference submission open. While it is closed, the **MENTORS** panel says so instead of showing **CHOOSE MENTORS**, and **CHOOSE YOUR MENTORS** shows your saved ranking without **UPDATE PREFERENCES**, or **SUBMISSIONS CLOSED** if your team never submitted. If it closes while you are editing, the page drops back to your saved ranking. Open pages follow a change within 30 seconds.
 
@@ -101,7 +101,7 @@ After judging, the organizers publish scores. **RANKINGS** shows the top 3 on a 
 
 ### Your profile
 
-**PROFILE** shows your details, team and join code, and whether your email is **VERIFIED** or **NOT VERIFIED**. Use **CHANGE PASSWORD** to set a new password; you stay logged in on this device and every other device is signed out.
+**PROFILE** shows your details and team (a captain also sees the join code), and whether your email is **VERIFIED** or **NOT VERIFIED**. Use **CHANGE PASSWORD** to set a new password; you stay logged in on this device and every other device is signed out.
 
 ### Forgot your password
 
@@ -119,7 +119,7 @@ Your account is created by the organizers. They will tell you your login email a
 2. Select **MENTOR** (on a phone, pick it from the **SIGN IN AS** dropdown).
 3. Enter your email and password and click **SIGN IN**.
 
-You land on the **MENTOR DASHBOARD**. Change your initial password right away under **PROFILE → CHANGE PASSWORD**.
+You land on the **MENTOR DASHBOARD** (**DASHBOARD** in the menu). Change your initial password right away under **PROFILE → CHANGE PASSWORD**. If you forget it, use **FORGOT PASSWORD?** on the login page with **MENTOR** selected, the same way as participants.
 
 ### Rank the teams you would like to mentor
 
@@ -172,6 +172,7 @@ Opens and closes participant registration and preference submission, publishes t
 - **REGISTRATION PROGRESS** shows how many of the 18 slots are used.
 - **REGISTERED** lists registered teams. **UNREGISTER** removes a team from its slot. This does not pull the next team in from the queue; do that yourself with **REGISTER**.
 - **QUEUE** lists waiting teams in order. **REGISTER** gives a team a free slot.
+- **UNREGISTERED** appears when an active team has neither a slot nor a queue place, for example after you unregister it. **REGISTER** there gives it a free slot again.
 
 ### Preferences tab
 

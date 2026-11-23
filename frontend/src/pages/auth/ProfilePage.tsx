@@ -197,16 +197,16 @@ export function ProfileContent() {
                   value={user.phone_number}
                 />
                 {user.team_name && (
-                  <>
-                    <InfoCell
-                      label="TEAM"
-                      value={user.team_name}
-                    />
-                    <InfoCell
-                      label="JOIN CODE"
-                      value={user.join_code ?? undefined}
-                    />
-                  </>
+                  <InfoCell
+                    label="TEAM"
+                    value={user.team_name}
+                  />
+                )}
+                {user.is_captain && user.join_code && (
+                  <InfoCell
+                    label="JOIN CODE"
+                    value={user.join_code}
+                  />
                 )}
               </>
             )}

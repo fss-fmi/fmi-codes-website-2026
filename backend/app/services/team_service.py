@@ -240,6 +240,15 @@ class TeamService:
             )
             logger.info(f"Team {team_id} removed from queue position {old_pos}")
 
+    @staticmethod
+    def _invalidate_pending_requests(cursor, participant_id):
+        """A participant who now has a team can't be accepted anywhere else."""
+        cursor.execute(
+            "UPDATE team_join_requests SET status = 'invalidated' "
+            "WHERE participant_id = %s AND status = 'pending'",
+            (participant_id,),
+        )
+
     # ── Atomic mutating operations ─────────────────────────────────
 
     @staticmethod
@@ -302,6 +311,7 @@ class TeamService:
                     "UPDATE teams SET captain_id = %s WHERE id = %s",
                     (captain_id, team_id),
                 )
+                TeamService._invalidate_pending_requests(cursor, captain_id)
 
             # Fetch full team info outside the lock
             team = TeamService.get_team_by_id(team_id)
@@ -371,6 +381,7 @@ class TeamService:
                     "UPDATE participants SET team_id = %s WHERE id = %s",
                     (team["id"], participant_id),
                 )
+                TeamService._invalidate_pending_requests(cursor, participant_id)
 
                 # Auto-activate at threshold and handle registration/queue
                 new_count = member_count + 1

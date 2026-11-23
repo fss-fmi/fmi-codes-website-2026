@@ -171,7 +171,7 @@ Participant:
 }
 ```
 
-Mentor: `id, first_name, last_name, email, phone_number, company_name, bio, status, role`. Admin: `{"role": "admin"}`. 404 if the participant/mentor row no longer exists.
+`join_code` is `null` unless the participant is the team's captain. Mentor: `id, first_name, last_name, email, phone_number, company_name, bio, status, role`. Admin: `{"role": "admin"}`. 404 if the participant/mentor row no longer exists.
 
 ### PATCH /api/auth/change-password
 
@@ -291,7 +291,7 @@ Public. `members`: first and last names of a registered team's active members (c
 
 ### GET /api/teams/{team_id}
 
-Any role. `team`: the team row with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails and `join_code` are only included for team members and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
+Any role. `team`: the team row with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails are only included for team members and admins, and `join_code` only for the team's captain and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
 
 There is no public list of all teams. The admin gets every team from `GET /api/admin/teams/registration-status`.
 
@@ -303,11 +303,11 @@ Participant. Creates a team with the caller as captain.
 { "team_name": "Code Wizards" }
 ```
 
-201 `{"success": true, "message": "Team created successfully", "team": {...}}`. 400 for a blank or taken name, a name over 100 characters, HTML characters, or if the caller is already on a team. 403 `email_unverified` while email verification is required.
+201 `{"success": true, "message": "Team created successfully", "team": {...}}`, with the `join_code`. The caller's other pending join requests become `invalidated`. 400 for a blank or taken name, a name over 100 characters, HTML characters, or if the caller is already on a team. 403 `email_unverified` while email verification is required.
 
 ### POST /api/teams/join
 
-Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team. 400 for an invalid code, a full team (6), a disqualified team, or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
+Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team (without its `join_code`); the caller's other pending join requests become `invalidated`. 400 for an invalid code, a full team (6), a disqualified team, or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
 
 ### POST /api/teams/{team_id}/leave
 
@@ -315,7 +315,7 @@ Participant. Leaves the caller's current team (the path id is not checked). A ca
 
 ### DELETE /api/teams/{team_id}
 
-Captain of `team_id`. Disbands the team: members are released, pending join requests invalidated, preferences and mentor assignments deleted.
+Captain of `team_id`. Disbands the team: members are released, and its join requests, preferences and mentor assignments are deleted with it.
 
 ### DELETE /api/teams/{team_id}/members/{member_id}
 

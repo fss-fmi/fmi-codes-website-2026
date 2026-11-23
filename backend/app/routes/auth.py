@@ -60,7 +60,8 @@ def _fetch_user_profile(app, user_id: int, role: str, strict: bool = False) -> d
             """SELECT p.id, p.first_name, p.last_name, p.email, p.phone_number,
                       p.faculty_number, p.course, p.is_captain, p.team_id, p.status,
                       p.email_verified,
-                      s.name AS specialty, u.name AS university, t.team_name, t.join_code
+                      s.name AS specialty, u.name AS university, t.team_name,
+                      CASE WHEN p.is_captain THEN t.join_code END AS join_code
                FROM participants p
                LEFT JOIN specialties s ON p.specialty_id = s.id
                LEFT JOIN universities u ON p.university_id = u.id
