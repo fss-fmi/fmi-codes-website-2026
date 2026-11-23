@@ -9,11 +9,12 @@ function renderPanel(props: {
   isCaptain?: boolean;
   withPrefs?: boolean;
   preferencesOpen?: boolean;
+  confirmed?: boolean | undefined;
 }) {
   render(
     <MemoryRouter>
       <MentorsPanel
-        confirmed={false}
+        confirmed={'confirmed' in props ? props.confirmed : false}
         mentors={[]}
         prefs={props.withPrefs ? prefs : []}
         isCaptain={props.isCaptain ?? true}
@@ -57,4 +58,25 @@ test('a submitted ranking still shows while submissions are closed', () => {
   renderPanel({ isRegistered: true, withPrefs: true, preferencesOpen: false });
   expect(screen.getByText('Ana Petrova')).toBeInTheDocument();
   expect(screen.getByText(/waiting for matching/i)).toBeInTheDocument();
+  expect(screen.queryByText('UPDATE PREFERENCES')).toBeNull();
+});
+
+test('the captain can go back and update a submitted ranking while submissions are open', () => {
+  renderPanel({ isRegistered: true, withPrefs: true });
+  expect(screen.getByText('UPDATE PREFERENCES').closest('a')).toHaveAttribute(
+    'href',
+    '/chooseMentor',
+  );
+});
+
+test('a member who is not captain gets no update link', () => {
+  renderPanel({ isRegistered: true, withPrefs: true, isCaptain: false });
+  expect(screen.getByText(/waiting for matching/i)).toBeInTheDocument();
+  expect(screen.queryByText('UPDATE PREFERENCES')).toBeNull();
+});
+
+test('no update link until the matching status has loaded', () => {
+  renderPanel({ isRegistered: true, withPrefs: true, confirmed: undefined });
+  expect(screen.getByText(/waiting for matching/i)).toBeInTheDocument();
+  expect(screen.queryByText('UPDATE PREFERENCES')).toBeNull();
 });

@@ -110,23 +110,24 @@ Trigger `trig_prevent_team_deletion` blocks deleting a team that still has activ
 
 ### mentors
 
-| Column                                    | Type                | Notes                                                                                                            |
-| ----------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `id`                                      | bigserial PK        |                                                                                                                  |
-| `first_name`, `last_name`, `company_name` | varchar             | Unique together (`uidx_mentors_identity`), used as the seed upsert key                                           |
-| `email`                                   | varchar(255) unique |                                                                                                                  |
-| `phone_number`                            | varchar(20)         |                                                                                                                  |
-| `bio`, `availability_text`                | text                |                                                                                                                  |
-| `technologies`                            | text[]              | GIN indexed                                                                                                      |
-| `picture_url`                             | varchar(500)        | A path such as `/mentorPictures/alice.webp` (files in `frontend/public/mentorPictures/`, served by the frontend) |
-| `picture_filename`                        | varchar(255)        |                                                                                                                  |
-| `password_hash`                           | varchar(255)        | bcrypt                                                                                                           |
-| `status`                                  | varchar(20)         | `active`, `inactive`, `archived`. Only active mentors appear, log in or get matched                              |
-| `tokens_valid_from`                       | timestamptz         | Same meaning as for participants                                                                                 |
+| Column                                    | Type                | Notes                                                                                                             |
+| ----------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `id`                                      | bigserial PK        |                                                                                                                   |
+| `first_name`, `last_name`, `company_name` | varchar             | Unique together (`uidx_mentors_identity`), used as the seed upsert key                                            |
+| `email`                                   | varchar(255) unique |                                                                                                                   |
+| `phone_number`                            | varchar(20)         |                                                                                                                   |
+| `bio`, `availability_text`                | text                |                                                                                                                   |
+| `technologies`                            | text[]              | GIN indexed                                                                                                       |
+| `picture_url`                             | varchar(500)        | A path such as `/mentorPictures/alice.webp` (files in `frontend/public/mentorPictures/`, served by the frontend)  |
+| `picture_filename`                        | varchar(255)        | The file name at the end of `picture_url`; the seeder derives it and ignores a `picture_filename` key in the seed |
+| `password_hash`                           | varchar(255)        | bcrypt                                                                                                            |
+| `status`                                  | varchar(20)         | `active`, `inactive`, `archived`. Only active mentors appear, log in or get matched                               |
+| `tokens_valid_from`                       | timestamptz         | Same meaning as for participants                                                                                  |
+| `password_reset_requested_at`             | timestamptz         | Unused by current code                                                                                            |
 
 ### team_join_requests
 
-One row per (participant, team) pair; re-applying reopens the row. `status`: `pending`, `accepted`, `declined`, `invalidated` (applicant joined another team, or the team was disbanded), `cancelled` (withdrawn by the applicant).
+One row per (participant, team) pair; re-applying reopens the row. `status`: `pending`, `accepted` (also set when the applicant joins that team with its code), `declined`, `invalidated` (the applicant got onto a team first: accepted elsewhere, joined with a code or created a team; or the captain accepted after the applicant's account stopped being `active`, which only a direct database edit does), `cancelled` (withdrawn by the applicant). Disbanding a team deletes all its rows (`ON DELETE CASCADE` on `team_id`), whatever their status.
 
 ### team_mentor_preferences / mentor_team_preferences
 
@@ -192,7 +193,7 @@ Read at request time (not stored in the DB):
 - `backend/database/schema.sql` is the authoritative, current schema. Fresh environments apply it directly: Postgres `initdb` runs it in Docker Compose and k3s (mounted as `01_schema.sql` / the `postgres-initdb` ConfigMap), and the e2e test fixture applies it once per session, then replays every migration file so an older test database catches up.
 - `backend/database/migrations/NNN_name.sql` are deltas for databases created before those changes. `python -m database.migrate` (from `backend/`) applies every file not yet recorded in `schema_migrations`, in number order, each in its own transaction with its record ([ADR-007](adr/007-recorded-migrations-runner.md)). When it applied anything it then deletes the Redis caches (`cache:*`, version counters kept), so no pod serves pre-migration rows until a TTL runs out. With Redis off it skips this; with Redis down it logs a warning and still succeeds. On k3s it runs automatically as the backend's initContainer on every rollout, and on demand through **Actions → Migrate database** (see [Deployment](deployment.md#database-migrations)).
 - Rules for a migration file: the next unused three-digit number, lowercase name (`017_add_x.sql`), safe to re-run (`IF NOT EXISTS`, `ON CONFLICT`, ...), no `BEGIN`/`COMMIT` and **backward compatible with the release before it**. The previous release's pods keep serving on the migrated schema until the rollout replaces them, and a rollback runs that code again ([Rollouts](deployment.md#rollouts)). Add before you take away: a new column gets a default or is nullable, and a column or table the old code reads is dropped or renamed only in a later release, after no deployed code uses it. Nothing checks this; the reviewer does. `tests/test_migrate.py` enforces the naming and transaction rules; the e2e suite applies every file against a fresh `schema.sql` database.
-- `schema_migrations` (`filename` primary key, `applied_at`) is created by the runner, not by `schema.sql`. The first run on a database that predates it re-applies 012 to 018 as no-ops and records them.
+- `schema_migrations` (`filename` primary key, `applied_at`) is created by the runner, not by `schema.sql`. The first run on a database without it, a fresh `schema.sql` one included, runs every file and records it; on a database that is already current each file is a no-op.
 - `016_email_verification.sql` adds `participants.email_verified` with `DEFAULT TRUE` (so existing participants are grandfathered as verified) and then switches the default to false for new rows. It is safe to re-run, and `schema.sql` uses the same two statements.
 - `017_feature_flags.sql` creates `feature_flags` and inserts its three rows as false with `ON CONFLICT DO NOTHING`, so it never overwrites a value the admin has set. False matches the old `REGISTRATION_OPEN`, `RANKINGS_LIVE` and `MENTORS_STAY_TUNED` ConfigMap values in every environment, so deploying it changes nothing visible.
 - `018_masters_two_years.sql` replaces `participants_course_check` so a Masters course is only `Masters 1st Year` or `Masters 2nd Year`. It does not rewrite stored courses: if a participant already holds `Masters 3rd Year` to `Masters 6th Year`, the migration fails and the rollout stops until those rows are fixed by hand.

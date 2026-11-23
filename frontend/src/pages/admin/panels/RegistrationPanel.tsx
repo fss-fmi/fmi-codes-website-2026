@@ -50,6 +50,7 @@ export default function RegistrationPanel() {
     );
   if (!data) return null;
   const { registered_count, max_registered, queue_count, registered_teams, queued_teams } = data;
+  const unregisteredTeams = data.unregistered_teams ?? [];
   const pct = Math.round((registered_count / (max_registered || 1)) * 100);
 
   return (
@@ -206,6 +207,50 @@ export default function RegistrationPanel() {
             </div>
           ))}
         </Panel>
+
+        {unregisteredTeams.length > 0 && (
+          <Panel title={`UNREGISTERED (${unregisteredTeams.length})`}>
+            <p
+              className="px-body-sm"
+              style={{ color: 'var(--px-muted-strong)', margin: '0 0 8px 0' }}
+            >
+              &gt; Active teams with no slot and no queue place, for example after UNREGISTER.
+            </p>
+            {unregisteredTeams.map((t) => (
+              <div
+                key={t.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 0',
+                  borderBottom: '1px solid var(--px-teal-dim)',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'var(--px-mono)',
+                    fontSize: '0.9rem',
+                    color: 'var(--px-white)',
+                  }}
+                >
+                  {t.team_name}
+                </span>
+                <button
+                  type="button"
+                  className="px-btn-secondary"
+                  onClick={() => handleRegister(t.id)}
+                  aria-label={`Register ${t.team_name}`}
+                  style={{ padding: '10px 16px', fontSize: '0.55rem' }}
+                >
+                  REGISTER
+                </button>
+              </div>
+            ))}
+          </Panel>
+        )}
       </div>
     </div>
   );

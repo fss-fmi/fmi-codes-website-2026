@@ -15,6 +15,7 @@ from flask import current_app
 
 from app.database import execute_query, get_db_cursor
 from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
+from app.utils.service_errors import ServiceFailureError
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +241,25 @@ class TeamService:
             )
             logger.info(f"Team {team_id} removed from queue position {old_pos}")
 
+    @staticmethod
+    def _read_back_team(team_id):
+        """The change is committed by now: a failed read must not report it as failed."""
+        try:
+            team = TeamService.get_team_by_id(team_id)
+        except Exception as e:
+            logger.error(f"Error reading back team {team_id}: {e}")
+            return None
+        return dict(team) if team else None
+
+    @staticmethod
+    def _invalidate_pending_requests(cursor, participant_id):
+        """A participant who now has a team can't be accepted anywhere else."""
+        cursor.execute(
+            "UPDATE team_join_requests SET status = 'invalidated' "
+            "WHERE participant_id = %s AND status = 'pending'",
+            (participant_id,),
+        )
+
     # ── Atomic mutating operations ─────────────────────────────────
 
     @staticmethod
@@ -302,21 +322,17 @@ class TeamService:
                     "UPDATE teams SET captain_id = %s WHERE id = %s",
                     (captain_id, team_id),
                 )
-
-            # Fetch full team info outside the lock
-            team = TeamService.get_team_by_id(team_id)
-            logger.info(f"Team '{team_name}' created by captain {captain_id}")
-            return (
-                True,
-                "Team created successfully",
-                dict(team) if team else {"id": team_id, "join_code": join_code},
-            )
+                TeamService._invalidate_pending_requests(cursor, captain_id)
 
         except psycopg2.IntegrityError:
             return False, "Team name already taken", None
         except Exception as e:
             logger.error(f"Error creating team: {e}")
-            return False, str(e), None
+            raise ServiceFailureError("Could not create the team. Try again.") from e
+
+        logger.info(f"Team '{team_name}' created by captain {captain_id}")
+        team = TeamService._read_back_team(team_id)
+        return True, "Team created successfully", team or {"id": team_id, "join_code": join_code}
 
     @staticmethod
     @_invalidates_registered_teams
@@ -371,6 +387,12 @@ class TeamService:
                     "UPDATE participants SET team_id = %s WHERE id = %s",
                     (team["id"], participant_id),
                 )
+                cursor.execute(
+                    "UPDATE team_join_requests SET status = 'accepted' "
+                    "WHERE participant_id = %s AND team_id = %s AND status = 'pending'",
+                    (participant_id, team["id"]),
+                )
+                TeamService._invalidate_pending_requests(cursor, participant_id)
 
                 # Auto-activate at threshold and handle registration/queue
                 new_count = member_count + 1
@@ -381,13 +403,16 @@ class TeamService:
                     )
                     TeamService._try_register_or_queue(cursor, team["id"])
 
-            updated_team = TeamService.get_team_by_id(team["id"])
-            logger.info(f"Participant {participant_id} joined team {team['id']}")
-            return True, "Joined team successfully", dict(updated_team) if updated_team else None
-
         except Exception as e:
             logger.error(f"Error joining team: {e}")
-            return False, str(e), None
+            raise ServiceFailureError("Could not join the team. Try again.") from e
+
+        logger.info(f"Participant {participant_id} joined team {team['id']}")
+        return (
+            True,
+            "Joined team successfully",
+            TeamService._read_back_team(team["id"]) or {"id": team["id"]},
+        )
 
     @staticmethod
     @_invalidates_registered_teams
@@ -443,7 +468,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error leaving team: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not leave the team. Try again.") from e
 
     @staticmethod
     @_invalidates_registered_teams
@@ -496,7 +521,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error removing member: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not remove the member. Try again.") from e
 
     @staticmethod
     @_invalidates_registered_teams
@@ -518,7 +543,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error disbanding team: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not disband the team. Try again.") from e
 
     @staticmethod
     def _disband_team_in_cursor(cursor, team_id):
@@ -531,13 +556,6 @@ class TeamService:
 
         cursor.execute(
             "UPDATE participants SET team_id = NULL, is_captain = FALSE WHERE team_id = %s",
-            (team_id,),
-        )
-        # Invalidate any pending join requests targeting this team (CASCADE will
-        # delete them when the team row goes, but be explicit for clarity)
-        cursor.execute(
-            "UPDATE team_join_requests SET status = 'invalidated' "
-            "WHERE team_id = %s AND status = 'pending'",
             (team_id,),
         )
         cursor.execute("DELETE FROM team_mentor_preferences WHERE team_id = %s", (team_id,))
@@ -593,7 +611,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error admin-registering team: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not register the team. Try again.") from e
 
     @staticmethod
     @_invalidates_registered_teams
@@ -626,7 +644,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error admin-unregistering team: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not unregister the team. Try again.") from e
 
     @staticmethod
     def get_team_members(team_id):
@@ -693,12 +711,14 @@ class TeamService:
 
                 # Lock team — must have space
                 cursor.execute(
-                    "SELECT id, participant_count FROM teams WHERE id = %s FOR UPDATE",
+                    "SELECT id, participant_count, status FROM teams WHERE id = %s FOR UPDATE",
                     (team_id,),
                 )
                 team = cursor.fetchone()
                 if not team:
                     return False, "Team not found"
+                if team["status"] == "disqualified":
+                    return False, "This team has been disqualified"
                 if team["participant_count"] >= MAX_TEAM_MEMBERS:
                     return False, "Team is already full"
 
@@ -732,7 +752,7 @@ class TeamService:
             return False, "Duplicate application"
         except Exception as e:
             logger.error(f"Error applying to team: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not submit the application. Try again.") from e
 
     @staticmethod
     def get_pending_requests_for_team(team_id):
@@ -834,6 +854,8 @@ class TeamService:
                     (team_id,),
                 )
                 team_info = cursor.fetchone()
+                if team_info["status"] == "disqualified":
+                    return False, "This team has been disqualified"
                 if team_info["participant_count"] >= MAX_TEAM_MEMBERS:
                     return False, "Team is already full"
 
@@ -843,18 +865,11 @@ class TeamService:
                     (team_id, applicant_id),
                 )
 
-                # Mark this request accepted
                 cursor.execute(
                     "UPDATE team_join_requests SET status = 'accepted' WHERE id = %s",
                     (request_id,),
                 )
-
-                # Invalidate all OTHER pending requests from this applicant
-                cursor.execute(
-                    "UPDATE team_join_requests SET status = 'invalidated' "
-                    "WHERE participant_id = %s AND status = 'pending' AND id != %s",
-                    (applicant_id, request_id),
-                )
+                TeamService._invalidate_pending_requests(cursor, applicant_id)
 
                 # Auto-activate at threshold + registration/queue
                 new_count = team_info["participant_count"] + 1
@@ -872,7 +887,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error accepting join request: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not accept the request. Try again.") from e
 
     @staticmethod
     def decline_join_request(request_id, captain_id):
@@ -910,7 +925,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error declining join request: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not decline the request. Try again.") from e
 
     @staticmethod
     def cancel_join_request(request_id, participant_id):
@@ -941,7 +956,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error cancelling join request: {e}")
-            return False, str(e)
+            raise ServiceFailureError("Could not withdraw the application. Try again.") from e
 
 
 # Module-level convenience instance

@@ -112,6 +112,16 @@ export default function MentorsPanel({
             </span>
           </div>
         ))}
+        {isCaptain && preferencesOpen && confirmed === false && (
+          <div style={{ marginTop: 16 }}>
+            <Button
+              variant="secondary"
+              href="/chooseMentor"
+            >
+              UPDATE PREFERENCES
+            </Button>
+          </div>
+        )}
       </Panel>
     );
   }

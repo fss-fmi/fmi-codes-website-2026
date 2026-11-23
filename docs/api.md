@@ -6,7 +6,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 ## Conventions
 
-**Response envelope.** Most endpoints return `{"success": true, ...}` or `{"success": false, "error": "<message>"}`. Exceptions: `/api/health`, `/api/health/ready` and `/api/config` return bare objects.
+**Response envelope.** Most endpoints return `{"success": true, ...}` or `{"success": false, "error": "<message>"}`. Exceptions: `/api/health`, `/api/health/ready` and `/api/config` return bare objects. When a team action or a ranking save fails on the server side, the response is a 500 with a fixed message such as `Could not join the team. Try again.`; the error itself goes only to the server log. A 500 rather than a 400 keeps a database outage visible to the `BackendHighErrorRate` alert.
 
 **Request bodies.** A body must be a JSON object; any other JSON value (an array, a string, a number) returns 400 `Request body must be a JSON object`. A missing or unparsable body counts as `{}`, so it gets the route's usual missing-field 400. A text field sent as anything but a string or `null` returns 400 `<field> must be a string`; `null` counts as missing. Text with a NUL character or an unpaired UTF-16 surrogate escape returns 400 `<field> contains an invalid character`, and text longer than its database column returns 400 `<field> must be at most <n> characters`. Ids and ranks must be JSON integers.
 
@@ -21,7 +21,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 | mentor      | Token role `mentor`                                                                      | 401 / 403 |
 | admin       | Token role `admin`                                                                       | 401 / 403 |
 
-401 bodies: `Authentication required`, `Token expired`, `Invalid token`, `Token has been revoked`.
+401 bodies: `Authentication required`, `Token expired`, `Invalid token`, `Token is missing required claims`, `Token has been revoked`.
 
 **Rate limits.** Each limit keys on what it protects ([ADR-014](adr/014-rate-limits-keyed-on-account-and-user.md)). The default is 200 requests per minute per signed-in user (from a token with a valid signature) and, for anonymous requests, 3000 per minute per client address on each route and 6000 per minute across all routes together. Login and password reset also key on the account the request names, and a few public routes key on the address alone; each endpoint lists its own. Counters are shared across workers when Redis is configured. Windows move: a request is allowed if fewer than the limit were accepted in the last window length, so "300 per minute" never lets more than 300 through in any 60 s. A request takes a slot in each of its route's limits in turn and stops at the first full one: that limit doesn't count it, but the ones before it do (a login refused for its account still counts against the address). Exceeding a limit returns 429 `{"success": false, "error": "Too many requests. Wait a moment and try again."}` with a `Retry-After` header: the seconds until the oldest request counted against the breached limit is a window old, plus half a second (a request still counts at exactly that moment) rounded up, never more than the limit's own window, or 60 if its window can't be read. Slots free one at a time as earlier requests age out, not all at once. No other response carries rate-limit headers, so a client never sees how much budget is left. The login and registration pages wait out `Retry-After` plus 0 to 3 s of random jitter and send again on their own, up to 3 times, counting down on the button with a note below it that explains the wait; they show the message instead when a wait would be over 60 s. Editing the form during the countdown drops the pending retry, so it never sends the old values. The backend takes the address from the last `X-Forwarded-For` entry, the one its single trusted proxy sets (ingress-nginx in k3s, the frontend's nginx in Compose), so a client can't pick its own bucket by sending the header. Everyone behind one NAT shares an address, which is why address limits are sized for a whole venue and the two polled reads, `GET /api/config` and `GET /api/teams/rankings`, are exempt: at the venue every phone is on the same Wi-Fi. On staging every visitor arrives through the Tailscale proxy and shares one address, so staging multiplies every limit listed here by 10 (`RATELIMIT_MULTIPLIER`).
 
@@ -107,7 +107,7 @@ Rules: names may not contain `< > & ; " \`; email must look like an address (sto
 }
 ```
 
-Every field is required and follows the same name rules. The entry is created with `is_seed = false` in the same transaction as the participant, so it only exists if the registration succeeds. If the name already exists in any letter case, that row is reused, and a curated row wins over a typed one. "Other" entries are never shown in the dropdowns (those list curated rows only). This is the only way to add a university or specialty.
+Every field is required and follows the same name rules. A value longer than 200 characters for a university or specialty name, or 100 for city and country, is cut to that length, not refused. The entry is created with `is_seed = false` in the same transaction as the participant, so it only exists if the registration succeeds. If the name already exists in any letter case, that row is reused, and a curated row wins over a typed one. "Other" entries are never shown in the dropdowns (those list curated rows only). This is the only way to add a university or specialty.
 
 | Code | Meaning                                                                                 |
 | ---- | --------------------------------------------------------------------------------------- |
@@ -121,7 +121,7 @@ The `user` profile shape is the same as `GET /api/auth/me`.
 
 ### POST /api/auth/login
 
-Public. 15 attempts per minute per account (email and role), counted when each arrives, so parallel guesses can't slip past; a successful login clears the count, and a blocked account stays blocked from every address until the minute ends. The admin account is limited the same way. Plus 300 attempts per minute per address.
+Public. 15 attempts per minute per account (email and role), counted when each arrives, so parallel guesses can't slip past; a successful login clears the count, and a blocked account stays blocked from every address until its oldest counted attempt is a minute old. The admin account is limited the same way. Plus 300 attempts per minute per address.
 
 ```json
 { "email": "ivan@example.com", "password": "...", "role": "participant" }
@@ -171,7 +171,7 @@ Participant:
 }
 ```
 
-Mentor: `id, first_name, last_name, email, phone_number, company_name, bio, status, role`. Admin: `{"role": "admin"}`. 404 if the participant/mentor row no longer exists.
+`join_code` is `null` unless the participant is the team's captain. Mentor: `id, first_name, last_name, email, phone_number, company_name, bio, status, role`. Admin: `{"role": "admin"}`. 404 if the participant/mentor row no longer exists.
 
 ### PATCH /api/auth/change-password
 
@@ -287,11 +287,11 @@ When the caller is a participant without a team, `can_apply` is true and each te
 
 ### GET /api/teams/{team_id}/members/public
 
-Public. First and last names of a registered team's active members (captain first). 404 for unregistered teams.
+Public. `members`: first and last names of a registered team's active members (captain first). 404 for unregistered teams.
 
 ### GET /api/teams/{team_id}
 
-Any role. Team detail with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails and `join_code` are only included for team members and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
+Any role. `team`: the team row with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails are only included for team members and admins, and `join_code` only for the team's captain and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
 
 There is no public list of all teams. The admin gets every team from `GET /api/admin/teams/registration-status`.
 
@@ -303,11 +303,11 @@ Participant. Creates a team with the caller as captain.
 { "team_name": "Code Wizards" }
 ```
 
-201 `{"success": true, "message": "Team created successfully", "team": {...}}`. 400 for a blank or taken name, a name over 100 characters, HTML characters, or if the caller is already on a team. 403 `email_unverified` while email verification is required.
+201 `{"success": true, "message": "Team created successfully", "team": {...}}`, with the `join_code`. The caller's other pending join requests become `invalidated`. 400 for a blank or taken name, a name over 100 characters, HTML characters or if the caller is already on a team. 403 `email_unverified` while email verification is required.
 
 ### POST /api/teams/join
 
-Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team. 400 for an invalid code, a full team (6), a disqualified team, or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
+Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team (without its `join_code`, or its score before `rankings_live`); the caller's pending join request to this team becomes `accepted` and the others become `invalidated`. 400 for an invalid code, a full team (6), a disqualified team or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
 
 ### POST /api/teams/{team_id}/leave
 
@@ -315,7 +315,7 @@ Participant. Leaves the caller's current team (the path id is not checked). A ca
 
 ### DELETE /api/teams/{team_id}
 
-Captain of `team_id`. Disbands the team: members are released, pending join requests invalidated, preferences and mentor assignments deleted.
+Captain of `team_id`. Disbands the team: members are released, and its join requests, preferences and mentor assignments are deleted with it.
 
 ### DELETE /api/teams/{team_id}/members/{member_id}
 
@@ -323,27 +323,27 @@ Captain of `team_id`. Removes a member. The captain cannot remove themselves.
 
 ### GET /api/teams/available
 
-Participant. Teams with fewer than 6 members that are not disqualified, each with `already_applied`.
+Participant. `teams`: every team with fewer than 6 members that is not disqualified, registered or not, each with `team_id, team_name, status, participant_count, already_applied`.
 
 ### GET /api/teams/my-applications
 
-Participant. The caller's join requests: `request_id, team_id, team_name, team_status, participant_count, status, created_at`. Status is one of `pending`, `accepted`, `declined`, `invalidated`, `cancelled`.
+Participant. `applications`: the caller's join requests, newest first: `request_id, team_id, team_name, team_status, participant_count, status, created_at`. Status is one of `pending`, `accepted`, `declined`, `invalidated`, `cancelled`.
 
 ### POST /api/teams/{team_id}/apply
 
-Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full, or a request is already pending. 403 `email_unverified` while email verification is required.
+Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full or disqualified or a request is already pending. 403 `email_unverified` while email verification is required.
 
 ### GET /api/teams/{team_id}/requests
 
-Captain of `team_id`. Pending requests with applicant `first_name, last_name, email, specialty, university, created_at`.
+Captain of `team_id`. `requests`: pending requests, oldest first: `request_id, participant_id, first_name, last_name, email, specialty, university, created_at`.
 
 ### POST /api/teams/requests/{request_id}/accept
 
-Captain of the request's team. Adds the applicant, invalidates their other pending requests, activates/registers the team at 3 members. 400 if the request is no longer pending, the applicant already joined elsewhere, or the team is full.
+Captain of the request's team (a request to another team returns 400). Adds the applicant, invalidates their other pending requests, activates/registers the team at 3 members. 400 if the request is no longer pending, the applicant already joined elsewhere or the team is full or disqualified.
 
 ### POST /api/teams/requests/{request_id}/decline
 
-Captain of the request's team. Marks it `declined`.
+Captain of the request's team (a request to another team returns 400). Marks it `declined`.
 
 ### POST /api/teams/requests/{request_id}/cancel
 
@@ -373,7 +373,7 @@ Public. Active mentors, cached about 30 min and invalidated when mentors are add
       "status": "active",
       "technologies": ["Python", "Kubernetes"],
       "picture_url": "/mentorPictures/maria.webp",
-      "picture_filename": "maria.jpg",
+      "picture_filename": "maria.webp",
       "availability_text": "...",
       "created_at": "..."
     }
@@ -389,7 +389,7 @@ Public. Intended to stream the mentor photo. Known bug: `picture_url` holds a pa
 
 ### GET /api/teams/{team_id}/available-mentors
 
-Captain of `team_id`. Active mentors to rank: `mentor_id, name, company_name, bio, picture_url, picture_filename, availability_text`.
+Captain of `team_id`. `mentors`: active mentors to rank: `mentor_id, name, company_name, bio, picture_url, picture_filename, availability_text`.
 
 ### POST /api/teams/{team_id}/mentor-preferences
 
@@ -411,11 +411,11 @@ After the save commits, the event feed gets "submitted" with the teams' progress
 
 ### GET /api/teams/{team_id}/mentor-preferences
 
-Captain of `team_id`. `[{rank, mentor_id, mentor_name, company_name, picture_url}]` ordered by rank. Works whether or not submissions are open.
+Captain of `team_id`. `preferences`: `[{rank, mentor_id, mentor_name, company_name, picture_url}]` ordered by rank. Works whether or not submissions are open.
 
 ### GET /api/mentors/available-teams
 
-Mentor. Active registered teams to rank: `team_id, team_name, participant_count`.
+Mentor. `teams`: active registered teams to rank: `team_id, team_name, participant_count`.
 
 ### POST /api/mentors/team-preferences
 
@@ -437,11 +437,11 @@ After the save commits, the event feed gets "submitted" with the mentors' progre
 
 ### GET /api/mentors/team-preferences
 
-Mentor. `[{rank, team_id, team_name}]`. Works whether or not submissions are open.
+Mentor. `preferences`: `[{rank, team_id, team_name}]` ordered by rank. Works whether or not submissions are open.
 
 ### GET /api/mentors/assigned-teams
 
-Mentor. Teams assigned by the last matching run: `team_id, team_name, participant_count`. The SPA only calls this after the admin confirms.
+Mentor. `teams`: the teams assigned by the last matching run: `team_id, team_name, participant_count`. The SPA only calls this after the admin confirms.
 
 ### GET /api/matching-status
 
@@ -473,7 +473,7 @@ Public once `rankings_live` is on; until then 403 `Rankings are not live yet` fo
 
 ### GET /api/ranking
 
-Public. Legacy rankings read from `backend/database/seeds/rankings.json` (`[{team, points, image}]`). Not used by the SPA.
+Public. `rankings`: legacy rankings read from `backend/database/seeds/rankings.json` (`[{team, points, image}]`, highest points first, cached about 60 s). Not used by the SPA.
 
 ### GET /api/regulations
 
@@ -560,7 +560,7 @@ Marks the current results final; teams and mentors start seeing assignments. A l
 
 ### GET /api/admin/matching-results
 
-`[{team_id, team_name, mentor_id, mentor_name, company_name, assigned_at}]`.
+`results`: `[{team_id, team_name, mentor_id, mentor_name, company_name, assigned_at}]`.
 
 ### GET /api/admin/matching-export
 
@@ -580,7 +580,7 @@ Results grouped by team plus constraint checks.
 
 ### GET /api/admin/teams/scores
 
-Registered teams for the scoring UI: `team_id, team_name, score, score_updated_at, participant_count`.
+`teams`: registered teams for the scoring UI, by name: `team_id, team_name, score, score_updated_at, participant_count`.
 
 ### PUT /api/admin/teams/{team_id}/score
 

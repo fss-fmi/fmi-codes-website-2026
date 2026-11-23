@@ -24,6 +24,7 @@ from app.utils.rate_limits import (
     scaled,
 )
 from app.utils.request_json import InvalidJsonFieldError
+from app.utils.service_errors import ServiceFailureError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -143,6 +144,11 @@ def create_app(config_name="development"):
     @app.errorhandler(InvalidJsonFieldError)
     def invalid_json_field(e):
         return jsonify({"success": False, "error": str(e)}), 400
+
+    # A 500, not the 400 of the services' user errors, so BackendHighErrorRate counts it.
+    @app.errorhandler(ServiceFailureError)
+    def service_failure(e):
+        return jsonify({"success": False, "error": str(e)}), 500
 
     # CORS — allow frontend origin with credentials (httpOnly cookies)
     frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")

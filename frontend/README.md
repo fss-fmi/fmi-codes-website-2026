@@ -25,19 +25,21 @@ src/
   pages/           one folder per area: auth, teams, mentors, admin, rankings, regulations
   components/      shared UI grouped by area (common, layout, teams, admin, home, mentors)
   context/         AuthContext (current user) and ConfigContext (feature flags)
-  hooks/           useApplyToTeam, useConfirmAction, useIsMobile, useVisuals
+  hooks/           useApplyToTeam, useConfirmAction, useIsMobile, useRateLimitRetry, useVisuals
   lib/api.ts       the only fetch wrapper
+  lib/errors.ts    ApiError, NetworkError and errorMessage()
   lib/queryClient.ts  shared TanStack Query client
+  lib/             also the ranking-window helpers, the rate-limit retry and form validation
   types/           hand-written API response types
 ```
 
 ## Conventions
 
-- **API calls** go through `src/lib/api.ts` (`api.get/post/put/patch/delete`). It sends cookies, throws an `Error` with the server's `error` message on non-2xx, and fires a window `auth:unauthorized` event on 401 that logs the user out.
+- **API calls** go through `src/lib/api.ts` (`api.get/post/put/patch/delete`). It sends cookies, throws an `ApiError` (status, the server's `error` message and any `Retry-After`) on non-2xx and a `NetworkError` when no answer arrives, and fires a window `auth:unauthorized` event on 401 that logs the user out. Show a caught error with `errorMessage()` from `src/lib/errors.ts`.
 - **Server state** lives in TanStack Query. Defaults: 30 s stale time, no retries, no refetch on window focus.
 - **Auth** is an httpOnly cookie set by the backend; the SPA never touches the token. `AuthContext` hydrates the user from `GET /api/auth/me` on load.
 - **Role-gated pages** wrap themselves in `<RequireAuth roles={[...]}>`. The routes in `App.tsx` are not guarded, so a new protected page must add its own wrapper.
-- **Feature flags** (`REGISTRATION_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE`, `REQUIRE_EMAIL_VERIFICATION`) come from `useConfig()`. `ConfigContext` refetches `/api/config` every 30 s and on window focus, because the admin switches the first three live from Mission Control's SITE tab.
+- **Feature flags** (`REGISTRATION_OPEN`, `PREFERENCES_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE`, `REQUIRE_EMAIL_VERIFICATION`) come from `useConfig()`. `ConfigContext` refetches `/api/config` every 30 s and on window focus, because the admin switches the first four live from Mission Control's SITE tab.
 - **Types** in `src/types/` are maintained by hand to match the backend. Update them with any API change.
 - Import from `src` with the `@/` alias.
 

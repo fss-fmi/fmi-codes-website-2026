@@ -4,6 +4,7 @@ export interface RegStatus {
   queue_count: number;
   registered_teams: { id: number; team_name: string }[];
   queued_teams: { id: number; team_name: string }[];
+  unregistered_teams: { id: number; team_name: string }[];
 }
 
 export interface PrefStatus {
@@ -11,7 +12,7 @@ export interface PrefStatus {
   teams_total: number;
   mentors_submitted: number;
   mentors_total: number;
-  teams: { id: number; name: string; submitted: boolean }[];
+  teams: { id: number; team_name: string; submitted: boolean }[];
   mentors: { id: number; name: string; submitted: boolean }[];
 }
 

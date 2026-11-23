@@ -11,6 +11,7 @@ from contextlib import contextmanager
 
 import pytest
 from app.services import matching_events, matching_service, mentor_selection_service
+from app.utils.service_errors import ServiceFailureError
 
 # Distinctive ids, so a leaked id or rank can't hide among the counts.
 MENTOR_IDS = (4101, 4102, 4103)
@@ -190,10 +191,10 @@ def test_unregistered_team_is_refused_and_posts_nothing(app_ctx, cursor_for, not
 
 def test_failed_commit_posts_nothing(app_ctx, cursor_for, notices, status):
     cursor_for(mentor_selection_service, _team_cursor(), fail_at_commit=True)
-    ok, _ = mentor_selection_service.set_team_mentor_preferences(
-        TEAM_IDS[0], _ranking("mentor_id", MENTOR_IDS)
-    )
-    assert not ok
+    with pytest.raises(ServiceFailureError):
+        mentor_selection_service.set_team_mentor_preferences(
+            TEAM_IDS[0], _ranking("mentor_id", MENTOR_IDS)
+        )
     assert notices == []
 
 

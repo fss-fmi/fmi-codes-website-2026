@@ -68,7 +68,7 @@ export default function PreferencesPanel() {
                 color: 'var(--px-white)',
               }}
             >
-              <span>{t.name}</span>
+              <span>{t.team_name}</span>
               <span
                 style={{
                   color: t.submitted ? CHART_COLORS.green : CHART_COLORS.danger,

@@ -1,6 +1,7 @@
 """Team management routes — JWT-protected"""
 
-import threading
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import current_app, g, jsonify
 
@@ -17,6 +18,33 @@ from app.utils.auth_decorators import (
     verified_email_required,
 )
 from app.utils.request_json import json_object, string_field
+
+logger = logging.getLogger(__name__)
+
+# Bounded like the verification mail: a thread per application would grow without
+# limit while SMTP is slow. Queued sends wait instead, and a worker that shuts down
+# sends what is queued before it exits.
+_join_request_mail = ThreadPoolExecutor(max_workers=4, thread_name_prefix="join-request-mail")
+
+
+def _rankings_live():
+    # Create and join have committed before this runs; a failed read hides the score
+    # instead of reporting the saved change as failed.
+    try:
+        return feature_flag_service.is_enabled("rankings_live")
+    except Exception as e:
+        logger.error(f"Error reading rankings_live: {e}")
+        return False
+
+
+def _hide_private_team_fields(team, sees_join_code):
+    team.pop("password_hash", None)
+    if not sees_join_code:
+        team.pop("join_code", None)
+    if g.current_user["role"] != "admin" and not _rankings_live():
+        team.pop("score", None)
+        team.pop("score_updated_at", None)
+    return team
 
 
 @teams_bp.route("/api/teams/registered", methods=["GET"])
@@ -134,6 +162,7 @@ def create_team():
         team_name, g.current_user["user_id"]
     )
     if success:
+        team = _hide_private_team_fields(team, sees_join_code=True)
         return jsonify({"success": True, "message": message, "team": team}), 201
     return jsonify({"success": False, "error": message}), 400
 
@@ -149,6 +178,8 @@ def join_team():
 
     success, message, team = TeamService.join_team(g.current_user["user_id"], join_code)
     if success:
+        if team:
+            team = _hide_private_team_fields(team, sees_join_code=False)
         return jsonify({"success": True, "message": message, "team": team}), 200
     return jsonify({"success": False, "error": message}), 400
 
@@ -203,14 +234,11 @@ def get_team(team_id):
     )
     team_dict["mentors"] = [dict(mt) for mt in mentors]
 
-    # Only show join_code to team members
-    if not is_member and user["role"] != "admin":
-        team_dict.pop("join_code", None)
-    team_dict.pop("password_hash", None)
-
-    if user["role"] != "admin" and not feature_flag_service.is_enabled("rankings_live"):
-        team_dict.pop("score", None)
-        team_dict.pop("score_updated_at", None)
+    # Anyone holding the code joins without approval, so only the captain and the admin get it.
+    is_team_captain = (
+        user["role"] == "participant" and team_dict.get("captain_id") == user["user_id"]
+    )
+    _hide_private_team_fields(team_dict, sees_join_code=is_team_captain or user["role"] == "admin")
 
     return jsonify({"success": True, "team": team_dict}), 200
 
@@ -300,19 +328,15 @@ def apply_to_team(team_id):
             fetch_one=True,
         )
         if row:
-            app_config = dict(current_app.config)
-            threading.Thread(
-                target=send_join_request_notification,
-                args=(
-                    app_config,
-                    row["captain_email"],
-                    row["captain_first_name"],
-                    row["team_name"],
-                    row["app_first_name"],
-                    row["app_last_name"],
-                ),
-                daemon=True,
-            ).start()
+            _join_request_mail.submit(
+                send_join_request_notification,
+                dict(current_app.config),
+                row["captain_email"],
+                row["captain_first_name"],
+                row["team_name"],
+                row["app_first_name"],
+                row["app_last_name"],
+            )
     except Exception:
         pass  # Notification failure must not affect the response
 

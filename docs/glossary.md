@@ -38,7 +38,7 @@ A participant's study year. One of `Bachelor 1st Year` .. `Bachelor 4th Year`, `
 
 ### Disband
 
-Deleting a team. Members are released (they become teamless), pending join requests become `invalidated`, preferences and assignments are deleted, and the team's registration slot or queue position is freed.
+Deleting a team. Members are released (they become teamless), its join requests, preferences and assignments are deleted with it and the team's registration slot or queue position is freed.
 
 ## F
 
@@ -74,7 +74,7 @@ Phase 2 of **Matching**. Tops up any team still below 3 mentors with the least-l
 
 ### Join code
 
-An 8-character uppercase alphanumeric code generated when a team is created (`teams.join_code`). Anyone holding it can join instantly without captain approval, so captains share it only with teammates. UI label: "INVITE CODE" on the join page, "JOIN CODE" on the team page.
+An 8-character uppercase alphanumeric code generated when a team is created (`teams.join_code`). Anyone holding it can join instantly without captain approval, so only the captain (and the admin) gets it from the API, and captains share it only with teammates. UI label: "INVITE CODE" on the join page, "JOIN CODE" on the captain's team page and PROFILE.
 
 ### Join request
 
@@ -82,12 +82,12 @@ A teamless participant's request to join a team, created from BROWSE TEAMS or th
 
 `pending` → `accepted` | `declined` | `cancelled` | `invalidated`
 
-- `accepted`: captain accepted; the applicant joins the team and all their other pending requests become `invalidated`.
+- `accepted`: captain accepted; the applicant joins the team.
 - `declined`: captain declined.
 - `cancelled`: applicant withdrew it.
-- `invalidated`: the applicant joined another team first, or the team was disbanded.
+- `invalidated`: the applicant got onto a team first: accepted elsewhere, joined with a code or created a team. Each of those invalidates all their other pending requests.
 
-Re-applying to the same team reopens the same row as `pending`.
+Re-applying to the same team reopens the same row as `pending`. Disbanding a team deletes every request to it.
 
 ## M
 
@@ -167,7 +167,7 @@ A mentor's ranking of exactly 3 distinct registered teams, ranks 1 to 3 (`mentor
 
 `pending` (under 3 members) ↔ `active` (3 to 6 members)
 
-The schema also allows `completed` and `disqualified`; nothing in the app sets them, but a `disqualified` team cannot be joined.
+The schema also allows `completed` and `disqualified`; nothing in the app sets them, but a `disqualified` team cannot be joined, applied to or have a request accepted.
 
 ## V
 

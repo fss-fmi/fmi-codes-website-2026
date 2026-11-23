@@ -133,7 +133,8 @@ Ruff is pinned to one exact version in `backend/requirements.txt` and CI install
 backend/
   app/routes/      HTTP layer (auth, teams, mentors, api_routes)
   app/services/    business logic: teams and queue, matching, auth, Redis, mail
-  app/utils/       auth decorators, input validation
+  app/utils/       auth decorators, rate-limit keys, request body validation, password-hash slots,
+                   ServiceFailureError (a service's server-side failure, answered with a 500)
   database/        schema.sql (authoritative), migrations/ (deltas), seeds/ (JSON)
   config.py        all settings, read from env
   run_server.py    dev entry point
@@ -158,7 +159,7 @@ bootstrap.sh       one-shot cluster installer
 2. Backend change: add or update a service function, keep the route thin, add a unit test in `tests/` and an integration test in `tests/e2e/` if it touches HTTP or SQL.
 3. Schema change: edit `backend/database/schema.sql` **and** add the next numbered file in `backend/database/migrations/` for existing databases (safe to re-run, no `BEGIN`/`COMMIT`; see [Schema management](data.md#schema-management)). Apply it locally with `cd backend && python -m database.migrate --notify never`. Clusters apply it on the next rollout.
 4. New endpoint: update the frontend types in `frontend/src/types/` by hand and document it in the [API reference](api.md).
-5. Commit (the pre-commit hook formats), open a PR. CI runs both test layers against real Postgres and Redis, both linters, the type check and a Flux kustomize build.
+5. Commit (the pre-commit hook formats), open a PR. CI runs both backend test layers against real Postgres and Redis, the frontend tests, both linters, the type check, the Prometheus rule tests, a Flux kustomize build and, when `docs/` changes, a strict site build.
 6. Merging to `main` builds images and auto-deploys **staging**. Production needs the `Promote to production` workflow plus a merged PR. See [Deployment](deployment.md).
 7. Docs change: edit the page in `docs/` and preview the site with `pip install -r docs/requirements.txt` then `mkdocs serve` (http://127.0.0.1:8000). Merging to `main` publishes it to GitHub Pages.
 
@@ -170,7 +171,7 @@ bootstrap.sh       one-shot cluster installer
 
 **Registration page says REGISTRATION CLOSED / API returns 403.** The `registration_open` flag is off. Log in as admin and press **OPEN NOW** on Mission Control's SITE tab; no restart is needed.
 
-**Admin login returns 503 "Admin login not configured".** `ADMIN_PASSWORD_HASH` is empty.
+**Admin login returns 503 "Admin login not configured".** `ADMIN_PASSWORD_HASH` is empty or not a bcrypt hash.
 
 **Production config refuses to start (`CRITICAL: SECRET_KEY ...`).** `FLASK_ENV=production` validates secrets and rejects the built-in dev values. Set real `SECRET_KEY`, `JWT_SECRET_KEY` and `ADMIN_PASSWORD_HASH`.
 

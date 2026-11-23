@@ -58,6 +58,18 @@ test('verified participant sees VERIFIED and no resend button', () => {
   expect(screen.queryByRole('button', { name: /resend verification email/i })).toBeNull();
 });
 
+test('captain sees the join code', () => {
+  renderAs('participant', { team_name: 'Knights', is_captain: true, join_code: 'K7Q2ZP9M' });
+  expect(screen.getByText('JOIN CODE')).toBeInTheDocument();
+  expect(screen.getByText('K7Q2ZP9M')).toBeInTheDocument();
+});
+
+test('a member who is not captain sees the team but no join code', () => {
+  renderAs('participant', { team_name: 'Knights', is_captain: false, join_code: null });
+  expect(screen.getByText('Knights')).toBeInTheDocument();
+  expect(screen.queryByText('JOIN CODE')).toBeNull();
+});
+
 test('mentor sees no email verification status', () => {
   renderAs('mentor');
   expect(screen.queryByText('EMAIL STATUS')).toBeNull();

@@ -20,6 +20,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
+from app.services import feature_flag_service
+from app.services.team_service import TeamService
+
 from tests.e2e.conftest import (
     DEFAULT_PW,
     _extract_token,
@@ -52,6 +55,10 @@ def _get_join_code(create_resp):
 
 def _get_team_id(create_resp):
     return create_resp.get_json()["team"]["id"]
+
+
+def _failing_read(*args, **kwargs):
+    raise RuntimeError("connection pool exhausted")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -101,6 +108,17 @@ class TestCreateTeam:
         rv = client.post("/api/teams", json={"team_name": "Anon Team"})
         assert rv.status_code == 401
 
+    def test_a_failed_read_back_still_reports_the_saved_team(self, client, seeds, monkeypatch):
+        token = register_and_token(client, 1, seeds)
+        monkeypatch.setattr(TeamService, "get_team_by_id", staticmethod(_failing_read))
+        rv = _create_team(client, token, "Saved Team")
+        assert rv.status_code == 201
+        assert set(rv.get_json()["team"]) == {"id", "join_code"}
+
+        monkeypatch.undo()
+        team = client.get(f"/api/teams/{_get_team_id(rv)}", headers=bearer(token)).get_json()
+        assert team["team"]["team_name"] == "Saved Team"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # List teams — data-leakage guards
@@ -115,13 +133,30 @@ class TestListTeams:
         rv = client.get("/api/teams")
         assert rv.status_code == 405
 
-    def test_get_team_by_id_shows_join_code_to_member(self, client, seeds):
+    def test_get_team_by_id_shows_join_code_to_captain(self, client, seeds):
         token = register_and_token(client, 1, seeds)
         rv_create = _create_team(client, token)
         team_id = _get_team_id(rv_create)
         rv = client.get(f"/api/teams/{team_id}", headers=bearer(token))
         assert rv.status_code == 200
         assert "join_code" in rv.get_json()["team"]
+        assert client.get("/api/auth/me", headers=bearer(token)).get_json()["user"]["join_code"]
+
+    def test_join_code_hidden_from_non_captain_member(self, client, seeds, flask_app):
+        token1 = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, token1)
+        team_id = _get_team_id(rv_create)
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            rv_join = _join_team(c2, token2, _get_join_code(rv_create))
+            rv_team = c2.get(f"/api/teams/{team_id}", headers=bearer(token2))
+            rv_me = c2.get("/api/auth/me", headers=bearer(token2))
+        assert rv_join.status_code == 200
+        assert "join_code" not in rv_join.get_json()["team"]
+        assert rv_team.status_code == 200
+        assert "join_code" not in rv_team.get_json()["team"]
+        assert rv_me.get_json()["user"]["team_id"] == team_id
+        assert rv_me.get_json()["user"]["join_code"] is None
 
     def test_get_team_by_id_hides_join_code_from_non_member(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
@@ -193,6 +228,53 @@ class TestJoinViaCode:
             join_code = _get_join_code(rv_create)
             rv = _join_team(c2, token2, join_code)
         assert rv.status_code == 400
+
+    def test_join_response_hides_a_score_before_the_reveal(self, client, seeds, flask_app, db_conn):
+        token1 = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, token1)
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE teams SET score = 87, score_updated_at = NOW() WHERE id = %s",
+                (_get_team_id(rv_create),),
+            )
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            rv = _join_team(c2, token2, _get_join_code(rv_create))
+        assert rv.status_code == 200
+        team = rv.get_json()["team"]
+        assert not {"score", "score_updated_at", "password_hash", "join_code"} & team.keys()
+
+    def test_join_hides_the_score_when_the_flag_read_fails(
+        self, client, seeds, flask_app, db_conn, monkeypatch
+    ):
+        token1 = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, token1)
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE teams SET score = 87 WHERE id = %s", (_get_team_id(rv_create),))
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            monkeypatch.setattr(feature_flag_service, "is_enabled", _failing_read)
+            rv = _join_team(c2, token2, _get_join_code(rv_create))
+        assert rv.status_code == 200
+        assert "score" not in rv.get_json()["team"]
+
+    def test_a_failed_read_back_still_reports_the_join(self, client, seeds, flask_app, monkeypatch):
+        token1 = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, token1)
+        team_id = _get_team_id(rv_create)
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            monkeypatch.setattr(TeamService, "get_team_by_id", staticmethod(_failing_read))
+            rv = _join_team(c2, token2, _get_join_code(rv_create))
+        assert rv.status_code == 200
+        assert rv.get_json()["team"] == {"id": team_id}
+
+        monkeypatch.undo()
+        team = client.get(f"/api/teams/{team_id}", headers=bearer(token1)).get_json()["team"]
+        assert len(team["members"]) == 2
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -450,6 +532,83 @@ class TestJoinRequestFlow:
             token3 = register_and_token(c3, 3, seeds)
             rv = c3.post(f"/api/teams/requests/{req_id}/accept", headers=bearer(token3))
         assert rv.status_code == 403
+
+    def test_joining_by_code_invalidates_pending_requests(self, client, seeds, flask_app):
+        token1 = register_and_token(client, 1, seeds)
+        team_a = _get_team_id(_create_team(client, token1, "Team A"))
+        with flask_app.test_client() as c3:
+            token3 = register_and_token(c3, 3, seeds)
+            code_b = _get_join_code(_create_team(c3, token3, "Team B"))
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            assert c2.post(f"/api/teams/{team_a}/apply", headers=bearer(token2)).status_code == 201
+            assert _join_team(c2, token2, code_b).status_code == 200
+            apps = c2.get("/api/teams/my-applications", headers=bearer(token2)).get_json()
+
+        assert [a["status"] for a in apps["applications"]] == ["invalidated"]
+        rv = client.get(f"/api/teams/{team_a}/requests", headers=bearer(token1))
+        assert rv.get_json()["requests"] == []
+
+    def test_joining_by_code_accepts_request_to_that_team(self, client, seeds, flask_app):
+        token1 = register_and_token(client, 1, seeds)
+        rv_a = _create_team(client, token1, "Team A")
+        team_a, code_a = _get_team_id(rv_a), _get_join_code(rv_a)
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            assert c2.post(f"/api/teams/{team_a}/apply", headers=bearer(token2)).status_code == 201
+            assert _join_team(c2, token2, code_a).status_code == 200
+            apps = c2.get("/api/teams/my-applications", headers=bearer(token2)).get_json()
+
+        assert [a["status"] for a in apps["applications"]] == ["accepted"]
+        rv = client.get(f"/api/teams/{team_a}/requests", headers=bearer(token1))
+        assert rv.get_json()["requests"] == []
+
+    def test_creating_a_team_invalidates_pending_requests(self, client, seeds, flask_app):
+        token1 = register_and_token(client, 1, seeds)
+        team_a = _get_team_id(_create_team(client, token1, "Team A"))
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            assert c2.post(f"/api/teams/{team_a}/apply", headers=bearer(token2)).status_code == 201
+            assert _create_team(c2, token2, "Team B").status_code == 201
+            apps = c2.get("/api/teams/my-applications", headers=bearer(token2)).get_json()
+
+        assert [a["status"] for a in apps["applications"]] == ["invalidated"]
+        rv = client.get(f"/api/teams/{team_a}/requests", headers=bearer(token1))
+        assert rv.get_json()["requests"] == []
+
+    def test_cannot_apply_to_disqualified_team(self, client, seeds, flask_app, db_conn):
+        token1 = register_and_token(client, 1, seeds)
+        team_id = _get_team_id(_create_team(client, token1))
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE teams SET status = 'disqualified' WHERE id = %s", (team_id,))
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            rv = c2.post(f"/api/teams/{team_id}/apply", headers=bearer(token2))
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "This team has been disqualified"
+
+    def test_captain_cannot_accept_into_disqualified_team(self, client, seeds, flask_app, db_conn):
+        token1 = register_and_token(client, 1, seeds)
+        team_id = _get_team_id(_create_team(client, token1))
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            c2.post(f"/api/teams/{team_id}/apply", headers=bearer(token2))
+        req_id = client.get(f"/api/teams/{team_id}/requests", headers=bearer(token1)).get_json()[
+            "requests"
+        ][0]["request_id"]
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE teams SET status = 'disqualified' WHERE id = %s", (team_id,))
+
+        rv = client.post(f"/api/teams/requests/{req_id}/accept", headers=bearer(token1))
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "This team has been disqualified"
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT participant_count FROM teams WHERE id = %s", (team_id,))
+            assert cur.fetchone()["participant_count"] == 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════
