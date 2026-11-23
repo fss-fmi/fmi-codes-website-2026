@@ -316,7 +316,7 @@ class TeamService:
             return False, "Team name already taken", None
         except Exception as e:
             logger.error(f"Error creating team: {e}")
-            return False, str(e), None
+            return False, "Could not create the team. Try again.", None
 
     @staticmethod
     @_invalidates_registered_teams
@@ -387,7 +387,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error joining team: {e}")
-            return False, str(e), None
+            return False, "Could not join the team. Try again.", None
 
     @staticmethod
     @_invalidates_registered_teams
@@ -443,7 +443,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error leaving team: {e}")
-            return False, str(e)
+            return False, "Could not leave the team. Try again."
 
     @staticmethod
     @_invalidates_registered_teams
@@ -496,7 +496,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error removing member: {e}")
-            return False, str(e)
+            return False, "Could not remove the member. Try again."
 
     @staticmethod
     @_invalidates_registered_teams
@@ -518,7 +518,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error disbanding team: {e}")
-            return False, str(e)
+            return False, "Could not disband the team. Try again."
 
     @staticmethod
     def _disband_team_in_cursor(cursor, team_id):
@@ -593,7 +593,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error admin-registering team: {e}")
-            return False, str(e)
+            return False, "Could not register the team. Try again."
 
     @staticmethod
     @_invalidates_registered_teams
@@ -626,7 +626,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error admin-unregistering team: {e}")
-            return False, str(e)
+            return False, "Could not unregister the team. Try again."
 
     @staticmethod
     def get_team_members(team_id):
@@ -693,12 +693,14 @@ class TeamService:
 
                 # Lock team — must have space
                 cursor.execute(
-                    "SELECT id, participant_count FROM teams WHERE id = %s FOR UPDATE",
+                    "SELECT id, participant_count, status FROM teams WHERE id = %s FOR UPDATE",
                     (team_id,),
                 )
                 team = cursor.fetchone()
                 if not team:
                     return False, "Team not found"
+                if team["status"] == "disqualified":
+                    return False, "This team has been disqualified"
                 if team["participant_count"] >= MAX_TEAM_MEMBERS:
                     return False, "Team is already full"
 
@@ -732,7 +734,7 @@ class TeamService:
             return False, "Duplicate application"
         except Exception as e:
             logger.error(f"Error applying to team: {e}")
-            return False, str(e)
+            return False, "Could not submit the application. Try again."
 
     @staticmethod
     def get_pending_requests_for_team(team_id):
@@ -834,6 +836,8 @@ class TeamService:
                     (team_id,),
                 )
                 team_info = cursor.fetchone()
+                if team_info["status"] == "disqualified":
+                    return False, "This team has been disqualified"
                 if team_info["participant_count"] >= MAX_TEAM_MEMBERS:
                     return False, "Team is already full"
 
@@ -872,7 +876,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error accepting join request: {e}")
-            return False, str(e)
+            return False, "Could not accept the request. Try again."
 
     @staticmethod
     def decline_join_request(request_id, captain_id):
@@ -910,7 +914,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error declining join request: {e}")
-            return False, str(e)
+            return False, "Could not decline the request. Try again."
 
     @staticmethod
     def cancel_join_request(request_id, participant_id):
@@ -941,7 +945,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error cancelling join request: {e}")
-            return False, str(e)
+            return False, "Could not withdraw the application. Try again."
 
 
 # Module-level convenience instance

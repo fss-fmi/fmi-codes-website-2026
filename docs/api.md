@@ -6,7 +6,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 ## Conventions
 
-**Response envelope.** Most endpoints return `{"success": true, ...}` or `{"success": false, "error": "<message>"}`. Exceptions: `/api/health`, `/api/health/ready` and `/api/config` return bare objects.
+**Response envelope.** Most endpoints return `{"success": true, ...}` or `{"success": false, "error": "<message>"}`. Exceptions: `/api/health`, `/api/health/ready` and `/api/config` return bare objects. When a team action or a ranking save fails on the server side, the response is a 400 with a fixed message such as `Could not join the team. Try again.`; the error itself goes only to the server log.
 
 **Request bodies.** A body must be a JSON object; any other JSON value (an array, a string, a number) returns 400 `Request body must be a JSON object`. A missing or unparsable body counts as `{}`, so it gets the route's usual missing-field 400. A text field sent as anything but a string or `null` returns 400 `<field> must be a string`; `null` counts as missing. Text with a NUL character or an unpaired UTF-16 surrogate escape returns 400 `<field> contains an invalid character`, and text longer than its database column returns 400 `<field> must be at most <n> characters`. Ids and ranks must be JSON integers.
 
@@ -331,7 +331,7 @@ Participant. `applications`: the caller's join requests, newest first: `request_
 
 ### POST /api/teams/{team_id}/apply
 
-Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full, or a request is already pending. 403 `email_unverified` while email verification is required.
+Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full or disqualified, or a request is already pending. 403 `email_unverified` while email verification is required.
 
 ### GET /api/teams/{team_id}/requests
 
@@ -339,7 +339,7 @@ Captain of `team_id`. `requests`: pending requests, oldest first: `request_id, p
 
 ### POST /api/teams/requests/{request_id}/accept
 
-Captain of the request's team (a request to another team returns 400). Adds the applicant, invalidates their other pending requests, activates/registers the team at 3 members. 400 if the request is no longer pending, the applicant already joined elsewhere, or the team is full.
+Captain of the request's team (a request to another team returns 400). Adds the applicant, invalidates their other pending requests, activates/registers the team at 3 members. 400 if the request is no longer pending, the applicant already joined elsewhere, or the team is full or disqualified.
 
 ### POST /api/teams/requests/{request_id}/decline
 

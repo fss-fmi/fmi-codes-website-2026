@@ -111,7 +111,7 @@ def set_team_mentor_preferences(team_id, preferences):
                 )
     except Exception as e:
         logger.error(f"Error setting team mentor preferences: {e}")
-        return False, str(e)
+        return False, "Could not save the ranking. Try again."
 
     logger.info(f"Team {team_id} set mentor preferences")
     _announce_ranking(matching_events.team_ranking_text, team["team_name"], updated, "teams")
@@ -181,7 +181,7 @@ def set_mentor_team_preferences(mentor_id, preferences):
                 )
     except Exception as e:
         logger.error(f"Error setting mentor team preferences: {e}")
-        return False, str(e)
+        return False, "Could not save the ranking. Try again."
 
     logger.info(f"Mentor {mentor_id} set team preferences")
     _announce_ranking(matching_events.mentor_ranking_text, mentor["name"], updated, "mentors")

@@ -451,6 +451,37 @@ class TestJoinRequestFlow:
             rv = c3.post(f"/api/teams/requests/{req_id}/accept", headers=bearer(token3))
         assert rv.status_code == 403
 
+    def test_cannot_apply_to_disqualified_team(self, client, seeds, flask_app, db_conn):
+        token1 = register_and_token(client, 1, seeds)
+        team_id = _get_team_id(_create_team(client, token1))
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE teams SET status = 'disqualified' WHERE id = %s", (team_id,))
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            rv = c2.post(f"/api/teams/{team_id}/apply", headers=bearer(token2))
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "This team has been disqualified"
+
+    def test_captain_cannot_accept_into_disqualified_team(self, client, seeds, flask_app, db_conn):
+        token1 = register_and_token(client, 1, seeds)
+        team_id = _get_team_id(_create_team(client, token1))
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            c2.post(f"/api/teams/{team_id}/apply", headers=bearer(token2))
+        req_id = client.get(f"/api/teams/{team_id}/requests", headers=bearer(token1)).get_json()[
+            "requests"
+        ][0]["request_id"]
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE teams SET status = 'disqualified' WHERE id = %s", (team_id,))
+
+        rv = client.post(f"/api/teams/requests/{req_id}/accept", headers=bearer(token1))
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "This team has been disqualified"
+        with db_conn.cursor() as cur:
+            cur.execute("SELECT participant_count FROM teams WHERE id = %s", (team_id,))
+            assert cur.fetchone()["participant_count"] == 1
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Team auto-activation / deactivation

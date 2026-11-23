@@ -1,5 +1,6 @@
 """Mentor management routes — JWT-protected"""
 
+import logging
 from io import BytesIO
 
 from flask import g, jsonify, send_file
@@ -12,6 +13,8 @@ from app.utils.auth_decorators import (
 )
 from app.utils.request_json import json_object
 
+logger = logging.getLogger(__name__)
+
 # ── Public mentor API ──────────────────────────────────────────────
 
 
@@ -22,7 +25,8 @@ def get_mentors():
         mentors = mentor_service.get_all_mentors()
         return jsonify({"success": True, "mentors": [dict(m) for m in mentors]}), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"Error fetching mentors: {e}")
+        return jsonify({"success": False, "error": "Failed to fetch mentors"}), 500
 
 
 @mentors_bp.route("/api/mentors/<int:mentor_id>/picture", methods=["GET"])
@@ -39,7 +43,8 @@ def get_mentor_picture(mentor_id):
             download_name=filename or "mentor_picture.png",
         )
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        logger.error(f"Error fetching mentor picture {mentor_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to fetch the picture"}), 500
 
 
 # ── Team mentor preferences (captain) ─────────────────────────────

@@ -1,6 +1,6 @@
 """Team management routes — JWT-protected"""
 
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import current_app, g, jsonify
 
@@ -17,6 +17,10 @@ from app.utils.auth_decorators import (
     verified_email_required,
 )
 from app.utils.request_json import json_object, string_field
+
+# Bounded like the verification mail: a thread per application would grow without
+# limit while SMTP is slow. Queued sends wait instead.
+_join_request_mail = ThreadPoolExecutor(max_workers=4, thread_name_prefix="join-request-mail")
 
 
 @teams_bp.route("/api/teams/registered", methods=["GET"])
@@ -300,19 +304,15 @@ def apply_to_team(team_id):
             fetch_one=True,
         )
         if row:
-            app_config = dict(current_app.config)
-            threading.Thread(
-                target=send_join_request_notification,
-                args=(
-                    app_config,
-                    row["captain_email"],
-                    row["captain_first_name"],
-                    row["team_name"],
-                    row["app_first_name"],
-                    row["app_last_name"],
-                ),
-                daemon=True,
-            ).start()
+            _join_request_mail.submit(
+                send_join_request_notification,
+                dict(current_app.config),
+                row["captain_email"],
+                row["captain_first_name"],
+                row["team_name"],
+                row["app_first_name"],
+                row["app_last_name"],
+            )
     except Exception:
         pass  # Notification failure must not affect the response
 
