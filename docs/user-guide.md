@@ -51,7 +51,7 @@ Teams have 3 to 6 members. The team page offers three ways in:
 
 **Join with a code.** Click **JOIN WITH CODE**, enter the code your captain sent you and click **JOIN TEAM**. You join immediately, no approval needed.
 
-**Apply to a team.** Click **BROWSE TEAMS** to see teams with free spots, then click **APPLY TO JOIN**. The captain gets an email and decides. Your applications and their status appear under **MY APPLICATIONS** on the team page. Click **WITHDRAW** to cancel one that is still pending. Once you are on a team (a captain accepted you, you joined with a code or you created one), your other pending applications close by themselves and show **INVALIDATED**. If a team you applied to is disbanded, your application to it disappears.
+**Apply to a team.** Click **BROWSE TEAMS** to see teams with free spots, then click **APPLY TO JOIN**. The captain gets an email and decides. Your applications and their status appear under **MY APPLICATIONS** on the team page. Click **WITHDRAW** to cancel one that is still pending. Once you are on a team (a captain accepted you, you joined with a code or you created one), your other pending applications close by themselves and show **INVALIDATED**. An application to the team you joined with its code shows **ACCEPTED**. If a team you applied to is disbanded, your application to it disappears.
 
 You can also apply from the public **TEAMS** page when you do not have a team yet.
 

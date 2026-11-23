@@ -303,11 +303,11 @@ Participant. Creates a team with the caller as captain.
 { "team_name": "Code Wizards" }
 ```
 
-201 `{"success": true, "message": "Team created successfully", "team": {...}}`, with the `join_code`. The caller's other pending join requests become `invalidated`. 400 for a blank or taken name, a name over 100 characters, HTML characters, or if the caller is already on a team. 403 `email_unverified` while email verification is required.
+201 `{"success": true, "message": "Team created successfully", "team": {...}}`, with the `join_code`. The caller's other pending join requests become `invalidated`. 400 for a blank or taken name, a name over 100 characters, HTML characters or if the caller is already on a team. 403 `email_unverified` while email verification is required.
 
 ### POST /api/teams/join
 
-Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team (without its `join_code`); the caller's other pending join requests become `invalidated`. 400 for an invalid code, a full team (6), a disqualified team, or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
+Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team (without its `join_code`); the caller's pending join request to this team becomes `accepted` and the others become `invalidated`. 400 for an invalid code, a full team (6), a disqualified team or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
 
 ### POST /api/teams/{team_id}/leave
 
@@ -331,7 +331,7 @@ Participant. `applications`: the caller's join requests, newest first: `request_
 
 ### POST /api/teams/{team_id}/apply
 
-Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full or disqualified, or a request is already pending. 403 `email_unverified` while email verification is required.
+Participant without a team. Creates (or re-opens) a pending join request and emails the captain in the background. 201 `Application submitted`. 400 if already on a team, the team is full or disqualified or a request is already pending. 403 `email_unverified` while email verification is required.
 
 ### GET /api/teams/{team_id}/requests
 
@@ -339,7 +339,7 @@ Captain of `team_id`. `requests`: pending requests, oldest first: `request_id, p
 
 ### POST /api/teams/requests/{request_id}/accept
 
-Captain of the request's team (a request to another team returns 400). Adds the applicant, invalidates their other pending requests, activates/registers the team at 3 members. 400 if the request is no longer pending, the applicant already joined elsewhere, or the team is full or disqualified.
+Captain of the request's team (a request to another team returns 400). Adds the applicant, invalidates their other pending requests, activates/registers the team at 3 members. 400 if the request is no longer pending, the applicant already joined elsewhere or the team is full or disqualified.
 
 ### POST /api/teams/requests/{request_id}/decline
 

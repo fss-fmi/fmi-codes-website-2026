@@ -38,7 +38,7 @@ A participant's study year. One of `Bachelor 1st Year` .. `Bachelor 4th Year`, `
 
 ### Disband
 
-Deleting a team. Members are released (they become teamless), its join requests, preferences and assignments are deleted with it, and the team's registration slot or queue position is freed.
+Deleting a team. Members are released (they become teamless), its join requests, preferences and assignments are deleted with it and the team's registration slot or queue position is freed.
 
 ## F
 

@@ -381,6 +381,11 @@ class TeamService:
                     "UPDATE participants SET team_id = %s WHERE id = %s",
                     (team["id"], participant_id),
                 )
+                cursor.execute(
+                    "UPDATE team_join_requests SET status = 'accepted' "
+                    "WHERE participant_id = %s AND team_id = %s AND status = 'pending'",
+                    (participant_id, team["id"]),
+                )
                 TeamService._invalidate_pending_requests(cursor, participant_id)
 
                 # Auto-activate at threshold and handle registration/queue

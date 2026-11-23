@@ -485,6 +485,21 @@ class TestJoinRequestFlow:
         rv = client.get(f"/api/teams/{team_a}/requests", headers=bearer(token1))
         assert rv.get_json()["requests"] == []
 
+    def test_joining_by_code_accepts_request_to_that_team(self, client, seeds, flask_app):
+        token1 = register_and_token(client, 1, seeds)
+        rv_a = _create_team(client, token1, "Team A")
+        team_a, code_a = _get_team_id(rv_a), _get_join_code(rv_a)
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            assert c2.post(f"/api/teams/{team_a}/apply", headers=bearer(token2)).status_code == 201
+            assert _join_team(c2, token2, code_a).status_code == 200
+            apps = c2.get("/api/teams/my-applications", headers=bearer(token2)).get_json()
+
+        assert [a["status"] for a in apps["applications"]] == ["accepted"]
+        rv = client.get(f"/api/teams/{team_a}/requests", headers=bearer(token1))
+        assert rv.get_json()["requests"] == []
+
     def test_creating_a_team_invalidates_pending_requests(self, client, seeds, flask_app):
         token1 = register_and_token(client, 1, seeds)
         team_a = _get_team_id(_create_team(client, token1, "Team A"))
