@@ -211,6 +211,22 @@ class TestJoinViaCode:
             rv = _join_team(c2, token2, join_code)
         assert rv.status_code == 400
 
+    def test_join_response_hides_a_score_before_the_reveal(self, client, seeds, flask_app, db_conn):
+        token1 = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, token1)
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE teams SET score = 87, score_updated_at = NOW() WHERE id = %s",
+                (_get_team_id(rv_create),),
+            )
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            rv = _join_team(c2, token2, _get_join_code(rv_create))
+        assert rv.status_code == 200
+        team = rv.get_json()["team"]
+        assert not {"score", "score_updated_at", "password_hash", "join_code"} & team.keys()
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Leave team

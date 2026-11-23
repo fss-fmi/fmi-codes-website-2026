@@ -6,7 +6,7 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 ## Conventions
 
-**Response envelope.** Most endpoints return `{"success": true, ...}` or `{"success": false, "error": "<message>"}`. Exceptions: `/api/health`, `/api/health/ready` and `/api/config` return bare objects. When a team action or a ranking save fails on the server side, the response is a 400 with a fixed message such as `Could not join the team. Try again.`; the error itself goes only to the server log.
+**Response envelope.** Most endpoints return `{"success": true, ...}` or `{"success": false, "error": "<message>"}`. Exceptions: `/api/health`, `/api/health/ready` and `/api/config` return bare objects. When a team action or a ranking save fails on the server side, the response is a 500 with a fixed message such as `Could not join the team. Try again.`; the error itself goes only to the server log. A 500 rather than a 400 keeps a database outage visible to the `BackendHighErrorRate` alert.
 
 **Request bodies.** A body must be a JSON object; any other JSON value (an array, a string, a number) returns 400 `Request body must be a JSON object`. A missing or unparsable body counts as `{}`, so it gets the route's usual missing-field 400. A text field sent as anything but a string or `null` returns 400 `<field> must be a string`; `null` counts as missing. Text with a NUL character or an unpaired UTF-16 surrogate escape returns 400 `<field> contains an invalid character`, and text longer than its database column returns 400 `<field> must be at most <n> characters`. Ids and ranks must be JSON integers.
 
@@ -107,7 +107,7 @@ Rules: names may not contain `< > & ; " \`; email must look like an address (sto
 }
 ```
 
-Every field is required and follows the same name rules. A value longer than its column (200 characters for a university or specialty name, 100 for city and country) is cut to fit, not refused. The entry is created with `is_seed = false` in the same transaction as the participant, so it only exists if the registration succeeds. If the name already exists in any letter case, that row is reused, and a curated row wins over a typed one. "Other" entries are never shown in the dropdowns (those list curated rows only). This is the only way to add a university or specialty.
+Every field is required and follows the same name rules. A value longer than 200 characters for a university or specialty name, or 100 for city and country, is cut to that length, not refused. The entry is created with `is_seed = false` in the same transaction as the participant, so it only exists if the registration succeeds. If the name already exists in any letter case, that row is reused, and a curated row wins over a typed one. "Other" entries are never shown in the dropdowns (those list curated rows only). This is the only way to add a university or specialty.
 
 | Code | Meaning                                                                                 |
 | ---- | --------------------------------------------------------------------------------------- |
@@ -307,7 +307,7 @@ Participant. Creates a team with the caller as captain.
 
 ### POST /api/teams/join
 
-Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team (without its `join_code`); the caller's pending join request to this team becomes `accepted` and the others become `invalidated`. 400 for an invalid code, a full team (6), a disqualified team or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
+Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the updated team (without its `join_code`, or its score before `rankings_live`); the caller's pending join request to this team becomes `accepted` and the others become `invalidated`. 400 for an invalid code, a full team (6), a disqualified team or if the caller already has a team. 403 `email_unverified` while email verification is required. Reaching 3 members activates the team and registers or queues it.
 
 ### POST /api/teams/{team_id}/leave
 

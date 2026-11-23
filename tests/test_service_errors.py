@@ -1,7 +1,9 @@
-"""A failing query is logged and answered with a fixed message, never the exception text.
+"""A failing query is logged and answered with a 500 and a fixed message, never the
+exception text.
 
 The exception can carry database details (a host name, a constraint, a statement), and
-the SPA shows a response's `error` to the user as is.
+the SPA shows a response's `error` to the user as is. A 500, not a 400, so the 5xx alert
+sees a database outage during a rush of team actions.
 """
 
 from unittest.mock import MagicMock
@@ -12,6 +14,7 @@ from app.routes import teams as teams_routes
 from app.services import mentor_selection_service, mentor_service
 from app.services.auth_service import generate_token
 from app.services.team_service import TeamService
+from app.utils.service_errors import ServiceFailureError
 
 DETAIL = "could not connect to server db-internal-7.cluster.local"
 
@@ -37,9 +40,9 @@ def _failing_cursor(*args, **kwargs):
 @pytest.mark.parametrize(("method", "args", "message"), TEAM_CALLS)
 def test_team_service_hides_the_exception(monkeypatch, method, args, message):
     monkeypatch.setattr("app.services.team_service.get_db_cursor", _failing_cursor)
-    result = getattr(TeamService, method)(*args)
-    assert result[0] is False
-    assert result[1] == message
+    with pytest.raises(ServiceFailureError) as failure:
+        getattr(TeamService, method)(*args)
+    assert str(failure.value) == message
 
 
 @pytest.mark.parametrize(
@@ -52,7 +55,44 @@ def test_team_service_hides_the_exception(monkeypatch, method, args, message):
 def test_ranking_save_hides_the_exception(app_ctx, monkeypatch, save, id_key):
     monkeypatch.setattr(mentor_selection_service, "get_db_cursor", _failing_cursor)
     preferences = [{id_key: i, "rank": i} for i in (1, 2, 3)]
-    assert save(1, preferences) == (False, "Could not save the ranking. Try again.")
+    with pytest.raises(ServiceFailureError) as failure:
+        save(1, preferences)
+    assert str(failure.value) == "Could not save the ranking. Try again."
+
+
+def test_admin_team_action_failure_is_a_500(app, client, monkeypatch):
+    monkeypatch.setattr("app.services.team_service.get_db_cursor", _failing_cursor)
+    with app.app_context():
+        token = generate_token(0, "admin")
+
+    response = client.post(
+        "/api/admin/teams/1/register", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 500
+    assert response.get_json() == {
+        "success": False,
+        "error": "Could not register the team. Try again.",
+    }
+
+
+def test_participant_team_action_failure_is_a_500(app, client, monkeypatch):
+    monkeypatch.setattr("app.services.team_service.get_db_cursor", _failing_cursor)
+    monkeypatch.setattr(
+        "app.database.execute_query",
+        lambda *a, **k: {"id": 7, "tokens_valid_from": None, "email_verified": True},
+    )
+    with app.app_context():
+        token = generate_token(7, "participant")
+
+    response = client.post(
+        "/api/teams/join",
+        json={"join_code": "ABCD1234"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 500
+    assert response.get_json() == {"success": False, "error": "Could not join the team. Try again."}
 
 
 def test_mentor_list_hides_the_exception(client, monkeypatch):
