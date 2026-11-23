@@ -1,5 +1,6 @@
 """Team management routes — JWT-protected"""
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from flask import current_app, g, jsonify
@@ -18,16 +19,29 @@ from app.utils.auth_decorators import (
 )
 from app.utils.request_json import json_object, string_field
 
+logger = logging.getLogger(__name__)
+
 # Bounded like the verification mail: a thread per application would grow without
-# limit while SMTP is slow. Queued sends wait instead.
+# limit while SMTP is slow. Queued sends wait instead, and a worker that shuts down
+# sends what is queued before it exits.
 _join_request_mail = ThreadPoolExecutor(max_workers=4, thread_name_prefix="join-request-mail")
+
+
+def _rankings_live():
+    # Create and join have committed before this runs; a failed read hides the score
+    # instead of reporting the saved change as failed.
+    try:
+        return feature_flag_service.is_enabled("rankings_live")
+    except Exception as e:
+        logger.error(f"Error reading rankings_live: {e}")
+        return False
 
 
 def _hide_private_team_fields(team, sees_join_code):
     team.pop("password_hash", None)
     if not sees_join_code:
         team.pop("join_code", None)
-    if g.current_user["role"] != "admin" and not feature_flag_service.is_enabled("rankings_live"):
+    if g.current_user["role"] != "admin" and not _rankings_live():
         team.pop("score", None)
         team.pop("score_updated_at", None)
     return team

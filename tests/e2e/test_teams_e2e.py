@@ -20,6 +20,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
+from app.services import feature_flag_service
+from app.services.team_service import TeamService
+
 from tests.e2e.conftest import (
     DEFAULT_PW,
     _extract_token,
@@ -52,6 +55,10 @@ def _get_join_code(create_resp):
 
 def _get_team_id(create_resp):
     return create_resp.get_json()["team"]["id"]
+
+
+def _failing_read(*args, **kwargs):
+    raise RuntimeError("connection pool exhausted")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -100,6 +107,17 @@ class TestCreateTeam:
     def test_requires_authentication(self, client):
         rv = client.post("/api/teams", json={"team_name": "Anon Team"})
         assert rv.status_code == 401
+
+    def test_a_failed_read_back_still_reports_the_saved_team(self, client, seeds, monkeypatch):
+        token = register_and_token(client, 1, seeds)
+        monkeypatch.setattr(TeamService, "get_team_by_id", staticmethod(_failing_read))
+        rv = _create_team(client, token, "Saved Team")
+        assert rv.status_code == 201
+        assert set(rv.get_json()["team"]) == {"id", "join_code"}
+
+        monkeypatch.undo()
+        team = client.get(f"/api/teams/{_get_team_id(rv)}", headers=bearer(token)).get_json()
+        assert team["team"]["team_name"] == "Saved Team"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -226,6 +244,37 @@ class TestJoinViaCode:
         assert rv.status_code == 200
         team = rv.get_json()["team"]
         assert not {"score", "score_updated_at", "password_hash", "join_code"} & team.keys()
+
+    def test_join_hides_the_score_when_the_flag_read_fails(
+        self, client, seeds, flask_app, db_conn, monkeypatch
+    ):
+        token1 = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, token1)
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE teams SET score = 87 WHERE id = %s", (_get_team_id(rv_create),))
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            monkeypatch.setattr(feature_flag_service, "is_enabled", _failing_read)
+            rv = _join_team(c2, token2, _get_join_code(rv_create))
+        assert rv.status_code == 200
+        assert "score" not in rv.get_json()["team"]
+
+    def test_a_failed_read_back_still_reports_the_join(self, client, seeds, flask_app, monkeypatch):
+        token1 = register_and_token(client, 1, seeds)
+        rv_create = _create_team(client, token1)
+        team_id = _get_team_id(rv_create)
+
+        with flask_app.test_client() as c2:
+            token2 = register_and_token(c2, 2, seeds)
+            monkeypatch.setattr(TeamService, "get_team_by_id", staticmethod(_failing_read))
+            rv = _join_team(c2, token2, _get_join_code(rv_create))
+        assert rv.status_code == 200
+        assert rv.get_json()["team"] == {"id": team_id}
+
+        monkeypatch.undo()
+        team = client.get(f"/api/teams/{team_id}", headers=bearer(token1)).get_json()["team"]
+        assert len(team["members"]) == 2
 
 
 # ═══════════════════════════════════════════════════════════════════════════

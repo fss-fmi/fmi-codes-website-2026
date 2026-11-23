@@ -133,7 +133,8 @@ Ruff is pinned to one exact version in `backend/requirements.txt` and CI install
 backend/
   app/routes/      HTTP layer (auth, teams, mentors, api_routes)
   app/services/    business logic: teams and queue, matching, auth, Redis, mail
-  app/utils/       auth decorators, rate-limit keys, request body validation, password-hash slots
+  app/utils/       auth decorators, rate-limit keys, request body validation, password-hash slots,
+                   ServiceFailureError (a service's server-side failure, answered with a 500)
   database/        schema.sql (authoritative), migrations/ (deltas), seeds/ (JSON)
   config.py        all settings, read from env
   run_server.py    dev entry point

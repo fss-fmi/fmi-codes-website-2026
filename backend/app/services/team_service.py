@@ -242,6 +242,16 @@ class TeamService:
             logger.info(f"Team {team_id} removed from queue position {old_pos}")
 
     @staticmethod
+    def _read_back_team(team_id):
+        """The change is committed by now: a failed read must not report it as failed."""
+        try:
+            team = TeamService.get_team_by_id(team_id)
+        except Exception as e:
+            logger.error(f"Error reading back team {team_id}: {e}")
+            return None
+        return dict(team) if team else None
+
+    @staticmethod
     def _invalidate_pending_requests(cursor, participant_id):
         """A participant who now has a team can't be accepted anywhere else."""
         cursor.execute(
@@ -314,20 +324,15 @@ class TeamService:
                 )
                 TeamService._invalidate_pending_requests(cursor, captain_id)
 
-            # Fetch full team info outside the lock
-            team = TeamService.get_team_by_id(team_id)
-            logger.info(f"Team '{team_name}' created by captain {captain_id}")
-            return (
-                True,
-                "Team created successfully",
-                dict(team) if team else {"id": team_id, "join_code": join_code},
-            )
-
         except psycopg2.IntegrityError:
             return False, "Team name already taken", None
         except Exception as e:
             logger.error(f"Error creating team: {e}")
             raise ServiceFailureError("Could not create the team. Try again.") from e
+
+        logger.info(f"Team '{team_name}' created by captain {captain_id}")
+        team = TeamService._read_back_team(team_id)
+        return True, "Team created successfully", team or {"id": team_id, "join_code": join_code}
 
     @staticmethod
     @_invalidates_registered_teams
@@ -398,13 +403,16 @@ class TeamService:
                     )
                     TeamService._try_register_or_queue(cursor, team["id"])
 
-            updated_team = TeamService.get_team_by_id(team["id"])
-            logger.info(f"Participant {participant_id} joined team {team['id']}")
-            return True, "Joined team successfully", dict(updated_team) if updated_team else None
-
         except Exception as e:
             logger.error(f"Error joining team: {e}")
             raise ServiceFailureError("Could not join the team. Try again.") from e
+
+        logger.info(f"Participant {participant_id} joined team {team['id']}")
+        return (
+            True,
+            "Joined team successfully",
+            TeamService._read_back_team(team["id"]) or {"id": team["id"]},
+        )
 
     @staticmethod
     @_invalidates_registered_teams
