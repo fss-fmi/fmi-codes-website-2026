@@ -3,7 +3,6 @@ export interface Mentor {
   name: string;
   first_name?: string;
   last_name?: string;
-  email?: string;
   company_name?: string;
   bio?: string;
   picture_url?: string;

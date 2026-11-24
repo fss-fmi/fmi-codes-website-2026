@@ -9,6 +9,7 @@ None of these tests require a live Redis or Postgres.
 """
 
 import json
+import re
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
@@ -68,7 +69,7 @@ def _wire(monkeypatch, module_path, fake):
 
 def test_get_all_mentors_cache_hit(monkeypatch, app_ctx):
     cached_rows = [{"mentor_id": 1, "name": "A B"}]
-    fake = FakeRedis({"cache:mentors:all": json.dumps(cached_rows)})
+    fake = FakeRedis({"cache:mentors:public": json.dumps(cached_rows)})
     _wire(monkeypatch, "app.services.mentor_service", fake)
     monkeypatch.setattr(
         "app.services.mentor_service.execute_query",
@@ -88,14 +89,14 @@ def test_get_all_mentors_cache_miss_populates(monkeypatch, app_ctx):
     assert result == rows
     assert len(fake.set_calls) == 1
     key, value, ttl = fake.set_calls[0]
-    assert key == "cache:mentors:all"
+    assert key == "cache:mentors:public"
     assert json.loads(value) == rows
     assert ttl >= 1
 
 
 def test_get_all_mentors_corrupt_cache_falls_through(monkeypatch, app_ctx):
     rows = [{"mentor_id": 9, "name": "E F"}]
-    fake = FakeRedis({"cache:mentors:all": "{not valid json"})
+    fake = FakeRedis({"cache:mentors:public": "{not valid json"})
     _wire(monkeypatch, "app.services.mentor_service", fake)
     monkeypatch.setattr("app.services.mentor_service.execute_query", lambda *a, **k: rows)
     result = mentor_service.get_all_mentors()
@@ -104,10 +105,23 @@ def test_get_all_mentors_corrupt_cache_falls_through(monkeypatch, app_ctx):
 
 
 def test_invalidate_mentor_cache_deletes_key(monkeypatch, app_ctx):
-    fake = FakeRedis({"cache:mentors:all": "[]"})
+    fake = FakeRedis({"cache:mentors:public": "[]"})
     _wire(monkeypatch, "app.services.mentor_service", fake)
     mentor_service._invalidate_mentor_cache()
-    assert fake.del_calls == [("cache:mentors:all",)]
+    assert fake.del_calls == [("cache:mentors:public",)]
+
+
+def test_the_public_mentor_list_selects_no_contacts(monkeypatch, app_ctx):
+    """GET /api/mentors is public, so it must never read a mentor's contacts (#274)."""
+    queries = []
+    _wire(monkeypatch, "app.services.mentor_service", FakeRedis())
+    monkeypatch.setattr(
+        "app.services.mentor_service.execute_query", lambda _app, q, **_k: queries.append(q) or []
+    )
+    mentor_service.get_all_mentors()
+    selected = queries[0].split("FROM")[0]
+    for column in ("email", "phone_number", "password_hash", "status", "created_at"):
+        assert not re.search(rf"\b{column}\b", selected), f"{column} is selected"
 
 
 def test_get_rankings_cache_hit(monkeypatch, app_ctx):
@@ -367,13 +381,13 @@ def test_mentor_seed_loader_invalidates_mentor_cache(monkeypatch, app_ctx, tmp_p
         json.dumps([{"first_name": "A", "last_name": "B", "company_name": "C"}]),
         encoding="utf-8",
     )
-    fake = FakeRedis({"cache:mentors:all": "[]"})
+    fake = FakeRedis({"cache:mentors:public": "[]"})
     _wire(monkeypatch, "app.services.mentor_service", fake)
     monkeypatch.setattr("app.services.mentor_service.mentor_exists", lambda *a, **k: False)
     monkeypatch.setattr("app.services.auth_service.hash_password", lambda pw, **_: "hashed")
     monkeypatch.setattr("app.services.mentor_service.get_db_cursor", _fake_cursor(1))
     assert mentor_service.load_mentors_from_file(seed_file) == 1
-    assert fake.del_calls == [("cache:mentors:all",)]
+    assert fake.del_calls == [("cache:mentors:public",)]
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_OVERLAY="$K8S_DIR/overlays/$ENV"
 SECRETS_ENC="${SECRETS_ENC:-$K8S_DIR/$SECRETS_REL}"
+MENTORS_SEED_ENC="${MENTORS_SEED_ENC:-$K8S_DIR/$(dirname "$SECRETS_REL")/mentors-seed.enc.yaml}"
 # shellcheck source=lib/rollout.sh
 . "$SCRIPT_DIR/lib/rollout.sh"
 
@@ -41,24 +42,36 @@ gen_password() {
   head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32
 }
 
+# $1 an encrypted manifest
 sops_can_decrypt() {
   command -v sops >/dev/null 2>&1 || return 1
-  [ -f "$SECRETS_ENC" ] || return 1
-  sops --decrypt "$SECRETS_ENC" >/dev/null 2>&1
+  [ -f "$1" ] || return 1
+  sops --decrypt "$1" >/dev/null 2>&1
 }
 
-if sops_can_decrypt; then
-  secret_ns="$(sops --decrypt "$SECRETS_ENC" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
-  [ "$secret_ns" = "$NAMESPACE" ] \
-    || die "$SECRETS_ENC targets namespace '${secret_ns:-<none>}' but ENV=$ENV expects '$NAMESPACE' — refusing to apply a secret across environments."
-  log "Applying app secret '$APP_SECRET' from $SECRETS_ENC (SOPS-managed)"
-  sops --decrypt "$SECRETS_ENC" | kubectl apply -f -
-elif [ -f "$SECRETS_ENC" ]; then
+# $1 an encrypted manifest that exists but sops_can_decrypt refused
+die_undecryptable() {
   if command -v sops >/dev/null 2>&1; then
-    die "found $SECRETS_ENC but could not decrypt it — is your age key at ~/.config/sops/age/keys.txt? See docs/runbook/secrets.md 'SOPS and age'."
+    die "found $1 but could not decrypt it — is your age key at ~/.config/sops/age/keys.txt? See docs/runbook/secrets.md 'SOPS and age'."
   else
-    die "found $SECRETS_ENC but sops is not installed — run install-tools.sh, then ensure your age key is at ~/.config/sops/age/keys.txt. See docs/runbook/secrets.md 'SOPS and age'."
+    die "found $1 but sops is not installed — run install-tools.sh, then ensure your age key is at ~/.config/sops/age/keys.txt. See docs/runbook/secrets.md 'SOPS and age'."
   fi
+}
+
+# $1 an encrypted manifest, $2 what it holds (for the log)
+apply_sops_secret() {
+  local secret_ns
+  secret_ns="$(sops --decrypt "$1" | grep -E '^[[:space:]]+namespace:' | head -1 | awk '{print $2}' || true)"
+  [ "$secret_ns" = "$NAMESPACE" ] \
+    || die "$1 targets namespace '${secret_ns:-<none>}' but ENV=$ENV expects '$NAMESPACE' — refusing to apply a secret across environments."
+  log "Applying $2 from $1 (SOPS-managed)"
+  sops --decrypt "$1" | kubectl apply -f -
+}
+
+if sops_can_decrypt "$SECRETS_ENC"; then
+  apply_sops_secret "$SECRETS_ENC" "app secret '$APP_SECRET'"
+elif [ -f "$SECRETS_ENC" ]; then
+  die_undecryptable "$SECRETS_ENC"
 else
   log "Ensuring app secret '$APP_SECRET' (generated in-cluster; no SOPS file present)"
   if kubectl -n "$NAMESPACE" get secret "$APP_SECRET" >/dev/null 2>&1; then
@@ -78,6 +91,15 @@ else
     echo "Set a real ADMIN_PASSWORD_HASH before the backend will start in production mode:"
     echo "  kubectl -n $NAMESPACE patch secret $APP_SECRET -p '{\"data\":{\"ADMIN_PASSWORD_HASH\":\"<base64-bcrypt-hash>\"}}'"
   fi
+fi
+
+# Mentors are personal data, so the seed lives only in this Secret, never in the image.
+if sops_can_decrypt "$MENTORS_SEED_ENC"; then
+  apply_sops_secret "$MENTORS_SEED_ENC" "mentor seed secret"
+elif [ -f "$MENTORS_SEED_ENC" ]; then
+  die_undecryptable "$MENTORS_SEED_ENC"
+else
+  log "No mentor seed at $MENTORS_SEED_ENC — the backend seeds no mentors"
 fi
 
 admin_hash="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \
@@ -104,8 +126,8 @@ fi
 
 if flux_owns_app "$FLUX_KUSTOMIZATION"; then
   log "Flux is active — it owns the backend/frontend Deployments"
-  echo "Applied the app secret only; Flux applies the Deployments from git. The backend"
-  echo "reads the secret only when a pod starts, so if it changed, restart the backend:"
+  echo "Applied the secrets only; Flux applies the Deployments from git. The backend reads"
+  echo "them (the mentor seed included) only when a pod starts, so if one changed, restart it:"
   rollout_restart_hint "$NAMESPACE" deployment/backend
   exit 0
 fi

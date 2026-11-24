@@ -173,11 +173,13 @@ None of these are used by the application; they are for manual SQL inspection.
 
 Loaded by both `run_server.py` and `wsgi.py` on every start (idempotent, `ON CONFLICT DO NOTHING`):
 
-| File                                       | Rows | Loaded into                                                                                                                |
-| ------------------------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------- |
-| `backend/database/seeds/universities.json` | 41   | `universities` (`is_seed = true`)                                                                                          |
-| `backend/database/seeds/specialties.json`  | 18   | `specialties` (`is_seed = true`)                                                                                           |
-| `backend/database/seeds/mentors.json`      | 20   | `mentors`. Password defaults to `mentor123` when an entry has none; bare picture filenames become `/mentorPictures/<file>` |
+| File                                       | Rows                      | Loaded into                                                                                                                                                                                      |
+| ------------------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `backend/database/seeds/universities.json` | 41                        | `universities` (`is_seed = true`)                                                                                                                                                                |
+| `backend/database/seeds/specialties.json`  | 18                        | `specialties` (`is_seed = true`)                                                                                                                                                                 |
+| The file `MENTORS_SEED_FILE` names         | dev 3, staging 20, prod 0 | `mentors`. An entry with no `password` gets a NULL `password_hash`, which can't log in until the mentor sets one through forgot password; bare picture filenames become `/mentorPictures/<file>` |
+
+The mentor seed is personal data, so the real one never sits in the repo or the image. Development and testing default to `backend/database/seeds/mentors.dev.json` (three fake `@mentor.test` mentors, password `mentor123`). Production config has no default: in the cluster the seed is the SOPS-encrypted Secret `fmi-codes-mentors-seed` (`infra/k8s/overlays/staging/secrets/mentors-seed.enc.yaml` holds staging's 20 mentors, `infra/k8s/secrets/mentors-seed.enc.yaml` prod's empty list until the 2027 roster), mounted into the backend at `/etc/fmi-codes/mentors/mentors.json`. Unset, missing or unreadable, the backend logs it and seeds nobody. Seeding only inserts, so editing the Secret never changes a mentor that already exists ([Secrets](runbook/secrets.md#mentor-seed)).
 
 Read at request time (not stored in the DB):
 

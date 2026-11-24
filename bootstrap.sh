@@ -37,7 +37,7 @@ SECRETS_ENC="$SECRETS_DIR/secrets.enc.yaml"
 TS_FILE="$SCRIPT_DIR/infra/k8s/$TS_CLIENT_REL"
 ENC_FILES=()
 for f in "$SECRETS_ENC" "$SECRETS_DIR/grafana-secret.enc.yaml" "$SECRETS_DIR/alertmanager-slack.enc.yaml" \
-  "$SECRETS_DIR/flux-relay-slack.enc.yaml"; do
+  "$SECRETS_DIR/flux-relay-slack.enc.yaml" "$SECRETS_DIR/mentors-seed.enc.yaml"; do
   if [ -f "$f" ]; then ENC_FILES+=("$f"); fi
 done
 if [ "$ENV" = "prod" ] && [ -f "$SECRETS_DIR/cloudflared-tunnel.enc.yaml" ]; then

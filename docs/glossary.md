@@ -97,7 +97,7 @@ The admin-triggered process that assigns mentors to registered teams: **Gale-Sha
 
 ### Mentor
 
-An industry volunteer onboarded by the organizers (seeded from `backend/database/seeds/mentors.json`, no self-signup). Has a public profile, ranks 3 teams and helps their assigned teams on site.
+An industry volunteer onboarded by the organizers (seeded from the encrypted mentor seed Secret, no self-signup; see [Seed data](data.md#seed-data)). Has a public profile without their contacts, ranks 3 teams and helps their assigned teams on site. A mentor seeded without a password sets one through forgot password before their first login.
 
 ### Mentor preferences
 
@@ -149,7 +149,7 @@ A team's final judged result, 0 to 100, entered by the admin after in-person jud
 
 ### Seed data
 
-Curated universities, specialties and mentors loaded from JSON on every backend start. `is_seed = true` marks curated universities and specialties; "Other" entries typed at registration are stored with `is_seed = false` and do not appear in dropdowns.
+Curated universities, specialties and mentors loaded from JSON on every backend start (the mentors from an encrypted Secret in the cluster, since they are personal data). `is_seed = true` marks curated universities and specialties; "Other" entries typed at registration are stored with `is_seed = false` and do not appear in dropdowns.
 
 ### Specialty
 

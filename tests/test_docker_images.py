@@ -176,3 +176,11 @@ def test_the_monthly_rebuild_skips_the_cache():
     for name, inputs in _build_steps().items():
         assert inputs.get("no-cache") == "${{ github.event_name == 'schedule' }}", name
     assert re.search(r"^  schedule:\n    - cron: ", WORKFLOW.read_text(encoding="utf-8"), re.M)
+
+
+def test_the_public_backend_image_never_carries_the_real_mentor_seed():
+    """A local copy of the seed (personal data) must not reach Docker Hub (#274)."""
+    contexts = {inputs.get("context") for inputs in _build_steps().values()}
+    assert "./backend" in contexts
+    ignore = (ROOT / "backend" / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert "database/seeds/mentors.json" in ignore

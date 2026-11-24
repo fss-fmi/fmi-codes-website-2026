@@ -21,7 +21,7 @@ def create_wsgi_app():
     with app.app_context():
         mentor_service.load_universities_from_file(seeds_dir / "universities.json")
         mentor_service.load_specialties_from_file(seeds_dir / "specialties.json")
-        mentor_service.load_mentors_from_file(seeds_dir / "mentors.json")
+        mentor_service.seed_mentors_from_config()
 
     return app
 

@@ -90,11 +90,11 @@ Runs the published `fssfmi/*:latest` images behind Nginx on port 80 with Redis S
 
 ### Logging in
 
-| Role        | How                                                                        |
-| ----------- | -------------------------------------------------------------------------- |
-| Participant | Register at `/registration` (open it first on Mission Control's SITE tab)  |
-| Mentor      | Any email from `backend/database/seeds/mentors.json`, password `mentor123` |
-| Admin       | `ADMIN_EMAIL` with the plaintext you hashed into `ADMIN_PASSWORD_HASH`     |
+| Role        | How                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Participant | Register at `/registration` (open it first on Mission Control's SITE tab)                                                 |
+| Mentor      | Any email from `backend/database/seeds/mentors.dev.json` (`ivana`, `georgi` or `maria@mentor.test`), password `mentor123` |
+| Admin       | `ADMIN_EMAIL` with the plaintext you hashed into `ADMIN_PASSWORD_HASH`                                                    |
 
 On the login page pick the role first (the role buttons, or the **SIGN IN AS** dropdown at 768px wide and below); the role is part of the login request.
 

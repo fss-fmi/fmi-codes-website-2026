@@ -13,9 +13,24 @@ from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_
 
 logger = logging.getLogger(__name__)
 
-_MENTORS_CACHE_KEY = "cache:mentors:all"
+# Renamed when contacts left the list, so a copy cached with them is never served again.
+_MENTORS_CACHE_KEY = "cache:mentors:public"
 _UNIVERSITIES_CACHE_KEY = "cache:lookups:universities"
 _SPECIALTIES_CACHE_KEY = "cache:lookups:specialties"
+
+# GET /api/mentors is public: never a mentor's email, phone or account state.
+_PUBLIC_MENTOR_FIELDS = (
+    "id AS mentor_id",
+    "first_name || ' ' || last_name AS name",
+    "first_name",
+    "last_name",
+    "company_name",
+    "bio",
+    "technologies",
+    "picture_url",
+    "picture_filename",
+    "availability_text",
+)
 
 
 def mentor_exists(first_name: str, last_name: str, company_name: str, email: str = None) -> bool:
@@ -86,12 +101,8 @@ def get_all_mentors() -> list:
         except (ValueError, TypeError):
             pass  # corrupt cache entry — fall through to reload
 
-    query = """
-        SELECT id AS mentor_id,
-               first_name || ' ' || last_name AS name,
-               first_name, last_name, email, phone_number, company_name,
-               bio, status, technologies, picture_url, picture_filename,
-               availability_text, created_at
+    query = f"""
+        SELECT {", ".join(_PUBLIC_MENTOR_FIELDS)}
         FROM mentors
         WHERE status = 'active'
         ORDER BY created_at DESC
@@ -101,7 +112,6 @@ def get_all_mentors() -> list:
     except Exception as e:
         raise Exception(f"Failed to get mentors: {str(e)}") from e
 
-    # The app JSON provider keeps created_at in the same format on a hit and a miss.
     payload = current_app.json.dumps([dict(r) for r in result])
     redis_set(_MENTORS_CACHE_KEY, payload, jittered_ttl(1800, 180))
     return json.loads(payload)
@@ -181,19 +191,45 @@ def delete_mentor(mentor_id: int) -> tuple:
         return False, str(e)
 
 
+def seed_mentors_from_config() -> int:
+    """Load the mentor seed MENTORS_SEED_FILE names. Unset or missing seeds nobody.
+
+    Production has no default: the real seed is personal data and reaches the pod only as a
+    mounted Secret, never inside the image.
+    """
+    configured = current_app.config.get("MENTORS_SEED_FILE")
+    if not configured:
+        logger.warning("MENTORS_SEED_FILE is not set, so no mentors were seeded")
+        return 0
+    path = Path(configured)
+    if not path.is_file():
+        logger.warning("Mentor seed %s not found, so no mentors were seeded", path)
+        return 0
+    return load_mentors_from_file(path)
+
+
 def load_mentors_from_file(json_path: Path) -> int:
     """Load mentors from a JSON file into the database if not already present
+
+    An entry without a password gets a NULL password_hash, which can never log in; the
+    mentor sets one through forgot password. A seed that can't be read loads nothing
+    rather than failing every worker's boot.
 
     Returns:
         Number of mentors inserted
     """
-    if not json_path.exists():
+    if not json_path.is_file():
         return 0
 
-    with open(json_path, encoding="utf-8") as f:
-        mentors = json.load(f)
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            mentors = json.load(f)
+    except (OSError, ValueError) as e:
+        logger.error(f"Could not read the mentor seed {json_path}: {e}")
+        return 0
 
     if not isinstance(mentors, list):
+        logger.error(f"Mentor seed {json_path} is not a JSON list; no mentors loaded")
         return 0
 
     inserted = 0
@@ -201,6 +237,8 @@ def load_mentors_from_file(json_path: Path) -> int:
     from app.services.auth_service import hash_password as _hash_pw
 
     for mentor in mentors:
+        if not isinstance(mentor, dict):
+            continue
         first_name = str(mentor.get("first_name", "")).strip()
         last_name = str(mentor.get("last_name", "")).strip()
         company_name = str(mentor.get("company_name", "")).strip()
@@ -232,9 +270,9 @@ def load_mentors_from_file(json_path: Path) -> int:
         if not isinstance(technologies, list):
             technologies = []
         availability_text = str(mentor.get("availability_text", "")).strip() or None
-        raw_password = mentor.get("password", "mentor123")
+        raw_password = mentor.get("password")
         # Never shed: every worker loads the seed while it boots (wsgi.py).
-        pw_hash = _hash_pw(raw_password, shed=False)
+        pw_hash = _hash_pw(str(raw_password), shed=False) if raw_password else None
 
         query = """
             INSERT INTO mentors (first_name, last_name, company_name, email, phone_number,

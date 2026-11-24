@@ -94,6 +94,7 @@ nav:
           - ADR-015 Rolling surge rollouts: adr/015-rolling-surge-rollouts.md
           - ADR-016 Shed password hashes: adr/016-shed-password-hashes.md
           - ADR-017 Prod through a Cloudflare Tunnel: adr/017-prod-through-cloudflare-tunnel.md
+          - ADR-018 Mentor seed in a SOPS Secret: adr/018-mentor-seed-in-sops-secret.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

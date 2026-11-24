@@ -448,7 +448,7 @@ def test_an_uncapped_hash_skips_the_gate(monkeypatch):
 def test_the_mentor_seed_is_never_shed(app_ctx, monkeypatch, tmp_path):
     """Every worker loads the seed while it boots (wsgi.py)."""
     seed = tmp_path / "mentors.json"
-    seed.write_text('[{"first_name": "A", "last_name": "B", "company_name": "C"}]')
+    seed.write_text('[{"first_name": "A", "last_name": "B", "company_name": "C", "password": "x"}]')
 
     @contextlib.contextmanager
     def cursor(*_a, **_k):

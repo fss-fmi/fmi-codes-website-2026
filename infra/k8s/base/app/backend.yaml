@@ -125,10 +125,15 @@ spec:
           volumeMounts:
             - name: prometheus-multiproc
               mountPath: /tmp/prometheus-multiproc
+            - name: mentors-seed
+              mountPath: /etc/fmi-codes/mentors
+              readOnly: true
           envFrom:
             - configMapRef:
                 name: fmi-codes-backend-config
           env:
+            - name: MENTORS_SEED_FILE
+              value: /etc/fmi-codes/mentors/mentors.json
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -229,6 +234,12 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
+        # Applied by deploy-app.sh, not Flux. Optional so a cluster without it still rolls out;
+        # the backend then seeds no mentors.
+        - name: mentors-seed
+          secret:
+            secretName: fmi-codes-mentors-seed
+            optional: true
 ---
 apiVersion: v1
 kind: Service

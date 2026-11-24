@@ -1,0 +1,5 @@
+# The image is public: a local copy of the real mentor seed must never be baked into it.
+database/seeds/mentors.json
+.env
+__pycache__/
+*.py[cod]
