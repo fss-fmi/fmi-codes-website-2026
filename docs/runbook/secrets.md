@@ -194,8 +194,8 @@ kubectl -n fmi-codes-staging rollout restart deployment/backend --field-manager=
 Commit the `.enc.yaml` afterwards. Seeding only inserts mentors who aren't there yet (matched
 by email, or by name and company), so an edit never changes or removes a mentor that already
 exists: change those in the database. Without Flux, `deploy-app.sh` restarts the backend
-itself. The image never carries the real seed: `backend/database/seeds/mentors.json` is
-gitignored and excluded by `backend/.dockerignore`.
+itself. The image build never picks up a local copy: `backend/database/seeds/mentors*.json`
+(all but `mentors.dev.json`) is gitignored and excluded by `backend/.dockerignore`.
 
 ### Rotate an age key
 

@@ -183,4 +183,5 @@ def test_the_public_backend_image_never_carries_the_real_mentor_seed():
     contexts = {inputs.get("context") for inputs in _build_steps().values()}
     assert "./backend" in contexts
     ignore = (ROOT / "backend" / ".dockerignore").read_text(encoding="utf-8").splitlines()
-    assert "database/seeds/mentors.json" in ignore
+    assert "database/seeds/mentors*.json" in ignore
+    assert "!database/seeds/mentors.dev.json" in ignore

@@ -758,27 +758,27 @@ exists.
 
 ## Forking to your own infra
 
-To deploy this under your own project — your Docker Hub, your domain, your keys — change:
+To deploy this under your own project (your Docker Hub, your domain, your keys), change:
 
-- **age keys** — mint your own and re-encrypt, per [Forking: use your own keys](secrets.md#forking-use-your-own-keys).
-- **Mentors** — the committed seeds hold this project's mentors under its keys, so write your
+- **age keys**: mint your own and re-encrypt, per [Forking: use your own keys](secrets.md#forking-use-your-own-keys).
+- **Mentors**: the committed seeds hold this project's mentors under its keys, so write your
   own roster into both `mentors-seed.enc.yaml` files ([Mentor seed](secrets.md#mentor-seed)).
-- **Image registry** — the `fssfmi/fmi-codes-{backend,frontend}` names in `base/app/*.yaml`,
+- **Image registry**: the `fssfmi/fmi-codes-{backend,frontend}` names in `base/app/*.yaml`,
   `overlays/*/kustomization.yaml`, `.github/workflows/docker-cd.yaml`, and
   `flux/image-automation.yaml`; set the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets.
-- **Hostnames** — `fmicodes.com` in `base/ingress/ingress.yaml`,
+- **Hostnames**: `fmicodes.com` in `base/ingress/ingress.yaml`,
   `overlays/prod/ingress/cloudflared-config.yaml` and `FRONTEND_ORIGIN` in
   `base/app/backend.yaml`. Staging takes its name from your tailnet: set `FRONTEND_ORIGIN` in
   staging's `secrets.enc.yaml` to your `https://staging.<tailnet>.ts.net`.
-- **Cloudflare Tunnel** — your own zone and tunnel, with its ID in `cloudflared-config.yaml`
+- **Cloudflare Tunnel**: your own zone and tunnel, with its ID in `cloudflared-config.yaml`
   and its credentials in `secrets/cloudflared-tunnel.enc.yaml`, per
   [Set up the tunnel](cloudflare.md#set-up-the-tunnel).
-- **Flux git URL / deploy key** — `flux-bootstrap.sh` defaults to
+- **Flux git URL / deploy key**: `flux-bootstrap.sh` defaults to
   `ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git`; override with
   `GIT_URL=… bash …` and add your own deploy key (step 6).
-- **Bot app** — create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
+- **Bot app**: create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
   [GitHub bot app for automated PRs](../github-automation.md#github-bot-app-for-automated-prs).
-- **Slack PR feed and CI alerts** — set `SLACK_BOT_TOKEN`, `SLACK_PR_CHANNEL_ID` and
+- **Slack PR feed and CI alerts**: set `SLACK_BOT_TOKEN`, `SLACK_PR_CHANNEL_ID` and
   `SLACK_ACTIONS_CHANNEL_ID` for your own workspace, per [Slack PR feed](../github-automation.md#slack-pr-feed) and
   [Slack CI alerts](../github-automation.md#slack-ci-alerts), or leave them unset and both workflows skip.
 - **Cluster alerts**: your own prod and staging channel webhooks in both envs' files, per

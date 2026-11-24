@@ -10,6 +10,17 @@ from psycopg2.pool import ThreadedConnectionPool
 
 logger = logging.getLogger(__name__)
 
+
+def describe_db_error(error: Exception) -> str:
+    """The error for a log line, without Postgres's DETAIL.
+
+    DETAIL quotes the failing row or key ("Failing row contains (...)", "Key (email)=(...)"),
+    which puts personal data and password hashes into the logs.
+    """
+    primary = getattr(getattr(error, "diag", None), "message_primary", None)
+    return f"{type(error).__name__}: {primary}" if primary else str(error)
+
+
 # Module-level pool — one per worker process (safe with gunicorn prefork)
 _pool = None
 # How long to wait for a pooled connection before giving up (seconds)
@@ -191,7 +202,7 @@ def get_db_cursor(app=None, commit=True):
         if commit:
             conn.commit()
     except Exception as e:
-        logger.error(f"Database transaction error: {e}")
+        logger.error(f"Database transaction error: {describe_db_error(e)}")
         # A rollback on a closed connection raises "connection already closed", which
         # would replace the real error. One that fails on an open connection would fail
         # again inside putconn, so that connection is discarded too.

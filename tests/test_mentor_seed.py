@@ -181,7 +181,8 @@ def test_the_dev_seed_holds_only_fake_mentors():
 
 def test_the_real_seed_path_is_gitignored():
     ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert "backend/database/seeds/mentors.json" in ignore
+    assert "backend/database/seeds/mentors*.json" in ignore
+    assert "!backend/database/seeds/mentors.dev.json" in ignore
 
 
 # ---------------------------------------------------------------------------

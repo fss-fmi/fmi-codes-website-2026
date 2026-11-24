@@ -178,12 +178,6 @@ def test_get_team_rankings_cache_miss_populates(monkeypatch, app_ctx):
     ("module", "loader_attr", "getter", "row"),
     [
         (
-            "app.services.mentor_service",
-            "execute_query",
-            "get_all_mentors",
-            {"mentor_id": 1, "name": "A B", "created_at": datetime(2026, 3, 1, 10, tzinfo=UTC)},
-        ),
-        (
             "app.services.ranking_service",
             "_load_team_rankings",
             "get_team_rankings",

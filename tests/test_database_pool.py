@@ -283,3 +283,38 @@ def test_interrupt_on_a_dead_connection_frees_the_slot(make_pool):
     assert conn.closed
     assert pool._used == {}
     assert conn not in pool._pool
+
+
+class RowQuotingError(psycopg2.IntegrityError):
+    """psycopg2's text carries Postgres's DETAIL; its diag can't be set, so it's faked."""
+
+    diag = SimpleNamespace(
+        message_primary='null value in column "phone_number" violates not-null constraint'
+    )
+
+    def __str__(self):
+        return (
+            'null value in column "phone_number" violates not-null constraint\n'
+            "DETAIL:  Failing row contains (7, Seed, Test, seed@mentor.test, null, $2b$12$abc)."
+        )
+
+
+def test_a_failed_transaction_never_logs_the_row_postgres_quotes(make_pool, caplog):
+    """DETAIL holds emails, phones and password hashes; the log keeps the primary message."""
+    pool, fake_connect = make_pool(FakeConnection(), FakeConnection())
+
+    with caplog.at_level(logging.ERROR, logger="app.database"):
+        with pytest.raises(RowQuotingError):
+            with patch("psycopg2.pool.psycopg2.connect", side_effect=fake_connect):
+                with database.get_db_cursor():
+                    raise RowQuotingError()
+
+    assert 'RowQuotingError: null value in column "phone_number"' in caplog.text
+    assert "seed@mentor.test" not in caplog.text
+    assert "Failing row" not in caplog.text
+    assert pool._used == {}
+
+
+def test_an_error_without_postgres_diagnostics_is_logged_as_is():
+    assert database.describe_db_error(ValueError("bad input")) == "bad input"
+    assert database.describe_db_error(psycopg2.InterfaceError("closed")) == "closed"

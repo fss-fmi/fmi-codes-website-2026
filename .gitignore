@@ -106,4 +106,5 @@ age-key*.txt
 sops-age-key*.txt
 
 # Real mentor seed: personal data, kept only in the SOPS-encrypted mentors-seed Secrets
-backend/database/seeds/mentors.json
+backend/database/seeds/mentors*.json
+!backend/database/seeds/mentors.dev.json

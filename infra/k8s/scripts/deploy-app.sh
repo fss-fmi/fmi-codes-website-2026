@@ -99,7 +99,7 @@ if sops_can_decrypt "$MENTORS_SEED_ENC"; then
 elif [ -f "$MENTORS_SEED_ENC" ]; then
   die_undecryptable "$MENTORS_SEED_ENC"
 else
-  log "No mentor seed at $MENTORS_SEED_ENC — the backend seeds no mentors"
+  log "No mentor seed at $MENTORS_SEED_ENC, so the backend seeds no mentors"
 fi
 
 admin_hash="$(kubectl -n "$NAMESPACE" get secret "$APP_SECRET" \

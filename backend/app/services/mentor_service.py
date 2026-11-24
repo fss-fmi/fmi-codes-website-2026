@@ -8,7 +8,13 @@ from pathlib import Path
 import psycopg2
 from flask import current_app
 
-from app.database import execute_insert, execute_query, execute_update, get_db_cursor
+from app.database import (
+    describe_db_error,
+    execute_insert,
+    execute_query,
+    execute_update,
+    get_db_cursor,
+)
 from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
 
 logger = logging.getLogger(__name__)
@@ -306,7 +312,7 @@ def load_mentors_from_file(json_path: Path) -> int:
         except psycopg2.IntegrityError:
             continue
         except Exception as e:
-            logger.error(f"Error inserting mentor {first_name} {last_name}: {e}")
+            logger.error(f"Error inserting mentor {first_name} {last_name}: {describe_db_error(e)}")
             continue
 
     if inserted:
