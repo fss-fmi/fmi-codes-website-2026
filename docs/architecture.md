@@ -187,7 +187,6 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 
 - No automated database backups; the Postgres PVC is the source of truth.
 - The API contract is hand maintained on both sides; nothing generates or checks it.
-- `GET /api/mentors/<id>/picture` raises on the string paths the seeder stores, so mentor photos on the team page never load.
 - Admin MATCHING → EXPORT reads a field (`export`) the backend never returns, so the button does nothing.
 - `hackathon_events` exists in the schema but nothing links teams to an event.
 - `GET /api/ranking` (file-based legacy rankings) is not used by the frontend.

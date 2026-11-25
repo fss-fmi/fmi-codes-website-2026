@@ -189,6 +189,11 @@ mentor is skipped with a warning too: a copy-paste slip, or an edit to a mentor 
 seeded, which never applies. A mentor's email is stored lowercased, since login and reset
 lowercase what the mentor types.
 
+An entry's `picture_url` must be a bare file name (`First_Last.webp`) or a
+`/mentorPictures/` path, for a photo in `frontend/public/mentorPictures/`. The loader stores a
+full `http(s)://` URL as it is, but the ingress Content Security Policy allows only same-origin
+images (`img-src 'self' data:`), so the browser never loads it.
+
 To change it (`rotate-secret.sh` doesn't handle this one):
 
 ```bash

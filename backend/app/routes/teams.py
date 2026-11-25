@@ -221,7 +221,7 @@ def get_team(team_id):
             current_app,
             """
         SELECT tm.mentor_id, m.first_name || ' ' || m.last_name AS mentor_name,
-               m.company_name
+               m.company_name, m.picture_url
         FROM team_mentors tm
         JOIN mentors m ON tm.mentor_id = m.id
         WHERE tm.team_id = %s AND tm.is_active = TRUE

@@ -1,6 +1,5 @@
 """Mentor management business logic - PostgreSQL version"""
 
-import base64
 import json
 import logging
 from pathlib import Path
@@ -127,22 +126,6 @@ def get_seed_specialties() -> list:
         _SPECIALTIES_CACHE_KEY,
         "SELECT id, name FROM specialties WHERE is_seed = TRUE ORDER BY id",
     )
-
-
-def get_mentor_picture(mentor_id: int) -> tuple:
-    """Get mentor picture and filename by ID
-
-    Returns:
-        Tuple of (picture_data, filename) or (None, None)
-    """
-    query = "SELECT picture_url, picture_filename FROM mentors WHERE id = %s"
-    try:
-        result = execute_query(current_app, query, (mentor_id,), fetch_one=True)
-        if result and result["picture_url"]:
-            return result["picture_url"], result["picture_filename"]
-        return None, None
-    except Exception as e:
-        raise Exception(f"Failed to get mentor picture: {str(e)}") from e
 
 
 def seed_mentors_from_config() -> int:
@@ -391,22 +374,3 @@ def load_universities_from_file(json_path: Path) -> int:
         redis_del(_UNIVERSITIES_CACHE_KEY)
     logger.info(f"✓ Loaded {inserted} universities from {json_path}")
     return inserted
-
-
-def serialize_mentor_row(row, selection_count=0) -> dict:
-    """Serialize mentor row with optional picture and selection count"""
-    data = {
-        "id": row["id"],
-        "first_name": row["first_name"],
-        "last_name": row["last_name"],
-        "company_name": row["company_name"],
-        "picture_filename": row.get("picture_filename"),
-        "technologies": row.get("technologies") or [],
-        "selection_count": selection_count,
-    }
-    picture_blob = row.get("picture_url")
-    if picture_blob:
-        data["picture_data"] = base64.b64encode(picture_blob).decode("utf-8")
-    else:
-        data["picture_data"] = None
-    return data

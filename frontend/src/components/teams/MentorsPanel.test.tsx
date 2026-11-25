@@ -1,8 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import MentorsPanel from './MentorsPanel';
+import type { TeamMentor } from '@/types/team';
 
 const prefs = [{ mentor_id: 4, rank: 1, mentor_name: 'Ana Petrova' }];
+
+// Backticks, not quotes: tests/test_site_images.py fails on a quoted image path with no file.
+const PHOTO = `/mentorPictures/ana-petrova.webp`;
 
 function renderPanel(props: {
   isRegistered: boolean;
@@ -10,12 +14,13 @@ function renderPanel(props: {
   withPrefs?: boolean;
   preferencesOpen?: boolean;
   confirmed?: boolean | undefined;
+  mentors?: TeamMentor[];
 }) {
   render(
     <MemoryRouter>
       <MentorsPanel
         confirmed={'confirmed' in props ? props.confirmed : false}
-        mentors={[]}
+        mentors={props.mentors ?? []}
         prefs={props.withPrefs ? prefs : []}
         isCaptain={props.isCaptain ?? true}
         isRegistered={props.isRegistered}
@@ -79,4 +84,23 @@ test('no update link until the matching status has loaded', () => {
   renderPanel({ isRegistered: true, withPrefs: true, confirmed: undefined });
   expect(screen.getByText(/waiting for matching/i)).toBeInTheDocument();
   expect(screen.queryByText('UPDATE PREFERENCES')).toBeNull();
+});
+
+test('an assigned mentor shows the photo the frontend serves', () => {
+  renderPanel({
+    isRegistered: true,
+    confirmed: true,
+    mentors: [{ mentor_id: 4, mentor_name: 'Ana Petrova', picture_url: PHOTO }],
+  });
+  expect(screen.getByRole('img', { name: 'Ana Petrova' })).toHaveAttribute('src', PHOTO);
+});
+
+test('an assigned mentor without a photo gets no image', () => {
+  renderPanel({
+    isRegistered: true,
+    confirmed: true,
+    mentors: [{ mentor_id: 4, mentor_name: 'Ana Petrova', picture_url: null }],
+  });
+  expect(screen.queryByRole('img')).toBeNull();
+  expect(screen.getByText('Ana Petrova')).toBeInTheDocument();
 });

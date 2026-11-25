@@ -30,7 +30,7 @@ export interface TeamMentor {
   mentor_id: number;
   mentor_name?: string;
   company_name?: string;
-  picture_filename?: string;
+  picture_url?: string | null;
 }
 
 export interface JoinRequest {
