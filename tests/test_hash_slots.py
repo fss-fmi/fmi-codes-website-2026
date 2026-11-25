@@ -458,7 +458,7 @@ def test_the_mentor_seed_is_never_shed(app_ctx, monkeypatch, tmp_path):
         yield MagicMock(rowcount=1)
 
     monkeypatch.setattr(auth_service, "hash_slot", _always_shed)
-    monkeypatch.setattr(mentor_service, "mentor_exists", lambda *a, **k: False)
+    monkeypatch.setattr(mentor_service, "find_existing_mentor", lambda *a, **k: None)
     monkeypatch.setattr(mentor_service, "get_db_cursor", cursor)
     monkeypatch.setattr(mentor_service, "redis_del", lambda *a, **k: None)
     assert mentor_service.load_mentors_from_file(seed) == 1

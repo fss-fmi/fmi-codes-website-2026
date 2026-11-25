@@ -41,8 +41,11 @@ MENTOR = {
     "phone_number": "0888000000",
 }
 # Positions in the loader's INSERT parameters.
+EMAIL_PARAM = 3
+BIO_PARAM = 5
 STATUS_PARAM = 6
 HASH_PARAM = 9
+AVAILABILITY_PARAM = 11
 _ABSENT = object()
 
 
@@ -67,9 +70,22 @@ def _capture_inserts(monkeypatch, queries: list | None = None) -> list[tuple]:
         yield cur
 
     monkeypatch.setattr(mentor_service, "get_db_cursor", cursor)
-    monkeypatch.setattr(mentor_service, "mentor_exists", lambda *a, **k: False)
+    monkeypatch.setattr(mentor_service, "find_existing_mentor", lambda *a, **k: None)
     monkeypatch.setattr(mentor_service, "redis_del", lambda *a, **k: None)
     return inserts
+
+
+def _fail_past_the_checks(monkeypatch):
+    """For an entry the loader must skip before any DB call or bcrypt hash."""
+    monkeypatch.setattr(
+        mentor_service,
+        "find_existing_mentor",
+        lambda *a, **k: pytest.fail("skipped before any DB call"),
+    )
+    monkeypatch.setattr(
+        "app.services.auth_service.hash_password",
+        lambda *a, **k: pytest.fail("skipped before hashing"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -145,13 +161,7 @@ def test_an_entry_without_an_email_or_phone_is_skipped_with_a_warning(
     app_ctx, monkeypatch, tmp_path, caplog, field, value
 ):
     inserts = _capture_inserts(monkeypatch)
-    monkeypatch.setattr(
-        mentor_service, "mentor_exists", lambda *a, **k: pytest.fail("skipped before any DB call")
-    )
-    monkeypatch.setattr(
-        "app.services.auth_service.hash_password",
-        lambda *a, **k: pytest.fail("skipped before hashing"),
-    )
+    _fail_past_the_checks(monkeypatch)
     entry = {**MENTOR, "password": "mentor123"}
     if value is _ABSENT:
         del entry[field]
@@ -168,12 +178,105 @@ def test_an_entry_without_an_email_or_phone_is_skipped_with_a_warning(
     assert MENTOR["phone_number"] not in caplog.text
 
 
-@pytest.mark.parametrize("status", [None, "", "  "], ids=["null", "empty", "whitespace"])
-def test_a_blank_status_is_stored_as_active(app_ctx, monkeypatch, tmp_path, status):
+@pytest.mark.parametrize(
+    "status",
+    [None, "", "  ", "Active", " ACTIVE "],
+    ids=["null", "empty", "blank", "Active", "ACTIVE"],
+)
+def test_a_blank_or_capitalised_status_is_stored_as_active(app_ctx, monkeypatch, tmp_path, status):
     inserts = _capture_inserts(monkeypatch)
     seed = _seed(tmp_path, [{**MENTOR, "status": status}])
     assert mentor_service.load_mentors_from_file(seed) == 1
     assert inserts[0][STATUS_PARAM] == "active"
+
+
+def test_an_entry_with_an_unknown_status_is_skipped_with_a_warning(
+    app_ctx, monkeypatch, tmp_path, caplog
+):
+    """Before, the CHECK constraint failed and get_db_cursor logged a database error."""
+    inserts = _capture_inserts(monkeypatch)
+    _fail_past_the_checks(monkeypatch)
+    seed = _seed(tmp_path, [{**MENTOR, "status": " Retired ", "password": "mentor123"}])
+    with caplog.at_level(logging.WARNING, logger="app.services.mentor_service"):
+        assert mentor_service.load_mentors_from_file(seed) == 0
+    assert inserts == []
+    assert "Seed Test" in caplog.text
+    assert "'Retired'" in caplog.text, "the value as the seed holds it, so a search finds it"
+
+
+def test_the_email_is_stored_and_looked_up_lowercased(app_ctx, monkeypatch, tmp_path):
+    """Login and reset lowercase the email typed, then match mentors.email exactly."""
+    inserts = _capture_inserts(monkeypatch)
+    looked_up = []
+    monkeypatch.setattr(
+        mentor_service, "find_existing_mentor", lambda *a: looked_up.append(a[3]) or None
+    )
+    seed = _seed(tmp_path, [{**MENTOR, "email": " Seed@Mentor.test "}])
+    assert mentor_service.load_mentors_from_file(seed) == 1
+    assert looked_up == ["seed@mentor.test"]
+    assert inserts[0][EMAIL_PARAM] == "seed@mentor.test"
+
+
+@pytest.mark.parametrize("field", ["bio", "availability_text"])
+def test_a_null_text_field_is_stored_as_null(app_ctx, monkeypatch, tmp_path, field):
+    inserts = _capture_inserts(monkeypatch)
+    assert mentor_service.load_mentors_from_file(_seed(tmp_path, [{**MENTOR, field: None}])) == 1
+    assert inserts[0][{"bio": BIO_PARAM, "availability_text": AVAILABILITY_PARAM}[field]] is None
+
+
+@pytest.mark.parametrize("field", ["first_name", "last_name", "company_name"])
+def test_an_entry_with_a_null_name_or_company_is_skipped(app_ctx, monkeypatch, tmp_path, field):
+    inserts = _capture_inserts(monkeypatch)
+    _fail_past_the_checks(monkeypatch)
+    seed = _seed(tmp_path, [{**MENTOR, field: None, "password": "mentor123"}])
+    assert mentor_service.load_mentors_from_file(seed) == 0
+    assert inserts == []
+
+
+def test_an_entry_with_another_mentors_email_is_skipped_with_a_warning(
+    app_ctx, monkeypatch, tmp_path, caplog
+):
+    """A copy-paste slip in the Secret must not drop a mentor without a word."""
+    inserts = _capture_inserts(monkeypatch)
+    other = {
+        "first_name": "Other",
+        "last_name": "Mentor",
+        "company_name": "Other Co",
+        "email": MENTOR["email"],
+    }
+    monkeypatch.setattr(mentor_service, "find_existing_mentor", lambda *a: other)
+    with caplog.at_level(logging.WARNING, logger="app.services.mentor_service"):
+        assert mentor_service.load_mentors_from_file(_seed(tmp_path, [MENTOR])) == 0
+    assert inserts == []
+    assert "Seed Test (Seed Co)" in caplog.text
+    assert "stored mentor Other Mentor (Other Co)" in caplog.text
+    assert MENTOR["email"] not in caplog.text
+
+
+def test_a_copy_with_a_stored_mentors_name_and_company_is_skipped_with_a_warning(
+    app_ctx, monkeypatch, tmp_path, caplog
+):
+    """A copied entry whose email was changed but not its name and company."""
+    inserts = _capture_inserts(monkeypatch)
+    stored = {**MENTOR, "email": "first@mentor.test"}
+    monkeypatch.setattr(mentor_service, "find_existing_mentor", lambda *a: stored)
+    with caplog.at_level(logging.WARNING, logger="app.services.mentor_service"):
+        assert mentor_service.load_mentors_from_file(_seed(tmp_path, [MENTOR])) == 0
+    assert inserts == []
+    assert "Seed Test (Seed Co)" in caplog.text
+    assert "has another email" in caplog.text
+    assert "@mentor.test" not in caplog.text
+
+
+def test_an_entry_already_stored_is_skipped_quietly(app_ctx, monkeypatch, tmp_path, caplog):
+    """Every boot meets every seeded mentor again, so that must not warn, whatever the case."""
+    inserts = _capture_inserts(monkeypatch)
+    own = {**MENTOR, "email": "Seed@Mentor.test"}
+    monkeypatch.setattr(mentor_service, "find_existing_mentor", lambda *a: own)
+    with caplog.at_level(logging.WARNING, logger="app.services.mentor_service"):
+        assert mentor_service.load_mentors_from_file(_seed(tmp_path, [MENTOR])) == 0
+    assert inserts == []
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
 
 
 # ---------------------------------------------------------------------------
