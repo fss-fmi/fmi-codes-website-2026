@@ -93,7 +93,7 @@ Rankings can only be submitted while the organizers have preference submission o
 
 ### 6. See your mentors
 
-After the organizers confirm the matching, the **MENTORS** panel lists your assigned mentors. Every team gets 2 or 3 mentors. The matching tries to give you mentors you ranked, but a team can also receive mentors it did not pick so that nobody is left without help.
+After the organizers confirm the matching, the **MENTORS** panel lists your assigned mentors, each with their photo, name and company. Every team gets 2 or 3 mentors. The matching tries to give you mentors you ranked, but a team can also receive mentors it did not pick so that nobody is left without help.
 
 ### 7. Results
 
@@ -213,5 +213,4 @@ Registration, preference submission, the rankings and the mentor roster are on t
 ### Known issues
 
 - The **EXPORT** button on the Matching tab currently shows nothing. Use the results list on screen instead.
-- Mentor photos do not show on the team page's MENTORS panel (they do show on the public MENTORS page).
 - The admin password cannot be changed or reset from the site.

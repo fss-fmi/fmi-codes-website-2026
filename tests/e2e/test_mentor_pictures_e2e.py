@@ -1,10 +1,19 @@
-"""Migration 019 moves seeded mentor photo paths to the frontend's WebP files."""
+"""Mentor photo paths and who sees the assignments carrying them.
+
+Migration 019 moves seeded paths to the frontend's WebP files, and a team's page returns each
+assigned mentor's path, since the backend serves no pictures itself. Until the admin confirms
+matching, a team's page and a mentor's assigned teams show nobody but the admin an assignment.
+"""
 
 from pathlib import Path
 
 import pytest
 
+from tests.e2e.conftest import admin_token, bearer, mentor_token_for, register_and_token
+
 pytestmark = pytest.mark.e2e
+
+PHOTO = "/mentorPictures/Alpha_Mentor.webp"
 
 MIGRATION_019 = (
     Path(__file__).parent.parent.parent
@@ -59,3 +68,100 @@ class TestMigration019:
             finally:
                 cur.execute("DELETE FROM mentors WHERE email = ANY(%s)", (emails,))
         assert got == EXPECTED
+
+
+@pytest.fixture
+def mentor_with_photo(db_conn, seeds):
+    """The first seeded mentor with a photo path. Seeded mentors outlive clean_db, so reset it."""
+    mentor_id = seeds["mentor_ids"][0]
+    with db_conn.cursor() as cur:
+        cur.execute("UPDATE mentors SET picture_url = %s WHERE id = %s", (PHOTO, mentor_id))
+    try:
+        yield mentor_id
+    finally:
+        with db_conn.cursor() as cur:
+            cur.execute("UPDATE mentors SET picture_url = NULL WHERE id = %s", (mentor_id,))
+
+
+@pytest.fixture
+def assigned_team(client, db_conn, seeds, mentor_with_photo):
+    """A captain's team assigned Beta Mentor and the photo mentor, Alpha: (team_id, token)."""
+    token = register_and_token(client, 1, seeds)
+    rv = client.post("/api/teams", json={"team_name": "Photo Team"}, headers=bearer(token))
+    assert rv.status_code == 201, rv.get_json()
+    team_id = rv.get_json()["team"]["id"]
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO team_mentors (team_id, mentor_id, is_active) "
+            "VALUES (%s, %s, TRUE), (%s, %s, TRUE)",
+            (team_id, seeds["mentor_ids"][1], team_id, mentor_with_photo),
+        )
+    return team_id, token
+
+
+def _assert_mentors_hidden(rv):
+    assert rv.status_code == 200, rv.get_json()
+    team = rv.get_json()["team"]
+    assert team["mentors"] == []
+    assert "mentor_count" not in team
+
+
+def _confirm_matching(db_conn):
+    with db_conn.cursor() as cur:
+        cur.execute("UPDATE matching_state SET is_confirmed = TRUE, confirmed_at = NOW()")
+
+
+class TestAssignedMentors:
+    def test_team_shows_each_assigned_mentors_photo(
+        self, client, db_conn, seeds, mentor_with_photo, assigned_team
+    ):
+        team_id, token = assigned_team
+        _confirm_matching(db_conn)
+
+        rv = client.get(f"/api/teams/{team_id}", headers=bearer(token))
+
+        assert rv.status_code == 200, rv.get_json()
+        mentors = rv.get_json()["team"]["mentors"]
+        # Both seeded last names are "Mentor", so the first name orders them.
+        assert [m["mentor_id"] for m in mentors] == [mentor_with_photo, seeds["mentor_ids"][1]]
+        assert [m["picture_url"] for m in mentors] == [PHOTO, None]
+        for m in mentors:
+            assert set(m) == {"mentor_id", "mentor_name", "company_name", "picture_url"}
+
+    def test_assignments_stay_hidden_until_matching_is_confirmed(
+        self, client, flask_app, seeds, assigned_team
+    ):
+        # One client per caller, since a client's cookie wins over the Bearer header. Each one
+        # sends its requests inside its own block: interleaving open clients breaks Flask's
+        # context stack when they close.
+        team_id, token = assigned_team
+        _assert_mentors_hidden(client.get(f"/api/teams/{team_id}", headers=bearer(token)))
+        with flask_app.test_client() as other:
+            outsider = register_and_token(other, 2, seeds)
+            _assert_mentors_hidden(other.get(f"/api/teams/{team_id}", headers=bearer(outsider)))
+
+        with flask_app.test_client() as adm:
+            rv = adm.get(f"/api/teams/{team_id}", headers=bearer(admin_token(flask_app)))
+        assert rv.status_code == 200, rv.get_json()
+        assert len(rv.get_json()["team"]["mentors"]) == 2
+
+    def test_a_mentor_sees_assigned_teams_only_once_matching_is_confirmed(
+        self, flask_app, db_conn, mentor_with_photo, assigned_team
+    ):
+        team_id, _ = assigned_team
+        headers = bearer(mentor_token_for(flask_app, mentor_with_photo))
+
+        # Its own client, since the fixture's client holds the captain's cookie.
+        with flask_app.test_client() as mentor:
+            rv = mentor.get("/api/mentors/assigned-teams", headers=headers)
+            assert rv.status_code == 200, rv.get_json()
+            assert rv.get_json()["teams"] == []
+
+            _confirm_matching(db_conn)
+            rv = mentor.get("/api/mentors/assigned-teams", headers=headers)
+        assert rv.status_code == 200, rv.get_json()
+        assert [t["team_id"] for t in rv.get_json()["teams"]] == [team_id]
+
+    def test_picture_endpoint_is_gone(self, client, mentor_with_photo):
+        # A mentor with a photo, since the old handler answered 404 only when there was none.
+        assert client.get(f"/api/mentors/{mentor_with_photo}/picture").status_code == 404

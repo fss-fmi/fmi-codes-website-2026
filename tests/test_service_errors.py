@@ -105,16 +105,6 @@ def test_mentor_list_hides_the_exception(client, monkeypatch):
     assert response.get_json() == {"success": False, "error": "Failed to fetch mentors"}
 
 
-def test_mentor_picture_hides_the_exception(client, monkeypatch):
-    # The seeder stores a path, which send_file can't stream (a known bug): the 500 stays.
-    monkeypatch.setattr(
-        mentor_service, "get_mentor_picture", lambda _id: ("/mentorPictures/a.webp", "a.webp")
-    )
-    response = client.get("/api/mentors/1/picture")
-    assert response.status_code == 500
-    assert response.get_json() == {"success": False, "error": "Failed to fetch the picture"}
-
-
 def test_join_request_mail_goes_through_the_bounded_pool(app, client, monkeypatch):
     assert teams_routes._join_request_mail._max_workers == 4
     pool = MagicMock()

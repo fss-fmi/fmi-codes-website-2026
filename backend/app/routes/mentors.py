@@ -1,9 +1,8 @@
 """Mentor management routes — JWT-protected"""
 
 import logging
-from io import BytesIO
 
-from flask import g, jsonify, send_file
+from flask import g, jsonify
 
 from app.routes import mentors_bp
 from app.services import feature_flag_service, mentor_selection_service, mentor_service
@@ -27,24 +26,6 @@ def get_mentors():
     except Exception as e:
         logger.error(f"Error fetching mentors: {e}")
         return jsonify({"success": False, "error": "Failed to fetch mentors"}), 500
-
-
-@mentors_bp.route("/api/mentors/<int:mentor_id>/picture", methods=["GET"])
-def get_mentor_picture(mentor_id):
-    """Get mentor picture by ID"""
-    try:
-        picture_data, filename = mentor_service.get_mentor_picture(mentor_id)
-        if not picture_data:
-            return jsonify({"success": False, "error": "Picture not found"}), 404
-        return send_file(
-            BytesIO(picture_data),
-            mimetype="image/png",
-            as_attachment=False,
-            download_name=filename or "mentor_picture.png",
-        )
-    except Exception as e:
-        logger.error(f"Error fetching mentor picture {mentor_id}: {e}")
-        return jsonify({"success": False, "error": "Failed to fetch the picture"}), 500
 
 
 # ── Team mentor preferences (captain) ─────────────────────────────
@@ -142,7 +123,7 @@ def get_mentor_preferences():
 @mentors_bp.route("/api/mentors/assigned-teams", methods=["GET"])
 @mentor_required
 def get_assigned_teams():
-    """Get the teams assigned to this mentor by the algorithm (visible after admin confirmation)."""
+    """The teams the confirmed matching assigned to this mentor; empty until the admin confirms."""
     from app.services import matching_service
 
     teams = matching_service.get_assigned_teams_for_mentor(g.current_user["user_id"])

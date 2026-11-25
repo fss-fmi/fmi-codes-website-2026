@@ -215,19 +215,21 @@ def get_team(team_id):
 
     team_dict["members"] = members_out
 
-    # Fetch assigned mentors
+    # A matching run's assignments stay hidden until the admin, who reviews them, confirms it.
+    # The flag is read in the same statement, so a run saved in between can't slip through.
     mentors = (
         execute_query(
             current_app,
             """
         SELECT tm.mentor_id, m.first_name || ' ' || m.last_name AS mentor_name,
-               m.company_name
+               m.company_name, m.picture_url
         FROM team_mentors tm
         JOIN mentors m ON tm.mentor_id = m.id
-        WHERE tm.team_id = %s AND tm.is_active = TRUE
-        ORDER BY m.last_name
+        JOIN matching_state ms ON ms.id = 1
+        WHERE tm.team_id = %s AND tm.is_active = TRUE AND (ms.is_confirmed OR %s)
+        ORDER BY m.last_name, m.first_name, tm.mentor_id
     """,
-            (team_id,),
+            (team_id, user["role"] == "admin"),
             fetch_all=True,
         )
         or []

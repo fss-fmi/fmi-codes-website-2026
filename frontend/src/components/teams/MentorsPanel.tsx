@@ -1,5 +1,6 @@
 import Panel from '@/components/common/Panel';
 import Button from '@/components/common/Button';
+import { pictureFor } from '@/pages/mentors/variants/shared';
 import type { TeamMentor } from '@/types/team';
 
 interface MentorPref {
@@ -31,44 +32,66 @@ export default function MentorsPanel({
   if (confirmed && mentors.length > 0) {
     return (
       <Panel title="MENTORS">
-        {mentors.map((m) => (
-          <div
-            key={m.mentor_id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 0',
-              borderBottom: '1px solid var(--px-teal-dim)',
-            }}
-          >
-            <img
-              src={`/api/mentors/${m.mentor_id}/picture`}
-              alt={m.mentor_name ?? 'Mentor'}
-              loading="lazy"
-              onError={(e) => (e.currentTarget.style.visibility = 'hidden')}
+        {mentors.map((m) => {
+          const src = pictureFor(m);
+          return (
+            <div
+              key={m.mentor_id}
               style={{
-                width: 36,
-                height: 36,
-                objectFit: 'cover',
-                border: '1px solid var(--px-teal-dim)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 0',
+                borderBottom: '1px solid var(--px-teal-dim)',
               }}
-            />
-            <div>
-              <div
-                style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}
-              >
-                {m.mentor_name}
-              </div>
-              <div
-                className="px-body-sm"
-                style={{ color: 'var(--px-muted-strong)' }}
-              >
-                {m.company_name}
+            >
+              {src ? (
+                // Keyed by src: onError hides the node itself, so a new path needs a new node.
+                <img
+                  key={src}
+                  src={src}
+                  alt={m.mentor_name ?? 'Mentor'}
+                  loading="lazy"
+                  onError={(e) => (e.currentTarget.style.visibility = 'hidden')}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    flexShrink: 0,
+                    objectFit: 'cover',
+                    border: '1px solid var(--px-teal-dim)',
+                  }}
+                />
+              ) : (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    flexShrink: 0,
+                    border: '1px solid var(--px-teal-dim)',
+                  }}
+                />
+              )}
+              <div>
+                <div
+                  style={{
+                    fontFamily: 'var(--px-mono)',
+                    fontWeight: 700,
+                    color: 'var(--px-white)',
+                  }}
+                >
+                  {m.mentor_name}
+                </div>
+                <div
+                  className="px-body-sm"
+                  style={{ color: 'var(--px-muted-strong)' }}
+                >
+                  {m.company_name}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </Panel>
     );
   }

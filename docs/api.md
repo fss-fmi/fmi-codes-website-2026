@@ -291,7 +291,7 @@ Public. `members`: first and last names of a registered team's active members (c
 
 ### GET /api/teams/{team_id}
 
-Any role. `team`: the team row with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`). Member emails are only included for team members and admins, and `join_code` only for the team's captain and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
+Any role. `team`: the team row with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`, `picture_url`: the photo's path, which the frontend serves, or null), ordered by last and first name. `mentors` is empty until the admin confirms matching, except for the admin. Member emails are only included for team members and admins, and `join_code` only for the team's captain and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
 
 There is no public list of all teams. The admin gets every team from `GET /api/admin/teams/registration-status`.
 
@@ -379,10 +379,6 @@ Public. Active mentors, cached about 30 min and invalidated when the startup see
 
 Exactly these fields, newest mentor first. A mentor's email, phone number and account state never reach this public response.
 
-### GET /api/mentors/{mentor_id}/picture
-
-Public. Intended to stream the mentor photo. Known bug: `picture_url` holds a path string, which this handler cannot wrap, so it returns 500 for seeded mentors. The SPA's mentor cards use `picture_url` directly instead (served by the frontend from `/mentorPictures/`).
-
 ### GET /api/teams/{team_id}/available-mentors
 
 Captain of `team_id`. `mentors`: active mentors to rank: `mentor_id, name, company_name, bio, picture_url, picture_filename, availability_text`.
@@ -437,7 +433,7 @@ Mentor. `preferences`: `[{rank, team_id, team_name}]` ordered by rank. Works whe
 
 ### GET /api/mentors/assigned-teams
 
-Mentor. `teams`: the teams assigned by the last matching run: `team_id, team_name, participant_count`. The SPA only calls this after the admin confirms.
+Mentor. `teams`: the teams assigned by the last matching run: `team_id, team_name, participant_count`. Empty until the admin confirms the run.
 
 ### GET /api/matching-status
 
