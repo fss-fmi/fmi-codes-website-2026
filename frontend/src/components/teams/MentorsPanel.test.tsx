@@ -1,12 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import MentorsPanel from './MentorsPanel';
 import type { TeamMentor } from '@/types/team';
 
 const prefs = [{ mentor_id: 4, rank: 1, mentor_name: 'Ana Petrova' }];
 
-// Backticks, not quotes: tests/test_site_images.py fails on a quoted image path with no file.
-const PHOTO = `/mentorPictures/ana-petrova.webp`;
+const PHOTO = '/mentorPictures/ana-petrova.webp';
 
 function renderPanel(props: {
   isRegistered: boolean;
@@ -103,4 +102,28 @@ test('an assigned mentor without a photo gets no image', () => {
   });
   expect(screen.queryByRole('img')).toBeNull();
   expect(screen.getByText('Ana Petrova')).toBeInTheDocument();
+});
+
+test('a new photo path shows even after the old one failed to load', () => {
+  const panel = (picture_url: string) => (
+    <MemoryRouter>
+      <MentorsPanel
+        confirmed
+        mentors={[{ mentor_id: 4, mentor_name: 'Ana Petrova', picture_url }]}
+        prefs={[]}
+        isCaptain
+        isRegistered
+        preferencesOpen
+      />
+    </MemoryRouter>
+  );
+  const { rerender } = render(panel(PHOTO));
+  fireEvent.error(screen.getByRole('img', { name: 'Ana Petrova' }));
+  expect(screen.queryByRole('img')).toBeNull();
+
+  rerender(panel('/mentorPictures/ana-petrova-new.webp'));
+  expect(screen.getByRole('img', { name: 'Ana Petrova' })).toHaveAttribute(
+    'src',
+    '/mentorPictures/ana-petrova-new.webp',
+  );
 });

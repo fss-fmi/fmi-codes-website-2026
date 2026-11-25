@@ -117,7 +117,7 @@ Inputs: active registered teams, active mentors, each captain's top-3 mentor ran
 
 Warnings (non-blocking): teams or mentors that never submitted preferences, and teams left with fewer than 3 mentors because mentor capacity ran out. With 20 mentors x 3 slots there are 60 slots for 18 x 3 = 54 team seats, so a full event fills every team to 3.
 
-`save_matching_results` replaces all rows in `team_mentors` under a separate advisory lock (`pg_advisory_xact_lock(2)`) and resets the confirmation flag. Teams and mentors keep seeing their own preferences until the admin calls `POST /api/admin/confirm-matching`. Running matching again after confirming un-confirms without warning on the site; only the event feed mentions it.
+`save_matching_results` replaces all rows in `team_mentors` under a separate advisory lock (`pg_advisory_xact_lock(2)`) and resets the confirmation flag. Teams and mentors keep seeing their own preferences until the admin calls `POST /api/admin/confirm-matching`, and until then the API shows the assignments only to the admin: `GET /api/teams/<id>` returns no mentors to anyone else and `GET /api/mentors/assigned-teams` no teams, each reading the flag in the same statement as the assignments. Running matching again after confirming un-confirms without warning on the site; only the event feed mentions it.
 
 Each step of the phase is posted to the event feed after its commit: a ranking submitted (with the progress count) or updated, a matching run (assignment and team counts plus the warnings) and a confirmation (only when it changes the flag). The messages name who acted and give counts, never a ranking, a rank or a team-mentor pair. A failing count or Slack hand-off is logged and never changes the response.
 

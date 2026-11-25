@@ -191,8 +191,10 @@ lowercase what the mentor types.
 
 An entry's `picture_url` must be a bare file name (`First_Last.webp`) or a
 `/mentorPictures/` path, for a photo in `frontend/public/mentorPictures/`. The loader stores a
-full `http(s)://` URL as it is, but the ingress Content Security Policy allows only same-origin
-images (`img-src 'self' data:`), so the browser never loads it.
+full `http(s)://` URL as it is, but the frontend reads any value that doesn't start with `/` as
+a file name under `/mentorPictures/`, so the photo never loads. Allowing the URL in the frontend
+would not be enough either: the ingress Content Security Policy allows only same-origin images
+(`img-src 'self' data:`).
 
 To change it (`rotate-secret.sh` doesn't handle this one):
 

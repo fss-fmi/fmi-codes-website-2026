@@ -328,12 +328,16 @@ def confirm_matching() -> bool:
 
 
 def get_assigned_teams_for_mentor(mentor_id):
-    """Get teams assigned to a mentor by the algorithm."""
+    """Teams the confirmed matching assigned to a mentor; none until the admin confirms.
+
+    The flag is read in the same statement, so a run saved in between can't slip through.
+    """
     query = """
         SELECT tm.team_id, t.team_name,
                COUNT(DISTINCT p.id) AS participant_count
         FROM team_mentors tm
         JOIN teams t ON tm.team_id = t.id
+        JOIN matching_state ms ON ms.id = 1 AND ms.is_confirmed
         LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
         WHERE tm.mentor_id = %s AND tm.is_active = TRUE
         GROUP BY tm.team_id, t.team_name

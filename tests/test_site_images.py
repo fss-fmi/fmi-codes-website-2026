@@ -15,7 +15,7 @@ RASTER = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".avif"}
 RASTER_BUDGET = 100 * 1024
 SVG_GZIP_BUDGET = 128 * 1024
 
-LITERAL_PATH = re.compile(r"""["'(](/[\w\-./]+\.(?:svg|webp|png|jpe?g|gif|avif))["')]""")
+LITERAL_PATH = re.compile(r"""["'`(](/[\w\-./]+\.(?:svg|webp|png|jpe?g|gif|avif))["'`)]""")
 LOGO_FILE = re.compile(r"file: '([^']+)'")
 
 
@@ -31,7 +31,10 @@ def _public(url_path):
 
 def _literal_refs():
     sources = [ROOT / "frontend" / "index.html"]
-    sources += [p for p in SRC.rglob("*") if p.suffix in {".ts", ".tsx", ".css"}]
+    # Test files don't ship, and their fixture paths need no file behind them.
+    sources += [
+        p for p in SRC.rglob("*") if p.suffix in {".ts", ".tsx", ".css"} and ".test." not in p.name
+    ]
     refs = set()
     for path in sources:
         refs.update(LITERAL_PATH.findall(path.read_text(encoding="utf-8")))
@@ -60,6 +63,11 @@ def test_image_within_budget(path):
 def test_logos_exist():
     missing = sorted(u for u in _logo_refs() if not _public(u).is_file())
     assert not missing
+
+
+def test_literal_paths_are_read_from_quotes_backticks_and_url():
+    source = 'a="/a.svg" b=`/b.webp` c=url(/c.png) d=`/mentorPictures/${name}.webp`'
+    assert LITERAL_PATH.findall(source) == ["/a.svg", "/b.webp", "/c.png"]
 
 
 def test_literal_image_paths_exist():

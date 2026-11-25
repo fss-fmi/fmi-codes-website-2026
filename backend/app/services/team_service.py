@@ -61,14 +61,16 @@ class TeamService:
 
     @staticmethod
     def get_team_by_id(team_id):
-        """Get a team by ID with participant count and mentor info"""
+        """Get a team by ID with its participant count.
+
+        No mentor count: this row reaches participants, who must not learn how many mentors an
+        unconfirmed matching run gave the team.
+        """
         query = """
             SELECT t.*,
-                   COUNT(DISTINCT p.id) as participant_count,
-                   COUNT(DISTINCT tm.mentor_id) as mentor_count
+                   COUNT(DISTINCT p.id) as participant_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
-            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
             WHERE t.id = %s
             GROUP BY t.id
         """

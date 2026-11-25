@@ -123,7 +123,7 @@ def get_mentor_preferences():
 @mentors_bp.route("/api/mentors/assigned-teams", methods=["GET"])
 @mentor_required
 def get_assigned_teams():
-    """Get the teams assigned to this mentor by the algorithm (visible after admin confirmation)."""
+    """The teams the confirmed matching assigned to this mentor; empty until the admin confirms."""
     from app.services import matching_service
 
     teams = matching_service.get_assigned_teams_for_mentor(g.current_user["user_id"])

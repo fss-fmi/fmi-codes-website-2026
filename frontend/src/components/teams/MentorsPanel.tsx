@@ -46,7 +46,9 @@ export default function MentorsPanel({
               }}
             >
               {src ? (
+                // Keyed by src: onError hides the node itself, so a new path needs a new node.
                 <img
+                  key={src}
                   src={src}
                   alt={m.mentor_name ?? 'Mentor'}
                   loading="lazy"
