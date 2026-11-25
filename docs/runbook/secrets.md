@@ -186,9 +186,8 @@ An entry with a blank `email` or `phone_number` or an unknown `status` is skippe
 backend logs a warning naming the mentor and the reason; fix the entry and the next start
 seeds it. An entry that shares only its email, or only its name and company, with a stored
 mentor is skipped with a warning too: a copy-paste slip, or an edit to a mentor already
-seeded, which never applies. New
-mentors get their email stored lowercased, since login and reset lowercase what the mentor
-types; one seeded earlier with capitals in it can't log in (a known gap).
+seeded, which never applies. A mentor's email is stored lowercased, since login and reset
+lowercase what the mentor types.
 
 To change it (`rotate-secret.sh` doesn't handle this one):
 
