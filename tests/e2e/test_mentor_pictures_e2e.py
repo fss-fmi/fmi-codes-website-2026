@@ -124,33 +124,36 @@ class TestAssignedMentors:
     def test_assignments_stay_hidden_until_matching_is_confirmed(
         self, client, flask_app, seeds, assigned_team
     ):
+        # One client per caller: a client's cookie wins over the Bearer header.
         team_id, token = assigned_team
         with flask_app.test_client() as other:
             outsider = register_and_token(other, 2, seeds)
+            for c, caller in ((client, token), (other, outsider)):
+                rv = c.get(f"/api/teams/{team_id}", headers=bearer(caller))
+                assert rv.status_code == 200, rv.get_json()
+                team = rv.get_json()["team"]
+                assert team["mentors"] == []
+                assert "mentor_count" not in team
 
-        for caller in (token, outsider):
-            rv = client.get(f"/api/teams/{team_id}", headers=bearer(caller))
-            assert rv.status_code == 200, rv.get_json()
-            team = rv.get_json()["team"]
-            assert team["mentors"] == []
-            assert "mentor_count" not in team
-
-        rv = client.get(f"/api/teams/{team_id}", headers=bearer(admin_token(flask_app)))
+        with flask_app.test_client() as adm:
+            rv = adm.get(f"/api/teams/{team_id}", headers=bearer(admin_token(flask_app)))
         assert rv.status_code == 200, rv.get_json()
         assert len(rv.get_json()["team"]["mentors"]) == 2
 
     def test_a_mentor_sees_assigned_teams_only_once_matching_is_confirmed(
-        self, client, flask_app, db_conn, mentor_with_photo, assigned_team
+        self, flask_app, db_conn, mentor_with_photo, assigned_team
     ):
         team_id, _ = assigned_team
         headers = bearer(mentor_token_for(flask_app, mentor_with_photo))
 
-        rv = client.get("/api/mentors/assigned-teams", headers=headers)
-        assert rv.status_code == 200, rv.get_json()
-        assert rv.get_json()["teams"] == []
+        # Its own client, since the fixture's client holds the captain's cookie.
+        with flask_app.test_client() as mentor:
+            rv = mentor.get("/api/mentors/assigned-teams", headers=headers)
+            assert rv.status_code == 200, rv.get_json()
+            assert rv.get_json()["teams"] == []
 
-        _confirm_matching(db_conn)
-        rv = client.get("/api/mentors/assigned-teams", headers=headers)
+            _confirm_matching(db_conn)
+            rv = mentor.get("/api/mentors/assigned-teams", headers=headers)
         assert rv.status_code == 200, rv.get_json()
         assert [t["team_id"] for t in rv.get_json()["teams"]] == [team_id]
 
