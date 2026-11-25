@@ -448,14 +448,17 @@ def test_an_uncapped_hash_skips_the_gate(monkeypatch):
 def test_the_mentor_seed_is_never_shed(app_ctx, monkeypatch, tmp_path):
     """Every worker loads the seed while it boots (wsgi.py)."""
     seed = tmp_path / "mentors.json"
-    seed.write_text('[{"first_name": "A", "last_name": "B", "company_name": "C", "password": "x"}]')
+    seed.write_text(
+        '[{"first_name": "A", "last_name": "B", "company_name": "C", "email": "a@mentor.test",'
+        ' "phone_number": "0000000000", "password": "x"}]'
+    )
 
     @contextlib.contextmanager
     def cursor(*_a, **_k):
         yield MagicMock(rowcount=1)
 
     monkeypatch.setattr(auth_service, "hash_slot", _always_shed)
-    monkeypatch.setattr(mentor_service, "mentor_exists", lambda *a, **k: False)
+    monkeypatch.setattr(mentor_service, "find_existing_mentor", lambda *a, **k: None)
     monkeypatch.setattr(mentor_service, "get_db_cursor", cursor)
     monkeypatch.setattr(mentor_service, "redis_del", lambda *a, **k: None)
     assert mentor_service.load_mentors_from_file(seed) == 1

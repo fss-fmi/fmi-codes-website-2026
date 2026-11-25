@@ -5,7 +5,6 @@ import json
 import logging
 from pathlib import Path
 
-import psycopg2
 from flask import current_app
 
 from app.database import (
@@ -37,25 +36,33 @@ _PUBLIC_MENTOR_FIELDS = (
 )
 
 
-def mentor_exists(first_name: str, last_name: str, company_name: str, email: str = None) -> bool:
-    """Check if a mentor already exists. Prefers email lookup when available."""
-    if email:
-        result = execute_query(
-            current_app,
-            "SELECT 1 FROM mentors WHERE email = %s",
-            (email,),
-            fetch_one=True,
-        )
-        if result is not None:
-            return True
-    query = """
-        SELECT 1 FROM mentors
-        WHERE first_name = %s AND last_name = %s AND company_name = %s
+_MENTOR_STATUSES = ("active", "inactive", "archived")
+
+
+def find_existing_mentor(first_name: str, last_name: str, company_name: str, email: str):
+    """The stored mentor holding this email, else the one with this name and company, else None.
+
+    Returns its first_name, last_name, company_name and email, so the caller can tell the
+    entry's own row from another mentor's. The email match ignores case: mentors seeded before
+    the loader lowercased emails keep their capitals.
     """
+    identity = "SELECT first_name, last_name, company_name, email FROM mentors"
     result = execute_query(
-        current_app, query, (first_name, last_name, company_name), fetch_one=True
+        current_app, f"{identity} WHERE LOWER(email) = %s", (email,), fetch_one=True
     )
-    return result is not None
+    if result is not None:
+        return result
+    return execute_query(
+        current_app,
+        f"{identity} WHERE first_name = %s AND last_name = %s AND company_name = %s",
+        (first_name, last_name, company_name),
+        fetch_one=True,
+    )
+
+
+def _seed_text(mentor: dict, key: str) -> str:
+    # `or ""` first: str(None) would store a JSON null as the string "None".
+    return str(mentor.get(key) or "").strip()
 
 
 def get_all_mentors() -> list:
@@ -159,8 +166,15 @@ def load_mentors_from_file(json_path: Path) -> int:
     """Load mentors from a JSON file into the database if not already present
 
     An entry without a password gets a NULL password_hash, which can never log in; the
-    mentor sets one through forgot password. A seed that can't be read loads nothing
-    rather than failing every worker's boot.
+    mentor sets one through forgot password. The email is stored lowercased, since login and
+    reset lowercase what the mentor types. An entry with a blank email or phone or an unknown
+    status is skipped with a warning, and so is one that shares only its email, or only its
+    name and company, with a stored mentor. A seed that can't be read loads nothing rather
+    than failing every worker's boot.
+
+    Every worker runs this while it boots, with no lock, so on a fresh database several
+    insert the same mentor at once. The INSERT names no conflict target, which makes a
+    duplicate on any unique key a no-op instead of an error (#191).
 
     Returns:
         Number of mentors inserted
@@ -186,16 +200,50 @@ def load_mentors_from_file(json_path: Path) -> int:
     for mentor in mentors:
         if not isinstance(mentor, dict):
             continue
-        first_name = str(mentor.get("first_name", "")).strip()
-        last_name = str(mentor.get("last_name", "")).strip()
-        company_name = str(mentor.get("company_name", "")).strip()
+        first_name = _seed_text(mentor, "first_name")
+        last_name = _seed_text(mentor, "last_name")
+        company_name = _seed_text(mentor, "company_name")
         picture_path = mentor.get("picture_url")
-        email = str(mentor.get("email", "")).strip() or None
+        email = _seed_text(mentor, "email").lower()
+        phone_number = _seed_text(mentor, "phone_number")
+        raw_status = _seed_text(mentor, "status")
+        status = raw_status.lower() or "active"
 
         if not first_name or not last_name or not company_name:
             continue
 
-        if mentor_exists(first_name, last_name, company_name, email=email):
+        missing = [
+            name for name, value in (("email", email), ("phone_number", phone_number)) if not value
+        ]
+        if missing:
+            logger.warning(
+                f"Mentor seed entry {first_name} {last_name} has no {' or '.join(missing)}; skipped"
+            )
+            continue
+
+        if status not in _MENTOR_STATUSES:
+            logger.warning(
+                f"Mentor seed entry {first_name} {last_name} has an unknown status"
+                f" {raw_status!r}; skipped"
+            )
+            continue
+
+        existing = find_existing_mentor(first_name, last_name, company_name, email)
+        if existing:
+            stored = (existing["first_name"], existing["last_name"], existing["company_name"])
+            if stored != (first_name, last_name, company_name):
+                clash = (
+                    f"its email belongs to the stored mentor {stored[0]} {stored[1]} ({stored[2]})"
+                )
+            elif existing["email"].lower() != email:
+                clash = "a stored mentor with this name and company has another email"
+            else:
+                clash = None
+            if clash:
+                logger.warning(
+                    f"Mentor seed entry {first_name} {last_name} ({company_name}) skipped: {clash}."
+                    " Seeding never changes a stored mentor"
+                )
             continue
 
         # picture_url is stored as a URL string (e.g. /mentorPictures/alice.webp), served by
@@ -210,13 +258,11 @@ def load_mentors_from_file(json_path: Path) -> int:
                 picture_data = f"/mentorPictures/{p}"
             picture_filename = Path(p).name
 
-        phone_number = str(mentor.get("phone_number", "")).strip() or None
-        bio = str(mentor.get("bio", "")).strip() or None
-        status = str(mentor.get("status", "active")).strip()
+        bio = _seed_text(mentor, "bio") or None
         technologies = mentor.get("technologies", [])
         if not isinstance(technologies, list):
             technologies = []
-        availability_text = str(mentor.get("availability_text", "")).strip() or None
+        availability_text = _seed_text(mentor, "availability_text") or None
         raw_password = mentor.get("password")
         # Never shed: every worker loads the seed while it boots (wsgi.py).
         pw_hash = _hash_pw(str(raw_password), shed=False) if raw_password else None
@@ -226,7 +272,7 @@ def load_mentors_from_file(json_path: Path) -> int:
                                  bio, status, picture_url, picture_filename, password_hash,
                                  technologies, availability_text)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT ON CONSTRAINT uidx_mentors_identity DO NOTHING
+            ON CONFLICT DO NOTHING
         """
 
         try:
@@ -250,8 +296,6 @@ def load_mentors_from_file(json_path: Path) -> int:
                 )
                 if cursor.rowcount:
                     inserted += 1
-        except psycopg2.IntegrityError:
-            continue
         except Exception as e:
             logger.error(f"Error inserting mentor {first_name} {last_name}: {describe_db_error(e)}")
             continue
