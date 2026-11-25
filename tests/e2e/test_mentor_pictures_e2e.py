@@ -99,6 +99,13 @@ def assigned_team(client, db_conn, seeds, mentor_with_photo):
     return team_id, token
 
 
+def _assert_mentors_hidden(rv):
+    assert rv.status_code == 200, rv.get_json()
+    team = rv.get_json()["team"]
+    assert team["mentors"] == []
+    assert "mentor_count" not in team
+
+
 def _confirm_matching(db_conn):
     with db_conn.cursor() as cur:
         cur.execute("UPDATE matching_state SET is_confirmed = TRUE, confirmed_at = NOW()")
@@ -124,16 +131,14 @@ class TestAssignedMentors:
     def test_assignments_stay_hidden_until_matching_is_confirmed(
         self, client, flask_app, seeds, assigned_team
     ):
-        # One client per caller: a client's cookie wins over the Bearer header.
+        # One client per caller, since a client's cookie wins over the Bearer header. Each one
+        # sends its requests inside its own block: interleaving open clients breaks Flask's
+        # context stack when they close.
         team_id, token = assigned_team
+        _assert_mentors_hidden(client.get(f"/api/teams/{team_id}", headers=bearer(token)))
         with flask_app.test_client() as other:
             outsider = register_and_token(other, 2, seeds)
-            for c, caller in ((client, token), (other, outsider)):
-                rv = c.get(f"/api/teams/{team_id}", headers=bearer(caller))
-                assert rv.status_code == 200, rv.get_json()
-                team = rv.get_json()["team"]
-                assert team["mentors"] == []
-                assert "mentor_count" not in team
+            _assert_mentors_hidden(other.get(f"/api/teams/{team_id}", headers=bearer(outsider)))
 
         with flask_app.test_client() as adm:
             rv = adm.get(f"/api/teams/{team_id}", headers=bearer(admin_token(flask_app)))
