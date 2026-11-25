@@ -1,0 +1,7 @@
+# The image is public: a local copy of the real mentor seed must never be baked into it.
+# Covers mentors*.json only, so decrypt elsewhere (the runbook uses sops <file> in place).
+database/seeds/mentors*.json
+!database/seeds/mentors.dev.json
+.env
+__pycache__/
+*.py[cod]

@@ -328,6 +328,27 @@ class TestDataLeakage:
         assert rv.status_code == 200
         assert "password_hash" not in rv.get_data(as_text=True)
 
+    def test_public_mentor_list_exposes_only_public_fields(self, client, seeds):
+        """No email, phone or account state reaches the public mentors page (#274)."""
+        rv = client.get("/api/mentors")
+        assert rv.status_code == 200
+        mentors = rv.get_json()["mentors"]
+        assert mentors
+        public = {
+            "mentor_id",
+            "name",
+            "first_name",
+            "last_name",
+            "company_name",
+            "bio",
+            "technologies",
+            "picture_url",
+            "picture_filename",
+            "availability_text",
+        }
+        for mentor in mentors:
+            assert set(mentor) == public
+
     def test_public_member_list_exposes_only_names(self, client, seeds, flask_app):
         """admin/teams/<id>/register then check /teams/<id>/members/public."""
         adm_tok = admin_token(flask_app)

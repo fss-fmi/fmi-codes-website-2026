@@ -355,7 +355,7 @@ Participant who owns the request. Marks it `cancelled`.
 
 ### GET /api/mentors
 
-Public. Active mentors, cached about 30 min and invalidated when mentors are added or removed (including by the startup seeder).
+Public. Active mentors, cached about 30 min and invalidated when the startup seeder adds mentors (no API adds or removes one).
 
 ```json
 {
@@ -366,22 +366,18 @@ Public. Active mentors, cached about 30 min and invalidated when mentors are add
       "name": "Maria Petrova",
       "first_name": "Maria",
       "last_name": "Petrova",
-      "email": "...",
-      "phone_number": "...",
       "company_name": "...",
       "bio": "...",
-      "status": "active",
       "technologies": ["Python", "Kubernetes"],
       "picture_url": "/mentorPictures/maria.webp",
       "picture_filename": "maria.webp",
-      "availability_text": "...",
-      "created_at": "..."
+      "availability_text": "..."
     }
   ]
 }
 ```
 
-Note: this public response includes mentor email and phone number.
+Exactly these fields, newest mentor first. A mentor's email, phone number and account state never reach this public response.
 
 ### GET /api/mentors/{mentor_id}/picture
 

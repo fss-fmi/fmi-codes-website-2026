@@ -30,9 +30,9 @@ def main():
         seeded = mentor_service.load_specialties_from_file(seeds_dir / "specialties.json")
         if seeded:
             print(f"[OK] Seeded {seeded} specialty(s) from specialties.json")
-        seeded = mentor_service.load_mentors_from_file(seeds_dir / "mentors.json")
+        seeded = mentor_service.seed_mentors_from_config()
         if seeded:
-            print(f"[OK] Seeded {seeded} mentor(s) from mentors.json")
+            print(f"[OK] Seeded {seeded} mentor(s) from {app.config['MENTORS_SEED_FILE']}")
 
     # Print startup info
     db_location = f"{app.config.get('DB_HOST', '?')}/{app.config.get('DB_NAME', '?')}"

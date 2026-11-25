@@ -8,14 +8,33 @@ from pathlib import Path
 import psycopg2
 from flask import current_app
 
-from app.database import execute_insert, execute_query, execute_update, get_db_cursor
+from app.database import (
+    describe_db_error,
+    execute_query,
+    get_db_cursor,
+)
 from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
 
 logger = logging.getLogger(__name__)
 
-_MENTORS_CACHE_KEY = "cache:mentors:all"
+# Renamed when contacts left the list, so a copy cached with them is never served again.
+_MENTORS_CACHE_KEY = "cache:mentors:public"
 _UNIVERSITIES_CACHE_KEY = "cache:lookups:universities"
 _SPECIALTIES_CACHE_KEY = "cache:lookups:specialties"
+
+# GET /api/mentors is public: never a mentor's email, phone or account state.
+_PUBLIC_MENTOR_FIELDS = (
+    "id AS mentor_id",
+    "first_name || ' ' || last_name AS name",
+    "first_name",
+    "last_name",
+    "company_name",
+    "bio",
+    "technologies",
+    "picture_url",
+    "picture_filename",
+    "availability_text",
+)
 
 
 def mentor_exists(first_name: str, last_name: str, company_name: str, email: str = None) -> bool:
@@ -39,44 +58,6 @@ def mentor_exists(first_name: str, last_name: str, company_name: str, email: str
     return result is not None
 
 
-def register_mentor(
-    first_name: str, last_name: str, company_name: str, picture_data=None, picture_filename=None
-) -> tuple:
-    """Register a new mentor
-
-    Returns:
-        Tuple of (success: bool, message: str, mentor_id: int or None)
-    """
-    if not first_name or not last_name or not company_name:
-        return False, "All fields are required", None
-
-    if not picture_data:
-        return False, "Picture is required", None
-
-    query = """
-        INSERT INTO mentors (first_name, last_name, company_name, picture_url, picture_filename)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id
-    """
-
-    try:
-        mentor_id = execute_insert(
-            current_app,
-            query,
-            (first_name, last_name, company_name, picture_data, picture_filename),
-        )
-        logger.info(f"✓ Mentor registered: {first_name} {last_name} (ID: {mentor_id})")
-        _invalidate_mentor_cache()
-        return True, f'Mentor "{first_name} {last_name}" registered successfully', mentor_id
-
-    except psycopg2.IntegrityError as e:
-        logger.error(f"Integrity error registering mentor: {e}")
-        return False, "Mentor already exists or constraint violated", None
-    except Exception as e:
-        logger.error(f"Error registering mentor: {e}")
-        return False, str(e), None
-
-
 def get_all_mentors() -> list:
     """Get all registered mentors (cached in Redis for ~30 min, invalidated on every write)"""
     cached = redis_get(_MENTORS_CACHE_KEY)
@@ -86,12 +67,8 @@ def get_all_mentors() -> list:
         except (ValueError, TypeError):
             pass  # corrupt cache entry — fall through to reload
 
-    query = """
-        SELECT id AS mentor_id,
-               first_name || ' ' || last_name AS name,
-               first_name, last_name, email, phone_number, company_name,
-               bio, status, technologies, picture_url, picture_filename,
-               availability_text, created_at
+    query = f"""
+        SELECT {", ".join(_PUBLIC_MENTOR_FIELDS)}
         FROM mentors
         WHERE status = 'active'
         ORDER BY created_at DESC
@@ -101,7 +78,6 @@ def get_all_mentors() -> list:
     except Exception as e:
         raise Exception(f"Failed to get mentors: {str(e)}") from e
 
-    # The app JSON provider keeps created_at in the same format on a hit and a miss.
     payload = current_app.json.dumps([dict(r) for r in result])
     redis_set(_MENTORS_CACHE_KEY, payload, jittered_ttl(1800, 180))
     return json.loads(payload)
@@ -162,38 +138,45 @@ def get_mentor_picture(mentor_id: int) -> tuple:
         raise Exception(f"Failed to get mentor picture: {str(e)}") from e
 
 
-def delete_mentor(mentor_id: int) -> tuple:
-    """Delete a mentor
+def seed_mentors_from_config() -> int:
+    """Load the mentor seed MENTORS_SEED_FILE names. Unset or missing seeds nobody.
 
-    Returns:
-        Tuple of (success: bool, message: str)
+    Production has no default: the real seed is personal data and reaches the pod only as a
+    mounted Secret, never inside the image.
     """
-    query = "DELETE FROM mentors WHERE id = %s"
-    try:
-        rows = execute_update(current_app, query, (mentor_id,))
-        if rows == 0:
-            return False, "Mentor not found"
-        logger.info(f"✓ Mentor {mentor_id} deleted")
-        _invalidate_mentor_cache()
-        return True, "Mentor deleted successfully"
-    except Exception as e:
-        logger.error(f"Error deleting mentor: {e}")
-        return False, str(e)
+    configured = current_app.config.get("MENTORS_SEED_FILE")
+    if not configured:
+        logger.warning("MENTORS_SEED_FILE is not set, so no mentors were seeded")
+        return 0
+    path = Path(configured)
+    if not path.is_file():
+        logger.warning("Mentor seed %s not found, so no mentors were seeded", path)
+        return 0
+    return load_mentors_from_file(path)
 
 
 def load_mentors_from_file(json_path: Path) -> int:
     """Load mentors from a JSON file into the database if not already present
 
+    An entry without a password gets a NULL password_hash, which can never log in; the
+    mentor sets one through forgot password. A seed that can't be read loads nothing
+    rather than failing every worker's boot.
+
     Returns:
         Number of mentors inserted
     """
-    if not json_path.exists():
+    if not json_path.is_file():
         return 0
 
-    with open(json_path, encoding="utf-8") as f:
-        mentors = json.load(f)
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            mentors = json.load(f)
+    except (OSError, ValueError) as e:
+        logger.error(f"Could not read the mentor seed {json_path}: {e}")
+        return 0
 
     if not isinstance(mentors, list):
+        logger.error(f"Mentor seed {json_path} is not a JSON list; no mentors loaded")
         return 0
 
     inserted = 0
@@ -201,6 +184,8 @@ def load_mentors_from_file(json_path: Path) -> int:
     from app.services.auth_service import hash_password as _hash_pw
 
     for mentor in mentors:
+        if not isinstance(mentor, dict):
+            continue
         first_name = str(mentor.get("first_name", "")).strip()
         last_name = str(mentor.get("last_name", "")).strip()
         company_name = str(mentor.get("company_name", "")).strip()
@@ -232,9 +217,9 @@ def load_mentors_from_file(json_path: Path) -> int:
         if not isinstance(technologies, list):
             technologies = []
         availability_text = str(mentor.get("availability_text", "")).strip() or None
-        raw_password = mentor.get("password", "mentor123")
+        raw_password = mentor.get("password")
         # Never shed: every worker loads the seed while it boots (wsgi.py).
-        pw_hash = _hash_pw(raw_password, shed=False)
+        pw_hash = _hash_pw(str(raw_password), shed=False) if raw_password else None
 
         query = """
             INSERT INTO mentors (first_name, last_name, company_name, email, phone_number,
@@ -268,7 +253,7 @@ def load_mentors_from_file(json_path: Path) -> int:
         except psycopg2.IntegrityError:
             continue
         except Exception as e:
-            logger.error(f"Error inserting mentor {first_name} {last_name}: {e}")
+            logger.error(f"Error inserting mentor {first_name} {last_name}: {describe_db_error(e)}")
             continue
 
     if inserted:

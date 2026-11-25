@@ -1,0 +1,35 @@
+[
+  {
+    "first_name": "Ivana",
+    "last_name": "Example",
+    "email": "ivana@mentor.test",
+    "phone_number": "0888000000",
+    "company_name": "Example Labs",
+    "bio": "Backend Engineer",
+    "technologies": ["Python", "Flask", "PostgreSQL", "Docker"],
+    "availability_text": "Saturday and Sunday",
+    "password": "mentor123"
+  },
+  {
+    "first_name": "Georgi",
+    "last_name": "Sample",
+    "email": "georgi@mentor.test",
+    "phone_number": "0888000000",
+    "company_name": "Sample Systems",
+    "bio": "Frontend Engineer",
+    "technologies": ["TypeScript", "React", "Tailwind", "Vite"],
+    "availability_text": "Saturday",
+    "password": "mentor123"
+  },
+  {
+    "first_name": "Maria",
+    "last_name": "Placeholder",
+    "email": "maria@mentor.test",
+    "phone_number": "0888000000",
+    "company_name": "Placeholder Cloud",
+    "bio": "DevOps Engineer",
+    "technologies": ["Kubernetes", "Terraform", "GitHub Actions", "Amazon Web Services"],
+    "availability_text": "Sunday",
+    "password": "mentor123"
+  }
+]

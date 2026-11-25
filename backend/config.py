@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
+DEV_MENTORS_SEED_FILE = str(BASE_DIR / "database" / "seeds" / "mentors.dev.json")
 
 
 class Config:
@@ -73,6 +74,9 @@ class Config:
     REQUIRE_EMAIL_VERIFICATION = (
         os.environ.get("REQUIRE_EMAIL_VERIFICATION", "false").lower() == "true"
     )
+    # The real mentor seed is personal data: in the cluster it is a mounted SOPS Secret, so
+    # production has no default and seeds nobody without one.
+    MENTORS_SEED_FILE = os.environ.get("MENTORS_SEED_FILE") or None
     DEBUG = False
     TESTING = False
 
@@ -87,6 +91,7 @@ class DevelopmentConfig(Config):
         "DATABASE_URL",
         f"postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{DB_NAME}",
     )
+    MENTORS_SEED_FILE = os.environ.get("MENTORS_SEED_FILE") or DEV_MENTORS_SEED_FILE
 
 
 class ProductionConfig(Config):
@@ -113,6 +118,7 @@ class TestingConfig(Config):
     )
     # Disable flask-limiter so E2E tests never trip rate-limit counters
     RATELIMIT_ENABLED = False
+    MENTORS_SEED_FILE = os.environ.get("MENTORS_SEED_FILE") or DEV_MENTORS_SEED_FILE
 
 
 _WEAK_SECRETS = {

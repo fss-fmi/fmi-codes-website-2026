@@ -1,7 +1,7 @@
-"""Site images: size budgets, and every image is referenced and every reference exists."""
+"""Site images: size budgets, every image but the mentor photos is referenced and every
+reference exists."""
 
 import gzip
-import json
 import re
 from pathlib import Path
 
@@ -38,10 +38,8 @@ def _literal_refs():
     return refs
 
 
-def _mentor_refs():
-    seeds = ROOT / "backend" / "database" / "seeds" / "mentors.json"
-    mentors = json.loads(seeds.read_text(encoding="utf-8"))
-    return {m["picture_url"] for m in mentors if m.get("picture_url")}
+# Referenced only by the mentor seed, which is an encrypted Secret this test can't read.
+MENTOR_PICTURES = PUBLIC / "mentorPictures"
 
 
 def _logo_refs():
@@ -59,15 +57,6 @@ def test_image_within_budget(path):
         assert len(data) <= RASTER_BUDGET, f"{len(data)} bytes; resize it or convert to WebP"
 
 
-def test_mentor_seed_pictures_exist():
-    missing = sorted(u for u in _mentor_refs() if not _public(u).is_file())
-    assert not missing
-
-
-def test_mentor_pictures_are_served_by_the_frontend():
-    assert all(u.startswith("/mentorPictures/") for u in _mentor_refs())
-
-
 def test_logos_exist():
     missing = sorted(u for u in _logo_refs() if not _public(u).is_file())
     assert not missing
@@ -79,6 +68,10 @@ def test_literal_image_paths_exist():
 
 
 def test_every_image_is_used():
-    used = {_public(u).resolve() for u in _literal_refs() | _mentor_refs() | _logo_refs()}
-    unused = [p.relative_to(PUBLIC).as_posix() for p in _images() if p.resolve() not in used]
+    used = {_public(u).resolve() for u in _literal_refs() | _logo_refs()}
+    unused = [
+        p.relative_to(PUBLIC).as_posix()
+        for p in _images()
+        if p.resolve() not in used and MENTOR_PICTURES not in p.parents
+    ]
     assert not unused, "delete unused images instead of shipping them"

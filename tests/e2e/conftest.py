@@ -249,7 +249,7 @@ def _reset_caches():
         from app.services.redis_client import redis_del
 
         redis_del(
-            "cache:mentors:all",
+            "cache:mentors:public",
             "cache:rankings:legacy",
             "cache:rankings:teams",
             "cache:regulations",

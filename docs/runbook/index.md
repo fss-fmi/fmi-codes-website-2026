@@ -30,7 +30,8 @@ infra/k8s/
                    overlays/staging/  namespace fmi-codes-staging, any host, no TLS (Tailscale holds it)
                    overlays/staging/tailnet/ staging's Tailscale Ingress (namespace ingress-nginx-staging)
   helm-values/   Bitnami postgresql + redis values (prod)
-  secrets/       prod secrets, grafana-secret, alertmanager-slack, flux-relay-slack, cloudflared-tunnel .enc.yaml (SOPS);
+  secrets/       prod secrets, grafana-secret, alertmanager-slack, flux-relay-slack, cloudflared-tunnel,
+                 mentors-seed .enc.yaml (SOPS);
                  staging's live in overlays/staging/secrets/, with the only tailscale-oauth
   flux/          Flux GitOps — source, image-automation, notifications, self
 ```
@@ -123,15 +124,16 @@ cd fmi-codes-website-2026
 
 Nothing to create by hand — the passwords split three ways and every one is handled for you:
 
-| Secret                              | Keys                                                                                                                                                                                                                   | How it's set                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fmi-codes-app` (SOPS, in git)      | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](tailscale.md#access-grafana-and-staging)) |
-| `fmi-codes-db`, `fmi-codes-redis`   | DB / Redis passwords                                                                                                                                                                                                   | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                                       |
-| `grafana-admin` (SOPS, in git)      | `admin-user`, `admin-password`                                                                                                                                                                                         | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                                   |
-| `operator-oauth` (SOPS, in git)     | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                                                  | **staging's file only**, used by every cluster ([why](tailscale.md#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](tailscale.md#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                        |
-| `alertmanager-slack` (SOPS, in git) | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                                                    | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](alerts.md#cluster-alerts))                                                                               |
-| `flux-relay-slack` (SOPS, in git)   | `bot_token`, `cluster_channel`, `staging_channel` (the Flux Relay Slack app's token and the two channel IDs)                                                                                                           | committed **empty**; `deploy-observability.sh` applies it to `flux-system`. Until it's filled the relay idles and Flux errors get no "recovered" reply. Set them with `rotate-secret.sh --flux-relay <key>` ([Recovery replies](alerts.md#recovery-replies))                                                   |
-| `cloudflared-tunnel` (SOPS, in git) | `credentials.json` (the prod tunnel's credentials file)                                                                                                                                                                | **prod only**, committed encrypted; `deploy-ingress.sh` applies it only with `SERVE_PROD_TUNNEL=true`, on the one cluster that serves prod. Made once per tunnel ([Set up the tunnel](cloudflare.md#set-up-the-tunnel))                                                                                        |
+| Secret                                  | Keys                                                                                                                                                                                                                   | How it's set                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fmi-codes-app` (SOPS, in git)          | `SECRET_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `MAIL_PASSWORD`, `DISCORD_BUG_WEBHOOK_URL`, `SLACK_BUG_WEBHOOK_URL`, `SLACK_MIGRATIONS_WEBHOOK_URL`, `SLACK_EVENTS_WEBHOOK_URL`; staging also `FRONTEND_ORIGIN` | committed encrypted; `deploy-app.sh` decrypts + applies with your age key. `SECRET_KEY`/`JWT_SECRET_KEY` already have strong committed values; `ADMIN_PASSWORD_HASH` you set in step 3. Staging's `FRONTEND_ORIGIN` is its tailnet URL ([Access Grafana and staging](tailscale.md#access-grafana-and-staging)) |
+| `fmi-codes-db`, `fmi-codes-redis`       | DB / Redis passwords                                                                                                                                                                                                   | **generated in-cluster** by `deploy-stateful.sh` on first run; rotate with `rotate-datastore-password.sh`, never by hand                                                                                                                                                                                       |
+| `grafana-admin` (SOPS, in git)          | `admin-user`, `admin-password`                                                                                                                                                                                         | committed encrypted; applied by `deploy-observability.sh` ([Phase 7](#7--observability-prometheus--grafana))                                                                                                                                                                                                   |
+| `operator-oauth` (SOPS, in git)         | `client_id`, `client_secret` (Tailscale OAuth client)                                                                                                                                                                  | **staging's file only**, used by every cluster ([why](tailscale.md#one-tailscale-client-for-every-cluster)); the bootstrap pre-flight asks for it once the tailnet exists ([Tailscale setup](tailscale.md#tailscale-setup-once-per-tailnet)), then `deploy-observability.sh` applies it                        |
+| `alertmanager-slack` (SOPS, in git)     | `cluster_url`, `staging_url` (the cluster-alerts incoming webhooks)                                                                                                                                                    | committed **empty**; `deploy-observability.sh` applies it anyway (Alertmanager can't start without it). Set them with `rotate-secret.sh --alertmanager cluster_url` / `staging_url` ([Cluster alerts](alerts.md#cluster-alerts))                                                                               |
+| `flux-relay-slack` (SOPS, in git)       | `bot_token`, `cluster_channel`, `staging_channel` (the Flux Relay Slack app's token and the two channel IDs)                                                                                                           | committed **empty**; `deploy-observability.sh` applies it to `flux-system`. Until it's filled the relay idles and Flux errors get no "recovered" reply. Set them with `rotate-secret.sh --flux-relay <key>` ([Recovery replies](alerts.md#recovery-replies))                                                   |
+| `cloudflared-tunnel` (SOPS, in git)     | `credentials.json` (the prod tunnel's credentials file)                                                                                                                                                                | **prod only**, committed encrypted; `deploy-ingress.sh` applies it only with `SERVE_PROD_TUNNEL=true`, on the one cluster that serves prod. Made once per tunnel ([Set up the tunnel](cloudflare.md#set-up-the-tunnel))                                                                                        |
+| `fmi-codes-mentors-seed` (SOPS, in git) | `mentors.json` (the mentor roster: names, emails, phones, any starting passwords)                                                                                                                                      | committed encrypted, staging's with its 20 mentors and prod's as `[]` until the 2027 roster; `deploy-app.sh` applies it (even with Flux on) and the backend mounts it, seeding on start. Optional: without it the backend seeds no mentors ([Mentor seed](secrets.md#mentor-seed))                             |
 
 So the only secret you actively decide on a fresh deploy is the **admin password** — and the
 bootstrap pre-flight prompts you for it. `MAIL_PASSWORD` / `DISCORD_BUG_WEBHOOK_URL` /
@@ -155,8 +157,8 @@ The pre-flight first installs `sops` and `age` if they're missing (so it can ver
 bare box), then handles three things:
 
 1. **The age private key**: it test-decrypts every SOPS file of that env (`secrets.enc.yaml`,
-   `grafana-secret.enc.yaml`, `alertmanager-slack.enc.yaml` and `flux-relay-slack.enc.yaml`,
-   plus `tailscale-oauth.enc.yaml` on staging and `cloudflared-tunnel.enc.yaml` on prod) with `~/.config/sops/age/keys.txt` (or
+   `grafana-secret.enc.yaml`, `alertmanager-slack.enc.yaml`, `flux-relay-slack.enc.yaml` and
+   `mentors-seed.enc.yaml`, plus `tailscale-oauth.enc.yaml` on staging and `cloudflared-tunnel.enc.yaml` on prod) with `~/.config/sops/age/keys.txt` (or
    `$SOPS_AGE_KEY_FILE` if set). If that works it does nothing, whatever else is in the file
    and in whatever order. Otherwise it takes the key from `SOPS_AGE_KEY_STAGING` (or
    `SOPS_AGE_KEY_PROD`), falling back to a hidden paste prompt, verifies the key decrypts those
@@ -421,7 +423,11 @@ reads `SLACK_MIGRATIONS_WEBHOOK_URL` from it, optionally). On staging, `FRONTEND
 from `fmi-codes-app` too (`overlays/staging/backend-origin-patch.yaml`, optional, so a secret
 without it never blocks a rollout; the backend then falls back to `http://localhost:5173` and
 `deploy-app.sh` warns). `DATABASE_URL` is intentionally unset — the backend composes it from the
-`DB_*` pieces.
+`DB_*` pieces. The mentor seed is a file, not env: the `fmi-codes-mentors-seed` Secret is
+mounted read-only at `/etc/fmi-codes/mentors/` (optional, so a cluster without it still rolls
+out and seeds no mentors) and `MENTORS_SEED_FILE` points at its `mentors.json`. Only the
+backend container gets it, never the `migrate` initContainer. `deploy-app.sh` applies it right
+after the app secret ([Mentor seed](secrets.md#mentor-seed)).
 
 Health endpoints: `GET /api/health` (liveness, touches nothing) and `GET /api/health/ready`
 (readiness — pooled `SELECT 1` + Redis ping; Postgres gates readiness, Redis is fail-open).
@@ -752,25 +758,27 @@ exists.
 
 ## Forking to your own infra
 
-To deploy this under your own project — your Docker Hub, your domain, your keys — change:
+To deploy this under your own project (your Docker Hub, your domain, your keys), change:
 
-- **age keys** — mint your own and re-encrypt, per [Forking: use your own keys](secrets.md#forking-use-your-own-keys).
-- **Image registry** — the `fssfmi/fmi-codes-{backend,frontend}` names in `base/app/*.yaml`,
+- **age keys**: mint your own and re-encrypt, per [Forking: use your own keys](secrets.md#forking-use-your-own-keys).
+- **Mentors**: the committed seeds hold this project's mentors under its keys, so write your
+  own roster into both `mentors-seed.enc.yaml` files ([Mentor seed](secrets.md#mentor-seed)).
+- **Image registry**: the `fssfmi/fmi-codes-{backend,frontend}` names in `base/app/*.yaml`,
   `overlays/*/kustomization.yaml`, `.github/workflows/docker-cd.yaml`, and
   `flux/image-automation.yaml`; set the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets.
-- **Hostnames** — `fmicodes.com` in `base/ingress/ingress.yaml`,
+- **Hostnames**: `fmicodes.com` in `base/ingress/ingress.yaml`,
   `overlays/prod/ingress/cloudflared-config.yaml` and `FRONTEND_ORIGIN` in
   `base/app/backend.yaml`. Staging takes its name from your tailnet: set `FRONTEND_ORIGIN` in
   staging's `secrets.enc.yaml` to your `https://staging.<tailnet>.ts.net`.
-- **Cloudflare Tunnel** — your own zone and tunnel, with its ID in `cloudflared-config.yaml`
+- **Cloudflare Tunnel**: your own zone and tunnel, with its ID in `cloudflared-config.yaml`
   and its credentials in `secrets/cloudflared-tunnel.enc.yaml`, per
   [Set up the tunnel](cloudflare.md#set-up-the-tunnel).
-- **Flux git URL / deploy key** — `flux-bootstrap.sh` defaults to
+- **Flux git URL / deploy key**: `flux-bootstrap.sh` defaults to
   `ssh://git@github.com/fss-fmi/fmi-codes-website-2026.git`; override with
   `GIT_URL=… bash …` and add your own deploy key (step 6).
-- **Bot app** — create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
+- **Bot app**: create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
   [GitHub bot app for automated PRs](../github-automation.md#github-bot-app-for-automated-prs).
-- **Slack PR feed and CI alerts** — set `SLACK_BOT_TOKEN`, `SLACK_PR_CHANNEL_ID` and
+- **Slack PR feed and CI alerts**: set `SLACK_BOT_TOKEN`, `SLACK_PR_CHANNEL_ID` and
   `SLACK_ACTIONS_CHANNEL_ID` for your own workspace, per [Slack PR feed](../github-automation.md#slack-pr-feed) and
   [Slack CI alerts](../github-automation.md#slack-ci-alerts), or leave them unset and both workflows skip.
 - **Cluster alerts**: your own prod and staging channel webhooks in both envs' files, per

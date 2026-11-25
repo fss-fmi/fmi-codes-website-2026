@@ -14,8 +14,9 @@ is base64, not encryption, and `base64 -d` reveals it instantly.
 DB/Redis passwords are deliberately **not** in SOPS — they're PVC-coupled and generated
 in-cluster ([Phase 2](index.md#2--stateful-tier-postgres--redis-sentinel)). SOPS owns the
 `fmi-codes-app` values, the cluster-wide Grafana admin, Tailscale OAuth, Alertmanager webhook
-and Flux Relay secrets ([Phase 7](index.md#7--observability-prometheus--grafana)) and prod's
-Cloudflare Tunnel credentials ([Set up the tunnel](cloudflare.md#set-up-the-tunnel)).
+and Flux Relay secrets ([Phase 7](index.md#7--observability-prometheus--grafana)), prod's
+Cloudflare Tunnel credentials ([Set up the tunnel](cloudflare.md#set-up-the-tunnel)) and each
+env's mentor seed ([Mentor seed](#mentor-seed)).
 
 Getting the age key onto a machine is covered in the setup guide (paste it when bootstrap
 prompts) and [Forking: use your own keys](#forking-use-your-own-keys) (mint your own). Back
@@ -167,30 +168,62 @@ pair), confirm
 ([One Tailscale client for every cluster](tailscale.md#one-tailscale-client-for-every-cluster)). It refuses
 to overwrite a Secret that isn't labelled `staging`.
 
+### Mentor seed
+
+The mentor roster (names, emails, phones and any starting passwords) is personal data, so it
+lives only in the SOPS-encrypted Secret `fmi-codes-mentors-seed`, key `mentors.json`, a JSON list
+in the format the loader reads: `infra/k8s/overlays/staging/secrets/mentors-seed.enc.yaml`
+(staging's 20 mentors) and `infra/k8s/secrets/mentors-seed.enc.yaml`
+(prod, `[]` until the 2027 roster). The backend mounts it at `/etc/fmi-codes/mentors/` and seeds
+from it on every start. Production config has no other seed, so an unset, missing or broken
+file logs a warning or an error and seeds nobody, without blocking the rollout.
+
+An entry with no `password` gets no password at all: that mentor can't log in until they set
+one through forgot password, which needs `MAIL_PASSWORD` in that env. Seed the 2027 roster that
+way, never with a shared password.
+
+To change it (`rotate-secret.sh` doesn't handle this one):
+
+```bash
+sops infra/k8s/overlays/staging/secrets/mentors-seed.enc.yaml   # opens the decrypted Secret in $EDITOR
+ENV=staging bash infra/k8s/scripts/deploy-app.sh                 # applies it (Flux on or off)
+#   or: sops -d <file> | kubectl apply -f -
+kubectl -n fmi-codes-staging rollout restart deployment/backend --field-manager=fmi-codes-scripts
+```
+
+Commit the `.enc.yaml` afterwards. Seeding only inserts mentors who aren't there yet (matched
+by email, or by name and company), so an edit never changes or removes a mentor that already
+exists: change those in the database. Without Flux, `deploy-app.sh` restarts the backend
+itself. The image build never picks up a local copy: `backend/database/seeds/mentors*.json`
+(all but `mentors.dev.json`) is gitignored and excluded by `backend/.dockerignore`.
+
 ### Rotate an age key
 
 Each environment's SOPS files are encrypted to one age key (`.sops.yaml`). Replace it when the
 private key may have leaked or when someone who holds it leaves. The example is for staging,
-which has five files. Prod has four (no `tailscale-oauth.enc.yaml`): use its four rules, the
-four `infra/k8s/secrets/` files and `SOPS_AGE_KEY_PROD`.
+which has six files. Prod has six too (`cloudflared-tunnel.enc.yaml` in place of
+`tailscale-oauth.enc.yaml`): use its six rules, the six `infra/k8s/secrets/` files and
+`SOPS_AGE_KEY_PROD`.
 
 ```bash
 # 1. New key pair, appended next to the old one (keep the old one until step 5).
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)   # prints "Public key: age1…"
 
-# 2. In .sops.yaml, replace the old age1… recipient in the five staging rules
+# 2. In .sops.yaml, replace the old age1… recipient in the six staging rules
 #    (secrets.enc.yaml, grafana-secret.enc.yaml, tailscale-oauth.enc.yaml,
-#    alertmanager-slack.enc.yaml, flux-relay-slack.enc.yaml) with the new one.
+#    alertmanager-slack.enc.yaml, flux-relay-slack.enc.yaml, mentors-seed.enc.yaml) with the
+#    new one.
 
-# 3. Re-wrap the five files to the new key (needs the old key, still in keys.txt):
+# 3. Re-wrap the six files to the new key (needs the old key, still in keys.txt):
 sops updatekeys -y infra/k8s/overlays/staging/secrets/secrets.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/grafana-secret.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
 sops updatekeys -y infra/k8s/overlays/staging/secrets/flux-relay-slack.enc.yaml
+sops updatekeys -y infra/k8s/overlays/staging/secrets/mentors-seed.enc.yaml
 grep recipient infra/k8s/overlays/staging/secrets/*.enc.yaml   # only the new age1… is listed
 
-# 4. Commit and push .sops.yaml and the five files.
+# 4. Commit and push .sops.yaml and the six files.
 
 # 5. Hand out the new private key and retire the old one:
 #    Replace the old AGE-SECRET-KEY-1… line in the password manager with the new one. On every
@@ -263,8 +296,9 @@ mkdir -p ~/.config/sops/age
 (umask 077 && age-keygen >> ~/.config/sops/age/keys.txt)
 
 # 2. In .sops.yaml, set the `age:` recipient of every rule for your env to that age1… value:
-#    secrets.enc.yaml, grafana-secret.enc.yaml, alertmanager-slack.enc.yaml and
-#    flux-relay-slack.enc.yaml, plus tailscale-oauth.enc.yaml for staging. That file has no
+#    secrets.enc.yaml, grafana-secret.enc.yaml, alertmanager-slack.enc.yaml,
+#    flux-relay-slack.enc.yaml and mentors-seed.enc.yaml, plus tailscale-oauth.enc.yaml for
+#    staging (and cloudflared-tunnel.enc.yaml for prod). tailscale-oauth has no
 #    prod copy: every cluster reads staging's, so a prod-only fork still has to replace it and
 #    use its staging key on prod.
 
@@ -276,6 +310,8 @@ sops --encrypt --in-place infra/k8s/overlays/staging/secrets/grafana-secret.enc.
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/tailscale-oauth.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/alertmanager-slack.enc.yaml
 sops --encrypt --in-place infra/k8s/overlays/staging/secrets/flux-relay-slack.enc.yaml
+sops --encrypt --in-place infra/k8s/overlays/staging/secrets/mentors-seed.enc.yaml
+# mentors-seed holds your own roster as mentors.json, or "[]" (quoted) for none yet.
 # (prod: the same files under infra/k8s/secrets/, minus tailscale-oauth; prod's
 # cloudflared-tunnel.enc.yaml comes from your own tunnel, see cloudflare.md 'Set up the tunnel').
 # tailscale-oauth can stay empty until your tailnet exists (tailscale.md 'Tailscale setup'),
