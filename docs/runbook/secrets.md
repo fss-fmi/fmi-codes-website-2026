@@ -182,6 +182,9 @@ An entry with no `password` gets no password at all: that mentor can't log in un
 one through forgot password, which needs `MAIL_PASSWORD` in that env. Seed the 2027 roster that
 way, never with a shared password.
 
+An entry with a blank `email` or `phone_number` is skipped, and the backend logs a warning
+naming the mentor and the missing field. Fill both in and the next start seeds it.
+
 To change it (`rotate-secret.sh` doesn't handle this one):
 
 ```bash

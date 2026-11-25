@@ -372,7 +372,17 @@ def test_seed_loaders_invalidate_only_when_inserting(
 def test_mentor_seed_loader_invalidates_mentor_cache(monkeypatch, app_ctx, tmp_path):
     seed_file = tmp_path / "mentors.json"
     seed_file.write_text(
-        json.dumps([{"first_name": "A", "last_name": "B", "company_name": "C"}]),
+        json.dumps(
+            [
+                {
+                    "first_name": "A",
+                    "last_name": "B",
+                    "company_name": "C",
+                    "email": "a@mentor.test",
+                    "phone_number": "0000000000",
+                }
+            ]
+        ),
         encoding="utf-8",
     )
     fake = FakeRedis({"cache:mentors:public": "[]"})

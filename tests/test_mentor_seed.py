@@ -1,5 +1,7 @@
 """The real mentor seed is personal data: it lives only in a SOPS-encrypted Secret per env (#274).
 
+Every worker loads it while it boots, so the loader must also stay quiet when they collide (#191).
+
 The loader tests mock the DB like tests/test_cache_services.py. The Secret, manifest and script
 checks read the committed files as text, like tests/test_cloudflare_tunnel.py.
 """
@@ -38,8 +40,10 @@ MENTOR = {
     "email": "seed@mentor.test",
     "phone_number": "0888000000",
 }
-# Position of password_hash in the loader's INSERT parameters.
+# Positions in the loader's INSERT parameters.
+STATUS_PARAM = 6
 HASH_PARAM = 9
+_ABSENT = object()
 
 
 def _seed(tmp_path, entries) -> Path:
@@ -48,13 +52,18 @@ def _seed(tmp_path, entries) -> Path:
     return path
 
 
-def _capture_inserts(monkeypatch) -> list[tuple]:
+def _capture_inserts(monkeypatch, queries: list | None = None) -> list[tuple]:
     inserts = []
+
+    def execute(query, params):
+        if queries is not None:
+            queries.append(query)
+        inserts.append(params)
 
     @contextmanager
     def cursor(*_a, **_k):
         cur = MagicMock(rowcount=1)
-        cur.execute.side_effect = lambda _query, params: inserts.append(params)
+        cur.execute.side_effect = execute
         yield cur
 
     monkeypatch.setattr(mentor_service, "get_db_cursor", cursor)
@@ -116,6 +125,55 @@ def test_a_seed_path_that_is_a_directory_loads_nothing(app_ctx, monkeypatch, tmp
     inserts = _capture_inserts(monkeypatch)
     assert mentor_service.load_mentors_from_file(tmp_path) == 0
     assert inserts == []
+
+
+def test_the_insert_is_a_no_op_on_a_conflict_on_any_unique_key(app_ctx, monkeypatch, tmp_path):
+    """Workers seed at once on a fresh DB, so one can lose the race on the email key (#191)."""
+    queries = []
+    _capture_inserts(monkeypatch, queries)
+    assert mentor_service.load_mentors_from_file(_seed(tmp_path, [MENTOR])) == 1
+    query = " ".join(queries[0].split())
+    assert "ON CONFLICT DO NOTHING" in query
+    assert "ON CONSTRAINT" not in query
+
+
+@pytest.mark.parametrize("field", ["email", "phone_number"])
+@pytest.mark.parametrize(
+    "value", [_ABSENT, "", "   ", None], ids=["missing", "empty", "whitespace", "null"]
+)
+def test_an_entry_without_an_email_or_phone_is_skipped_with_a_warning(
+    app_ctx, monkeypatch, tmp_path, caplog, field, value
+):
+    inserts = _capture_inserts(monkeypatch)
+    monkeypatch.setattr(
+        mentor_service, "mentor_exists", lambda *a, **k: pytest.fail("skipped before any DB call")
+    )
+    monkeypatch.setattr(
+        "app.services.auth_service.hash_password",
+        lambda *a, **k: pytest.fail("skipped before hashing"),
+    )
+    entry = {**MENTOR, "password": "mentor123"}
+    if value is _ABSENT:
+        del entry[field]
+    else:
+        entry[field] = value
+    with caplog.at_level(logging.WARNING, logger="app.services.mentor_service"):
+        assert mentor_service.load_mentors_from_file(_seed(tmp_path, [entry])) == 0
+    assert inserts == []
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "Seed Test" in warnings[0]
+    assert field in warnings[0]
+    assert MENTOR["email"] not in caplog.text
+    assert MENTOR["phone_number"] not in caplog.text
+
+
+@pytest.mark.parametrize("status", [None, "", "  "], ids=["null", "empty", "whitespace"])
+def test_a_blank_status_is_stored_as_active(app_ctx, monkeypatch, tmp_path, status):
+    inserts = _capture_inserts(monkeypatch)
+    seed = _seed(tmp_path, [{**MENTOR, "status": status}])
+    assert mentor_service.load_mentors_from_file(seed) == 1
+    assert inserts[0][STATUS_PARAM] == "active"
 
 
 # ---------------------------------------------------------------------------

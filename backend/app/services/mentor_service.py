@@ -5,7 +5,6 @@ import json
 import logging
 from pathlib import Path
 
-import psycopg2
 from flask import current_app
 
 from app.database import (
@@ -159,8 +158,13 @@ def load_mentors_from_file(json_path: Path) -> int:
     """Load mentors from a JSON file into the database if not already present
 
     An entry without a password gets a NULL password_hash, which can never log in; the
-    mentor sets one through forgot password. A seed that can't be read loads nothing
-    rather than failing every worker's boot.
+    mentor sets one through forgot password. An entry with a blank email or phone is
+    skipped with a warning. A seed that can't be read loads nothing rather than failing
+    every worker's boot.
+
+    Every worker runs this while it boots, with no lock, so on a fresh database several
+    insert the same mentor at once. The INSERT names no conflict target, which makes a
+    duplicate on any unique key a no-op instead of an error (#191).
 
     Returns:
         Number of mentors inserted
@@ -190,9 +194,20 @@ def load_mentors_from_file(json_path: Path) -> int:
         last_name = str(mentor.get("last_name", "")).strip()
         company_name = str(mentor.get("company_name", "")).strip()
         picture_path = mentor.get("picture_url")
-        email = str(mentor.get("email", "")).strip() or None
+        # `or ""` first: str(None) would store a JSON null as the string "None".
+        email = str(mentor.get("email") or "").strip()
+        phone_number = str(mentor.get("phone_number") or "").strip()
 
         if not first_name or not last_name or not company_name:
+            continue
+
+        missing = [
+            name for name, value in (("email", email), ("phone_number", phone_number)) if not value
+        ]
+        if missing:
+            logger.warning(
+                f"Mentor seed entry {first_name} {last_name} has no {' or '.join(missing)}; skipped"
+            )
             continue
 
         if mentor_exists(first_name, last_name, company_name, email=email):
@@ -210,9 +225,8 @@ def load_mentors_from_file(json_path: Path) -> int:
                 picture_data = f"/mentorPictures/{p}"
             picture_filename = Path(p).name
 
-        phone_number = str(mentor.get("phone_number", "")).strip() or None
         bio = str(mentor.get("bio", "")).strip() or None
-        status = str(mentor.get("status", "active")).strip()
+        status = str(mentor.get("status") or "").strip() or "active"
         technologies = mentor.get("technologies", [])
         if not isinstance(technologies, list):
             technologies = []
@@ -226,7 +240,7 @@ def load_mentors_from_file(json_path: Path) -> int:
                                  bio, status, picture_url, picture_filename, password_hash,
                                  technologies, availability_text)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT ON CONSTRAINT uidx_mentors_identity DO NOTHING
+            ON CONFLICT DO NOTHING
         """
 
         try:
@@ -250,8 +264,6 @@ def load_mentors_from_file(json_path: Path) -> int:
                 )
                 if cursor.rowcount:
                     inserted += 1
-        except psycopg2.IntegrityError:
-            continue
         except Exception as e:
             logger.error(f"Error inserting mentor {first_name} {last_name}: {describe_db_error(e)}")
             continue
