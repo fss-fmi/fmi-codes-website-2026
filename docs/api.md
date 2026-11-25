@@ -355,7 +355,7 @@ Participant who owns the request. Marks it `cancelled`.
 
 ### GET /api/mentors
 
-Public. Active mentors, cached about 30 min and invalidated when mentors are added or removed (including by the startup seeder).
+Public. Active mentors, cached about 30 min and invalidated when the startup seeder adds mentors (no API adds or removes one).
 
 ```json
 {

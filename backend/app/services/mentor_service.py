@@ -10,9 +10,7 @@ from flask import current_app
 
 from app.database import (
     describe_db_error,
-    execute_insert,
     execute_query,
-    execute_update,
     get_db_cursor,
 )
 from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
@@ -58,44 +56,6 @@ def mentor_exists(first_name: str, last_name: str, company_name: str, email: str
         current_app, query, (first_name, last_name, company_name), fetch_one=True
     )
     return result is not None
-
-
-def register_mentor(
-    first_name: str, last_name: str, company_name: str, picture_data=None, picture_filename=None
-) -> tuple:
-    """Register a new mentor
-
-    Returns:
-        Tuple of (success: bool, message: str, mentor_id: int or None)
-    """
-    if not first_name or not last_name or not company_name:
-        return False, "All fields are required", None
-
-    if not picture_data:
-        return False, "Picture is required", None
-
-    query = """
-        INSERT INTO mentors (first_name, last_name, company_name, picture_url, picture_filename)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id
-    """
-
-    try:
-        mentor_id = execute_insert(
-            current_app,
-            query,
-            (first_name, last_name, company_name, picture_data, picture_filename),
-        )
-        logger.info(f"✓ Mentor registered: {first_name} {last_name} (ID: {mentor_id})")
-        _invalidate_mentor_cache()
-        return True, f'Mentor "{first_name} {last_name}" registered successfully', mentor_id
-
-    except psycopg2.IntegrityError as e:
-        logger.error(f"Integrity error registering mentor: {e}")
-        return False, "Mentor already exists or constraint violated", None
-    except Exception as e:
-        logger.error(f"Error registering mentor: {e}")
-        return False, str(e), None
 
 
 def get_all_mentors() -> list:
@@ -176,25 +136,6 @@ def get_mentor_picture(mentor_id: int) -> tuple:
         return None, None
     except Exception as e:
         raise Exception(f"Failed to get mentor picture: {str(e)}") from e
-
-
-def delete_mentor(mentor_id: int) -> tuple:
-    """Delete a mentor
-
-    Returns:
-        Tuple of (success: bool, message: str)
-    """
-    query = "DELETE FROM mentors WHERE id = %s"
-    try:
-        rows = execute_update(current_app, query, (mentor_id,))
-        if rows == 0:
-            return False, "Mentor not found"
-        logger.info(f"✓ Mentor {mentor_id} deleted")
-        _invalidate_mentor_cache()
-        return True, "Mentor deleted successfully"
-    except Exception as e:
-        logger.error(f"Error deleting mentor: {e}")
-        return False, str(e)
 
 
 def seed_mentors_from_config() -> int:

@@ -97,7 +97,7 @@ The admin-triggered process that assigns mentors to registered teams: **Gale-Sha
 
 ### Mentor
 
-An industry volunteer onboarded by the organizers (seeded from the encrypted mentor seed Secret, no self-signup; see [Seed data](data.md#seed-data)). Has a public profile without their contacts, ranks 3 teams and helps their assigned teams on site. A mentor seeded without a password sets one through forgot password before their first login.
+An industry volunteer onboarded by the organizers (seeded from the encrypted mentor seed Secret only: no self-signup and no API that creates or deletes mentors; see [Seed data](data.md#seed-data)). Has a public profile without their contacts, ranks 3 teams and helps their assigned teams on site. A mentor seeded without a password sets one through forgot password before their first login.
 
 ### Mentor preferences
 

@@ -241,3 +241,15 @@ def test_deploy_app_applies_the_seed_before_handing_over_to_flux():
 
 def test_bootstrap_checks_the_age_key_decrypts_the_seed():
     assert '"$SECRETS_DIR/mentors-seed.enc.yaml"' in BOOTSTRAP.read_text(encoding="utf-8")
+
+
+def test_only_the_seed_loader_creates_or_deletes_mentors():
+    """Mentors come only from the seed (Hari, 2026-11-25): no API may register or delete one."""
+    write = re.compile(r"\b(INSERT\s+INTO|DELETE\s+FROM)\s+mentors\b", re.I)
+    found = []
+    for path in sorted((ROOT / "backend" / "app").rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for m in write.finditer(text):
+            func = re.findall(r"^def (\w+)", text[: m.start()], re.M)
+            found.append((path.name, func[-1] if func else None))
+    assert found == [("mentor_service.py", "load_mentors_from_file")]
