@@ -419,12 +419,14 @@ def get_matching_results():
 
 
 def get_matching_export_data():
-    """The assignments, the teams left without a mentor and the confirmation, as one snapshot.
+    """The assignments, the teams left without a mentor and the confirmation, from one saved run.
 
     Returns (rows, teams_without_mentors, confirmed). The shared lock on key 2 waits out a
-    save in progress and keeps the next one from committing between the reads. The team
-    set is the run's own (run_gale_shapley), and "has mentors" is the same active-row test
-    as the assignments, so no team lands in both lists.
+    save in progress and keeps the next one from committing between the reads. It is not
+    one snapshot: each read is READ COMMITTED, so a team change (lock 1) or a confirm can
+    land between them. A team's assignments go only with a save or its disband, so no team
+    lands in both lists. The team set is the run's own (run_gale_shapley). SET TRANSACTION
+    can't raise the isolation level here, since the pool's ping already ran a query.
     """
     with get_db_cursor(current_app, commit=False) as cursor:
         cursor.execute("SELECT pg_advisory_xact_lock_shared(2)")

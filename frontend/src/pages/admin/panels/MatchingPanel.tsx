@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Panel from '@/components/common/Panel';
 import Button from '@/components/common/Button';
@@ -86,7 +86,10 @@ function formatExportMarkdown(d: MatchingExport, confirmed: boolean): string {
   return lines.join('\n') + '\n';
 }
 
-function downloadMarkdown(name: string, text: string) {
+// Returns the file's object URL. The caller revokes it later: Safari and some
+// Firefox versions read the blob after click() returns, so revoking on the next
+// tick can cancel the download or save it empty without any error.
+function downloadMarkdown(name: string, text: string): string {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;
@@ -94,11 +97,17 @@ function downloadMarkdown(name: string, text: string) {
   document.body.appendChild(a);
   try {
     a.click();
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw err;
   } finally {
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
+  return url;
 }
+
+// How long the last file's URL outlives the panel, for a browser still reading it.
+const REVOKE_AFTER_UNMOUNT_MS = 40_000;
 
 export default function MatchingPanel() {
   const qc = useQueryClient();
@@ -108,7 +117,21 @@ export default function MatchingPanel() {
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [exportData, setExportData] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const runSeq = useRef(0);
+  const lastFileUrl = useRef<string | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    const live = mounted;
+    const file = lastFileUrl;
+    live.current = true;
+    return () => {
+      live.current = false;
+      const url = file.current;
+      if (url) setTimeout(() => URL.revokeObjectURL(url), REVOKE_AFTER_UNMOUNT_MS);
+    };
+  }, []);
 
   const { data } = useQuery<{ success: boolean; confirmed: boolean }>({
     queryKey: ['matching-status'],
@@ -195,20 +218,27 @@ export default function MatchingPanel() {
   async function fetchExport() {
     const seq = runSeq.current;
     let d: MatchingExport;
+    setExporting(true);
     try {
       d = await api.get<MatchingExport>('/api/admin/matching-export');
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
       return;
+    } finally {
+      setExporting(false);
     }
-    // A run that finished while this was in flight replaced these results.
-    if (seq !== runSeq.current) return;
+    // A run that finished while this was in flight replaced these results, and
+    // after the admin left the tab nobody asked for this file any more.
+    if (seq !== runSeq.current || !mounted.current) return;
     setExportData(formatExport(d));
+    const cached = qc.getQueryData<{ success: boolean; confirmed: boolean }>(['matching-status']);
     try {
-      downloadMarkdown(
+      const url = downloadMarkdown(
         exportFileName(d.generated_at),
-        formatExportMarkdown(d, d.confirmed ?? data?.confirmed ?? false),
+        formatExportMarkdown(d, d.confirmed ?? cached?.confirmed ?? false),
       );
+      if (lastFileUrl.current) URL.revokeObjectURL(lastFileUrl.current);
+      lastFileUrl.current = url;
     } catch {
       showToast({ kind: 'danger', message: 'Could not download the file.' });
     }
@@ -280,8 +310,9 @@ export default function MatchingPanel() {
               type="button"
               className="px-btn-ghost"
               onClick={fetchExport}
+              disabled={exporting || running}
             >
-              EXPORT
+              {exporting ? 'EXPORTING…' : 'EXPORT'}
             </button>
           </div>
         </div>

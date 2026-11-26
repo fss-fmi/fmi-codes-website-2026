@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@/components/common/useToast';
 import type { Mock } from 'vitest';
@@ -10,6 +10,8 @@ const flags = vi.hoisted(() => ({ polled: true, live: true as boolean | 'down' }
 const runMatching = vi.hoisted(() => ({
   reject: null as Error | null,
   warnings: [] as string[],
+  // Set to hold the run request open until the test resolves it.
+  gate: null as Promise<object> | null,
 }));
 const exportFailure = vi.hoisted(() => ({ reject: null as Error | null }));
 const exportBody = vi.hoisted(() => ({ value: null as object | null }));
@@ -45,7 +47,7 @@ vi.mock('@/lib/api', () => ({
     post: () =>
       runMatching.reject
         ? Promise.reject(runMatching.reject)
-        : Promise.resolve({ success: true, warnings: runMatching.warnings }),
+        : (runMatching.gate ?? Promise.resolve({ success: true, warnings: runMatching.warnings })),
   },
 }));
 
@@ -58,7 +60,8 @@ const URL_KEYS = ['createObjectURL', 'revokeObjectURL'] as const;
 const urlDescriptors = new Map<string, PropertyDescriptor | undefined>();
 
 beforeEach(() => {
-  createObjectURL = vi.fn(() => 'blob:export-1');
+  let made = 0;
+  createObjectURL = vi.fn(() => `blob:export-${++made}`);
   revokeObjectURL = vi.fn();
   for (const key of URL_KEYS) {
     urlDescriptors.set(key, Object.getOwnPropertyDescriptor(URL, key));
@@ -77,13 +80,19 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Unmount first, under fake timers: the panel revokes its last file 40 s after
+  // unmount, and that must reach the stub now, not a restored URL in a later file.
+  vi.useFakeTimers();
+  cleanup();
+  vi.runOnlyPendingTimers();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   for (const key of URL_KEYS) {
     const original = urlDescriptors.get(key);
     if (original) Object.defineProperty(URL, key, original);
     else delete (URL as Partial<Record<(typeof URL_KEYS)[number], unknown>>)[key];
   }
-  Object.assign(runMatching, { reject: null, warnings: [] });
+  Object.assign(runMatching, { reject: null, warnings: [], gate: null });
   exportFailure.reject = null;
   exportBody.value = null;
   exportGate.promise = null;
@@ -303,10 +312,10 @@ function readBlob(blob: Blob): Promise<string> {
   });
 }
 
-async function downloaded() {
-  await waitFor(() => expect(download.clicks).toHaveLength(1));
-  const blob = createObjectURL.mock.calls[0][0];
-  return { ...download.clicks[0], blob, text: await readBlob(blob) };
+async function downloaded(count = 1) {
+  await waitFor(() => expect(download.clicks).toHaveLength(count));
+  const blob = createObjectURL.mock.calls[count - 1][0];
+  return { ...download.clicks[count - 1], blob, text: await readBlob(blob) };
 }
 
 test('EXPORT downloads the run as a Markdown file', async () => {
@@ -341,7 +350,22 @@ test('EXPORT downloads the run as a Markdown file', async () => {
   expect(file.text).toBe(expected);
   // readAsText drops a BOM, so the byte count is what shows there is none.
   expect(file.blob.size).toBe(new TextEncoder().encode(expected).length);
-  await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-1'));
+  // Kept until the next file, so a browser that reads the blob late still gets it.
+  expect(revokeObjectURL).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'EXPORT' }));
+  expect((await downloaded(2)).href).toBe('blob:export-2');
+  expect(revokeObjectURL.mock.calls).toEqual([['blob:export-1']]);
+  // Leaving the tab revokes the last file only after a grace period (40 s).
+  vi.useFakeTimers();
+  try {
+    cleanup();
+    vi.advanceTimersByTime(39_999);
+    expect(revokeObjectURL.mock.calls).toEqual([['blob:export-1']]);
+    vi.advanceTimersByTime(1);
+    expect(revokeObjectURL.mock.calls).toEqual([['blob:export-1'], ['blob:export-2']]);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('a confirmed run says so, and a time without a fraction names the file the same', async () => {
@@ -457,4 +481,58 @@ test('an export still in flight when a run finishes is dropped', async () => {
   expect(document.querySelector('pre')).toBeNull();
   expect(createObjectURL).not.toHaveBeenCalled();
   expect(download.clicks).toHaveLength(0);
+});
+
+test('EXPORT is disabled while its request is in flight, so a double click saves one file', async () => {
+  let resolve!: (body: object) => void;
+  exportGate.promise = new Promise((r) => {
+    resolve = r;
+  });
+  renderPanel();
+  fireEvent.click(screen.getByRole('button', { name: 'EXPORT' }));
+  const busy = await screen.findByRole('button', { name: 'EXPORTING…' });
+  expect(busy).toBeDisabled();
+  fireEvent.click(busy);
+  await act(async () => {
+    resolve(EXPORT_MD);
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  await downloaded();
+  expect(createObjectURL).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'EXPORT' })).toBeEnabled();
+});
+
+test('an export that lands after the admin left the tab downloads nothing', async () => {
+  let resolve!: (body: object) => void;
+  exportGate.promise = new Promise((r) => {
+    resolve = r;
+  });
+  renderPanel();
+  fireEvent.click(screen.getByRole('button', { name: 'EXPORT' }));
+  cleanup();
+  await act(async () => {
+    resolve(EXPORT_MD);
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  expect(createObjectURL).not.toHaveBeenCalled();
+  expect(download.clicks).toHaveLength(0);
+});
+
+test('EXPORT is disabled while a run is in flight', async () => {
+  let resolve!: (body: object) => void;
+  runMatching.gate = new Promise((r) => {
+    resolve = r;
+  });
+  Object.assign(flags, { polled: false, live: false });
+  renderPanel();
+  await clickRun();
+  fireEvent.click(within(document.querySelector('dialog') as HTMLElement).getByText('CONFIRM'));
+  await screen.findByRole('button', { name: 'RUNNING…' });
+  expect(screen.getByRole('button', { name: 'EXPORT' })).toBeDisabled();
+  await act(async () => {
+    resolve({ success: true, warnings: [] });
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  expect(await screen.findByText('Matching complete.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'EXPORT' })).toBeEnabled();
 });
