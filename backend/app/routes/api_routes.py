@@ -220,7 +220,8 @@ def get_matching_results():
 @admin_required
 def matching_export():
     """Get matching results grouped by team, with constraint validation, for export"""
-    rows = [dict(r) for r in matching_service.get_matching_results()]
+    results, teams_without_mentors, confirmed = matching_service.get_matching_export_data()
+    rows = [dict(r) for r in results]
 
     teams: dict = {}
     mentor_teams: dict = {}
@@ -253,6 +254,8 @@ def matching_export():
         {
             "success": True,
             "teams": list(teams.values()),
+            "teams_without_mentors": teams_without_mentors,
+            "confirmed": confirmed,
             "total_assignments": len(rows),
             "violations": violations,
             "generated_at": datetime.now(UTC).isoformat(),

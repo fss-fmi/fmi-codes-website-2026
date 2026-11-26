@@ -401,16 +401,46 @@ def get_assigned_teams_for_mentor(mentor_id):
     return execute_query(current_app, query, (mentor_id,), fetch_all=True) or []
 
 
+_MATCHING_RESULTS_SQL = """
+    SELECT tm.team_id, t.team_name,
+           tm.mentor_id, m.first_name || ' ' || m.last_name AS mentor_name,
+           m.company_name, tm.assigned_at
+    FROM team_mentors tm
+    JOIN teams t ON tm.team_id = t.id
+    JOIN mentors m ON tm.mentor_id = m.id
+    WHERE tm.is_active = TRUE
+    ORDER BY t.team_name, m.last_name
+"""
+
+
 def get_matching_results():
     """Get current mentor–team assignments."""
-    query = """
-        SELECT tm.team_id, t.team_name,
-               tm.mentor_id, m.first_name || ' ' || m.last_name AS mentor_name,
-               m.company_name, tm.assigned_at
-        FROM team_mentors tm
-        JOIN teams t ON tm.team_id = t.id
-        JOIN mentors m ON tm.mentor_id = m.id
-        WHERE tm.is_active = TRUE
-        ORDER BY t.team_name, m.last_name
+    return execute_query(current_app, _MATCHING_RESULTS_SQL, fetch_all=True) or []
+
+
+def get_matching_export_data():
+    """The assignments, the teams left without a mentor and the confirmation, as one snapshot.
+
+    Returns (rows, teams_without_mentors, confirmed). The shared lock on key 2 waits out a
+    save in progress and keeps the next one from committing between the reads. The team
+    set is the run's own (run_gale_shapley), and "has mentors" is the same active-row test
+    as the assignments, so no team lands in both lists.
     """
-    return execute_query(current_app, query, fetch_all=True) or []
+    with get_db_cursor(current_app, commit=False) as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock_shared(2)")
+        cursor.execute(_MATCHING_RESULTS_SQL)
+        rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT t.team_name FROM teams t
+            WHERE t.status = 'active' AND t.is_registered = TRUE
+              AND NOT EXISTS (
+                  SELECT 1 FROM team_mentors tm WHERE tm.team_id = t.id AND tm.is_active = TRUE
+              )
+            ORDER BY t.team_name
+            """
+        )
+        teams_without_mentors = [r["team_name"] for r in cursor.fetchall()]
+        cursor.execute("SELECT is_confirmed FROM matching_state WHERE id = 1")
+        state = cursor.fetchone()
+    return rows, teams_without_mentors, bool(state and state["is_confirmed"])

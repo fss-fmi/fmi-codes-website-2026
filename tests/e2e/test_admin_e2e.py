@@ -8,6 +8,7 @@ Covers:
  - Registration status overview: correct counts returned
  - Matching pipeline: run-matching (no eligible data → 400), confirm, results, export
  - Export constraints: violations array present in response
+ - Export: registered teams without mentors and the confirmation
 """
 
 import sys
@@ -24,6 +25,8 @@ from tests.e2e.conftest import (
     bearer,
     create_active_registered_team,
     register_and_token,
+    register_extra_and_token,
+    registered_teams,
 )
 
 pytestmark = pytest.mark.e2e
@@ -309,6 +312,44 @@ class TestMatchingPipeline:
         assert isinstance(body["violations"], list)
         assert "teams" in body
         assert "total_assignments" in body
+        assert isinstance(body["teams_without_mentors"], list)
+        assert isinstance(body["confirmed"], bool)
+
+    def test_matching_export_lists_registered_teams_without_mentors(
+        self, flask_app, seeds, db_conn
+    ):
+        """Only active registered teams count, the set a matching run uses."""
+        (alpha_id, _), _ = registered_teams(flask_app, seeds, ["Alpha", "Omega"])
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO team_mentors (team_id, mentor_id, is_active) VALUES (%s, %s, TRUE)",
+                (alpha_id, seeds["mentor_ids"][0]),
+            )
+        with flask_app.test_client() as c:
+            tok = register_extra_and_token(c, seeds)
+            rv = c.post("/api/teams", json={"team_name": "Pending"}, headers=bearer(tok))
+            assert rv.status_code == 201, rv.get_json()
+        with flask_app.test_client() as c:
+            tok = register_extra_and_token(c, seeds)
+            unregistered_id = create_active_registered_team(
+                c, tok, flask_app, seeds, "Unregistered"
+            )
+
+        adm_tok = admin_token(flask_app)
+        with flask_app.test_client() as adm:
+            rv = adm.post(f"/api/admin/teams/{unregistered_id}/unregister", headers=bearer(adm_tok))
+            assert rv.status_code == 200, rv.get_json()
+            before = adm.get("/api/admin/matching-export", headers=bearer(adm_tok))
+            rv = adm.post("/api/admin/confirm-matching", headers=bearer(adm_tok))
+            assert rv.status_code == 200, rv.get_json()
+            after = adm.get("/api/admin/matching-export", headers=bearer(adm_tok))
+
+        assert before.status_code == 200, before.get_json()
+        body = before.get_json()
+        assert body["teams_without_mentors"] == ["Omega"]
+        assert [t["team_name"] for t in body["teams"]] == ["Alpha"]
+        assert body["confirmed"] is False
+        assert after.get_json()["confirmed"] is True
 
     def test_preference_status_returns_expected_keys(self, flask_app):
         adm_tok = admin_token(flask_app)
