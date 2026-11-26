@@ -90,23 +90,33 @@ export default function MatchingPanel() {
   }
 
   async function askRun() {
-    // The polled flags can be 30 s old, and a scheduled close may have just fired.
-    let open = PREFERENCES_OPEN;
-    try {
-      const flags = await qc.fetchQuery<{ PREFERENCES_OPEN: boolean }>({
+    // The polled flags can be 30 s old, a scheduled close may have just fired and
+    // another admin tab may have confirmed. A failed read keeps the cached value.
+    const [flags, status] = await Promise.allSettled([
+      qc.fetchQuery<{ PREFERENCES_OPEN: boolean }>({
         queryKey: ['config'],
         queryFn: () => api.get('/api/config'),
         staleTime: 0,
-      });
-      open = flags.PREFERENCES_OPEN;
-    } catch {
-      // Keep the last polled value.
-    }
+      }),
+      qc.fetchQuery<{ success: boolean; confirmed: boolean }>({
+        queryKey: ['matching-status'],
+        queryFn: () => api.get('/api/matching-status'),
+        staleTime: 0,
+      }),
+    ]);
+    const open = flags.status === 'fulfilled' ? flags.value.PREFERENCES_OPEN : PREFERENCES_OPEN;
+    const published =
+      status.status === 'fulfilled' ? status.value.confirmed : (data?.confirmed ?? false);
     confirm({
       title: 'RUN MATCHING',
-      description: `Run the matching algorithm? This will overwrite any previous results.${
-        open ? ' Preference submissions are still open, so rankings can change after this run.' : ''
-      }`,
+      description: [
+        'Run the matching algorithm? This will overwrite any previous results.',
+        published &&
+          'The current results are published; this run hides them until you confirm again.',
+        open && 'Preference submissions are still open, so rankings can change after this run.',
+      ]
+        .filter(Boolean)
+        .join(' '),
       action: doRunMatching,
       successMessage: 'Matching complete.',
     });
@@ -115,7 +125,8 @@ export default function MatchingPanel() {
   function askConfirm() {
     confirm({
       title: 'CONFIRM MATCHING',
-      description: 'Confirm and publish matching results? This cannot be undone.',
+      description:
+        'Publish the matching results? Teams and mentors will see their assignments. Running matching again hides them until you confirm again.',
       dangerous: true,
       action: doConfirmMatching,
       successMessage: 'Matching confirmed.',

@@ -14,7 +14,7 @@ How the test suite is built and how to extend it. For setup and single-test comm
 | ----------------------- | --------------------------------- | ----- | ----------------------------------- |
 | Backend unit            | `tests/*.py`                      | 740   | Nothing (Redis optional)            |
 | Backend API integration | `tests/e2e/*.py`                  | 265   | PostgreSQL test DB (Redis optional) |
-| Frontend (Vitest)       | `frontend/src/**/*.test.{ts,tsx}` | 118   | Node only                           |
+| Frontend (Vitest)       | `frontend/src/**/*.test.{ts,tsx}` | 122   | Node only                           |
 
 Counts are `def test_` occurrences (`test(` and `test.each(` calls in the frontend), so parametrised tests run more cases than listed. The [load test](#load-test) in `tests/load/` is run by hand on staging, not by pytest.
 

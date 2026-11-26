@@ -532,7 +532,7 @@ Unregisters a team. Does not promote anyone from the queue.
 
 ### POST /api/admin/run-matching
 
-Runs matching, replaces all assignments and resets confirmation. Always attempts to run; missing preferences produce warnings, not errors. It runs whether or not `preferences_open` is on; Mission Control's confirm dialog warns while it is, since rankings can still change after the run.
+Runs matching, replaces all assignments and resets confirmation. Always attempts to run; missing preferences produce warnings, not errors. It runs whether or not `preferences_open` is on. Mission Control's run dialog reads both values fresh: it warns while `preferences_open` is on, since rankings can still change after the run, and while the current results are confirmed, since the run hides them until the next confirm.
 
 ```json
 {

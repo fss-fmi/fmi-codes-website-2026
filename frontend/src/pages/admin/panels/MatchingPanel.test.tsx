@@ -12,6 +12,10 @@ const runMatching = vi.hoisted(() => ({
 }));
 const exportFailure = vi.hoisted(() => ({ reject: null as Error | null }));
 const exportBody = vi.hoisted(() => ({ value: null as object | null }));
+// The body is built when the request is made, so a later change to `confirmed`
+// only reaches requests made after it.
+const status = vi.hoisted(() => ({ confirmed: false, calls: 0 }));
+const results = vi.hoisted(() => ({ rows: [] as { team_name: string; mentor_name: string }[] }));
 
 vi.mock('@/lib/api', () => ({
   default: {
@@ -27,11 +31,11 @@ vi.mock('@/lib/api', () => ({
       if (url === '/api/admin/matching-export' && exportBody.value) {
         return Promise.resolve(exportBody.value);
       }
-      return Promise.resolve(
-        url === '/api/matching-status'
-          ? { success: true, confirmed: false }
-          : { success: true, results: [] },
-      );
+      if (url === '/api/matching-status') {
+        status.calls += 1;
+        return Promise.resolve({ success: true, confirmed: status.confirmed });
+      }
+      return Promise.resolve({ success: true, results: results.rows });
     },
     post: () =>
       runMatching.reject
@@ -44,6 +48,8 @@ afterEach(() => {
   Object.assign(runMatching, { reject: null, warnings: [] });
   exportFailure.reject = null;
   exportBody.value = null;
+  Object.assign(status, { confirmed: false, calls: 0 });
+  results.rows = [];
 });
 
 vi.mock('@/context/ConfigContext', () => ({
@@ -95,6 +101,40 @@ test('the warning follows the live flag, not a poll from before a scheduled clos
 test('if the live check fails the last polled value decides', async () => {
   Object.assign(flags, { polled: true, live: 'down' });
   expect(await openRunDialog()).toMatch(WARNING);
+});
+
+const PUBLISHED = 'The current results are published; this run hides them until you confirm again.';
+
+test('RUN MATCHING says a run hides results that are published', async () => {
+  Object.assign(flags, { polled: false, live: false });
+  status.confirmed = true;
+  expect(await openRunDialog()).toContain(PUBLISHED);
+});
+
+test('RUN MATCHING says nothing about publishing while results are unconfirmed', async () => {
+  Object.assign(flags, { polled: false, live: false });
+  expect(await openRunDialog()).not.toContain(PUBLISHED);
+});
+
+test('the published sentence follows a confirm made since the panel loaded', async () => {
+  Object.assign(flags, { polled: false, live: false });
+  renderPanel();
+  await waitFor(() => expect(status.calls).toBeGreaterThan(0));
+  status.confirmed = true;
+  expect(await clickRun()).toContain(PUBLISHED);
+});
+
+test('CONFIRM says what publishing does and that a new run hides it', async () => {
+  results.rows = [{ team_name: 'Alpha', mentor_name: 'Ana Petrova' }];
+  renderPanel();
+  await screen.findByText('RESULTS (1 PAIRS)');
+  fireEvent.click(screen.getByRole('button', { name: 'CONFIRM' }));
+  await waitFor(() =>
+    expect(dialogText()).toContain(
+      'Publish the matching results? Teams and mentors will see their assignments. Running matching again hides them until you confirm again.',
+    ),
+  );
+  expect(dialogText()).not.toMatch(/cannot be undone/i);
 });
 
 async function runIt() {

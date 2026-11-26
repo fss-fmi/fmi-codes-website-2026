@@ -185,7 +185,7 @@ Shows which teams and mentors have submitted their rankings (✓ or —). Use it
 3. Review the pairs. You can run the matching again at any time; each run replaces the previous results. **EXPORT** shows them as plain text to share with the organizers: a header with the time (UTC), the number of assignments and the number of teams with mentors, then one line per team listing its mentors and their companies, then any violations (a team or mentor over 3). **COPY TO CLIPBOARD** copies it. A new run closes the box, so export again after it.
 4. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences.
 
-Note: although the confirm dialog says it cannot be undone, running the matching again un-publishes the results until you confirm again.
+Running the matching again after you confirm hides the results from teams and mentors until you confirm again. Both dialogs say so: CONFIRM always, and **RUN MATCHING** whenever the current results are published.
 
 ### Following matching in Slack
 

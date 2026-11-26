@@ -19,4 +19,4 @@ Missing preferences and underfilled teams produce warnings, not failures. Result
 
 - **Easier**: matching is fair and repeatable; the admin can re-run it until happy; partial preference data still yields a complete assignment.
 - **Harder**: greedy fill can assign a team mentors it never ranked, and a mentor can carry up to 3 teams on site. Phase 1 is not a textbook one-to-one stable matching, so stability guarantees are informal.
-- **Technical debt**: each mentor covers at most 3 teams, so filling 18 teams to 3 needs at least 18 active mentors and the 2-mentor floor needs at least 12. Below 12 the floor can't be met and the teams under 2 get only a warning. Re-running after confirming un-confirms the published results with no warning on the site; only the event feed mentions it.
+- **Technical debt**: each mentor covers at most 3 teams, so filling 18 teams to 3 needs at least 18 active mentors and the 2-mentor floor needs at least 12. Below 12 the floor can't be met and the teams under 2 get only a warning. Re-running after confirming un-confirms the published results; Mission Control's run and confirm dialogs warn about it.
