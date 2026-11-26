@@ -2,7 +2,7 @@
 -- HACKATHON MANAGEMENT SYSTEM - POSTGRESQL SCHEMA
 -- Version: 1.0
 -- Date: March 3, 2026
--- Database: PostgreSQL 12+
+-- Database: PostgreSQL 14+
 -- ============================================================================
 -- This schema implements a production-ready, normalized (3NF) relational
 -- database design for managing hackathons with participants, teams, and mentors.
@@ -360,40 +360,40 @@ $$ LANGUAGE plpgsql;
 -- ============================================================================
 
 -- Auto-update timestamps
-CREATE TRIGGER trig_update_timestamp_universities
+CREATE OR REPLACE TRIGGER trig_update_timestamp_universities
 BEFORE UPDATE ON universities
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
-CREATE TRIGGER trig_update_timestamp_specialties
+CREATE OR REPLACE TRIGGER trig_update_timestamp_specialties
 BEFORE UPDATE ON specialties
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
-CREATE TRIGGER trig_update_timestamp_hackathon_events
+CREATE OR REPLACE TRIGGER trig_update_timestamp_hackathon_events
 BEFORE UPDATE ON hackathon_events
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
-CREATE TRIGGER trig_update_timestamp_teams
+CREATE OR REPLACE TRIGGER trig_update_timestamp_teams
 BEFORE UPDATE ON teams
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
-CREATE TRIGGER trig_update_timestamp_mentors
+CREATE OR REPLACE TRIGGER trig_update_timestamp_mentors
 BEFORE UPDATE ON mentors
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
-CREATE TRIGGER trig_update_timestamp_participants
+CREATE OR REPLACE TRIGGER trig_update_timestamp_participants
 BEFORE UPDATE ON participants
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 -- Data integrity triggers
-CREATE TRIGGER trig_prevent_team_deletion
+CREATE OR REPLACE TRIGGER trig_prevent_team_deletion
 BEFORE DELETE ON teams
 FOR EACH ROW EXECUTE FUNCTION prevent_team_deletion_with_participants();
 
-CREATE TRIGGER trig_update_participant_count
+CREATE OR REPLACE TRIGGER trig_update_participant_count
 AFTER INSERT OR UPDATE OF team_id OR DELETE ON participants
 FOR EACH ROW EXECUTE FUNCTION update_team_participant_count();
 
-CREATE TRIGGER trig_update_timestamp_team_join_requests
+CREATE OR REPLACE TRIGGER trig_update_timestamp_team_join_requests
 BEFORE UPDATE ON team_join_requests
 FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 

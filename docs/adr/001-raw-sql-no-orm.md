@@ -14,4 +14,4 @@ We use psycopg2 with hand-written SQL through a thin helper layer (`backend/app/
 
 - **Easier**: locking and transaction semantics are explicit in the code that needs them; the whole schema is reviewable in one file; no ORM magic to debug.
 - **Harder**: every schema change must be made twice (in `schema.sql` and as a migration) and applied by hand to running databases. Nothing records which migrations a database has. Query results are dicts, so typos in column names surface at runtime.
-- **Technical debt**: `schema.sql` is not fully idempotent (its `CREATE TRIGGER` statements fail on re-run), and on k3s the schema is baked into the Postgres PVC at first boot. Adopting a migration runner would remove both problems.
+- **Technical debt**: on k3s the schema is baked into the Postgres PVC at first boot. Adopting a migration runner would remove that problem. (`schema.sql` also used to fail on re-run at its `CREATE TRIGGER` statements; they are now `CREATE OR REPLACE TRIGGER`, so it re-runs as a no-op on a database with every migration applied.)
