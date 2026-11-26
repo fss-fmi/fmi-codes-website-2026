@@ -9,6 +9,38 @@ import { useConfirmAction } from '@/hooks/useConfirmAction';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 
+interface MatchingExport {
+  teams: { team_name: string; mentors: { mentor_name: string; company_name: string }[] }[];
+  total_assignments: number;
+  violations: string[];
+  generated_at: string;
+}
+
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function formatExport(d: MatchingExport): string {
+  // generated_at is the server's UTC isoformat(). Slicing it keeps the text the
+  // same in every time zone; Date parsing of its 6-digit fraction varies by engine.
+  const lines = [
+    `MATCHING EXPORT  ${d.generated_at.slice(0, 16).replace('T', ' ')} UTC`,
+    `${plural(d.total_assignments, 'assignment')}, ${plural(d.teams.length, 'team')}`,
+    '',
+  ];
+  if (d.teams.length === 0) lines.push('No assignments.');
+  for (const t of d.teams) {
+    const mentors = t.mentors.map((m) =>
+      m.company_name ? `${m.mentor_name} (${m.company_name})` : m.mentor_name,
+    );
+    lines.push(`${t.team_name}: ${mentors.join(', ')}`);
+  }
+  lines.push('');
+  if (d.violations.length === 0) lines.push('Violations: none');
+  else lines.push('Violations:', ...d.violations.map((v) => `- ${v}`));
+  return lines.join('\n');
+}
+
 export default function MatchingPanel() {
   const qc = useQueryClient();
   const { PREFERENCES_OPEN } = useConfig();
@@ -35,6 +67,7 @@ export default function MatchingPanel() {
     setRunning(true);
     try {
       const d = await api.post<{ warnings?: string[] }>('/api/admin/run-matching', {});
+      setExportData(null);
       qc.invalidateQueries({ queryKey: ['matching-status'] });
       refetchResults();
       if (d.warnings?.length) {
@@ -91,8 +124,8 @@ export default function MatchingPanel() {
 
   async function fetchExport() {
     try {
-      const d = await api.get<{ export: string }>('/api/admin/matching-export');
-      setExportData(d.export);
+      const d = await api.get<MatchingExport>('/api/admin/matching-export');
+      setExportData(formatExport(d));
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
     }

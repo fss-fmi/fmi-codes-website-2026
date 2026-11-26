@@ -11,6 +11,7 @@ const runMatching = vi.hoisted(() => ({
   warnings: [] as string[],
 }));
 const exportFailure = vi.hoisted(() => ({ reject: null as Error | null }));
+const exportBody = vi.hoisted(() => ({ value: null as object | null }));
 
 vi.mock('@/lib/api', () => ({
   default: {
@@ -22,6 +23,9 @@ vi.mock('@/lib/api', () => ({
       }
       if (url === '/api/admin/matching-export' && exportFailure.reject) {
         return Promise.reject(exportFailure.reject);
+      }
+      if (url === '/api/admin/matching-export' && exportBody.value) {
+        return Promise.resolve(exportBody.value);
       }
       return Promise.resolve(
         url === '/api/matching-status'
@@ -39,6 +43,7 @@ vi.mock('@/lib/api', () => ({
 afterEach(() => {
   Object.assign(runMatching, { reject: null, warnings: [] });
   exportFailure.reject = null;
+  exportBody.value = null;
 });
 
 vi.mock('@/context/ConfigContext', () => ({
@@ -47,7 +52,7 @@ vi.mock('@/context/ConfigContext', () => ({
 
 const WARNING = /preference submissions are still open/i;
 
-async function openRunDialog() {
+function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -56,11 +61,20 @@ async function openRunDialog() {
       </ToastProvider>
     </QueryClientProvider>,
   );
+}
+
+// jsdom never opens the <dialog>, so read its text directly.
+const dialogText = () => (document.querySelector('dialog') as HTMLElement).textContent ?? '';
+
+async function clickRun() {
   fireEvent.click(screen.getByRole('button', { name: 'RUN MATCHING' }));
-  // jsdom never opens the <dialog>, so read its text directly.
-  const dialog = () => (document.querySelector('dialog') as HTMLElement).textContent ?? '';
-  await waitFor(() => expect(dialog()).toMatch(/overwrite any previous results/i));
-  return dialog();
+  await waitFor(() => expect(dialogText()).toMatch(/overwrite any previous results/i));
+  return dialogText();
+}
+
+async function openRunDialog() {
+  renderPanel();
+  return clickRun();
 }
 
 test('RUN MATCHING warns while submissions are open', async () => {
@@ -122,4 +136,66 @@ test('a failed EXPORT toasts the server reason', async () => {
   await openRunDialog();
   fireEvent.click(screen.getByRole('button', { name: 'EXPORT' }));
   expect(await screen.findByText('Admin access required')).toBeInTheDocument();
+});
+
+const EXPORT = {
+  success: true,
+  teams: [
+    {
+      team_name: 'Alpha',
+      mentors: [
+        { mentor_name: 'Ana Petrova', company_name: 'Acme' },
+        { mentor_name: 'Ivan Ivanov', company_name: '' },
+      ],
+    },
+  ],
+  total_assignments: 2,
+  violations: ["Mentor 'Ana Petrova' is assigned to 4 teams (max 3)"],
+  generated_at: '2026-03-14T18:00:00.123456+00:00',
+};
+
+async function openExport(body: object = EXPORT) {
+  exportBody.value = body;
+  renderPanel();
+  fireEvent.click(screen.getByRole('button', { name: 'EXPORT' }));
+  await waitFor(() => expect(document.querySelector('pre')).not.toBeNull());
+  return document.querySelector('pre') as HTMLElement;
+}
+
+test('EXPORT shows the run as readable text', async () => {
+  // textContent, not toHaveTextContent: its normaliser would hide the double space.
+  expect((await openExport()).textContent).toBe(
+    [
+      'MATCHING EXPORT  2026-03-14 18:00 UTC',
+      '2 assignments, 1 team',
+      '',
+      'Alpha: Ana Petrova (Acme), Ivan Ivanov',
+      '',
+      'Violations:',
+      "- Mentor 'Ana Petrova' is assigned to 4 teams (max 3)",
+    ].join('\n'),
+  );
+});
+
+test('an empty run exports as no assignments and no violations', async () => {
+  const pre = await openExport({ ...EXPORT, teams: [], total_assignments: 0, violations: [] });
+  expect(pre.textContent).toBe(
+    [
+      'MATCHING EXPORT  2026-03-14 18:00 UTC',
+      '0 assignments, 0 teams',
+      '',
+      'No assignments.',
+      '',
+      'Violations: none',
+    ].join('\n'),
+  );
+});
+
+test('a new run closes the export of the previous one', async () => {
+  await openExport();
+  Object.assign(flags, { polled: false, live: false });
+  await clickRun();
+  fireEvent.click(within(document.querySelector('dialog') as HTMLElement).getByText('CONFIRM'));
+  expect(await screen.findByText('Matching complete.')).toBeInTheDocument();
+  expect(document.querySelector('pre')).toBeNull();
 });

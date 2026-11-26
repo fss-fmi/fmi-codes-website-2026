@@ -568,7 +568,7 @@ Results grouped by team plus constraint checks.
 }
 ```
 
-`violations` flags any team or mentor with more than 3 assignments. The SPA's EXPORT button expects an `export` string field that this endpoint does not return (known bug).
+`teams` lists only teams with at least one assignment. `violations` flags any team or mentor with more than 3 assignments. Mission Control's EXPORT turns this response into plain text.
 
 ### GET /api/admin/teams/scores
 

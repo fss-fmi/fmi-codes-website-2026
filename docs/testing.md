@@ -14,7 +14,7 @@ How the test suite is built and how to extend it. For setup and single-test comm
 | ----------------------- | --------------------------------- | ----- | ----------------------------------- |
 | Backend unit            | `tests/*.py`                      | 740   | Nothing (Redis optional)            |
 | Backend API integration | `tests/e2e/*.py`                  | 265   | PostgreSQL test DB (Redis optional) |
-| Frontend (Vitest)       | `frontend/src/**/*.test.{ts,tsx}` | 115   | Node only                           |
+| Frontend (Vitest)       | `frontend/src/**/*.test.{ts,tsx}` | 118   | Node only                           |
 
 Counts are `def test_` occurrences (`test(` and `test.each(` calls in the frontend), so parametrised tests run more cases than listed. The [load test](#load-test) in `tests/load/` is run by hand on staging, not by pytest.
 
@@ -364,4 +364,4 @@ The jobs run in parallel. CI does not run on pushes to `main`.
 - No coverage measurement.
 - `test_team_service.py` only checks constants and join codes; all queue logic is tested only at the integration layer.
 - Only the verification email's contents are tested; the reset and join-request emails are tested only for how their sends are counted.
-- No browser end-to-end tests, so bugs that live purely in the SPA (for example the admin EXPORT button reading a field the API never returns) are not caught.
+- No browser end-to-end tests, so a page reading a field the API never returns is caught only by a component test, and only if its hand-written mock matches the real response.
