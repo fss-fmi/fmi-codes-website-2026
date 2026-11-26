@@ -161,6 +161,27 @@ def is_enabled(name: str) -> bool:
     return get_flags()[name]
 
 
+def get_matching_confirmed_cached() -> bool:
+    """Whether the admin has confirmed matching, cached beside the flags. Raises if the DB
+    can't be read.
+
+    matching_state is its own table (ADR-013), but its key hangs off the same version,
+    so invalidate_cache() retires it too: confirm_matching and a run that clears a
+    confirmation call it after commit. Kept apart from get_flags, which drops any cached
+    dict whose keys aren't FLAG_NAMES.
+    """
+    key = f"{_cache_key()}:matching_confirmed"
+    cached = redis_get(key)
+    if cached in ("0", "1"):
+        return cached == "1"
+    row = execute_query(
+        current_app, "SELECT is_confirmed FROM matching_state WHERE id = 1", fetch_one=True
+    )
+    confirmed = bool(row and row["is_confirmed"])
+    redis_set(key, "1" if confirmed else "0", _CACHE_TTL)
+    return confirmed
+
+
 def is_enabled_locked(cursor, name: str) -> bool:
     """Value of *name* read in the caller's transaction, with a share lock on its row.
 

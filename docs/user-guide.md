@@ -62,6 +62,7 @@ You can also apply from the public **TEAMS** page when you do not have a team ye
 - The first 18 active teams are **REGISTERED** for the event automatically. You will see "Your team is registered for the hackathon."
 - If all 18 slots are taken, your team joins the waiting queue and shows its position. You are registered automatically as soon as a slot opens.
 - If a registered team drops below 3 members it loses its slot, so keep your roster at 3 or more.
+- An active team with neither a slot nor a queue place (the organizers took it out of the event, or it formed after they confirmed the matching) sees "Your team holds no slot in the event. For any questions, contact the organizers."
 
 <!-- screenshot: team page with REGISTERED badge and members list -->
 
@@ -75,6 +76,10 @@ From **MY TEAM**:
 - **DANGER ZONE → DISBAND TEAM** permanently deletes the team and releases everyone.
 
 As a regular member, **DANGER ZONE → LEAVE TEAM** takes you off the team. If the captain leaves, the whole team is disbanded.
+
+### Once the matching is confirmed
+
+When the organizers confirm the mentor matching, teams are locked for the event. Every team page, and the create, join and browse pages, shows "Teams are locked while the event runs. For any changes, contact the organizers." Nobody can create, join, apply to, leave or disband a team, and captains can't remove members or accept applications; **DECLINE** and **WITHDRAW** still work. A team in the queue reads "In the waiting queue at position #N. For any questions, contact the organizers.", since nobody moves up by themselves any more. The organizers can still add or remove members and change mentors for you. If they run the matching again, teams open up until they confirm the new results.
 
 ### 5. Choose your mentors (captains)
 
@@ -93,7 +98,7 @@ Rankings can only be submitted while the organizers have preference submission o
 
 ### 6. See your mentors
 
-After the organizers confirm the matching, the **MENTORS** panel lists your assigned mentors, each with their photo, name and company. Every team gets 2 or 3 mentors. The matching tries to give you mentors you ranked, but a team can also receive mentors it did not pick so that nobody is left without help.
+After the organizers confirm the matching, the **MENTORS** panel lists your assigned mentors, each with their photo, name and company. Every team gets 2 or 3 mentors. The matching tries to give you mentors you ranked, but a team can also receive mentors it did not pick so that nobody is left without help. A registered team with none yet reads "The organizers haven't assigned mentors to your team yet.", and a team without a slot "Only registered teams take part in mentor matching." Rankings can no longer change.
 
 ### 7. Results
 
@@ -137,7 +142,7 @@ This works only while the organizers have preference submission open. While it i
 
 ### See your assigned teams
 
-After the matching is confirmed the dashboard shows **ASSIGNED TEAMS**. You may be assigned up to 3 teams.
+After the matching is confirmed the dashboard shows **ASSIGNED TEAMS**. You may be assigned up to 3 teams; the organizers can change them by hand during the event.
 
 ### Your public profile
 
@@ -174,18 +179,29 @@ Opens and closes participant registration and preference submission, publishes t
 - **QUEUE** lists waiting teams in order. **REGISTER** gives a team a free slot.
 - **UNREGISTERED** appears when an active team has neither a slot nor a queue place, for example after you unregister it. **REGISTER** there gives it a free slot again.
 
+Unregistering a team, here or because it dropped below 3 members, also releases its mentors.
+
+### Teams tab
+
+Changes one team by hand, in any phase. It is how you change teams once the matching is confirmed, when participants can't. Pick the team at the top (each entry shows its state and member count), then:
+
+- **MEMBERS** lists everyone with their email. **REMOVE** takes a member out after you confirm; a team is never disbanded this way and its last member stays. To remove the captain, first pick the **New captain** from the other members; they take over in the same step. Type a participant's email and click **ADD MEMBER** to put someone without a team in (up to 6), even if their email isn't verified yet.
+- **MENTORS** (registered teams only) lists the team's mentors. **REMOVE** one or pick another from **Add a mentor…**, where each mentor shows how many teams they already have, then click **SAVE MENTORS**. You may go past 3 mentors for a team or 3 teams for a mentor; the save then warns, and **EXPORT** lists it under violations.
+
+Before the matching is confirmed the usual rules apply: a team that drops below 3 loses its slot and the queue moves up, and one that reaches 3 is registered or queued. After it is confirmed nothing moves a slot: a team that drops below 3 keeps its slot, nobody is promoted, and a team that reaches 3 is only marked active. Use the Registration tab for slots. Each change is posted to the event feed with the team's name and the new count.
+
 ### Preferences tab
 
-Shows which teams and mentors have submitted their rankings (✓ or —). Use it to chase missing submissions before running the matching.
+Shows which teams and mentors have submitted their rankings (✓ or —). A mentor's ranking counts only while at least one of its teams is still registered: "✓ (2 of 3 picks count)" means a team they picked lost its slot, and "— (0 of 3 picks count)" that all of them did. Use it to chase missing submissions before running the matching.
 
 ### Matching tab
 
 1. Close **PREFERENCE SUBMISSIONS** on the [Site tab](#site-tab) at the deadline, so the matching runs on a fixed set of rankings. A ranking still being saved at that moment either lands before the close or is refused, never after it. While submissions are open the **RUN MATCHING** dialog warns that rankings can still change after the run, but it still lets you run one, for example as a test before the deadline. If a registered team leaves or disbands after the close, the mentors who ranked it are left with 2 picks, and a team promoted from the queue has none. Check the [Preferences tab](#preferences-tab), and to let them rank, open submissions again for a short announced window before the final run.
 2. Click **RUN MATCHING** and confirm. The results appear as team → mentor pairs. Every team gets up to 3 mentors, aiming for 2 or 3; the run still works if some preferences are missing. When there aren't enough mentors for 3 each, they are shared out evenly so every team gets at least 2 (that takes at least 12 active mentors for 18 teams). If the run has warnings (teams or mentors that never ranked, teams left under 3 mentors, teams left under 2), a warning toast lists them; read it before you confirm.
-3. Review the pairs. You can run the matching again at any time; each run replaces the previous results. **EXPORT** shows them as plain text to share with the organizers: a header with the time (UTC), the number of assignments and the number of teams with mentors, then one line per team listing its mentors and their companies, then any violations (a team or mentor over 3). **COPY TO CLIPBOARD** copies it. A new run closes the box, so export again after it.
-4. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences.
+3. Review the pairs. You can run the matching again at any time; each run replaces the previous results, including mentor changes made in the [Teams tab](#teams-tab), and the **RUN MATCHING** dialog always says so. **EXPORT** shows them as plain text to share with the organizers: a header with the time (UTC), the number of assignments and the number of teams with mentors, then one line per team listing its mentors and their companies, then any violations (a team or mentor over 3, which only a hand edit in the Teams tab can cause). **COPY TO CLIPBOARD** copies it. A new run closes the box, so export again after it.
+4. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences, and teams and rankings are locked (see [Once the matching is confirmed](#once-the-matching-is-confirmed)). From here, change teams and mentors in the [Teams tab](#teams-tab).
 
-Running the matching again after you confirm hides the results from teams and mentors until you confirm again. Both dialogs say so: CONFIRM always, and **RUN MATCHING** whenever the current results are published.
+Running the matching again after you confirm hides the results from teams and mentors and reopens team changes until you confirm again. Both dialogs say so: CONFIRM always, and **RUN MATCHING** whenever the current results are published.
 
 ### Following matching in Slack
 
@@ -199,6 +215,8 @@ The event feed (`#event-feed-prod`; staging posts to `#event-feed-staging`) foll
 | A mentor changes their ranking          | "Mentor _Y_ updated their team ranking."                                                                                                            |
 | You run the matching                    | How many assignments went to how many teams, the run's warnings (such as teams that never submitted) and whether it cleared an earlier confirmation |
 | You confirm the matching                | "Matching confirmed as final. Teams and mentors now see their assignments." (once; confirming again posts nothing)                                  |
+| You change a team in the Teams tab      | "Admin changed team _X_'s mentors (now N).", "Admin added a member to team _X_ (now N)." or "Admin removed a member from team _X_ (now N)."         |
+| You unregister a team that had mentors  | "Admin unregistered team _X_; its mentors were released."                                                                                           |
 
 The counts cover registered teams and active mentors, the same ones the matching uses.
 

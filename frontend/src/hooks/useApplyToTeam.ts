@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/common/useToast';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { refetchConfigIfLocked } from '@/lib/teamsLock';
 
 export interface UseApplyToTeamResult {
   applyingTo: number | null;
@@ -29,6 +30,7 @@ export function useApplyToTeam(invalidateKey?: unknown[]): UseApplyToTeamResult 
       }
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
+      refetchConfigIfLocked(err, queryClient);
     } finally {
       setApplyingTo(null);
     }

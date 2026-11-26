@@ -11,8 +11,9 @@ interface MentorPref {
 
 /**
  * Active-team mentor state, in priority order:
- * confirmed assignments → not registered → submitted preferences → submissions closed →
- * captain CTA / waiting note.
+ * confirmed assignments → not registered → confirmed with none assigned → submitted
+ * preferences → submissions closed → captain CTA / waiting note. `confirmed` is the
+ * polled MATCHING_CONFIRMED, the same bit that shows the lock note, so the two always agree.
  */
 export default function MentorsPanel({
   confirmed,
@@ -103,8 +104,27 @@ export default function MentorsPanel({
           className="px-body-sm"
           style={{ color: 'var(--px-muted-strong)' }}
         >
-          &gt; Only registered teams take part in mentor matching. Your team can rank mentors once
-          it holds one of the event slots.
+          {confirmed ? (
+            <>&gt; Only registered teams take part in mentor matching.</>
+          ) : (
+            <>
+              &gt; Only registered teams take part in mentor matching. Your team can rank mentors
+              once it holds one of the event slots.
+            </>
+          )}
+        </p>
+      </Panel>
+    );
+  }
+
+  if (confirmed) {
+    return (
+      <Panel title="MENTORS">
+        <p
+          className="px-body-sm"
+          style={{ color: 'var(--px-muted-strong)' }}
+        >
+          &gt; The organizers haven't assigned mentors to your team yet.
         </p>
       </Panel>
     );

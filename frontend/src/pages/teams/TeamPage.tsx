@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import RequireAuth from '@/components/layout/RequireAuth';
 import Panel from '@/components/common/Panel';
@@ -15,12 +15,14 @@ import MembersPanel from '@/components/teams/MembersPanel';
 import MentorsPanel from '@/components/teams/MentorsPanel';
 import JoinRequestsPanel from '@/components/teams/JoinRequestsPanel';
 import DangerZone from '@/components/teams/DangerZone';
+import TeamsLockedNotice from '@/components/teams/TeamsLockedNotice';
 import VerifyEmailNotice from '@/components/common/VerifyEmailNotice';
 import { useAuth } from '@/context/AuthContext';
 import { useConfig } from '@/context/ConfigContext';
-import type { User } from '@/types/auth';
+import { useMe } from '@/hooks/useMe';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { refetchConfigIfLocked } from '@/lib/teamsLock';
 import type { Team, JoinRequest, Application } from '@/types/team';
 
 interface MentorPref {
@@ -32,7 +34,7 @@ interface MentorPref {
 function NoTeamView() {
   const { confirm, dialogProps } = useConfirmAction();
   const { user } = useAuth();
-  const { REQUIRE_EMAIL_VERIFICATION } = useConfig();
+  const { REQUIRE_EMAIL_VERIFICATION, MATCHING_CONFIRMED: frozen } = useConfig();
 
   const { data: appsData, refetch } = useQuery<{ applications: Application[] }>({
     queryKey: ['my-applications'],
@@ -65,33 +67,39 @@ function NoTeamView() {
         title="NO TEAM YET"
         style={{ marginBottom: '24px' }}
       >
-        <p
-          className="px-body"
-          style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
-        >
-          Assemble a team of up to 6 to compete in FMI Codes 2026. Create your own, join a team with
-          an invite code, or browse open teams.
-        </p>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <Button
-            variant="primary"
-            href="/createTeam"
-          >
-            CREATE TEAM
-          </Button>
-          <Button
-            variant="secondary"
-            href="/joinTeam"
-          >
-            JOIN WITH CODE
-          </Button>
-          <Button
-            variant="secondary"
-            href="/browseTeams"
-          >
-            BROWSE TEAMS
-          </Button>
-        </div>
+        {frozen ? (
+          <TeamsLockedNotice />
+        ) : (
+          <>
+            <p
+              className="px-body"
+              style={{ margin: '0 0 24px 0', color: 'var(--px-muted-strong)' }}
+            >
+              Assemble a team of up to 6 to compete in FMI Codes 2026. Create your own, join a team
+              with an invite code, or browse open teams.
+            </p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Button
+                variant="primary"
+                href="/createTeam"
+              >
+                CREATE TEAM
+              </Button>
+              <Button
+                variant="secondary"
+                href="/joinTeam"
+              >
+                JOIN WITH CODE
+              </Button>
+              <Button
+                variant="secondary"
+                href="/browseTeams"
+              >
+                BROWSE TEAMS
+              </Button>
+            </div>
+          </>
+        )}
       </Panel>
 
       {apps.length > 0 && (
@@ -165,8 +173,9 @@ function TeamDashboardView({
   onRefresh: () => void;
 }) {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirmAction();
-  const { PREFERENCES_OPEN, isLoaded: configLoaded } = useConfig();
+  const { PREFERENCES_OPEN, MATCHING_CONFIRMED: frozen, isLoaded: configLoaded } = useConfig();
   const isCaptain = String(team.captain_id) === String(userId);
   const [busyReqId, setBusyReqId] = useState<number | null>(null);
 
@@ -179,12 +188,6 @@ function TeamDashboardView({
   const { data: prefData } = useQuery<{ preferences: MentorPref[] }>({
     queryKey: ['team-mentor-preferences', teamId],
     queryFn: () => api.get(`/api/teams/${teamId}/mentor-preferences`),
-    enabled: team.status === 'active',
-  });
-
-  const { data: statusData } = useQuery<{ confirmed: boolean }>({
-    queryKey: ['matching-status'],
-    queryFn: () => api.get('/api/matching-status'),
     enabled: team.status === 'active',
   });
 
@@ -236,6 +239,7 @@ function TeamDashboardView({
       onRefresh();
     } catch (e) {
       showToast({ kind: 'danger', message: errorMessage(e) });
+      refetchConfigIfLocked(e, queryClient);
     } finally {
       setBusyReqId(null);
     }
@@ -250,20 +254,23 @@ function TeamDashboardView({
       <TeamStatusHeader
         team={team}
         memberCount={memberCount}
+        frozen={frozen}
       />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {frozen && <TeamsLockedNotice />}
+
         {isCaptain && team.join_code && <JoinCodePanel joinCode={team.join_code} />}
 
         <MembersPanel
           members={team.members ?? []}
-          isCaptain={isCaptain}
+          canRemove={isCaptain && !frozen}
           onRemove={askRemoveMember}
         />
 
         {team.status === 'active' && configLoaded && (
           <MentorsPanel
-            confirmed={statusData?.confirmed}
+            confirmed={frozen}
             mentors={team.mentors ?? []}
             prefs={prefs}
             isCaptain={isCaptain}
@@ -276,15 +283,18 @@ function TeamDashboardView({
           <JoinRequestsPanel
             requests={requests}
             busyReqId={busyReqId}
+            canAccept={!frozen}
             onRespond={respondToRequest}
           />
         )}
 
-        <DangerZone
-          isCaptain={isCaptain}
-          onLeave={askLeave}
-          onDisband={askDisband}
-        />
+        {!frozen && (
+          <DangerZone
+            isCaptain={isCaptain}
+            onLeave={askLeave}
+            onDisband={askDisband}
+          />
+        )}
       </div>
 
       <ConfirmDialog {...dialogProps} />
@@ -292,15 +302,8 @@ function TeamDashboardView({
   );
 }
 
-function TeamPageContent() {
-  const {
-    data: meData,
-    isLoading,
-    refetch,
-  } = useQuery<{ success: boolean; user: User }>({
-    queryKey: ['me'],
-    queryFn: () => api.get('/api/auth/me'),
-  });
+export function TeamPageContent() {
+  const { data: meData, isPending, refetch } = useMe();
 
   const teamId = meData?.user?.team_id;
 
@@ -319,7 +322,7 @@ function TeamPageContent() {
     refetchTeam();
   }
 
-  if (isLoading) return <LoadingSpinner fullPage />;
+  if (isPending) return <LoadingSpinner fullPage />;
 
   if (!teamId) return <NoTeamView />;
   if (teamIsError)

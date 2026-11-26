@@ -4,6 +4,10 @@ import type { QueryClient } from '@tanstack/react-query';
 /** The API's 403 message while the admin has preference submission switched off. */
 export const PREFERENCES_CLOSED_ERROR = 'Preference submission is closed';
 
+/** The API's 403 message once the admin has confirmed matching. */
+export const PREFERENCES_CONFIRMED_ERROR =
+  'Matching is confirmed, so preferences can no longer change.';
+
 /**
  * Where a ranking page stands before matching is confirmed. While submissions
  * are closed a saved ranking is shown read-only, even mid-edit, and a missing
@@ -19,10 +23,17 @@ export function rankingStep(
   return open ? uiStep : 'closed';
 }
 
-/** A save refused because submissions just closed: refetch the flags so the page locks now. */
+/**
+ * A save refused because submissions just closed or matching was just confirmed: refetch
+ * what changed so the page locks now.
+ */
 export function refetchFlagsIfClosed(err: unknown, qc: QueryClient) {
-  if (err instanceof Error && err.message === PREFERENCES_CLOSED_ERROR) {
+  if (!(err instanceof Error)) return;
+  if (err.message === PREFERENCES_CLOSED_ERROR) {
     qc.invalidateQueries({ queryKey: ['config'] });
+  } else if (err.message === PREFERENCES_CONFIRMED_ERROR) {
+    qc.invalidateQueries({ queryKey: ['config'] });
+    qc.invalidateQueries({ queryKey: ['matching-status'] });
   }
 }
 

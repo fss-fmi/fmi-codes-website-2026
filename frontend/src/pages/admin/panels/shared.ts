@@ -1,10 +1,19 @@
+export interface AdminTeam {
+  id: number;
+  team_name: string;
+  status?: string;
+  participant_count?: number;
+  queue_position?: number | null;
+}
+
 export interface RegStatus {
   registered_count: number;
   max_registered: number;
   queue_count: number;
-  registered_teams: { id: number; team_name: string }[];
-  queued_teams: { id: number; team_name: string }[];
-  unregistered_teams: { id: number; team_name: string }[];
+  registered_teams: AdminTeam[];
+  queued_teams: AdminTeam[];
+  unregistered_teams: AdminTeam[];
+  pending_teams?: AdminTeam[];
 }
 
 export interface PrefStatus {
@@ -13,7 +22,14 @@ export interface PrefStatus {
   mentors_submitted: number;
   mentors_total: number;
   teams: { id: number; team_name: string; submitted: boolean }[];
-  mentors: { id: number; name: string; submitted: boolean }[];
+  mentors: {
+    id: number;
+    name: string;
+    submitted: boolean;
+    /** Picks that are still registered active teams; only these reach matching. */
+    picks_counting?: number;
+    picks_saved?: number;
+  }[];
 }
 
 export interface TeamScore {
@@ -36,7 +52,7 @@ export interface FeatureFlag {
   scheduled_at: string | null;
 }
 
-export type Tab = 'site' | 'registration' | 'preferences' | 'matching' | 'scores';
+export type Tab = 'site' | 'registration' | 'teams' | 'preferences' | 'matching' | 'scores';
 
 /**
  * Single source of truth for the admin chart/status palette. Chart libraries

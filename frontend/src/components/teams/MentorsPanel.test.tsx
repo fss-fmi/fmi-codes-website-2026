@@ -42,6 +42,36 @@ test.each([true, false])('team that is not registered gets no CTA (captain: %s)'
   ).toBeInTheDocument();
 });
 
+test('once confirmed, a team that is not registered gets only the first sentence', () => {
+  renderPanel({ isRegistered: false, confirmed: true });
+  expect(
+    screen.getByText('> Only registered teams take part in mentor matching.'),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/once it holds one of the event slots/)).toBeNull();
+});
+
+test('before confirmation, a team that is not registered hears it can rank once it has a slot', () => {
+  renderPanel({ isRegistered: false });
+  expect(screen.getByText(/once it holds one of the event slots/)).toBeInTheDocument();
+});
+
+test.each([true, false])(
+  'a confirmed team with no mentors is told the organizers will assign them (ranked: %s)',
+  (withPrefs) => {
+    renderPanel({ isRegistered: true, confirmed: true, withPrefs });
+    expect(
+      screen.getByText("> The organizers haven't assigned mentors to your team yet."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('CHOOSE MENTORS')).toBeNull();
+    expect(screen.queryByText(/waiting for matching/i)).toBeNull();
+  },
+);
+
+test('the registration check comes before the no-mentors note', () => {
+  renderPanel({ isRegistered: false, confirmed: true });
+  expect(screen.queryByText(/haven't assigned mentors/)).toBeNull();
+});
+
 test('a ranking left over from before the team lost its slot is not shown as waiting', () => {
   renderPanel({ isRegistered: false, withPrefs: true });
   expect(screen.queryByText(/waiting for matching/i)).toBeNull();

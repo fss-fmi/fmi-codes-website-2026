@@ -9,7 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.e2e.conftest import admin_token, bearer, mentor_token_for, register_and_token
+from tests.e2e.conftest import (
+    admin_token,
+    bearer,
+    create_active_registered_team,
+    mentor_token_for,
+    register_and_token,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -84,12 +90,11 @@ def mentor_with_photo(db_conn, seeds):
 
 
 @pytest.fixture
-def assigned_team(client, db_conn, seeds, mentor_with_photo):
-    """A captain's team assigned Beta Mentor and the photo mentor, Alpha: (team_id, token)."""
+def assigned_team(client, flask_app, db_conn, seeds, mentor_with_photo):
+    """A captain's registered team assigned Beta Mentor and the photo mentor, Alpha:
+    (team_id, token). Registered, since only a registered team's assignments show."""
     token = register_and_token(client, 1, seeds)
-    rv = client.post("/api/teams", json={"team_name": "Photo Team"}, headers=bearer(token))
-    assert rv.status_code == 201, rv.get_json()
-    team_id = rv.get_json()["team"]["id"]
+    team_id = create_active_registered_team(client, token, flask_app, seeds, "Photo Team")
     with db_conn.cursor() as cur:
         cur.execute(
             "INSERT INTO team_mentors (team_id, mentor_id, is_active) "

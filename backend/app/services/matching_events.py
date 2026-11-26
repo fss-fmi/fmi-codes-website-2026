@@ -2,7 +2,8 @@
 
 Preferences are private: a message says that a team or mentor submitted, never
 what they chose. The builders therefore take only names, counts and the
-matching run's warnings (which are counts too), never a ranking or a pair.
+matching run's warnings (which are counts too), never a ranking or a pair. The
+admin's hand edits after a run name the team and a count, never who was moved.
 """
 
 from app.utils.slack import escape_mrkdwn
@@ -44,3 +45,19 @@ def matching_run_text(
 
 def matching_confirmed_text() -> str:
     return "✅ Matching confirmed as final. Teams and mentors now see their assignments."
+
+
+def admin_mentors_changed_text(team_name: str, mentor_count: int) -> str:
+    return f"🛠️ Admin changed team *{escape_mrkdwn(team_name)}*'s mentors (now {mentor_count})."
+
+
+def admin_member_added_text(team_name: str, member_count: int) -> str:
+    return f"🛠️ Admin added a member to team *{escape_mrkdwn(team_name)}* (now {member_count})."
+
+
+def admin_member_removed_text(team_name: str, member_count: int) -> str:
+    return f"🛠️ Admin removed a member from team *{escape_mrkdwn(team_name)}* (now {member_count})."
+
+
+def admin_unregistered_text(team_name: str) -> str:
+    return f"🛠️ Admin unregistered team *{escape_mrkdwn(team_name)}*; its mentors were released."

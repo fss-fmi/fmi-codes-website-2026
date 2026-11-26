@@ -2,14 +2,14 @@ import Panel from '@/components/common/Panel';
 import MemberBar from '@/components/common/MemberBar';
 import type { Member } from '@/types/team';
 
-/** Team roster; captains can remove non-captain members. */
+/** Team roster; captains can remove non-captain members while teams aren't frozen. */
 export default function MembersPanel({
   members,
-  isCaptain,
+  canRemove,
   onRemove,
 }: {
   members: Member[];
-  isCaptain: boolean;
+  canRemove: boolean;
   onRemove: (memberId: number) => void;
 }) {
   return (
@@ -26,8 +26,11 @@ export default function MembersPanel({
             flexWrap: 'wrap',
           }}
         >
-          <MemberBar name={`${m.first_name} ${m.last_name}`} isCaptain={m.is_captain} />
-          {isCaptain && !m.is_captain && (
+          <MemberBar
+            name={`${m.first_name} ${m.last_name}`}
+            isCaptain={m.is_captain}
+          />
+          {canRemove && !m.is_captain && (
             <button
               type="button"
               className="px-btn-danger"

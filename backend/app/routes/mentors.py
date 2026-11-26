@@ -32,18 +32,28 @@ def get_mentors():
 
 
 def _preferences_closed():
-    """403 while the admin has preference submission switched off, else None.
+    """403 once matching is confirmed or while submission is switched off, else None.
 
-    A cached fast path that answers before the body is read; the save itself
-    re-checks under a row lock, which is what holds at the deadline.
+    Cached fast paths that answer before the body is read; the save itself
+    re-checks both under row locks, which is what holds at the deadline. The
+    confirmed check goes first: the admin closes submissions before the final
+    run, so the closed text would otherwise be the only one anyone sees.
     """
+    if feature_flag_service.get_matching_confirmed_cached():
+        return _save_refused(mentor_selection_service.PREFERENCES_CONFIRMED)
     if feature_flag_service.is_enabled("preferences_open"):
         return None
     return _save_refused(mentor_selection_service.PREFERENCES_CLOSED)
 
 
+_FORBIDDEN_SAVES = (
+    mentor_selection_service.PREFERENCES_CLOSED,
+    mentor_selection_service.PREFERENCES_CONFIRMED,
+)
+
+
 def _save_refused(message):
-    status = 403 if message == mentor_selection_service.PREFERENCES_CLOSED else 400
+    status = 403 if message in _FORBIDDEN_SAVES else 400
     return jsonify({"success": False, "error": message}), status
 
 

@@ -108,7 +108,7 @@ Anything here that restarts something is done now, not on the day.
 
   ```bash
   curl -s https://fmicodes.com/api/config
-  # {"MENTORS_STAY_TUNED":...,"PREFERENCES_OPEN":false,"RANKINGS_LIVE":false,"REGISTRATION_OPEN":false,"REQUIRE_EMAIL_VERIFICATION":false}
+  # {"MATCHING_CONFIRMED":false,"MENTORS_STAY_TUNED":...,"PREFERENCES_OPEN":false,"RANKINGS_LIVE":false,"REGISTRATION_OPEN":false,"REQUIRE_EMAIL_VERIFICATION":false}
   ```
 
 - **No release is pending.** Nothing waits to be promoted or migrated: promote now or after the
@@ -263,6 +263,32 @@ kubectl -n $NS logs -l app.kubernetes.io/name=fmi-codes-backend -c backend --sin
 
 `connection pool exhausted` or `connection to server ... failed` point at Postgres (the loop
 above); the same error on every request of one route points at a bug.
+
+## After the matching is confirmed
+
+Confirming the matching freezes teams: participants can't create, join, apply to, leave or
+disband a team, captains can't remove members or accept applications, and nobody can re-rank
+([ADR-019](../adr/019-freeze-teams-on-confirmed-matching.md)). Every team page says to contact
+the organizers, so the changes below come to you, and you make them in Mission Control →
+**TEAMS**. Nothing there needs a deploy, each change takes effect on the next request and
+`#event-feed-prod` gets a post naming the team. Nothing moves a slot by itself any more: use
+**REGISTRATION** for that.
+
+- **A mentor drops out.** For each of their teams: pick the team, **REMOVE** the mentor under
+  **MENTORS**, add a replacement from **Add a mentor…** (each shows how many teams they already
+  have; going past 3 only warns) and **SAVE MENTORS**. The team sees the new list at once.
+- **A captain goes home.** Pick the team, choose the **New captain** next to the captain's row,
+  then **REMOVE** the captain. The new captain takes over in the same step; the team is not
+  disbanded and keeps its slot, even below 3 members.
+- **A member switches teams.** **REMOVE** them from the old team, then type their email under
+  the new one and **ADD MEMBER** (up to 6). The old team keeps its slot.
+- **A team never shows up.** **REGISTRATION** → **UNREGISTER**. Its mentors are released in the
+  same step and the queue is not promoted. To give the slot to the first queued team, click
+  **REGISTER** on it, then give it mentors in **TEAMS** (it has none, and its page says the
+  organizers haven't assigned any yet).
+
+Don't run **MATCHING** again to fix one team: a run clears the confirmation, reopens team changes
+for everyone and replaces every hand edit until you confirm again.
 
 ## Mail
 

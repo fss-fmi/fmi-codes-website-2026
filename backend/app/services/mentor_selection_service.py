@@ -5,13 +5,14 @@ import logging
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
-from app.services import event_notifier, feature_flag_service, matching_events
+from app.services import event_notifier, feature_flag_service, matching_events, matching_service
 from app.utils.request_json import is_row_id
 from app.utils.service_errors import ServiceFailureError
 
 logger = logging.getLogger(__name__)
 
 PREFERENCES_CLOSED = "Preference submission is closed"
+PREFERENCES_CONFIRMED = "Matching is confirmed, so preferences can no longer change."
 
 
 def _closed(cursor) -> bool:
@@ -74,6 +75,8 @@ def set_team_mentor_preferences(team_id, preferences):
 
     try:
         with get_db_cursor(current_app) as cursor:
+            if matching_service.frozen_locked(cursor):
+                return False, PREFERENCES_CONFIRMED
             if _closed(cursor):
                 return False, PREFERENCES_CLOSED
             # Lock the team row for the duration of this transaction so that a
@@ -149,6 +152,8 @@ def set_mentor_team_preferences(mentor_id, preferences):
 
     try:
         with get_db_cursor(current_app) as cursor:
+            if matching_service.frozen_locked(cursor):
+                return False, PREFERENCES_CONFIRMED
             if _closed(cursor):
                 return False, PREFERENCES_CLOSED
             # Lock the mentor row for the duration of this transaction so that a
@@ -231,9 +236,13 @@ def get_active_teams_for_ranking():
 def get_preference_submission_status():
     """Get which teams and mentors have/haven't submitted preferences.
 
+    A mentor counts as submitted only while at least one of their picks is still a
+    registered active team: picks of teams that lost their slot never reach matching.
+
     Returns:
         dict with 'teams' and 'mentors' lists, each entry having
-        'id', 'name', 'submitted' boolean.
+        'id', 'name', 'submitted' boolean; mentors also carry 'picks_counting'
+        (picks still in matching) and 'picks_saved' (every saved pick).
     """
     teams = (
         execute_query(
@@ -254,8 +263,16 @@ def get_preference_submission_status():
             current_app,
             """
         SELECT m.id, m.first_name || ' ' || m.last_name as name, m.company_name,
-               EXISTS(SELECT 1 FROM mentor_team_preferences mtp WHERE mtp.mentor_id = m.id) as submitted
-        FROM mentors m WHERE m.status = 'active'
+               COUNT(t.id) FILTER (WHERE t.status = 'active' AND t.is_registered) > 0
+                   AS submitted,
+               COUNT(t.id) FILTER (WHERE t.status = 'active' AND t.is_registered)
+                   AS picks_counting,
+               COUNT(mtp.team_id) AS picks_saved
+        FROM mentors m
+        LEFT JOIN mentor_team_preferences mtp ON mtp.mentor_id = m.id
+        LEFT JOIN teams t ON t.id = mtp.team_id
+        WHERE m.status = 'active'
+        GROUP BY m.id
         ORDER BY m.last_name, m.first_name
     """,
             fetch_all=True,

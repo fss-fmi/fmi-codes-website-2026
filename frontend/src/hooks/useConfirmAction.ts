@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/common/useToast';
 import { errorMessage } from '@/lib/errors';
+import { refetchConfigIfLocked } from '@/lib/teamsLock';
 
 interface ConfirmOptions {
   title: string;
@@ -33,6 +35,7 @@ const CLOSED: DialogState = { open: false, title: '', onConfirm: () => {} };
  */
 export function useConfirmAction() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<DialogState>(CLOSED);
 
   function confirm(opts: ConfirmOptions) {
@@ -48,6 +51,7 @@ export function useConfirmAction() {
           await opts.action();
         } catch (e) {
           showToast({ kind: 'danger', message: errorMessage(e) });
+          refetchConfigIfLocked(e, queryClient);
           return;
         }
         // Outside the try: a failing refresh must not be reported as a failed action.

@@ -6,6 +6,8 @@ import Panel from '@/components/common/Panel';
 import NestedCard from '@/components/common/NestedCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import Button from '@/components/common/Button';
+import TeamsLockedNotice from '@/components/teams/TeamsLockedNotice';
+import { useConfig } from '@/context/ConfigContext';
 import { useApplyToTeam } from '@/hooks/useApplyToTeam';
 import api from '@/lib/api';
 
@@ -18,6 +20,7 @@ interface BrowseTeam {
 
 function BrowseTeamsContent() {
   const { applyToTeam, isApplied, isApplying } = useApplyToTeam(['available-teams']);
+  const { MATCHING_CONFIRMED: frozen } = useConfig();
 
   const { data, isLoading } = useQuery<{ teams: BrowseTeam[] }>({
     queryKey: ['available-teams'],
@@ -33,11 +36,16 @@ function BrowseTeamsContent() {
         description="Find a team looking for members and apply to join."
       />
 
+      {frozen && <TeamsLockedNotice />}
+
       {isLoading && <LoadingSpinner />}
 
       {!isLoading && teams.length === 0 && (
         <Panel title="> NO TEAMS YET">
-          <p className="px-body" style={{ margin: 0, color: 'var(--px-muted-strong)' }}>
+          <p
+            className="px-body"
+            style={{ margin: 0, color: 'var(--px-muted-strong)' }}
+          >
             &gt; All teams are either full or not accepting applications right now. Check back after
             new teams register.
           </p>
@@ -95,7 +103,10 @@ function BrowseTeamsContent() {
                     aria-label={`${t.participant_count} of 6 members`}
                     className="px-progress-track"
                   >
-                    <div className="px-progress-fill" style={{ transform: `scaleX(${pct / 100})` }} />
+                    <div
+                      className="px-progress-fill"
+                      style={{ transform: `scaleX(${pct / 100})` }}
+                    />
                   </div>
                 </div>
                 {applied ? (
@@ -109,7 +120,7 @@ function BrowseTeamsContent() {
                   >
                     APPLIED
                   </button>
-                ) : (
+                ) : frozen ? null : (
                   <Button
                     variant="primary"
                     onClick={() => applyToTeam(t.team_id)}

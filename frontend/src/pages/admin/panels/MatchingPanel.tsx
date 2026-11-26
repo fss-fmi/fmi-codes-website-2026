@@ -68,7 +68,9 @@ export default function MatchingPanel() {
     try {
       const d = await api.post<{ warnings?: string[] }>('/api/admin/run-matching', {});
       setExportData(null);
+      // A run clears any confirmation, which lifts the freeze /api/config reports.
       qc.invalidateQueries({ queryKey: ['matching-status'] });
+      qc.invalidateQueries({ queryKey: ['config'] });
       refetchResults();
       if (d.warnings?.length) {
         showToast({ kind: 'warning', message: `Matching warnings: ${d.warnings.join('; ')}` });
@@ -83,6 +85,7 @@ export default function MatchingPanel() {
     try {
       await api.post('/api/admin/confirm-matching', {});
       qc.invalidateQueries({ queryKey: ['matching-status'] });
+      qc.invalidateQueries({ queryKey: ['config'] });
       refetchResults();
     } finally {
       setConfirming(false);
@@ -108,9 +111,9 @@ export default function MatchingPanel() {
     confirm({
       title: 'RUN MATCHING',
       description: [
-        'Run the matching algorithm? This will overwrite any previous results.',
+        'Run the matching algorithm? This will overwrite any previous results, including mentor changes made in the TEAMS tab.',
         published &&
-          'The current results are published; this run hides them until you confirm again.',
+          'The current results are published; this run hides them and reopens team changes until you confirm again.',
         open && 'Preference submissions are still open, so rankings can change after this run.',
       ]
         .filter(Boolean)

@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Role, User } from '@/types/auth';
 import api from '@/lib/api';
+import { ME_KEY, useMe, type MeData } from '@/hooks/useMe';
 
 interface AuthState {
   user: User | null;
@@ -22,68 +24,42 @@ export const AuthContext = createContext<AuthState>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<Role | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data, isPending } = useMe();
+  const user = data?.success && data.user ? data.user : null;
 
-  // Hydrate from cookie on app load
-  // Use raw fetch to avoid the api.ts 401→auth:unauthorized event for this expected case
-  useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((res) => (res.ok ? (res.json() as Promise<{ success: boolean; user: User }>) : null))
-      .then((data) => {
-        if (data?.success && data.user) {
-          setUser(data.user);
-          setRole(data.user.role);
-        }
-      })
-      .catch(() => {
-        /* no cookie / expired — stay logged out */
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
+  const setMe = useCallback(
+    (me: MeData) => queryClient.setQueryData<MeData>(ME_KEY, me),
+    [queryClient],
+  );
 
-  // Listen for 401 events from api.ts
+  // api.ts broadcasts this on any 401: the session is gone.
   useEffect(() => {
-    const handler = () => {
-      setUser(null);
-      setRole(null);
-    };
+    const handler = () => setMe(null);
     window.addEventListener('auth:unauthorized', handler);
     return () => window.removeEventListener('auth:unauthorized', handler);
-  }, []);
+  }, [setMe]);
 
-  function login(newRole: Role, newUser: User) {
-    setUser(newUser);
-    setRole(newRole);
-  }
+  const login = useCallback(
+    (newRole: Role, newUser: User) => setMe({ success: true, user: { ...newUser, role: newRole } }),
+    [setMe],
+  );
 
-  async function refreshUser(): Promise<void> {
-    try {
-      const data = await fetch('/api/auth/me', { credentials: 'include' }).then((res) =>
-        res.ok ? (res.json() as Promise<{ success: boolean; user: User }>) : null,
-      );
-      if (data?.success && data.user) {
-        setUser(data.user);
-        setRole(data.user.role);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  const refreshUser = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: ME_KEY });
+  }, [queryClient]);
 
-  function logout() {
+  const logout = useCallback(() => {
     api
       .post('/api/auth/logout')
       .catch(() => {})
-      .finally(() => {
-        setUser(null);
-        setRole(null);
-      });
-  }
+      .finally(() => setMe(null));
+  }, [setMe]);
 
   return (
-    <AuthContext.Provider value={{ user, role, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{ user, role: user?.role ?? null, isLoading: isPending, login, logout, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

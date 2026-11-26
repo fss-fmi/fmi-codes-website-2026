@@ -4,14 +4,17 @@ import type { JoinRequest } from '@/types/team';
 /**
  * Captain's pending join-request queue. Buttons for a row disable while that
  * request is being processed so a double-click can't fire the action twice.
+ * While teams are frozen only DECLINE is offered.
  */
 export default function JoinRequestsPanel({
   requests,
   busyReqId,
+  canAccept,
   onRespond,
 }: {
   requests: JoinRequest[];
   busyReqId: number | null;
+  canAccept: boolean;
   onRespond: (reqId: number, action: 'accept' | 'decline') => void;
 }) {
   return (
@@ -50,24 +53,31 @@ export default function JoinRequestsPanel({
               {initials}
             </div>
             <div style={{ flex: 1, minWidth: '160px' }}>
-              <div style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}>
+              <div
+                style={{ fontFamily: 'var(--px-mono)', fontWeight: 700, color: 'var(--px-white)' }}
+              >
                 {r.first_name} {r.last_name}
               </div>
-              <div className="px-body-sm" style={{ color: 'var(--px-muted-strong)' }}>
+              <div
+                className="px-body-sm"
+                style={{ color: 'var(--px-muted-strong)' }}
+              >
                 {r.email}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                className="px-btn-primary"
-                onClick={() => onRespond(r.request_id, 'accept')}
-                disabled={busy}
-                aria-label={`Accept ${r.first_name} ${r.last_name}`}
-                style={{ padding: '10px 16px', fontSize: '0.55rem' }}
-              >
-                ACCEPT
-              </button>
+              {canAccept && (
+                <button
+                  type="button"
+                  className="px-btn-primary"
+                  onClick={() => onRespond(r.request_id, 'accept')}
+                  disabled={busy}
+                  aria-label={`Accept ${r.first_name} ${r.last_name}`}
+                  style={{ padding: '10px 16px', fontSize: '0.55rem' }}
+                >
+                  ACCEPT
+                </button>
+              )}
               <button
                 type="button"
                 className="px-btn-danger"

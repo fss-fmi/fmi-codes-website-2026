@@ -213,6 +213,49 @@ def test_get_flags_raises_when_db_fails(app_ctx, fake_redis, monkeypatch):
         feature_flag_service.get_flags()
 
 
+# ── get_matching_confirmed_cached ───────────────────────────────────
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_matching_confirmed_miss_reads_db_and_caches_beside_the_flags(
+    app_ctx, fake_redis, monkeypatch, confirmed
+):
+    monkeypatch.setattr(
+        feature_flag_service, "execute_query", lambda *a, **k: {"is_confirmed": confirmed}
+    )
+    assert feature_flag_service.get_matching_confirmed_cached() is confirmed
+    assert fake_redis.set_calls == [
+        ("cache:feature_flags:v0:matching_confirmed", "1" if confirmed else "0", 10)
+    ]
+    # Its own key: a cached flag dict keeps exactly FLAG_NAMES, as get_flags requires.
+    assert "cache:feature_flags:v0" not in fake_redis.store
+
+
+def test_matching_confirmed_cache_hit_skips_db(app_ctx, fake_redis, monkeypatch):
+    fake_redis.store["cache:feature_flags:v0:matching_confirmed"] = "1"
+    monkeypatch.setattr(
+        feature_flag_service, "execute_query", lambda *a, **k: pytest.fail("DB hit on cache hit")
+    )
+    assert feature_flag_service.get_matching_confirmed_cached() is True
+
+
+def test_invalidate_cache_retires_the_matching_confirmed_key(app_ctx, fake_redis, monkeypatch):
+    fake_redis.store["cache:feature_flags:v0:matching_confirmed"] = "0"
+    feature_flag_service.invalidate_cache()
+    monkeypatch.setattr(feature_flag_service, "execute_query", lambda *a, **k: {"is_confirmed": 1})
+    assert feature_flag_service.get_matching_confirmed_cached() is True
+    assert fake_redis.set_calls[-1][0] == "cache:feature_flags:v1:matching_confirmed"
+
+
+def test_matching_confirmed_falls_back_to_the_db_without_redis(app_ctx, monkeypatch):
+    monkeypatch.setattr(feature_flag_service, "redis_get", lambda key, default=None: default)
+    monkeypatch.setattr(feature_flag_service, "redis_set", lambda *a, **k: False)
+    monkeypatch.setattr(
+        feature_flag_service, "execute_query", lambda *a, **k: {"is_confirmed": True}
+    )
+    assert feature_flag_service.get_matching_confirmed_cached() is True
+
+
 # ── _apply_due ──────────────────────────────────────────────────────
 
 
@@ -413,6 +456,7 @@ def test_config_route_keeps_its_shape(client, monkeypatch):
             "preferences_open": True,
         },
     )
+    monkeypatch.setattr(feature_flag_service, "get_matching_confirmed_cached", lambda: True)
     rv = client.get("/api/config")
     assert rv.status_code == 200
     assert rv.get_json() == {
@@ -420,8 +464,20 @@ def test_config_route_keeps_its_shape(client, monkeypatch):
         "MENTORS_STAY_TUNED": True,
         "RANKINGS_LIVE": False,
         "PREFERENCES_OPEN": True,
+        "MATCHING_CONFIRMED": True,
         "REQUIRE_EMAIL_VERIFICATION": False,
     }
+
+
+def test_config_route_503_when_the_confirmation_is_unreadable(client, monkeypatch):
+    def boom():
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(
+        feature_flag_service, "get_flags", lambda: dict.fromkeys(feature_flag_service.FLAG_NAMES)
+    )
+    monkeypatch.setattr(feature_flag_service, "get_matching_confirmed_cached", boom)
+    assert client.get("/api/config").status_code == 503
 
 
 def test_config_route_is_not_rate_limited(monkeypatch):
@@ -443,6 +499,7 @@ def test_config_route_is_not_rate_limited(monkeypatch):
         "get_flags",
         lambda: dict.fromkeys(feature_flag_service.FLAG_NAMES, False),
     )
+    monkeypatch.setattr(feature_flag_service, "get_matching_confirmed_cached", lambda: False)
     c = limited_app.test_client()
     assert {c.get("/api/config").status_code for _ in range(210)} == {200}
 
@@ -581,11 +638,14 @@ def post_preferences(app_ctx, client, monkeypatch):
         },
     )
 
-    def send(route, open_, result=(True, "Saved")):
+    def send(route, open_, result=(True, "Saved"), confirmed=False):
         path, role, service = _PREFERENCE_POSTS[route]
         saves = []
         monkeypatch.setattr(
             feature_flag_service, "is_enabled", lambda name: open_ and name == "preferences_open"
+        )
+        monkeypatch.setattr(
+            feature_flag_service, "get_matching_confirmed_cached", lambda: confirmed
         )
         monkeypatch.setattr(mentor_selection_service, service, lambda *a: saves.append(a) or result)
         headers = {"Authorization": f"Bearer {generate_token(1, role)}"}
@@ -617,6 +677,29 @@ def test_a_close_caught_by_the_locked_recheck_is_403(post_preferences, route):
     rv, _ = post_preferences(route, open_=True, result=closed)
     assert rv.status_code == 403
     assert rv.get_json() == {"success": False, "error": "Preference submission is closed"}
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+@pytest.mark.parametrize("open_", [False, True])
+def test_preference_post_is_403_once_matching_is_confirmed(post_preferences, route, open_):
+    """Checked before the closed flag: submissions are closed before the final run, so the
+    other order would never show this text."""
+    rv, saves = post_preferences(route, open_=open_, confirmed=True)
+    assert rv.status_code == 403
+    assert rv.get_json() == {
+        "success": False,
+        "error": "Matching is confirmed, so preferences can no longer change.",
+    }
+    assert saves == []
+
+
+@pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
+def test_a_confirmation_caught_by_the_locked_recheck_is_403(post_preferences, route):
+    from app.services import mentor_selection_service
+
+    frozen = (False, mentor_selection_service.PREFERENCES_CONFIRMED)
+    rv, _ = post_preferences(route, open_=True, result=frozen)
+    assert rv.status_code == 403
 
 
 @pytest.mark.parametrize("route", list(_PREFERENCE_POSTS))
