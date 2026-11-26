@@ -175,6 +175,6 @@ bootstrap.sh       one-shot cluster installer
 
 **Production config refuses to start (`CRITICAL: SECRET_KEY ...`).** `FLASK_ENV=production` validates secrets and rejects the built-in dev values. Set real `SECRET_KEY`, `JWT_SECRET_KEY` and `ADMIN_PASSWORD_HASH`.
 
-**`relation ... already exists` / trigger errors when re-running `schema.sql`.** The trigger statements are not idempotent. Load the schema only into an empty database.
+**Errors when re-running `schema.sql` on an existing database.** `schema.sql` re-runs without an error on a database with every migration applied (it still locks tables while it runs, so not on a live one); bring an older database up to date with `python -m database.migrate`, not `schema.sql` (see [Schema management](data.md#schema-management)).
 
 **Port 5001 or 5173 in use.** Another dev server is running. Find it with `lsof -i :5001` (Windows: `netstat -ano | findstr 5001`).

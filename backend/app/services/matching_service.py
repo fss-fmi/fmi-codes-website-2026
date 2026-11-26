@@ -6,9 +6,13 @@ Phase 1 — Extended Gale-Shapley (mentor-proposing, MENTOR_CAPACITY=3, TEAM_CAP
   ranking; displaced mentors re-queue to propose to their next choice.
 
 Phase 2 — Greedy fill:
-  Any team still below TEAM_CAPACITY gets the most-available unassigned mentors
-  appended to it. Ensures every registered+active team reaches capacity even when
-  preference coverage is sparse (e.g. not all preferences submitted).
+  Even fill: one mentor at a time goes to the team with the fewest mentors, taken
+  from the least-loaded mentors with spare capacity, until no team under
+  TEAM_CAPACITY can take one. Then rebalance: while a team holds fewer than
+  TEAM_FLOOR mentors and another holds TEAM_CAPACITY, a full team hands its
+  least-preferred mentor to the shortest team, and the even fill runs again so the
+  donor can take a mentor who still has room. Every team reaches TEAM_FLOOR
+  whenever there are at least 2 mentors and 3 x mentors >= 2 x teams.
 """
 
 import logging
@@ -22,6 +26,7 @@ from app.services import event_notifier, matching_events
 logger = logging.getLogger(__name__)
 
 TEAM_CAPACITY = 3  # mentors per team
+TEAM_FLOOR = 2  # mentors every team should get when supply allows
 MENTOR_CAPACITY = 3  # teams per mentor
 
 
@@ -35,14 +40,16 @@ def run_gale_shapley():
         without a mentor included.
 
     Always attempts to run — incomplete preference submissions produce warnings
-    rather than an outright failure. Phase 2 greedy fill covers the gaps.
+    rather than an outright failure. Phase 2 greedy fill covers the gaps, evenly.
+    Teams and mentors are read in id order, which fixes the phase 1 queue and
+    every tie-break, so the same data always gives the same matching.
     """
     warnings = []
 
     all_team_rows = (
         execute_query(
             current_app,
-            "SELECT id FROM teams WHERE status = 'active' AND is_registered = TRUE",
+            "SELECT id FROM teams WHERE status = 'active' AND is_registered = TRUE ORDER BY id",
             fetch_all=True,
         )
         or []
@@ -52,7 +59,7 @@ def run_gale_shapley():
     all_mentor_rows = (
         execute_query(
             current_app,
-            "SELECT id FROM mentors WHERE status = 'active'",
+            "SELECT id FROM mentors WHERE status = 'active' ORDER BY id",
             fetch_all=True,
         )
         or []
@@ -111,10 +118,11 @@ def run_gale_shapley():
 
 
 def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, warnings=None):
-    """Pure Gale-Shapley (mentor-proposing) + greedy fill.
+    """Pure Gale-Shapley (mentor-proposing) + greedy fill (even fill, then rebalance).
 
     This is intentionally free of Flask/DB dependencies so it can be unit-tested
-    with arbitrary in-memory data.
+    with arbitrary in-memory data. Ties go by position in all_teams and
+    all_mentors.
 
     Args:
         all_teams:        list of team IDs eligible for matching
@@ -200,29 +208,70 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
             in_queue.add(mentor_id)
 
     # ── Phase 2: Greedy fill ─────────────────────────────────────────────────
-    # Fill teams that are still below capacity using mentors that still have room.
-    # Process teams with fewest mentors first; prefer mentors with fewest assignments
-    # (spreads load evenly instead of piling onto already-busy mentors).
-    def _mentor_load(m):
-        return len(mentor_assignments.get(m, []))
+    team_order = {t: i for i, t in enumerate(all_teams)}
+    mentor_order = {m: i for i, m in enumerate(all_mentors)}
 
-    for team_id in sorted(all_teams, key=lambda t: len(team_assignments[t])):
-        if len(team_assignments[team_id]) >= TEAM_CAPACITY:
-            continue
-        candidates = sorted(
-            [
-                m
-                for m in all_mentors
-                if len(mentor_assignments[m]) < MENTOR_CAPACITY
-                and team_id not in mentor_assignments[m]
-            ],
-            key=_mentor_load,
+    def _even_fill():
+        # One mentor per step to the team with the fewest mentors. A team with no
+        # eligible mentor is skipped rather than ending the fill, or a team that
+        # already holds the only mentor with room left would starve every other team.
+        while True:
+            target, eligible = None, []
+            for team_id in all_teams:
+                held = len(team_assignments[team_id])
+                if held >= TEAM_CAPACITY or (
+                    target is not None and held >= len(team_assignments[target])
+                ):
+                    continue
+                free = [
+                    m
+                    for m in all_mentors
+                    if len(mentor_assignments[m]) < MENTOR_CAPACITY
+                    and team_id not in mentor_assignments[m]
+                ]
+                if free:
+                    target, eligible = team_id, free
+            if target is None:
+                return
+            mentor_id = min(eligible, key=lambda m: len(mentor_assignments[m]))
+            team_assignments[target].append(mentor_id)
+            mentor_assignments[mentor_id].append(target)
+
+    def _how_unwanted(donor, mentor_id):
+        # Smallest first: unranked by the donor (inf), then the largest rank, then
+        # a mentor who didn't rank the donor.
+        return (
+            -team_pref_ranks.get(donor, {}).get(mentor_id, float("inf")),
+            donor in mentor_pref_lists.get(mentor_id, []),
         )
-        for mentor_id in candidates:
-            if len(team_assignments[team_id]) >= TEAM_CAPACITY:
-                break
-            team_assignments[team_id].append(mentor_id)
-            mentor_assignments[mentor_id].append(team_id)
+
+    def _rebalance_once():
+        # A full team gives the team furthest under the floor the mentor it wants
+        # least. Returns False when no team is under the floor or none is full.
+        short = [t for t in all_teams if len(team_assignments[t]) < TEAM_FLOOR]
+        donors = [t for t in all_teams if len(team_assignments[t]) >= TEAM_CAPACITY]
+        if not short or not donors:
+            return False
+        recipient = min(short, key=lambda t: len(team_assignments[t]))
+        offers = []
+        for donor in donors:
+            spare = [m for m in team_assignments[donor] if m not in team_assignments[recipient]]
+            mentor_id = min(spare, key=lambda m, d=donor: (*_how_unwanted(d, m), mentor_order[m]))
+            offers.append((*_how_unwanted(donor, mentor_id), team_order[donor], donor, mentor_id))
+        *_, donor, mentor_id = min(offers)
+        team_assignments[donor].remove(mentor_id)
+        mentor_assignments[mentor_id].remove(donor)
+        team_assignments[recipient].append(mentor_id)
+        mentor_assignments[mentor_id].append(recipient)
+        return True
+
+    # After each move the donor is at 2 and may take a mentor who still has room,
+    # so fill again. This ends because fill steps only add assignments, never more
+    # than 3 per mentor in all, and with no fill in between each move leaves one
+    # fewer full team. A fill that could remove assignments would break that.
+    _even_fill()
+    while _rebalance_once():
+        _even_fill()
 
     # Collect and sort final assignments
     assignments = [
@@ -237,6 +286,12 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
         warnings.append(
             f"{teams_underfilled} team(s) received fewer than {TEAM_CAPACITY} mentors"
             " — not enough mentors available to fill all slots"
+        )
+    teams_under_floor = sum(1 for t in all_teams if len(team_assignments[t]) < TEAM_FLOOR)
+    if teams_under_floor:
+        warnings.append(
+            f"{teams_under_floor} team(s) received fewer than {TEAM_FLOOR} mentors"
+            f": not enough mentors to give every team {TEAM_FLOOR}"
         )
 
     return assignments, warnings

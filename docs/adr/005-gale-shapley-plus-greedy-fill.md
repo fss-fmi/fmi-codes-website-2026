@@ -1,6 +1,6 @@
 # ADR-005: Many-to-many Gale-Shapley plus greedy fill for mentor matching
 
-**Status**: accepted
+**Status**: accepted. Phase 2 was later changed from topping each team up to 3 in turn to an even fill plus a rebalance, so a mentor shortage spreads across teams instead of leaving some at 0: with at least 12 active mentors for 18 teams, every team gets 2 or 3.
 
 ## Context
 
@@ -11,7 +11,7 @@ Mentor assignment used to be done by hand, which was slow and open to favouritis
 `backend/app/services/matching_service.py` runs two phases:
 
 1. **Mentor-proposing Gale-Shapley, many-to-many**, with `TEAM_CAPACITY = 3` and `MENTOR_CAPACITY = 3`. Teams keep their best-ranked proposers and bump the rest; unranked mentors rank last.
-2. **Greedy fill**: teams with the fewest mentors are topped up to 3 with the least-loaded mentors that still have capacity, regardless of preferences.
+2. **Greedy fill**: mentors with spare capacity go out one at a time, each to the team with the fewest mentors and least-loaded mentors first, regardless of preferences. Then, while a team has fewer than 2 and another has 3, the full team gives the short one the mentor it wants least, and the fill runs again.
 
 Missing preferences and underfilled teams produce warnings, not failures. Results replace `team_mentors` and stay hidden from teams and mentors until the admin confirms them. The algorithm core is a pure function so it can be unit tested without a database.
 
@@ -19,4 +19,4 @@ Missing preferences and underfilled teams produce warnings, not failures. Result
 
 - **Easier**: matching is fair and repeatable; the admin can re-run it until happy; partial preference data still yields a complete assignment.
 - **Harder**: greedy fill can assign a team mentors it never ranked, and a mentor can carry up to 3 teams on site. Phase 1 is not a textbook one-to-one stable matching, so stability guarantees are informal.
-- **Technical debt**: each mentor covers at most 3 teams, so filling 18 teams to 3 needs at least 18 active mentors and the 2-mentor floor needs at least 12. Below that, some teams end up short with only a warning; nothing enforces the 2-mentor minimum. Greedy fill also tops each team all the way to 3 before moving to the next, so a shortage lands unevenly (some teams at 3, the last ones at 0 or 1) instead of spreading everyone at 2. Re-running after confirming un-confirms the published results with no warning on the site; only the event feed mentions it.
+- **Technical debt**: each mentor covers at most 3 teams, so filling 18 teams to 3 needs at least 18 active mentors and the 2-mentor floor needs at least 12. Below 12 the floor can't be met and the teams under 2 get only a warning. Re-running after confirming un-confirms the published results; Mission Control's run and confirm dialogs warn about it.

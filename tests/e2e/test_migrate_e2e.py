@@ -5,6 +5,7 @@ Covers:
  - A second run applies nothing
  - A failing file rolls back on its own and stops the run
  - The advisory lock serialises concurrent runners
+ - schema.sql re-runs without an error on a database with every migration applied
 """
 
 import sys
@@ -12,15 +13,18 @@ import threading
 import time
 from pathlib import Path
 
+import psycopg2
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
+BACKEND_DIR = Path(__file__).parent.parent.parent / "backend"
+sys.path.insert(0, str(BACKEND_DIR))
 
 from database import migrate
 
 pytestmark = pytest.mark.e2e
 
 PROBE_TABLES = ("migrate_probe_ok", "migrate_probe_bad", "migrate_probe_never")
+SCHEMA_PATH = BACKEND_DIR / "database" / "schema.sql"
 
 
 @pytest.fixture()
@@ -104,3 +108,17 @@ def test_concurrent_runner_waits_for_the_lock(db_url, db_conn, fresh_history, tm
     runner.join(timeout=10)
     assert not runner.is_alive()
     assert result["applied"] == ["001_ok.sql"]
+
+
+def test_schema_reruns_on_a_migrated_database(db_url, _schema_applied):
+    # Its own connection, not the autocommit db_conn: a failing multi-statement
+    # string there would leave the shared session aborted for every later test.
+    # Not `with psycopg2.connect(...)`, whose exit commits.
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET LOCAL lock_timeout = '10s'")
+            cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+    finally:
+        conn.rollback()
+        conn.close()

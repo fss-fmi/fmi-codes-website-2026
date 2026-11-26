@@ -181,11 +181,11 @@ Shows which teams and mentors have submitted their rankings (✓ or —). Use it
 ### Matching tab
 
 1. Close **PREFERENCE SUBMISSIONS** on the [Site tab](#site-tab) at the deadline, so the matching runs on a fixed set of rankings. A ranking still being saved at that moment either lands before the close or is refused, never after it. While submissions are open the **RUN MATCHING** dialog warns that rankings can still change after the run, but it still lets you run one, for example as a test before the deadline. If a registered team leaves or disbands after the close, the mentors who ranked it are left with 2 picks, and a team promoted from the queue has none. Check the [Preferences tab](#preferences-tab), and to let them rank, open submissions again for a short announced window before the final run.
-2. Click **RUN MATCHING** and confirm. The results appear as team → mentor pairs. Every team gets up to 3 mentors, aiming for 2 or 3; the run still works if some preferences are missing. If the run has warnings (teams or mentors that never ranked, teams left under 3 mentors), a warning toast lists them; read it before you confirm.
-3. Review the pairs. You can run the matching again at any time; each run replaces the previous results.
+2. Click **RUN MATCHING** and confirm. The results appear as team → mentor pairs. Every team gets up to 3 mentors, aiming for 2 or 3; the run still works if some preferences are missing. When there aren't enough mentors for 3 each, they are shared out evenly so every team gets at least 2 (that takes at least 12 active mentors for 18 teams). If the run has warnings (teams or mentors that never ranked, teams left under 3 mentors, teams left under 2), a warning toast lists them; read it before you confirm.
+3. Review the pairs. You can run the matching again at any time; each run replaces the previous results. **EXPORT** shows them as plain text to share with the organizers: a header with the time (UTC), the number of assignments and the number of teams with mentors, then one line per team listing its mentors and their companies, then any violations (a team or mentor over 3). **COPY TO CLIPBOARD** copies it. A new run closes the box, so export again after it.
 4. Click **CONFIRM** to publish. Teams and mentors now see their assignments instead of their preferences.
 
-Note: although the confirm dialog says it cannot be undone, running the matching again un-publishes the results until you confirm again.
+Running the matching again after you confirm hides the results from teams and mentors until you confirm again. Both dialogs say so: CONFIRM always, and **RUN MATCHING** whenever the current results are published.
 
 ### Following matching in Slack
 
@@ -212,5 +212,4 @@ Registration, preference submission, the rankings and the mentor roster are on t
 
 ### Known issues
 
-- The **EXPORT** button on the Matching tab currently shows nothing. Use the results list on screen instead.
 - The admin password cannot be changed or reset from the site.

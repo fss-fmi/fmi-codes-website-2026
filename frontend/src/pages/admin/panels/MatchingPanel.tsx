@@ -9,6 +9,38 @@ import { useConfirmAction } from '@/hooks/useConfirmAction';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 
+interface MatchingExport {
+  teams: { team_name: string; mentors: { mentor_name: string; company_name: string }[] }[];
+  total_assignments: number;
+  violations: string[];
+  generated_at: string;
+}
+
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function formatExport(d: MatchingExport): string {
+  // generated_at is the server's UTC isoformat(). Slicing it keeps the text the
+  // same in every time zone; Date parsing of its 6-digit fraction varies by engine.
+  const lines = [
+    `MATCHING EXPORT  ${d.generated_at.slice(0, 16).replace('T', ' ')} UTC`,
+    `${plural(d.total_assignments, 'assignment')}, ${plural(d.teams.length, 'team')}`,
+    '',
+  ];
+  if (d.teams.length === 0) lines.push('No assignments.');
+  for (const t of d.teams) {
+    const mentors = t.mentors.map((m) =>
+      m.company_name ? `${m.mentor_name} (${m.company_name})` : m.mentor_name,
+    );
+    lines.push(`${t.team_name}: ${mentors.join(', ')}`);
+  }
+  lines.push('');
+  if (d.violations.length === 0) lines.push('Violations: none');
+  else lines.push('Violations:', ...d.violations.map((v) => `- ${v}`));
+  return lines.join('\n');
+}
+
 export default function MatchingPanel() {
   const qc = useQueryClient();
   const { PREFERENCES_OPEN } = useConfig();
@@ -35,6 +67,7 @@ export default function MatchingPanel() {
     setRunning(true);
     try {
       const d = await api.post<{ warnings?: string[] }>('/api/admin/run-matching', {});
+      setExportData(null);
       qc.invalidateQueries({ queryKey: ['matching-status'] });
       refetchResults();
       if (d.warnings?.length) {
@@ -57,23 +90,31 @@ export default function MatchingPanel() {
   }
 
   async function askRun() {
-    // The polled flags can be 30 s old, and a scheduled close may have just fired.
-    let open = PREFERENCES_OPEN;
-    try {
-      const flags = await qc.fetchQuery<{ PREFERENCES_OPEN: boolean }>({
-        queryKey: ['config'],
-        queryFn: () => api.get('/api/config'),
-        staleTime: 0,
-      });
-      open = flags.PREFERENCES_OPEN;
-    } catch {
-      // Keep the last polled value.
-    }
+    // The polled flags can be 30 s old, a scheduled close may have just fired and
+    // another admin tab may have confirmed. Plain requests, not fetchQuery, which
+    // would join a request already in flight from before the click. A failed read
+    // keeps the cached value.
+    const [flags, status] = await Promise.allSettled([
+      api.get<{ PREFERENCES_OPEN: boolean }>('/api/config'),
+      api.get<{ success: boolean; confirmed: boolean }>('/api/matching-status'),
+    ]);
+    // Refetch rather than setQueryData: an older request still in flight would
+    // land after a set and overwrite it, while invalidating cancels it.
+    qc.invalidateQueries({ queryKey: ['config'] });
+    qc.invalidateQueries({ queryKey: ['matching-status'] });
+    const open = flags.status === 'fulfilled' ? flags.value.PREFERENCES_OPEN : PREFERENCES_OPEN;
+    const published =
+      status.status === 'fulfilled' ? status.value.confirmed : (data?.confirmed ?? false);
     confirm({
       title: 'RUN MATCHING',
-      description: `Run the matching algorithm? This will overwrite any previous results.${
-        open ? ' Preference submissions are still open, so rankings can change after this run.' : ''
-      }`,
+      description: [
+        'Run the matching algorithm? This will overwrite any previous results.',
+        published &&
+          'The current results are published; this run hides them until you confirm again.',
+        open && 'Preference submissions are still open, so rankings can change after this run.',
+      ]
+        .filter(Boolean)
+        .join(' '),
       action: doRunMatching,
       successMessage: 'Matching complete.',
     });
@@ -82,7 +123,8 @@ export default function MatchingPanel() {
   function askConfirm() {
     confirm({
       title: 'CONFIRM MATCHING',
-      description: 'Confirm and publish matching results? This cannot be undone.',
+      description:
+        'Publish the matching results? Teams and mentors will see their assignments. Running matching again hides them until you confirm again.',
       dangerous: true,
       action: doConfirmMatching,
       successMessage: 'Matching confirmed.',
@@ -91,8 +133,8 @@ export default function MatchingPanel() {
 
   async function fetchExport() {
     try {
-      const d = await api.get<{ export: string }>('/api/admin/matching-export');
-      setExportData(d.export);
+      const d = await api.get<MatchingExport>('/api/admin/matching-export');
+      setExportData(formatExport(d));
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
     }
