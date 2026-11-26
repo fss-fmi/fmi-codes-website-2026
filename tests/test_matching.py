@@ -1,4 +1,4 @@
-"""Unit tests for the pure Gale-Shapley + greedy-fill matching algorithm.
+"""Unit tests for the pure Gale-Shapley + greedy-fill (even fill, rebalance) matching algorithm.
 
 All tests call `_run_algorithm` directly with in-memory data — no Flask app
 context or database connection required.
@@ -157,6 +157,45 @@ class TestGreedyFill:
 
         assert len(assignments_for_team(assignments, 1)) == TEAM_CAPACITY
         assert len(assignments_for_team(assignments, 2)) == TEAM_CAPACITY
+
+    def test_short_supply_is_shared_evenly(self):
+        """4 mentors x 3 slots = 12 seats for 6 teams: 2 each, not 3,3,3,3,0,0."""
+        teams = list(range(1, 7))
+        mentors = [10, 11, 12, 13]
+
+        assignments, warnings = _run_algorithm(teams, mentors, {}, {})
+
+        assert [len(assignments_for_team(assignments, t)) for t in teams] == [2] * 6
+        assert all(len(assignments_for_mentor(assignments, m)) <= MENTOR_CAPACITY for m in mentors)
+        assert any(w.startswith("6 team(s) received fewer than 3") for w in warnings)
+        assert not any("fewer than 2" in w for w in warnings)
+
+    def test_rebalance_moves_the_least_wanted_mentor_to_an_empty_team(self):
+        """Phase 1 spends all 9 slots on teams 1-3, so team 4 can only be served
+        by full teams giving up the mentor they ranked lowest."""
+        teams = [1, 2, 3, 4]
+        mentors = [10, 11, 12]
+        mentor_prefs = {m: [1, 2, 3] for m in mentors}
+        team_prefs = {
+            1: {10: 1, 11: 2, 12: 3},
+            2: {12: 1, 11: 2, 10: 3},
+            3: {11: 1, 10: 2, 12: 3},
+        }
+
+        assignments, warnings = _run_algorithm(teams, mentors, mentor_prefs, team_prefs)
+
+        assert (4, 12) in assignments and (4, 10) in assignments
+        assert (1, 12) not in assignments and (2, 10) not in assignments
+        assert [len(assignments_for_team(assignments, t)) for t in teams] == [2, 2, 3, 2]
+        assert all(len(assignments_for_mentor(assignments, m)) <= MENTOR_CAPACITY for m in mentors)
+        assert not any("fewer than 2" in w for w in warnings)
+
+    def test_floor_unreachable_warns(self):
+        """1 mentor covers 3 teams once each; nobody can reach 2."""
+        assignments, warnings = _run_algorithm([1, 2, 3], [10], {}, {})
+
+        assert sorted(assignments) == [(1, 10), (2, 10), (3, 10)]
+        assert any(w.startswith("3 team(s) received fewer than 2") for w in warnings)
 
     def test_mentor_not_double_assigned_to_same_team(self):
         teams = [1]

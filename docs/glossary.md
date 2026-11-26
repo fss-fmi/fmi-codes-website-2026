@@ -68,7 +68,7 @@ The stable-matching algorithm used in phase 1 of **Matching**. Here it is mentor
 
 ### Greedy fill
 
-Phase 2 of **Matching**. Tops up any team still below 3 mentors with the least-loaded mentors that have spare capacity, regardless of preferences.
+Phase 2 of **Matching**. Hands out the mentors with spare capacity one at a time, each to the team with the fewest mentors and from the least-loaded mentors first, regardless of preferences, so a shortage leaves every team at 2 rather than some at 0. If a team is still under 2 and another has 3, the full team gives up the mentor it wants least.
 
 ## J
 
