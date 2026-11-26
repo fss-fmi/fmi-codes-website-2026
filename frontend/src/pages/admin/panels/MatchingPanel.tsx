@@ -91,19 +91,17 @@ export default function MatchingPanel() {
 
   async function askRun() {
     // The polled flags can be 30 s old, a scheduled close may have just fired and
-    // another admin tab may have confirmed. A failed read keeps the cached value.
+    // another admin tab may have confirmed. Plain requests, not fetchQuery, which
+    // would join a request already in flight from before the click. A failed read
+    // keeps the cached value.
     const [flags, status] = await Promise.allSettled([
-      qc.fetchQuery<{ PREFERENCES_OPEN: boolean }>({
-        queryKey: ['config'],
-        queryFn: () => api.get('/api/config'),
-        staleTime: 0,
-      }),
-      qc.fetchQuery<{ success: boolean; confirmed: boolean }>({
-        queryKey: ['matching-status'],
-        queryFn: () => api.get('/api/matching-status'),
-        staleTime: 0,
-      }),
+      api.get<{ PREFERENCES_OPEN: boolean }>('/api/config'),
+      api.get<{ success: boolean; confirmed: boolean }>('/api/matching-status'),
     ]);
+    // Refetch rather than setQueryData: an older request still in flight would
+    // land after a set and overwrite it, while invalidating cancels it.
+    qc.invalidateQueries({ queryKey: ['config'] });
+    qc.invalidateQueries({ queryKey: ['matching-status'] });
     const open = flags.status === 'fulfilled' ? flags.value.PREFERENCES_OPEN : PREFERENCES_OPEN;
     const published =
       status.status === 'fulfilled' ? status.value.confirmed : (data?.confirmed ?? false);

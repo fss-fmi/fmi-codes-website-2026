@@ -1,6 +1,6 @@
 # ADR-005: Many-to-many Gale-Shapley plus greedy fill for mentor matching
 
-**Status**: accepted. Phase 2 was later changed from topping each team up to 3 in turn to an even fill plus a rebalance, so a mentor shortage leaves every team at 2 instead of some at 0.
+**Status**: accepted. Phase 2 was later changed from topping each team up to 3 in turn to an even fill plus a rebalance, so a mentor shortage spreads across teams instead of leaving some at 0: with at least 12 active mentors for 18 teams, every team gets 2 or 3.
 
 ## Context
 
@@ -11,7 +11,7 @@ Mentor assignment used to be done by hand, which was slow and open to favouritis
 `backend/app/services/matching_service.py` runs two phases:
 
 1. **Mentor-proposing Gale-Shapley, many-to-many**, with `TEAM_CAPACITY = 3` and `MENTOR_CAPACITY = 3`. Teams keep their best-ranked proposers and bump the rest; unranked mentors rank last.
-2. **Greedy fill**: mentors with spare capacity go out one at a time, each to the team with the fewest mentors and least-loaded mentors first, regardless of preferences. Then, while a team has fewer than 2 and another has 3, the full team gives the short one the mentor it wants least.
+2. **Greedy fill**: mentors with spare capacity go out one at a time, each to the team with the fewest mentors and least-loaded mentors first, regardless of preferences. Then, while a team has fewer than 2 and another has 3, the full team gives the short one the mentor it wants least, and the fill runs again.
 
 Missing preferences and underfilled teams produce warnings, not failures. Results replace `team_mentors` and stay hidden from teams and mentors until the admin confirms them. The algorithm core is a pure function so it can be unit tested without a database.
 

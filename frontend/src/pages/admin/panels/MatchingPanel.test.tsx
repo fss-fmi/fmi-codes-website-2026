@@ -14,7 +14,7 @@ const exportFailure = vi.hoisted(() => ({ reject: null as Error | null }));
 const exportBody = vi.hoisted(() => ({ value: null as object | null }));
 // The body is built when the request is made, so a later change to `confirmed`
 // only reaches requests made after it.
-const status = vi.hoisted(() => ({ confirmed: false, calls: 0 }));
+const status = vi.hoisted(() => ({ confirmed: false }));
 const results = vi.hoisted(() => ({ rows: [] as { team_name: string; mentor_name: string }[] }));
 
 vi.mock('@/lib/api', () => ({
@@ -32,7 +32,6 @@ vi.mock('@/lib/api', () => ({
         return Promise.resolve(exportBody.value);
       }
       if (url === '/api/matching-status') {
-        status.calls += 1;
         return Promise.resolve({ success: true, confirmed: status.confirmed });
       }
       return Promise.resolve({ success: true, results: results.rows });
@@ -48,7 +47,7 @@ afterEach(() => {
   Object.assign(runMatching, { reject: null, warnings: [] });
   exportFailure.reject = null;
   exportBody.value = null;
-  Object.assign(status, { confirmed: false, calls: 0 });
+  status.confirmed = false;
   results.rows = [];
 });
 
@@ -67,6 +66,7 @@ function renderPanel() {
       </ToastProvider>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 // jsdom never opens the <dialog>, so read its text directly.
@@ -118,8 +118,12 @@ test('RUN MATCHING says nothing about publishing while results are unconfirmed',
 
 test('the published sentence follows a confirm made since the panel loaded', async () => {
   Object.assign(flags, { polled: false, live: false });
-  renderPanel();
-  await waitFor(() => expect(status.calls).toBeGreaterThan(0));
+  const client = renderPanel();
+  // The cache must hold the unconfirmed answer, or a dialog reading only the
+  // cache would pass too.
+  await waitFor(() =>
+    expect(client.getQueryData(['matching-status'])).toEqual({ success: true, confirmed: false }),
+  );
   status.confirmed = true;
   expect(await clickRun()).toContain(PUBLISHED);
 });

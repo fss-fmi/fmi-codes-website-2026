@@ -10,7 +10,8 @@ Phase 2 — Greedy fill:
   from the least-loaded mentors with spare capacity, until no team under
   TEAM_CAPACITY can take one. Then rebalance: while a team holds fewer than
   TEAM_FLOOR mentors and another holds TEAM_CAPACITY, a full team hands its
-  least-preferred mentor to the shortest team. Every team reaches TEAM_FLOOR
+  least-preferred mentor to the shortest team, and the even fill runs again so the
+  donor can take a mentor who still has room. Every team reaches TEAM_FLOOR
   whenever there are at least 2 mentors and 3 x mentors >= 2 x teams.
 """
 
@@ -207,36 +208,34 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
             in_queue.add(mentor_id)
 
     # ── Phase 2: Greedy fill ─────────────────────────────────────────────────
-    # Even fill: one mentor per step to the team with the fewest mentors. A team
-    # with no eligible mentor is skipped rather than ending the fill, or a team that
-    # already holds the only mentor with room left would starve every other team.
-    while True:
-        target, eligible = None, []
-        for team_id in all_teams:
-            held = len(team_assignments[team_id])
-            if held >= TEAM_CAPACITY or (
-                target is not None and held >= len(team_assignments[target])
-            ):
-                continue
-            free = [
-                m
-                for m in all_mentors
-                if len(mentor_assignments[m]) < MENTOR_CAPACITY
-                and team_id not in mentor_assignments[m]
-            ]
-            if free:
-                target, eligible = team_id, free
-        if target is None:
-            break
-        mentor_id = min(eligible, key=lambda m: len(mentor_assignments[m]))
-        team_assignments[target].append(mentor_id)
-        mentor_assignments[mentor_id].append(target)
-
-    # Rebalance: once mentors run out, a full team gives one of its mentors to a
-    # team under the floor. Mentor loads stay the same, and a donor drops to 2 and
-    # never donates again, so this ends.
     team_order = {t: i for i, t in enumerate(all_teams)}
     mentor_order = {m: i for i, m in enumerate(all_mentors)}
+
+    def _even_fill():
+        # One mentor per step to the team with the fewest mentors. A team with no
+        # eligible mentor is skipped rather than ending the fill, or a team that
+        # already holds the only mentor with room left would starve every other team.
+        while True:
+            target, eligible = None, []
+            for team_id in all_teams:
+                held = len(team_assignments[team_id])
+                if held >= TEAM_CAPACITY or (
+                    target is not None and held >= len(team_assignments[target])
+                ):
+                    continue
+                free = [
+                    m
+                    for m in all_mentors
+                    if len(mentor_assignments[m]) < MENTOR_CAPACITY
+                    and team_id not in mentor_assignments[m]
+                ]
+                if free:
+                    target, eligible = team_id, free
+            if target is None:
+                return
+            mentor_id = min(eligible, key=lambda m: len(mentor_assignments[m]))
+            team_assignments[target].append(mentor_id)
+            mentor_assignments[mentor_id].append(target)
 
     def _how_unwanted(donor, mentor_id):
         # Smallest first: unranked by the donor (inf), then the largest rank, then
@@ -246,11 +245,13 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
             donor in mentor_pref_lists.get(mentor_id, []),
         )
 
-    while True:
+    def _rebalance_once():
+        # A full team gives the team furthest under the floor the mentor it wants
+        # least. Returns False when no team is under the floor or none is full.
         short = [t for t in all_teams if len(team_assignments[t]) < TEAM_FLOOR]
         donors = [t for t in all_teams if len(team_assignments[t]) >= TEAM_CAPACITY]
         if not short or not donors:
-            break
+            return False
         recipient = min(short, key=lambda t: len(team_assignments[t]))
         offers = []
         for donor in donors:
@@ -262,6 +263,15 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
         mentor_assignments[mentor_id].remove(donor)
         team_assignments[recipient].append(mentor_id)
         mentor_assignments[mentor_id].append(recipient)
+        return True
+
+    # After each move the donor is at 2 and may take a mentor who still has room,
+    # so fill again. This ends because fill steps only add assignments, never more
+    # than 3 per mentor in all, and with no fill in between each move leaves one
+    # fewer full team. A fill that could remove assignments would break that.
+    _even_fill()
+    while _rebalance_once():
+        _even_fill()
 
     # Collect and sort final assignments
     assignments = [
@@ -281,7 +291,7 @@ def _run_algorithm(all_teams, all_mentors, mentor_pref_lists, team_pref_ranks, w
     if teams_under_floor:
         warnings.append(
             f"{teams_under_floor} team(s) received fewer than {TEAM_FLOOR} mentors"
-            f" — not enough mentors to give every team {TEAM_FLOOR}"
+            f": not enough mentors to give every team {TEAM_FLOOR}"
         )
 
     return assignments, warnings
