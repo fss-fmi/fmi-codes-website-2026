@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto';
 import type { IndexHtmlTransformContext, Plugin } from 'vite';
 
 /**
- * Writes `<meta name="build-id">` into the built index.html: a hash of the bundle's file
- * names, which carry Vite's content hashes, so it changes only when the built JS or CSS does.
- * Open tabs compare it with the one served now to offer a reload (NewVersionBanner).
+ * Writes `<meta name="build-id" content="<hash>" data-built-at="<epoch ms>">` into the built
+ * index.html. The hash covers the bundle's file names, which carry Vite's content hashes, so it
+ * changes only when the built JS or CSS does; the build time lets an open tab tell a newer
+ * build from an old pod still serving mid-rollout (nextState in src/lib/buildId.ts).
  */
 export function buildId(): Plugin {
   return {
@@ -21,7 +22,13 @@ export function buildId(): Plugin {
           .filter((name) => !name.endsWith('.html'))
           .sort();
         const id = createHash('sha256').update(names.join('\n')).digest('hex').slice(0, 12);
-        return [{ tag: 'meta', attrs: { name: 'build-id', content: id }, injectTo: 'head' }];
+        return [
+          {
+            tag: 'meta',
+            attrs: { name: 'build-id', content: id, 'data-built-at': String(Date.now()) },
+            injectTo: 'head',
+          },
+        ];
       },
     },
   };
