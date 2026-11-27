@@ -16,6 +16,8 @@ This guide explains how to use the FMI{Codes} website if you are a **participant
 
 On a phone, open the menu with the **☰** button in the top corner.
 
+If a card in the bottom-left corner says **A new version of the site is available.**, the site was updated while your page was open. Click **RELOAD** when you're ready: anything typed into a form you haven't sent is lost. **×** hides the card until the next update.
+
 ### Reporting a problem
 
 Every page has a **🐛** button. Click it, fill in **What were you doing?** and **What happened instead?**, then click **SEND REPORT**. The organizers receive it right away.

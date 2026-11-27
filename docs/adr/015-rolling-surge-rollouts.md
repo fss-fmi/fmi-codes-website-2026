@@ -24,6 +24,7 @@ Blue-green was considered: bring up a full second set, switch all traffic to it 
   - Migrations stay backward compatible with the previous release: add first, take away a release later ([Schema management](../data.md#schema-management)).
   - Nginx answers a missing `/assets/` file with 404 instead of `index.html`, caches those hashed files as immutable and revalidates `index.html`. Any other `/assets/` status, the 404 included, is `no-store`, so neither a browser nor Cloudflare keeps one past the rollout that caused it.
   - `frontend/public/asset-guard.js` is a plain script loaded before the bundle. The bundle is the whole app, so the app can't notice its own failed load. When a same-origin `/assets/` script or stylesheet fails, the guard reloads after 2 s, then 4, 6, 8 and 10 s on further tries, at most 5 times per tab, counting in sessionStorage. It resets only after a load with no failed file and does nothing when storage is blocked, so it can't loop.
+  - The new-version banner (#307) covers what the guard can't: a tab that loaded fine and keeps the old JS. It compares the build id and build time in the served `index.html` with its own and offers a reload for a later build at once, but for an earlier one (a rollback) only once two checks in a row serve it, so an old pod still serving mid-rollout doesn't trigger it ([Rollouts](../deployment.md#rollouts)).
 - `tests/test_rollout_safety.py` holds all of it, and `tests/test_capacity_budget.py` reads `maxSurge` from the manifest.
 
 ## Consequences
