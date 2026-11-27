@@ -96,6 +96,7 @@ nav:
           - ADR-017 Prod through a Cloudflare Tunnel: adr/017-prod-through-cloudflare-tunnel.md
           - ADR-018 Mentor seed in a SOPS Secret: adr/018-mentor-seed-in-sops-secret.md
           - ADR-019 Confirmed matching freezes teams: adr/019-freeze-teams-on-confirmed-matching.md
+          - ADR-020 Main-only secret environments: adr/020-main-only-secret-environments.md
   - Testing: testing.md
   - Deployment:
       - Release and Operations: deployment.md

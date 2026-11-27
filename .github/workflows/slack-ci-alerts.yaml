@@ -7,6 +7,7 @@ name: Slack CI alerts
 # workflow_run has secrets even for runs on fork PRs, so this never checks out
 # or runs PR code: only the default branch's scripts, reading the run from the
 # event payload and the REST API. Failed-step logs are posted escaped.
+# The Slack token lives in the slack environment, which only main can use (#163).
 # Skips quietly while SLACK_BOT_TOKEN or SLACK_ACTIONS_CHANNEL_ID is unset.
 
 on:
@@ -37,6 +38,9 @@ jobs:
     if: contains(fromJSON('["success", "failure", "timed_out", "startup_failure"]'), github.event.workflow_run.conclusion)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment:
+      name: slack
+      deployment: false
 
     steps:
       - name: Checkout the default branch's scripts

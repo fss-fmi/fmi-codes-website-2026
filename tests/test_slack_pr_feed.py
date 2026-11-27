@@ -2,6 +2,8 @@
 
 import io
 import json
+import math
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -24,9 +26,12 @@ class FakeSlack:
     def __init__(self):
         self.messages = []
         self.updates = 0
+        # Epoch seconds for the next ts; unset, ts counts 1.000, 2.000, ...
+        self.now = None
 
     def post(self, channel, text, thread_ts=None, metadata=None):
-        ts = f"{len(self.messages) + 1}.000"
+        n = len(self.messages) + 1
+        ts = f"{n}.000" if self.now is None else f"{self.now + n / 1000:.6f}"
         self.messages.append({"ts": ts, "text": text, "thread_ts": thread_ts, "metadata": metadata})
         return ts
 
@@ -118,13 +123,75 @@ def review_event(pr, state, reviewer="carol", review_id=1, body=""):
     }
 
 
+REPO_ID = 4242
+RUN_CREATED = "2026-11-03T01:00:00Z"
+SAME_REPO = {"full_name": REPO, "owner": {"login": "fss-fmi"}}
+
+
+def rest_review(
+    state, reviewer="carol", review_id=1, body="", submitted_at="2026-11-03T00:59:00Z", **extra
+):
+    """A review as GET /pulls/{n}/reviews returns it: the state in upper case."""
+    review = {
+        "id": review_id,
+        "state": state.upper(),
+        "body": body,
+        "user": {"login": reviewer, "type": "User"},
+        "html_url": f"https://github.com/{REPO}/pull/7#pullrequestreview-{review_id}",
+        "submitted_at": submitted_at,
+    }
+    review.update(extra)
+    return review
+
+
+def relay_run(
+    pr,
+    created_at=RUN_CREATED,
+    head_sha=None,
+    pull_requests=None,
+    head_repository=SAME_REPO,
+    event="pull_request_review",
+):
+    """The workflow_run event for a finished PR review relay run on *pr*."""
+    sha = head_sha or pr["head"].get("sha") or "reviewedsha"
+    if pull_requests is None:
+        pull_requests = [
+            {"number": pr["number"], "head": {"sha": sha}, "base": {"repo": {"id": REPO_ID}}}
+        ]
+    return {
+        "action": "completed",
+        "workflow_run": {
+            "event": event,
+            "created_at": created_at,
+            "head_sha": sha,
+            "head_branch": pr["head"]["ref"],
+            "head_repository": head_repository,
+            "pull_requests": pull_requests,
+            "repository": {"id": REPO_ID, "full_name": REPO},
+        },
+    }
+
+
+def review(feed, pr, *reviews, **run):
+    """Submit *reviews* on *pr*, then deliver the relay run that follows."""
+    feed.github.pr = pr
+    feed.github.reviews += reviews
+    feed.handle("workflow_run", relay_run(pr, **run))
+
+
 @pytest.fixture()
 def slack():
     return FakeSlack()
 
 
-def github_stub(files=(), pr=None, read_only=("mallory",), error=None, commits=()):
-    """The GitHub API surface Feed uses: everyone can push except *read_only* users."""
+def github_stub(
+    files=(), pr=None, read_only=("mallory",), error=None, commits=(), reviews=(), listed=()
+):
+    """The GitHub API surface Feed uses: everyone can push except *read_only* users.
+
+    GET /pulls/{n} serves get.pr or a PR in get.listed, which GET /pulls?head= also
+    searches. get.reviews and get.events serve every PR's reviews and issue events.
+    """
     calls = []
 
     def get(path, **params):
@@ -140,11 +207,27 @@ def github_stub(files=(), pr=None, read_only=("mallory",), error=None, commits=(
             size = params["per_page"]
             start = (params["page"] - 1) * size
             return list(commits)[: pr_feed.MAX_PR_COMMITS][start : start + size]
-        assert pr is not None and path == f"/repos/{REPO}/pulls/{pr['number']}", path
-        return pr
+        if path.endswith("/reviews") or path.endswith("/events"):
+            size = params["per_page"]
+            start = (params["page"] - 1) * size
+            items = get.reviews if path.endswith("/reviews") else get.events
+            return items[start : start + size]
+        if path == f"/repos/{REPO}/pulls":
+            return [
+                p
+                for p in get.listed
+                if p["head"]["label"] == params["head"] and params["state"] in ("all", p["state"])
+            ]
+        prs = {p["number"]: p for p in (get.pr, *get.listed) if p}
+        m = re.fullmatch(rf"/repos/{re.escape(REPO)}/pulls/(\d+)", path)
+        assert m and int(m.group(1)) in prs, path
+        return prs[int(m.group(1))]
 
     get.calls = calls
     get.pr = pr
+    get.reviews = list(reviews)
+    get.listed = list(listed)
+    get.events = []
     return get
 
 
@@ -160,7 +243,7 @@ def target(feed, action, pr, **extra):
 class TestDrafts:
     def test_draft_posts_nothing_until_ready(self, feed, slack):
         target(feed, "opened", make_pr(draft=True))
-        feed.handle("pull_request_review", review_event(make_pr(draft=True), "approved"))
+        review(feed, make_pr(draft=True), rest_review("approved"))
         target(feed, "edited", make_pr(draft=True), changes={"title": {"from": "x"}})
         assert slack.messages == []
 
@@ -175,7 +258,7 @@ class TestDrafts:
         assert slack.parents[0]["text"].startswith("📝")
         assert "converted to draft by bob" in slack.replies[-1]["text"]
 
-        feed.handle("pull_request_review", review_event(make_pr(draft=True), "approved"))
+        review(feed, make_pr(draft=True), rest_review("approved"))
         assert len(slack.replies) == 1
 
         target(feed, "ready_for_review", make_pr())
@@ -187,14 +270,9 @@ class TestDrafts:
 class TestThread:
     def test_one_parent_and_every_later_event_in_its_thread(self, feed, slack):
         target(feed, "opened", make_pr())
-        feed.handle(
-            "pull_request_review", review_event(make_pr(), "changes_requested", review_id=1)
-        )
-        feed.handle(
-            "pull_request_review",
-            review_event(make_pr(), "commented", review_id=2, body="A few nits inline."),
-        )
-        feed.handle("pull_request_review", review_event(make_pr(), "approved", review_id=3))
+        review(feed, make_pr(), rest_review("changes_requested", review_id=1))
+        review(feed, make_pr(), rest_review("commented", review_id=2, body="A few nits inline."))
+        review(feed, make_pr(), rest_review("approved", review_id=3))
         target(feed, "closed", make_pr(state="closed", merged=True))
 
         assert len(slack.parents) == 1
@@ -265,7 +343,7 @@ class TestThread:
     def test_events_for_unposted_prs_create_nothing(self, feed, slack):
         target(feed, "closed", make_pr(state="closed", merged=True))
         target(feed, "edited", make_pr(), changes={"title": {"from": "x"}})
-        feed.handle("pull_request_review", review_event(make_pr(), "approved"))
+        review(feed, make_pr(), rest_review("approved"))
         assert slack.messages == []
 
 
@@ -322,14 +400,6 @@ class TestFluxBumps:
             f"`1793041510-85d3415` · <https://github.com/{REPO}/pull/152|#152>"
         )
         assert slack.messages[0]["metadata"]["event_payload"]["kind"] == "flux"
-
-    def test_merge_edits_in_place_without_a_thread(self, flux_feed, slack):
-        target(flux_feed, "opened", self.bump())
-        flux_feed.handle("pull_request_review", review_event(self.bump(), "approved"))
-        target(flux_feed, "closed", self.bump(state="closed", merged=True))
-        target(flux_feed, "closed", self.bump(state="closed", merged=True))
-        assert len(slack.messages) == 1
-        assert slack.messages[0]["text"].endswith(" · merged ✅")
 
     def test_closed_without_merge(self, flux_feed, slack):
         target(flux_feed, "opened", self.bump())
@@ -540,8 +610,14 @@ class TestTrust:
 
     def test_outsider_reviews_on_a_member_pr_post_nothing(self, slack, feed):
         target(feed, "opened", make_pr())
-        feed.handle("pull_request_review", review_event(make_pr(), "approved", reviewer="mallory"))
-        assert slack.replies == []
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", reviewer="mallory", review_id=1),
+            rest_review("approved", reviewer="carol", review_id=2),
+        )
+        [reply] = slack.replies
+        assert "by carol" in reply["text"]
 
     def test_repo_bot_prs_are_trusted_without_the_api(self, slack):
         pr = TestFluxBumps.bump()
@@ -587,9 +663,9 @@ class TestComments:
         state = {"pr": make_pr()}
         base = github_stub()
 
-        def get(path):
+        def get(path, **params):
             if path.endswith("/permission"):
-                return base(path)
+                return base(path, **params)
             base.calls.append(path)
             assert path == f"/repos/{REPO}/pulls/7", path
             return state["pr"]
@@ -662,29 +738,6 @@ class TestComments:
         edited["action"] = "edited"
         f.handle("issue_comment", edited)
         assert api.calls == []
-
-    def test_inline_reply_reviews_without_a_summary_post_nothing(self, feed, slack):
-        target(feed, "opened", make_pr())
-        for review_id in range(5):
-            event = review_event(make_pr(), "commented", review_id=review_id)
-            feed.handle("pull_request_review", event)
-        assert slack.replies == []
-        event = review_event(make_pr(), "commented", review_id=9, body="Summary")
-        feed.handle("pull_request_review", event)
-        assert len(slack.replies) == 1
-
-    def test_bot_reviews_post_nothing(self, feed, slack):
-        target(feed, "opened", make_pr())
-        event = review_event(make_pr(), "commented")
-        event["review"]["user"]["type"] = "Bot"
-        feed.handle("pull_request_review", event)
-        assert slack.replies == []
-
-    def test_same_review_posts_once(self, feed, slack):
-        target(feed, "opened", make_pr())
-        for _ in range(2):
-            feed.handle("pull_request_review", review_event(make_pr(), "approved", review_id=9))
-        assert len(slack.replies) == 1
 
 
 class TestSlackClientRaces:
@@ -1227,3 +1280,349 @@ class TestSlackReplies:
     def test_head_is_left_out_when_unset(self):
         assert "head" not in slack_notify.pr_metadata(REPO, 7, "pr", "open")["event_payload"]
         assert "head" not in slack_notify.reply_metadata(REPO, 7, "k")["event_payload"]
+
+
+class TestReviewRelay:
+    """Reviews reach the thread through the relay's workflow_run scan (issue #163)."""
+
+    FORK = {"full_name": "alice/fork", "owner": {"login": "alice"}}
+
+    @staticmethod
+    def keys(slack, number=7):
+        """The review keys posted in PR *number*'s thread, oldest first."""
+        parent = slack.find_pr_message(CHANNEL, REPO, number)
+        keys = [
+            ((r["metadata"] or {}).get("event_payload") or {}).get("key") or ""
+            for r in slack.replies
+            if r["thread_ts"] == parent["ts"]
+        ]
+        return [k for k in keys if k.startswith("review:")]
+
+    @staticmethod
+    def fork_pr(number=7, **kw):
+        """A PR from a writer's fork: alice can push here."""
+        pr = make_pr(number=number, head="patch-1", **kw)
+        pr["head"]["repo"] = {"full_name": "alice/fork"}
+        pr.setdefault("updated_at", "2026-11-03T00:59:00Z")
+        return pr
+
+    def test_approvals_change_requests_and_summaries_post(self, feed, slack):
+        target(feed, "opened", make_pr())
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1),
+            rest_review("changes_requested", review_id=2),
+            rest_review("commented", review_id=3, body="A few nits inline."),
+        )
+        assert [r["state"] for r in feed.github.reviews] == [
+            "APPROVED",
+            "CHANGES_REQUESTED",
+            "COMMENTED",
+        ]
+        url = f"https://github.com/{REPO}/pull/7#pullrequestreview-"
+        assert [r["text"] for r in slack.replies] == [
+            f"✅ <{url}1|approved> by carol",
+            f"🔁 <{url}2|changes requested> by carol",
+            f"💬 <{url}3|review comments> by carol",
+        ]
+        assert self.keys(slack) == ["review:1", "review:2", "review:3"]
+
+    def test_same_repo_pr_from_the_run_and_foreign_entries_ignored(self, feed, slack):
+        target(feed, "opened", make_pr())
+        foreign = {"number": 3, "head": {"sha": "reviewedsha"}, "base": {"repo": {"id": 999}}}
+        mine = {"number": 7, "head": {"sha": "reviewedsha"}, "base": {"repo": {"id": REPO_ID}}}
+        review(feed, make_pr(), rest_review("approved"), pull_requests=[foreign, mine])
+        assert self.keys(slack) == ["review:1"]
+        assert f"/repos/{REPO}/pulls/3" not in feed.github.calls
+        assert f"/repos/{REPO}/pulls" not in feed.github.calls
+
+    def test_fork_pr_is_found_by_its_head(self, feed, slack):
+        pr = self.fork_pr()
+        target(feed, "opened", pr)
+        feed.github.listed = [pr]
+        # A deleted fork: no owner to look the PR up by.
+        review(
+            feed, pr, rest_review("approved", review_id=1), pull_requests=[], head_repository=None
+        )
+        assert self.keys(slack) == []
+        review(
+            feed,
+            pr,
+            rest_review("approved", review_id=2),
+            pull_requests=[],
+            head_repository=self.FORK,
+        )
+        assert self.keys(slack) == ["review:1", "review:2"]
+
+    def test_a_reused_head_branch_takes_the_pr_at_the_reviewed_commit(self, feed, slack):
+        target(feed, "opened", self.fork_pr(number=5))
+        target(feed, "opened", self.fork_pr(number=7))
+        old = self.fork_pr(number=5, state="closed", merged=True, updated_at="2025-01-01T00:00:00Z")
+        target(feed, "closed", old)
+        old["head"]["sha"] = "oldsha"
+        new = self.fork_pr(number=7)
+        new["head"]["sha"] = "newsha"
+        feed.github.listed = [old, new]
+        feed.github.reviews.append(rest_review("approved"))
+
+        # Pushed since the review: no PR is at its commit, so only the open one counts.
+        run = relay_run(new, head_sha="pushedsince", pull_requests=[], head_repository=self.FORK)
+        feed.handle("workflow_run", run)
+        assert self.keys(slack, 7) == ["review:1"]
+        assert self.keys(slack, 5) == []
+        # The list API said #5 is closed and stale, so it isn't even re-read.
+        assert f"/repos/{REPO}/pulls/5" not in feed.github.calls
+
+        # A review on the merged PR: its head is the reviewed commit.
+        run = relay_run(old, head_sha="oldsha", pull_requests=[], head_repository=self.FORK)
+        feed.handle("workflow_run", run)
+        assert self.keys(slack, 5) == ["review:1"]
+        assert self.keys(slack, 7) == ["review:1"]
+
+    def test_bots_and_reviewers_who_cant_push_post_nothing(self, feed, slack):
+        target(feed, "opened", make_pr())
+        bot = rest_review("approved", reviewer="ci[bot]", review_id=1)
+        bot["user"]["type"] = "Bot"
+        review(
+            feed,
+            make_pr(),
+            bot,
+            rest_review("approved", reviewer="mallory", review_id=2),
+            rest_review("approved", review_id=3),
+            rest_review("commented", review_id=4, body="One more thing."),
+        )
+        assert self.keys(slack) == ["review:3", "review:4"]
+        permissions = [c for c in feed.github.calls if c.endswith("/permission")]
+        assert permissions.count(f"/repos/{REPO}/collaborators/carol/permission") == 1
+        assert f"/repos/{REPO}/collaborators/ci%5Bbot%5D/permission" not in permissions
+
+    def test_dismissed_empty_and_incomplete_reviews_post_nothing(self, feed, slack):
+        target(feed, "opened", make_pr())
+        review(
+            feed,
+            make_pr(),
+            rest_review("dismissed", review_id=1),
+            rest_review("commented", review_id=2, body="  "),
+            rest_review("approved", review_id=3, user=None),
+            rest_review("approved", review_id=4, submitted_at=None),
+            rest_review("pending", review_id=5),
+            rest_review("approved", review_id=6),
+        )
+        assert self.keys(slack) == ["review:6"]
+
+    def test_inline_reply_reviews_without_a_summary_post_nothing(self, feed, slack):
+        target(feed, "opened", make_pr())
+        review(feed, make_pr(), *(rest_review("commented", review_id=i) for i in range(5)))
+        assert slack.replies == []
+        review(feed, make_pr(), rest_review("commented", review_id=9, body="Summary"))
+        assert self.keys(slack) == ["review:9"]
+
+    def test_reviews_past_the_first_page_are_read(self, feed, slack):
+        target(feed, "opened", make_pr())
+        inline = [rest_review("commented", review_id=i) for i in range(150)]
+        review(feed, make_pr(), *inline, rest_review("approved", review_id=200))
+        assert self.keys(slack) == ["review:200"]
+        assert sum(c.endswith("/reviews") for c in feed.github.calls) == 2
+
+    def test_untrusted_author_posts_nothing(self, feed, slack):
+        slack.post(CHANNEL, "🟢 parent", metadata=slack_notify.pr_metadata(REPO, 9, "pr", "open"))
+        review(feed, outsider_pr(number=9), rest_review("approved"))
+        assert slack.replies == []
+        assert not any(c.endswith("/reviews") for c in feed.github.calls)
+        target(feed, "opened", make_pr())
+        review(feed, make_pr())
+        assert self.keys(slack) == ["review:1"]
+
+    def test_flux_bump_reviews_stay_silent(self, slack):
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub(files=TestFluxBumps.FILES))
+        target(f, "opened", TestFluxBumps.bump())
+        review(f, TestFluxBumps.bump(), rest_review("approved"))
+        target(f, "closed", TestFluxBumps.bump(state="closed", merged=True))
+        target(f, "closed", TestFluxBumps.bump(state="closed", merged=True))
+        assert len(slack.messages) == 1
+        assert slack.messages[0]["text"].endswith(" · merged ✅")
+        assert not any(c.endswith("/reviews") for c in f.github.calls)
+
+        target(f, "opened", make_pr())
+        review(f, make_pr())
+        assert self.keys(slack) == ["review:1"]
+
+    @staticmethod
+    def event(kind, at):
+        return {"event": kind, "created_at": f"2026-11-03T{at}Z"}
+
+    def test_draft_spans_come_from_the_issue_events(self):
+        at = pr_feed.epoch
+        pr = make_pr()
+        events = [
+            self.event("ready_for_review", "00:10:00"),
+            self.event("labeled", "00:15:00"),
+            self.event("convert_to_draft", "00:20:00"),
+            self.event("ready_for_review", "00:30:00"),
+            self.event("convert_to_draft", "00:40:00"),
+        ]
+        # Opened as a draft (ready first), back to draft once and a draft now.
+        assert pr_feed.draft_spans(pr, events) == [
+            (at(pr["created_at"]), at("2026-11-03T00:10:00Z")),
+            (at("2026-11-03T00:20:00Z"), at("2026-11-03T00:30:00Z")),
+            (at("2026-11-03T00:40:00Z"), math.inf),
+        ]
+        assert pr_feed.draft_spans(pr, events[2:4]) == [
+            (at("2026-11-03T00:20:00Z"), at("2026-11-03T00:30:00Z"))
+        ]
+        assert pr_feed.draft_spans(pr, []) == []
+
+    def test_only_reviews_made_in_a_draft_are_left_out(self, feed, slack):
+        target(feed, "opened", make_pr())
+        feed.github.events = [
+            self.event("convert_to_draft", "00:10:00"),
+            self.event("ready_for_review", "00:30:00"),
+        ]
+        # The thread has no "ready" reply yet: the draft span comes from GitHub alone.
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1, submitted_at="2026-11-03T00:05:00Z"),
+            rest_review("approved", review_id=2, submitted_at="2026-11-03T00:20:00Z"),
+            rest_review("approved", review_id=3, submitted_at="2026-11-03T00:40:00Z"),
+        )
+        assert self.keys(slack) == ["review:1", "review:3"]
+
+    def test_reviews_before_a_draft_first_turned_ready_never_post(self, feed, slack):
+        target(feed, "opened", make_pr())
+        feed.github.events = [self.event("ready_for_review", "00:30:00")]
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1, submitted_at="2026-11-03T00:10:00Z"),
+            rest_review("approved", review_id=2, submitted_at="2026-11-03T00:40:00Z"),
+        )
+        assert self.keys(slack) == ["review:2"]
+
+    def test_a_review_right_after_ready_waits_for_the_parent(self, slack):
+        sleeps = []
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub(), sleep=sleeps.append)
+        # Opened long before the run and never posted: nothing to wait for.
+        review(f, make_pr(), rest_review("approved", submitted_at="2026-11-03T00:58:00Z"))
+        assert sleeps == [] and slack.messages == []
+
+        def ready_run_finishes(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) == 2:
+                target(f, "ready_for_review", make_pr())
+
+        f.sleep = ready_run_finishes
+        f.github.events = [self.event("ready_for_review", "00:59:30")]
+        # The parent the scan waits for is posted after the review it is for.
+        slack.now = pr_feed.epoch("2026-11-03T01:00:50Z")
+        review(
+            f, make_pr(), rest_review("approved", review_id=2, submitted_at="2026-11-03T00:59:40Z")
+        )
+        assert sleeps == [pr_feed.POLL_SECONDS] * 2
+        assert float(slack.parents[0]["ts"]) > pr_feed.epoch("2026-11-03T00:59:40Z")
+        assert self.keys(slack) == ["review:2"]
+
+    def test_a_draft_span_cut_off_by_the_events_cap_is_ignored(self, feed, slack):
+        target(feed, "opened", make_pr())
+        # The PR is open, so the ready_for_review after this was past the last page.
+        feed.github.events = [self.event("convert_to_draft", "00:10:00")]
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1, submitted_at="2026-11-03T00:05:00Z"),
+            rest_review("approved", review_id=2, submitted_at="2026-11-03T00:40:00Z"),
+        )
+        assert self.keys(slack) == ["review:1", "review:2"]
+
+    def test_every_pr_at_the_reviewed_commit_is_scanned(self, feed, slack):
+        target(feed, "opened", make_pr(number=7))
+        target(feed, "opened", make_pr(number=8))
+        feed.github.pr = make_pr(number=7)
+        feed.github.listed = [make_pr(number=8)]
+        feed.github.reviews.append(rest_review("approved"))
+        # The same branch PR'd into two bases: both entries are at the reviewed commit.
+        entries = [
+            {"number": n, "head": {"sha": "reviewedsha"}, "base": {"repo": {"id": REPO_ID}}}
+            for n in (7, 8)
+        ]
+        feed.handle("workflow_run", relay_run(make_pr(), pull_requests=entries))
+        assert self.keys(slack, 7) == ["review:1"]
+        assert self.keys(slack, 8) == ["review:1"]
+
+    def test_reviews_older_than_the_window_are_left_out(self, feed, slack):
+        target(feed, "opened", make_pr())
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1, submitted_at="2026-11-02T23:59:59Z"),
+            rest_review("approved", review_id=2, submitted_at="2026-11-03T00:00:00Z"),
+        )
+        assert self.keys(slack) == ["review:2"]
+
+    def test_reviews_the_old_workflow_posted_are_not_posted_again(self, feed, slack):
+        target(feed, "opened", make_pr())
+        slack.post(
+            CHANNEL,
+            "✅ approved by carol",
+            thread_ts=slack.parents[0]["ts"],
+            metadata=slack_notify.reply_metadata(REPO, 7, "review:1"),
+        )
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1),
+            rest_review("approved", reviewer="dave", review_id=2),
+        )
+        assert self.keys(slack) == ["review:1", "review:2"]
+        assert len(slack.replies) == 2
+
+    def test_a_rerun_posts_each_review_once(self, feed, slack):
+        target(feed, "opened", make_pr())
+        for _ in range(2):
+            review(feed, make_pr(), rest_review("approved", review_id=9))
+        review(feed, make_pr())
+        assert self.keys(slack) == ["review:9"]
+
+    def test_other_runs_and_runs_without_a_pr_post_nothing(self, feed, slack):
+        target(feed, "opened", make_pr())
+        feed.github.pr = make_pr()
+        feed.github.reviews.append(rest_review("approved"))
+        feed.handle("workflow_run", relay_run(make_pr(), event="pull_request"))
+        feed.handle("workflow_run", relay_run(make_pr(), pull_requests=[]))
+        assert slack.replies == []
+        review(feed, make_pr())
+        assert self.keys(slack) == ["review:1"]
+
+    def test_no_github_token_reads_nothing(self, slack):
+        slack.post(CHANNEL, "🟢 parent", metadata=slack_notify.pr_metadata(REPO, 7, "pr", "open"))
+        pr_feed.Feed(slack, CHANNEL, REPO).handle("workflow_run", relay_run(make_pr()))
+        assert slack.replies == []
+
+    def test_a_review_event_does_nothing(self, feed, slack):
+        target(feed, "opened", make_pr())
+        calls = len(feed.github.calls)
+        feed.handle("pull_request_review", review_event(make_pr(), "approved"))
+        assert slack.replies == []
+        assert len(feed.github.calls) == calls
+        review(feed, make_pr(), rest_review("approved"))
+        assert self.keys(slack) == ["review:1"]
+
+    def test_main_runs_the_scan_on_workflow_run(self, monkeypatch, tmp_path):
+        event = tmp_path / "event.json"
+        event.write_text(
+            json.dumps({**relay_run(make_pr()), "repository": {"full_name": REPO}}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+        monkeypatch.setenv("SLACK_PR_CHANNEL_ID", CHANNEL)
+        monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+        monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_run")
+        monkeypatch.setenv("GITHUB_TOKEN", "fake-gh-credential")
+        api = github_stub(pr=make_pr(), reviews=[rest_review("approved")])
+        monkeypatch.setattr(pr_feed.GitHub, "get", lambda self, path, **p: api(path, **p))
+        fake = FakeSlack()
+        fake.post(CHANNEL, "🟢 parent", metadata=slack_notify.pr_metadata(REPO, 7, "pr", "open"))
+        monkeypatch.setattr(slack_notify, "Slack", lambda token: fake)
+        assert pr_feed.main() == 0
+        assert self.keys(fake) == ["review:1"]

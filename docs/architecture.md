@@ -174,6 +174,7 @@ Recorded as Architecture Decision Records in `docs/adr/`:
 - [ADR-017](adr/017-prod-through-cloudflare-tunnel.md): prod is reached only through a Cloudflare Tunnel run in the cluster, with Cloudflare's certificate and the visitor's address from `CF-Connecting-IP`; nothing on the server listens to the internet.
 - [ADR-018](adr/018-mentor-seed-in-sops-secret.md): the mentor seed is personal data, so it lives only in a SOPS-encrypted Secret per env that the backend mounts; production has no default seed and no default mentor password.
 - [ADR-019](adr/019-freeze-teams-on-confirmed-matching.md): confirmed matching freezes participant team changes and preferences; the admin edits members and mentors by hand in the TEAMS tab, and every writer of `team_mentors` locks `matching_state` first.
+- [ADR-020](adr/020-main-only-secret-environments.md): the Slack and Docker Hub secrets live in environments only `main` can use, reviews reach the PR feed through a secretless relay workflow and `.github/` changes need the code owner's review; the bot app key waits for #313.
 
 ## External dependencies
 
