@@ -8,11 +8,15 @@ Covers:
  - Registration status overview: correct counts returned
  - Matching pipeline: run-matching (no eligible data → 400), confirm, results, export
  - Export constraints: violations array present in response
+ - Export: registered teams without mentors and the confirmation
 """
 
 import sys
+import threading
+import time
 from pathlib import Path
 
+import psycopg2
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
@@ -24,6 +28,8 @@ from tests.e2e.conftest import (
     bearer,
     create_active_registered_team,
     register_and_token,
+    register_extra_and_token,
+    registered_teams,
 )
 
 pytestmark = pytest.mark.e2e
@@ -40,6 +46,24 @@ def _create_team(client, token, name="Admin Test Team"):
 
 def _register_team(admin_client, team_id, adm_tok):
     return admin_client.post(f"/api/admin/teams/{team_id}/register", headers=bearer(adm_tok))
+
+
+def _waits_on_lock_2(db_conn, worker, timeout=10.0):
+    """True once a session waits for advisory key 2, False if the worker ends first.
+
+    A bigint key is stored as classid (high 32 bits), objid (low) and objsubid 1.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and worker.is_alive():
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM pg_locks WHERE locktype = 'advisory'"
+                " AND classid = 0 AND objid = 2 AND objsubid = 1 AND NOT granted"
+            )
+            if cur.fetchone()["n"]:
+                return True
+        time.sleep(0.05)
+    return False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -309,6 +333,77 @@ class TestMatchingPipeline:
         assert isinstance(body["violations"], list)
         assert "teams" in body
         assert "total_assignments" in body
+        assert isinstance(body["teams_without_mentors"], list)
+        assert isinstance(body["confirmed"], bool)
+
+    def test_matching_export_lists_registered_teams_without_mentors(
+        self, flask_app, seeds, db_conn
+    ):
+        """Only active registered teams count, the set a matching run uses."""
+        (alpha_id, _), _ = registered_teams(flask_app, seeds, ["Alpha", "Omega"])
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO team_mentors (team_id, mentor_id, is_active) VALUES (%s, %s, TRUE)",
+                (alpha_id, seeds["mentor_ids"][0]),
+            )
+        with flask_app.test_client() as c:
+            tok = register_extra_and_token(c, seeds)
+            rv = c.post("/api/teams", json={"team_name": "Pending"}, headers=bearer(tok))
+            assert rv.status_code == 201, rv.get_json()
+        with flask_app.test_client() as c:
+            tok = register_extra_and_token(c, seeds)
+            unregistered_id = create_active_registered_team(
+                c, tok, flask_app, seeds, "Unregistered"
+            )
+
+        adm_tok = admin_token(flask_app)
+        with flask_app.test_client() as adm:
+            rv = adm.post(f"/api/admin/teams/{unregistered_id}/unregister", headers=bearer(adm_tok))
+            assert rv.status_code == 200, rv.get_json()
+            before = adm.get("/api/admin/matching-export", headers=bearer(adm_tok))
+            rv = adm.post("/api/admin/confirm-matching", headers=bearer(adm_tok))
+            assert rv.status_code == 200, rv.get_json()
+            after = adm.get("/api/admin/matching-export", headers=bearer(adm_tok))
+
+        assert before.status_code == 200, before.get_json()
+        body = before.get_json()
+        assert body["teams_without_mentors"] == ["Omega"]
+        assert [t["team_name"] for t in body["teams"]] == ["Alpha"]
+        assert body["confirmed"] is False
+        assert after.get_json()["confirmed"] is True
+
+    def test_matching_export_waits_for_a_save_in_progress(self, flask_app, seeds, db_url, db_conn):
+        """A save holds lock 2 until it commits; the export waits and then sees it."""
+        ((omega_id, _),) = registered_teams(flask_app, seeds, ["Omega"])
+        saver = psycopg2.connect(db_url)
+        result = {}
+
+        def export():
+            with flask_app.test_client() as adm:
+                result["rv"] = adm.get(
+                    "/api/admin/matching-export", headers=bearer(admin_token(flask_app))
+                )
+
+        try:
+            with saver.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(2)")
+                cur.execute(
+                    "INSERT INTO team_mentors (team_id, mentor_id, is_active) VALUES (%s, %s, TRUE)",
+                    (omega_id, seeds["mentor_ids"][0]),
+                )
+            worker = threading.Thread(target=export)
+            worker.start()
+            assert _waits_on_lock_2(db_conn, worker), (
+                "the export did not wait for the save's lock 2"
+            )
+            saver.commit()
+            worker.join(10)
+        finally:
+            saver.close()
+        assert not worker.is_alive()
+        body = result["rv"].get_json()
+        assert [t["team_name"] for t in body["teams"]] == ["Omega"]
+        assert body["teams_without_mentors"] == []
 
     def test_preference_status_returns_expected_keys(self, flask_app):
         adm_tok = admin_token(flask_app)

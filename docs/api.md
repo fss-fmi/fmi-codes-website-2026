@@ -599,13 +599,15 @@ Results grouped by team plus constraint checks.
 {
   "success": true,
   "teams": [{ "team_name": "...", "mentors": [{ "mentor_name": "...", "company_name": "..." }] }],
+  "teams_without_mentors": ["..."],
+  "confirmed": false,
   "total_assignments": 54,
   "violations": [],
   "generated_at": "2026-03-14T18:00:00+00:00"
 }
 ```
 
-`teams` lists only teams with at least one assignment. `violations` flags any team or mentor with more than 3 assignments. Mission Control's EXPORT turns this response into plain text.
+`teams` lists only registered teams with at least one assignment (an unregister releases a team's mentors). `teams_without_mentors` lists, by name, the active registered teams with no active assignment: the same set a matching run works on. `confirmed` is the confirmation flag, as `GET /api/matching-status` reports it. All of it is read in one transaction under the shared form of advisory lock 2, so it waits for a matching run being saved or an admin mentor edit, and neither commits between the reads. A team change or a confirm can still land between them, so a team unregistered and registered again in between would show in both lists. `violations` flags any team or mentor with more than 3 assignments. Mission Control's EXPORT shows this response as plain text and downloads it as a Markdown file.
 
 ### GET /api/admin/teams/scores
 
