@@ -6,27 +6,36 @@ name: Slack PR feed
 #
 # pull_request_target runs with secrets even for fork PRs, so this workflow must
 # never check out or run PR code: it checks out the default branch's scripts only
-# and reads the PR from the event payload. GitHub withholds secrets from
-# pull_request_review runs on fork PRs, so reviews on those are not posted.
-# issue_comment runs from the default branch for every issue and PR comment; the
-# job skips plain issues and bot comments, and the script posts only commenters who
-# can push.
+# and reads the PR from the event payload. issue_comment runs from the default
+# branch for every issue and PR comment; the job skips plain issues and bot
+# comments, and the script posts only commenters who can push.
+#
+# The Slack token lives in the slack environment, which only main can use (#163).
+# A pull_request_review run runs on the PR's merge ref, so it can't have it:
+# reviews come through the PR review relay instead, a secretless workflow whose
+# file is taken from the PR's merge ref. Its finished run starts this one on
+# workflow_run, from main, and the script reads the PR's reviews from the API. That
+# also posts reviews on fork PRs.
 # Skips quietly while SLACK_BOT_TOKEN or SLACK_PR_CHANNEL_ID is unset.
 
 on:
   pull_request_target:
     types: [opened, ready_for_review, converted_to_draft, closed, reopened, edited, synchronize]
-  pull_request_review:
-    types: [submitted]
   issue_comment:
     types: [created]
+  workflow_run:
+    # Must match the relay's `name:` exactly.
+    workflows: [PR review relay]
+    types: [completed]
 
-# Pushes to one PR run one at a time, so their replies post in order. GitHub keeps
-# only the newest pending run per group and cancels the others; the script then
-# lists their commits in the next reply. Every other event gets a group of its own,
-# so a burst of reviews or comments is never cancelled.
+# Pushes to one PR run one at a time, so their replies post in order, and so do
+# relay scans for one head branch. GitHub keeps only the newest pending run per
+# group and cancels the others; the script then lists their commits in the next
+# push reply, and the newest scan posts every review the cancelled ones would
+# have. Every other event gets a group of its own, so a burst of comments is never
+# cancelled.
 concurrency:
-  group: slack-pr-feed-${{ github.event.action == 'synchronize' && format('push-{0}', github.event.pull_request.number) || github.run_id }}
+  group: slack-pr-feed-${{ github.event_name == 'workflow_run' && format('review-{0}-{1}', github.event.workflow_run.head_repository.full_name, github.event.workflow_run.head_branch) || github.event.action == 'synchronize' && format('push-{0}', github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: false
 
 permissions:
@@ -35,9 +44,12 @@ permissions:
 
 jobs:
   post:
-    if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && github.event.comment.user.type != 'Bot')
+    if: (github.event_name != 'issue_comment' || (github.event.issue.pull_request && github.event.comment.user.type != 'Bot')) && (github.event_name != 'workflow_run' || github.event.workflow_run.event == 'pull_request_review')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment:
+      name: slack
+      deployment: false
 
     steps:
       - name: Checkout the default branch's scripts

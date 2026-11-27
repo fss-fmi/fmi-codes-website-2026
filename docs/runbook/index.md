@@ -600,7 +600,8 @@ If no bump PR opens within about 10 minutes of a merge that builds images (anyth
 `holds part of a release`, the second image of that release was
 never pushed, almost always a failed frontend build in **Build and Push Docker Image** (the
 CI alert names it). That release does not deploy. Fix the build or run it again (**Actions →
-Build and Push Docker Image → Run workflow**): every run builds both images under a new tag,
+Build and Push Docker Image → Run workflow**, from `main`: its Docker Hub credentials refuse
+other branches): every run builds both images under a new tag,
 which Flux picks up as one whole release.
 
 ### 7 — Observability (Prometheus + Grafana)
@@ -765,7 +766,10 @@ To deploy this under your own project (your Docker Hub, your domain, your keys),
   own roster into both `mentors-seed.enc.yaml` files ([Mentor seed](secrets.md#mentor-seed)).
 - **Image registry**: the `fssfmi/fmi-codes-{backend,frontend}` names in `base/app/*.yaml`,
   `overlays/*/kustomization.yaml`, `.github/workflows/docker-cd.yaml`, and
-  `flux/image-automation.yaml`; set the `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets.
+  `flux/image-automation.yaml`; set `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` in a `dockerhub`
+  environment limited to `main`, per [Secrets only `main` can use](../github-automation.md#secrets-only-main-can-use).
+  Repo-level secrets also reach the job (GitHub creates the environment it names, with no
+  branch rule, the first time it runs), but then any workflow on any branch can read them.
 - **Hostnames**: `fmicodes.com` in `base/ingress/ingress.yaml`,
   `overlays/prod/ingress/cloudflared-config.yaml` and `FRONTEND_ORIGIN` in
   `base/app/backend.yaml`. Staging takes its name from your tailnet: set `FRONTEND_ORIGIN` in
@@ -778,7 +782,8 @@ To deploy this under your own project (your Docker Hub, your domain, your keys),
   `GIT_URL=… bash …` and add your own deploy key (step 6).
 - **Bot app**: create your own and set `BOT_APP_CLIENT_ID` / `BOT_APP_PRIVATE_KEY`, per
   [GitHub bot app for automated PRs](../github-automation.md#github-bot-app-for-automated-prs).
-- **Slack PR feed and CI alerts**: set `SLACK_BOT_TOKEN`, `SLACK_PR_CHANNEL_ID` and
+- **Slack PR feed and CI alerts**: set `SLACK_BOT_TOKEN` (in a `slack` environment limited to
+  `main`, as for Docker Hub), `SLACK_PR_CHANNEL_ID` and
   `SLACK_ACTIONS_CHANNEL_ID` for your own workspace, per [Slack PR feed](../github-automation.md#slack-pr-feed) and
   [Slack CI alerts](../github-automation.md#slack-ci-alerts), or leave them unset and both workflows skip.
 - **Cluster alerts**: your own prod and staging channel webhooks in both envs' files, per

@@ -1,0 +1,25 @@
+name: PR review relay
+
+# Does nothing itself. A pull_request_review run runs on the PR's merge ref, which
+# the slack environment refuses, so the Slack PR feed can't post reviews from one
+# (#163). This run's completion starts the feed on workflow_run, from main, and
+# the feed reads the PR's reviews from the API. Nothing from this run is trusted
+# but which PR it points at.
+#
+# Its file comes from the PR's merge ref, so a PR that edits it can only stop its
+# own reviews from being posted. It needs no permissions, secrets or checkout.
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+
+    steps:
+      - name: Hand the review to the Slack PR feed
+        run: "true"

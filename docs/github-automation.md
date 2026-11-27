@@ -1,8 +1,8 @@
 # GitHub automation
 
-What runs on GitHub around a merge: the bot app that opens the automated PRs, and the two
-workflows that post PRs and CI results to Slack. What happens in the cluster after a merge is
-posted by [Cluster alerts](runbook/alerts.md).
+What runs on GitHub around a merge: the bot app that opens the automated PRs, the secrets only
+`main` can use, and the two workflows that post PRs and CI results to Slack. What happens in the
+cluster after a merge is posted by [Cluster alerts](runbook/alerts.md).
 
 ## GitHub bot app for automated PRs
 
@@ -31,6 +31,65 @@ so without the app every staging bump stalls. One-time setup, by an org admin:
 Also turn on **Settings → General → Allow auto-merge**. The repo's required checks (Lint, Unit
 & E2E tests, Frontend tests) still gate every merge; the app gets no bypass.
 
+`BOT_APP_PRIVATE_KEY` is still a repo-level secret, which any workflow on any branch can read:
+the bump workflow runs on pushes to `flux-image-updates` and the migrate and promote workflows
+can be dispatched from any branch, so it can't move to a `main`-only environment as it is.
+Tracked in [#313](https://github.com/fss-fmi/fmi-codes-website-2026/issues/313).
+
+## Secrets only `main` can use
+
+The Slack bot token and the Docker Hub credentials live in two environments, `slack` and
+`dockerhub`, whose deployment branches are `main` only ([ADR-020](adr/020-main-only-secret-environments.md)).
+A job gets an environment's secrets only when it names the environment and runs with
+`GITHUB_REF` on `main`, so a workflow pushed to any other branch reads them as empty. Every job
+that reads one names its environment with `deployment: false`, so it adds nothing to the
+deployment history:
+
+| Environment | Secrets                                 | Job                                                          |
+| ----------- | --------------------------------------- | ------------------------------------------------------------ |
+| `slack`     | `SLACK_BOT_TOKEN`                       | `slack-pr-feed.yaml` `post`, `slack-ci-alerts.yaml` `notify` |
+| `dockerhub` | `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | `docker-cd.yaml` `build`                                     |
+
+Their triggers all run with `main`: `pull_request_target`, `issue_comment`, `workflow_run`,
+`schedule` and pushes to `main`. Reviews can't, so the PR feed gets them through a
+[relay](#reviews-through-the-relay). Running **Build and Push Docker Image** by hand from a
+branch other than `main` is refused, and its failure posts in `#actions-notifications`.
+`tests/test_workflow_secrets.py` fails when a job reads a secret outside these environments;
+only `BOT_APP_PRIVATE_KEY` (#313) and `GITHUB_TOKEN` are allowed.
+
+The workflows that read them can't change on `main` without review: `.github/CODEOWNERS` makes
+`@Hari-Hristov` the code owner of `.github/`, and the "NO merging in main" ruleset requires a
+code owner's review and dismisses stale approvals on every push. GitHub never lets an author
+approve their own PR, so the ruleset's bypass list holds the **Repository admin** role in
+pull-request mode: an admin's own `.github/` PR still needs a PR and green checks, but merges
+without that review. That covers every admin of the repo, not only the code owner.
+
+One-time setup, by a repo admin:
+
+1. **Environments:** **Settings → Environments → New environment** `slack`, then **Deployment
+   branches and tags → Selected branches and tags → Add deployment branch or tag rule** `main`.
+   Add no reviewers, wait timer or custom protection rule (a custom rule fails every
+   `deployment: false` job). The same for `dockerhub`.
+2. **Secrets** (each prompts, so the value stays out of shell history):
+
+   ```bash
+   gh secret set SLACK_BOT_TOKEN --env slack --repo fss-fmi/fmi-codes-website-2026
+   gh secret set DOCKERHUB_USERNAME --env dockerhub --repo fss-fmi/fmi-codes-website-2026
+   gh secret set DOCKERHUB_TOKEN --env dockerhub --repo fss-fmi/fmi-codes-website-2026
+   ```
+
+   The Docker Hub token is a personal access token with Read & Write access, from the account
+   that owns the `fssfmi` images (**Docker Hub → Account settings → Personal access tokens**).
+   To rotate either token, set the secret again.
+
+3. **Remove the repo-level copies** once the jobs post and push from the environments:
+   `gh secret delete <NAME> --repo fss-fmi/fmi-codes-website-2026`. A job sees repo secrets
+   next to its environment's, so a copy left behind is still readable from every branch.
+4. **Ruleset:** **Settings → Rules → Rulesets → NO merging in main → Require a pull request
+   before merging**: tick **Require review from Code Owners** and **Dismiss stale pull request
+   approvals when new commits are pushed**. Under **Bypass list**, add **Repository admin**
+   and set it to **For pull requests only**.
+
 ## Slack PR feed
 
 `.github/workflows/slack-pr-feed.yaml` (logic in `.github/scripts/pr_feed.py`) posts every PR
@@ -54,7 +113,8 @@ that is ready for review to `#pr-updates`:
   push (rebase, amend) says `⚠️ force-pushed by X · old → new` instead. A PR with over 250
   commits gets a link without a list (the API limit).
 - **Drafts post nothing** until they are marked ready; while a PR is back in draft, reviews
-  and pushes are not posted, and commits pushed while it was a draft are not listed later.
+  and pushes are not posted, and reviews made and commits pushed while it was a draft are not
+  posted later.
 - **Flux bump PRs** (`flux-image-updates`) get a single one-liner with the image names and
   tags, re-rendered when Flux pushes newer tags to the open PR (which drops a `CI failed`
   that belonged to the old head) and edited to `merged ✅` when it auto-merges. No thread.
@@ -70,7 +130,7 @@ that is ready for review to `#pr-updates`:
   repo's own branches (Flux bumps, migration PRs). If the check fails, nothing is posted. The
   same check applies to each reviewer, commenter and pusher. Commit subjects are posted on the
   pusher's word, the way a title is posted on the author's.
-- Reviews on PRs from forks are not posted: GitHub gives those runs no secrets.
+- Reviews on PRs from forks are posted too, through the [relay](#reviews-through-the-relay).
 
 The parent is found again through Slack message metadata, so nothing else stores state. Two
 runs for the same PR can both find no parent and both post one; each run checks again right
@@ -88,18 +148,17 @@ draft's commits. If the commit list has not caught up with the pushed head after
 seconds the run fails; re-run it to post the commits. Push replies are keyed by both ends of
 the push and the opening list by the thread, so re-runs and duplicate deliveries post
 nothing twice; a re-run of the run that posted the parent finishes a list that failed. The
-workflow never checks out PR code (it runs on `pull_request_target` and `issue_comment`, which have
-secrets even for forks), and its `actions/checkout` is pinned to a commit SHA. GitHub always
-runs the default branch's copy of these workflows, so a change can only be tested after it
-merges.
+workflow never checks out PR code (it runs on `pull_request_target`, `issue_comment` and
+`workflow_run`, which have secrets even for forks), and its `actions/checkout` is pinned to a
+commit SHA. GitHub always runs the default branch's copy of these workflows, so a change can
+only be tested after it merges. The relay is the one workflow whose copy comes from the PR.
 
 Repo hardening: **Settings → Actions → Fork pull request workflows** requires
 approval for all outside contributors (`all_external_contributors`), so no fork PR's
-workflows run until someone with write access approves them. `SLACK_BOT_TOKEN` stays a
-repo-level secret on purpose: any workflow a writer pushes can read it, and `main` needs no
-approving review. Moving it to a `main`-only environment with CODEOWNERS review on
-`.github/` is tracked in [#163](https://github.com/fss-fmi/fmi-codes-website-2026/issues/163); pinning every action by SHA in
-[#164](https://github.com/fss-fmi/fmi-codes-website-2026/issues/164).
+workflows run until someone with write access approves them. `SLACK_BOT_TOKEN` lives in the
+`main`-only `slack` environment and `.github/` changes need the code owner's review, per
+[Secrets only `main` can use](#secrets-only-main-can-use). Pinning every action by SHA is
+tracked in [#164](https://github.com/fss-fmi/fmi-codes-website-2026/issues/164).
 
 It skips quietly until it is configured. One-time setup, in the Slack app that already holds
 the migration and bug-report webhooks (a workspace admin may have to approve new scopes):
@@ -107,11 +166,12 @@ the migration and bug-report webhooks (a workspace admin may have to approve new
 1. **Scopes:** api.slack.com/apps → the app → **OAuth & Permissions → Bot Token Scopes**: add
    `chat:write` and `channels:history` (also `groups:history` if the channel is private).
    Click **Reinstall to Workspace**; the existing incoming webhooks keep working.
-2. **Token:** copy the **Bot User OAuth Token** (`xoxb-…`) and store it (it prompts, so the
-   token stays out of shell history):
+2. **Token:** copy the **Bot User OAuth Token** (`xoxb-…`) and store it in the `slack`
+   environment, created as in [Secrets only `main` can use](#secrets-only-main-can-use) (it
+   prompts, so the token stays out of shell history):
 
    ```bash
-   gh secret set SLACK_BOT_TOKEN --repo fss-fmi/fmi-codes-website-2026
+   gh secret set SLACK_BOT_TOKEN --env slack --repo fss-fmi/fmi-codes-website-2026
    ```
 
 3. **Channel:** run `/invite @<app name>` in `#pr-updates`, then copy its ID from the bottom of
@@ -122,6 +182,28 @@ the migration and bug-report webhooks (a workspace admin may have to approve new
    ```
 
 To rotate the token, reinstall or regenerate it on the app page and set the secret again.
+
+### Reviews through the relay
+
+A `pull_request_review` run runs on the PR's merge ref, which the `slack` environment refuses,
+so `.github/workflows/pr-review-relay.yaml` (**PR review relay**) takes the review event
+instead: no permissions, no secrets, no checkout and one step that does nothing. When its run
+finishes, the feed starts on `workflow_run` from `main` and reads the PR's reviews from the
+API. It trusts the relay run only for which PR it points at: the run's PR list, filtered to
+this repo, or for a fork PR its head owner and branch. When a head branch name was reused,
+the PR at the reviewed commit wins, otherwise the open PRs and those updated in the last hour.
+
+Each scan posts every review the thread lacks (keyed by review id, so a review the old
+`pull_request_review` path posted is never posted again), with the same checks as before: no
+bots, only reviewers who can push, approvals, change requests and "Comment" reviews with a
+summary, nothing on a draft or a Flux bump. It posts only reviews submitted at or after both
+the parent (or the newest "ready"/"reopened" reply, less a minute) and an hour before the
+relay run, so reviews made in a draft never post and the first scan of a fork PR doesn't post
+its whole history. Relay runs for one head branch queue in order; when GitHub cancels a
+pending one, the newest scan posts its reviews. A fork PR's relay run may first wait for the
+fork workflow approval in the repo hardening above, so its reviews can post late. The relay's
+file comes from the PR's merge ref, so a PR that edits it can only stop its own reviews from
+being posted.
 
 ## Slack CI alerts
 
@@ -166,8 +248,9 @@ Docker, npm, age keys, JWTs, Slack and Discord webhook URLs), credentials in URL
 `Authorization` values, `password=` / `api_key:` style assignments, `*_PASSWORD=` / `*_TOKEN=`
 style variables, and whole private-key blocks all become `[redacted]`.
 
-Like the PR feed it never runs PR code, and it only runs once it is on `main`. Setup, on top
-of the [Slack PR feed](#slack-pr-feed) token:
+Like the PR feed it never runs PR code, it only runs once it is on `main`, and its job reads
+the token from the same `slack` environment. It doesn't watch the review relay or the PR feed.
+Setup, on top of the [Slack PR feed](#slack-pr-feed) token:
 
 ```bash
 # after /invite @<app name> in #actions-notifications:

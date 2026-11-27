@@ -23,7 +23,7 @@ import sys
 
 import pr_feed
 import slack_notify
-from github_api import GitHub
+from github_api import GitHub, find_pr
 from slack_notify import ALERT_EVENT_TYPE, alert_metadata, escape, link, pr_metadata
 
 logger = logging.getLogger("ci_alerts")
@@ -180,27 +180,7 @@ class Alerts:
     def find_pr(self, run: dict):
         if run["event"] not in PR_EVENTS:
             return None
-        repo_id = (run.get("repository") or {}).get("id")
-        # The list can include PRs in other repos (a fork's PR whose head is a branch
-        # here); their numbers mean nothing in this repo.
-        prs = [
-            p
-            for p in run.get("pull_requests") or []
-            if ((p.get("base") or {}).get("repo") or {}).get("id") == repo_id
-        ]
-        number = next((p["number"] for p in prs if p["head"]["sha"] == run["head_sha"]), None)
-        if number is None and prs:
-            number = prs[0]["number"]
-        if number is None:
-            # GitHub leaves pull_requests empty for runs on fork PRs.
-            owner = ((run.get("head_repository") or {}).get("owner") or {}).get("login")
-            if not owner:
-                return None
-            found = self.gh.get(
-                f"/repos/{self.repo}/pulls", state="open", head=f"{owner}:{run['head_branch']}"
-            )
-            number = found[0]["number"] if found else None
-        return self.gh.get(f"/repos/{self.repo}/pulls/{number}") if number else None
+        return find_pr(self.gh.get, self.repo, run, state="open")
 
     @staticmethod
     def where(run: dict, pr) -> str:

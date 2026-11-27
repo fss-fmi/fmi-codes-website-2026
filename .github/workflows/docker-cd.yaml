@@ -17,6 +17,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Holds the Docker Hub credentials, which only main can use (#163).
+    environment:
+      name: dockerhub
+      deployment: false
 
     steps:
       - name: Checkout code

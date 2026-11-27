@@ -33,6 +33,38 @@ def can_push(get, repo: str, user: dict, head_repo: str | None) -> bool:
     return permission in PUSH_PERMISSIONS
 
 
+def pr_candidates(get, repo: str, run: dict, state: str) -> list[dict]:
+    """The PRs in *repo* whose head is the workflow run's head branch, as short entries.
+
+    Each entry has at least the PR's number and head sha. Re-read a PR before
+    trusting anything else about it.
+    """
+    repo_id = (run.get("repository") or {}).get("id")
+    # The list can include PRs in other repos (a fork's PR whose head is a branch
+    # here); their numbers mean nothing in this repo.
+    prs = [
+        p
+        for p in run.get("pull_requests") or []
+        if ((p.get("base") or {}).get("repo") or {}).get("id") == repo_id
+    ]
+    if prs:
+        return prs
+    # GitHub leaves pull_requests empty for runs on fork PRs.
+    owner = ((run.get("head_repository") or {}).get("owner") or {}).get("login")
+    if not owner or not run.get("head_branch"):
+        return []
+    return get(f"/repos/{repo}/pulls", state=state, head=f"{owner}:{run['head_branch']}")
+
+
+def find_pr(get, repo: str, run: dict, state: str = "open"):
+    """The run's PR, re-read: the candidate at the run's head commit, else the first."""
+    prs = pr_candidates(get, repo, run, state)
+    if not prs:
+        return None
+    pr = next((p for p in prs if (p.get("head") or {}).get("sha") == run["head_sha"]), prs[0])
+    return get(f"/repos/{repo}/pulls/{pr['number']}")
+
+
 class _SameHostAuthRedirect(urllib.request.HTTPRedirectHandler):
     """Follow redirects, carrying the token only while they stay on the same host.
 
