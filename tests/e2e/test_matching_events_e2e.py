@@ -236,3 +236,72 @@ class TestMatching:
             rv = adm.post("/api/admin/run-matching", headers=bearer(admin_token(flask_app)))
         assert rv.status_code == 500
         assert notices == []
+
+
+class TestPicksThatStillCount:
+    def test_a_mentor_whose_picks_all_lost_their_slot_is_not_submitted(self, flask_app, seeds):
+        team_ids = [
+            t for t, _ in registered_teams(flask_app, seeds, ["Gone 1", "Gone 2", "Gone 3"])
+        ]
+        mentor_id = seeds["mentor_ids"][0]
+        with flask_app.test_client() as c:
+            rv = c.post(
+                "/api/mentors/team-preferences",
+                json=_team_ranking(team_ids),
+                headers=bearer(mentor_token_for(flask_app, mentor_id)),
+            )
+            assert rv.status_code == 200, rv.get_json()
+
+        def mentor_row():
+            return next(m for m in _status(flask_app)["mentors"] if m["id"] == mentor_id)
+
+        assert mentor_row()["submitted"] is True
+        assert mentor_row()["picks_counting"] == 3
+
+        with flask_app.test_client() as adm:
+            for team_id in team_ids[:2]:
+                rv = adm.post(
+                    f"/api/admin/teams/{team_id}/unregister", headers=bearer(admin_token(flask_app))
+                )
+                assert rv.status_code == 200, rv.get_json()
+        assert (mentor_row()["submitted"], mentor_row()["picks_counting"]) == (True, 1)
+
+        with flask_app.test_client() as adm:
+            rv = adm.post(
+                f"/api/admin/teams/{team_ids[2]}/unregister", headers=bearer(admin_token(flask_app))
+            )
+            assert rv.status_code == 200, rv.get_json()
+        row = mentor_row()
+        assert (row["submitted"], row["picks_counting"], row["picks_saved"]) == (False, 0, 3)
+        assert _status(flask_app)["mentors_submitted"] == 0
+
+    def test_ranking_again_after_every_pick_lost_its_slot_posts_submitted(
+        self, flask_app, seeds, notices
+    ):
+        """The feed's "updated" follows the same rule as the count, so the progress shows."""
+        teams = registered_teams(flask_app, seeds, [f"Team {n}" for n in range(1, 7)])
+        first, second = [t for t, _ in teams[:3]], [t for t, _ in teams[3:]]
+        token = mentor_token_for(flask_app, seeds["mentor_ids"][0])
+        with flask_app.test_client() as c:
+            rv = c.post(
+                "/api/mentors/team-preferences", json=_team_ranking(first), headers=bearer(token)
+            )
+            assert rv.status_code == 200, rv.get_json()
+        with flask_app.test_client() as adm:
+            for team_id in first:
+                rv = adm.post(
+                    f"/api/admin/teams/{team_id}/unregister", headers=bearer(admin_token(flask_app))
+                )
+                assert rv.status_code == 200, rv.get_json()
+        notices.clear()
+
+        with flask_app.test_client() as c:
+            rv = c.post(
+                "/api/mentors/team-preferences", json=_team_ranking(second), headers=bearer(token)
+            )
+            assert rv.status_code == 200, rv.get_json()
+        total = _status(flask_app)["mentors_total"]
+        assert notices == [
+            f"🗳️ Mentor *{MENTOR_NAMES[0]}* submitted their team ranking."
+            f" Mentors: 1 of {total} submitted."
+        ]

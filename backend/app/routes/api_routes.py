@@ -3,7 +3,7 @@
 import logging
 from datetime import UTC, datetime
 
-from flask import current_app, jsonify
+from flask import current_app, jsonify, request
 
 from app import limiter
 from app.database import execute_query
@@ -20,7 +20,7 @@ from app.services.redis_client import redis_status
 from app.services.team_service import TeamService
 from app.utils.auth_decorators import admin_required, get_optional_user
 from app.utils.rate_limits import address_key, scaled
-from app.utils.request_json import json_object, string_field
+from app.utils.request_json import is_row_id, json_object, string_field
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ def get_config():
     """
     try:
         flags = feature_flag_service.get_flags()
+        confirmed = feature_flag_service.get_matching_confirmed_cached()
     except Exception as e:
         logger.error(f"Error reading feature flags: {e}")
         return jsonify({"success": False, "error": "Failed to read config"}), 503
@@ -85,6 +86,7 @@ def get_config():
             "MENTORS_STAY_TUNED": flags["mentors_stay_tuned"],
             "RANKINGS_LIVE": flags["rankings_live"],
             "PREFERENCES_OPEN": flags["preferences_open"],
+            "MATCHING_CONFIRMED": confirmed,
             "REQUIRE_EMAIL_VERIFICATION": bool(
                 current_app.config.get("REQUIRE_EMAIL_VERIFICATION")
             ),
@@ -162,20 +164,21 @@ def run_matching():
         return jsonify({"success": False, "error": message}), 400
 
     try:
-        matching_service.save_matching_results(assignments, warnings, team_count)
+        saved = matching_service.save_matching_results(assignments, warnings, team_count)
     except Exception as e:
         logger.error(f"Failed to save matching results: {e}")
         return jsonify({"success": False, "error": "Failed to save matching results"}), 500
 
+    # The pairs written, not the run's: a team that lost its slot meanwhile was skipped.
     results = {}
-    for team_id, mentor_id in assignments:
+    for team_id, mentor_id in saved:
         results.setdefault(team_id, []).append(mentor_id)
 
     return jsonify(
         {
             "success": True,
             "message": message,
-            "assignment_count": len(assignments),
+            "assignment_count": len(saved),
             "assignments": results,
             "warnings": warnings,
         }
@@ -290,6 +293,7 @@ def team_registration_status():
         and t.get("queue_position") is None
         and t.get("status") == "active"
     ]
+    pending = [t for t in teams_list if t.get("status") == "pending"]
 
     return jsonify(
         {
@@ -300,6 +304,7 @@ def team_registration_status():
             "registered_teams": registered,
             "queued_teams": queued,
             "unregistered_teams": unregistered,
+            "pending_teams": pending,
         }
     ), 200
 
@@ -322,6 +327,59 @@ def admin_unregister_team(team_id):
     if success:
         return jsonify({"success": True, "message": message}), 200
     return jsonify({"success": False, "error": message}), 400
+
+
+# ── Admin team edits (members and mentors, in any phase) ───────────
+
+
+def _edit_refused(message):
+    status = 404 if message == matching_service.TEAM_NOT_FOUND else 400
+    return jsonify({"success": False, "error": message}), status
+
+
+@api_bp.route("/admin/teams/<int:team_id>/members", methods=["POST"])
+@admin_required
+def admin_add_member(team_id):
+    """Put a teamless participant into a team by email. Body: {"email": "..."}."""
+    email = string_field(json_object(), "email", max_length=255)
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+    success, message, member_count = TeamService.admin_add_member(team_id, email)
+    if not success:
+        return _edit_refused(message)
+    return jsonify({"success": True, "message": message, "member_count": member_count}), 200
+
+
+@api_bp.route("/admin/teams/<int:team_id>/members/<int:member_id>", methods=["DELETE"])
+@admin_required
+def admin_remove_member(team_id, member_id):
+    """Take a member out of a team; ?new_captain_id=<id> names the successor of a captain."""
+    new_captain_id = request.args.get("new_captain_id", type=int)
+    success, message, member_count = TeamService.admin_remove_member(
+        team_id, member_id, new_captain_id
+    )
+    if not success:
+        return _edit_refused(message)
+    return jsonify({"success": True, "message": message, "member_count": member_count}), 200
+
+
+@api_bp.route("/admin/teams/<int:team_id>/mentors", methods=["PUT"])
+@admin_required
+def admin_set_team_mentors(team_id):
+    """Replace a registered team's mentors. Body: {"mentor_ids": [..]}, may be empty."""
+    mentor_ids = json_object().get("mentor_ids")
+    if (
+        not isinstance(mentor_ids, list)
+        or not all(is_row_id(m) for m in mentor_ids)
+        or len(set(mentor_ids)) != len(mentor_ids)
+    ):
+        return jsonify(
+            {"success": False, "error": "mentor_ids must be a list of distinct mentor ids"}
+        ), 400
+    success, message, result = matching_service.admin_set_team_mentors(team_id, mentor_ids)
+    if not success:
+        return _edit_refused(message)
+    return jsonify({"success": True, **result}), 200
 
 
 # ── Admin feature flags ────────────────────────────────────────────

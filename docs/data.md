@@ -135,11 +135,11 @@ A captain's ranking of mentors and a mentor's ranking of teams. Rank is 1 to 3, 
 
 ### team_mentors
 
-Matching output. Primary key (`team_id`, `mentor_id`), `is_active` (always true when written), `assigned_at`, `notes` (unused). Every matching run deletes all rows and writes a fresh set. The goal is 2 or 3 rows per team and never more than 3.
+Matching output. Primary key (`team_id`, `mentor_id`), `is_active` (always true when written), `assigned_at`, `notes` (unused). Every matching run deletes all rows and writes a fresh set, skipping teams no longer registered. The run aims for 2 or 3 rows per team and never more than 3; the admin's hand edits (`PUT /api/admin/teams/<id>/mentors`) replace one team's rows and may go past 3, with a warning. Unregistering a team, automatically or by the admin, deletes its rows in the same transaction, and every read of assignments skips unregistered teams.
 
 ### matching_state
 
-A single row (`id = 1`, enforced by CHECK). `is_confirmed` flips to true when the admin confirms; every new matching run resets it.
+A single row (`id = 1`, enforced by CHECK). `is_confirmed` flips to true when the admin confirms; every new matching run resets it. While it is true, participant team changes and preference saves are refused ([ADR-019](adr/019-freeze-teams-on-confirmed-matching.md)).
 
 ### feature_flags
 
@@ -206,10 +206,10 @@ Read at request time (not stored in the DB):
 
 ## Concurrency rules
 
-- Every change to team membership or registration state runs inside one transaction that first takes `pg_advisory_xact_lock(1)`, then row-locks what it touches with `SELECT ... FOR UPDATE`.
-- Saving matching results takes `pg_advisory_xact_lock(2)`, a separate key so it never contends with team mutations. The matching export takes the same key shared (`pg_advisory_xact_lock_shared(2)`), so it waits for a save in progress and no save commits between its reads.
+- Every change to team membership or registration state runs inside one transaction that first takes `pg_advisory_xact_lock(1)`, then reads `matching_state` with `FOR SHARE` (`matching_service.frozen_locked`, which also says whether teams are frozen), then row-locks what it touches with `SELECT ... FOR UPDATE`.
+- The writers of `team_mentors`, saving matching results and the admin's mentor edit, take `pg_advisory_xact_lock(2)` and then `matching_state` `FOR UPDATE` before touching the table. Lock 2 is a separate key, but the `matching_state` row makes saves and team changes queue on one row: an insert into `team_mentors` key-share locks its `teams` row through the foreign key, which could otherwise deadlock against a team change that holds that row and deletes assignments ([ADR-019](adr/019-freeze-teams-on-confirmed-matching.md)). The matching export takes lock 2 shared (`pg_advisory_xact_lock_shared(2)`), so it waits for a save or a mentor edit in progress and none commits between its reads.
 - Preference writes lock the owning team or mentor row so a double submit cannot interleave.
-- A ranking save reads `preferences_open` with `FOR SHARE` as the first statement of its transaction (`feature_flag_service.is_enabled_locked`), so a switch or schedule apply waits for the save to commit, and a save started during one waits and then sees the new value. A schedule that has come due counts as applied.
+- A ranking save reads `matching_state` with `FOR SHARE` as the first statement of its transaction, then `preferences_open` with `FOR SHARE` (`feature_flag_service.is_enabled_locked`), so a switch or schedule apply waits for the save to commit, and a save started during one waits and then sees the new value. A schedule that has come due counts as applied.
 - Flag writes and schedule applies lock the `feature_flags` row (`SELECT ... FOR UPDATE`); a reader that loses the race to apply a due schedule waits, re-checks and finds nothing due, so a scheduled change is applied and announced once.
 - UNIQUE constraints (email, faculty number, team name, join code, join request pair) are the final guard against races.
 - Seeding takes no lock: every Gunicorn worker loads the seeds while it boots, so on a fresh database several insert the same rows at once. The mentor insert's `ON CONFLICT DO NOTHING` names no conflict target, so a worker that meets a mentor another has just inserted gets a no-op on whichever unique key it hits (email, or name and company) instead of an error. Universities and specialties conflict only on `name`, their one unique key.

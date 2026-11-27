@@ -7,13 +7,17 @@ import Panel from '@/components/common/Panel';
 import Field from '@/components/common/Field';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
+import TeamsLockedNotice from '@/components/teams/TeamsLockedNotice';
 import { useAuth } from '@/context/AuthContext';
+import { useConfig } from '@/context/ConfigContext';
 import api from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { refetchConfigIfLocked } from '@/lib/teamsLock';
 
 function JoinTeamContent() {
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
+  const { MATCHING_CONFIRMED: frozen } = useConfig();
   const queryClient = useQueryClient();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -26,11 +30,12 @@ function JoinTeamContent() {
     setLoading(true);
     try {
       await api.post('/api/teams/join', { join_code: code.trim() });
+      // Awaited, or the team page would flash the no-team view with the old user.
       await refreshUser();
-      queryClient.invalidateQueries({ queryKey: ['me'] });
       navigate('/team', { replace: true });
     } catch (err: unknown) {
       setError(errorMessage(err));
+      refetchConfigIfLocked(err, queryClient);
     } finally {
       setLoading(false);
     }
@@ -54,6 +59,8 @@ function JoinTeamContent() {
           >
             Enter the invite code you received from your team captain.
           </p>
+
+          {frozen && <TeamsLockedNotice />}
 
           {error && (
             <div
@@ -100,7 +107,7 @@ function JoinTeamContent() {
               <Button
                 type="submit"
                 variant="primary"
-                disabled={loading}
+                disabled={loading || frozen}
                 style={{ width: '100%' }}
               >
                 {loading ? 'JOINING…' : 'JOIN TEAM'}

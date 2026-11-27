@@ -30,6 +30,8 @@ TEAM_CALLS = [
     ("accept_join_request", (1, 1), "Could not accept the request. Try again."),
     ("decline_join_request", (1, 1), "Could not decline the request. Try again."),
     ("cancel_join_request", (1, 1), "Could not withdraw the application. Try again."),
+    ("admin_add_member", (1, "ana@example.test"), "Could not add the member. Try again."),
+    ("admin_remove_member", (1, 2), "Could not remove the member. Try again."),
 ]
 
 
@@ -58,6 +60,15 @@ def test_ranking_save_hides_the_exception(app_ctx, monkeypatch, save, id_key):
     with pytest.raises(ServiceFailureError) as failure:
         save(1, preferences)
     assert str(failure.value) == "Could not save the ranking. Try again."
+
+
+def test_admin_mentor_edit_hides_the_exception(app_ctx, monkeypatch):
+    from app.services import matching_service
+
+    monkeypatch.setattr(matching_service, "get_db_cursor", _failing_cursor)
+    with pytest.raises(ServiceFailureError) as failure:
+        matching_service.admin_set_team_mentors(1, [1, 2])
+    assert str(failure.value) == "Could not save the mentors. Try again."
 
 
 def test_admin_team_action_failure_is_a_500(app, client, monkeypatch):

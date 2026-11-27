@@ -5,6 +5,18 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import api from '@/lib/api';
 import { CHART_COLORS, type PrefStatus } from './shared';
 
+/**
+ * A mentor's mark. Picks of teams that lost their slot never reach matching, so a
+ * ranking with some of those says how many still count, and one with none left reads
+ * apart from never submitted.
+ */
+function mentorMark(m: PrefStatus['mentors'][number]): string {
+  const counting = m.picks_counting ?? 3;
+  if (m.submitted && counting < 3) return `✓ (${counting} of 3 picks count)`;
+  if (!m.submitted && (m.picks_saved ?? 0) > 0) return '— (0 of 3 picks count)';
+  return m.submitted ? '✓' : '—';
+}
+
 export default function PreferencesPanel() {
   const { data, isLoading } = useQuery<PrefStatus>({
     queryKey: ['admin-pref-status'],
@@ -101,7 +113,7 @@ export default function PreferencesPanel() {
                   fontWeight: 700,
                 }}
               >
-                {m.submitted ? '✓' : '—'}
+                {mentorMark(m)}
               </span>
             </div>
           ))}

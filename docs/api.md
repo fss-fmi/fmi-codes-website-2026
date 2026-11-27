@@ -31,6 +31,8 @@ All bodies are JSON. Every route lives under `/api`. The contract is hand mainta
 
 **Email verification.** While `REQUIRE_EMAIL_VERIFICATION` is on, `POST /api/teams`, `POST /api/teams/join` and `POST /api/teams/{team_id}/apply` return 403 `{"success": false, "error": "Verify your email address before creating or joining a team.", "code": "email_unverified"}` for a participant whose email is not verified.
 
+**Frozen teams.** Once the admin confirms matching, participants can't change who is in a team ([ADR-019](adr/019-freeze-teams-on-confirmed-matching.md)). `POST /api/teams`, `POST /api/teams/join`, `POST /api/teams/{team_id}/apply`, `POST /api/teams/{team_id}/leave`, `DELETE /api/teams/{team_id}`, `DELETE /api/teams/{team_id}/members/{member_id}` and `POST /api/teams/requests/{request_id}/accept` return 403 `{"success": false, "error": "Teams are locked while the event runs. For any changes, contact the organizers."}`, checked inside the transaction, so a confirm that commits first wins. Decline and cancel stay open. Both ranking POSTs return 403 `Matching is confirmed, so preferences can no longer change.` The admin's team edits (see Admin) work in every phase. A new matching run clears the confirmation and lifts the freeze.
+
 ---
 
 ## Health and config
@@ -54,7 +56,7 @@ Readiness probe. Runs a pooled `SELECT 1`; Redis is reported but never fails the
 
 ### GET /api/config
 
-Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first four come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. Exempt from rate limits, because every open page polls it and a full venue shares one NAT address. 503 if the flags can't be read.
+Public. Feature flags for the SPA, which polls this every 30 s and on window focus so open pages follow a switch in Mission Control. The first four come from the `feature_flags` table (cached in Redis for up to 10 s, cleared on every change, never past a pending schedule's time); reading them applies any schedule whose time has passed. `MATCHING_CONFIRMED` is `matching_state.is_confirmed`, the freeze on teams and preferences, cached the same way under the flags' versioned key and cleared by a confirm or a run that clears one. Exempt from rate limits, because every open page polls it and a full venue shares one NAT address. 503 if the flags or the confirmation can't be read.
 
 ```json
 {
@@ -62,6 +64,7 @@ Public. Feature flags for the SPA, which polls this every 30 s and on window foc
   "MENTORS_STAY_TUNED": false,
   "RANKINGS_LIVE": false,
   "PREFERENCES_OPEN": false,
+  "MATCHING_CONFIRMED": false,
   "REQUIRE_EMAIL_VERIFICATION": false
 }
 ```
@@ -264,7 +267,7 @@ User-submitted "Other" entries are added only through [`POST /api/auth/register`
 
 ### GET /api/teams/registered
 
-Public, optional auth. Registered teams in registration order. The team list is cached about 30 s and invalidated by every join, leave, kick, disband, accepted request and admin register/unregister; the per-caller flags below are computed on every request.
+Public, optional auth. Registered teams in registration order. The team list is cached about 30 s and invalidated by every join, leave, kick, disband, accepted request, admin register/unregister and admin member edit; the per-caller flags below are computed on every request.
 
 ```json
 {
@@ -283,7 +286,7 @@ Public, optional auth. Registered teams in registration order. The team list is 
 }
 ```
 
-When the caller is a participant without a team, `can_apply` is true and each team gains `already_applied` and `is_full`.
+When the caller is a participant without a team, `can_apply` is true and each team gains `already_applied` and `is_full`. Once matching is confirmed `can_apply` is false for everyone.
 
 ### GET /api/teams/{team_id}/members/public
 
@@ -291,7 +294,7 @@ Public. `members`: first and last names of a registered team's active members (c
 
 ### GET /api/teams/{team_id}
 
-Any role. `team`: the team row with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`, `picture_url`: the photo's path, which the frontend serves, or null), ordered by last and first name. `mentors` is empty until the admin confirms matching, except for the admin. Member emails are only included for team members and admins, and `join_code` only for the team's captain and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
+Any role. `team`: the team row with `members` and assigned `mentors` (`mentor_id`, `mentor_name`, `company_name`, `picture_url`: the photo's path, which the frontend serves, or null), ordered by last and first name. `mentors` is empty until the admin confirms matching, except for the admin, and always empty for a team that isn't registered. Member emails are only included for team members and admins, and `join_code` only for the team's captain and admins. `score` and `score_updated_at` are only included for the admin until `rankings_live` is on.
 
 There is no public list of all teams. The admin gets every team from `GET /api/admin/teams/registration-status`.
 
@@ -311,7 +314,7 @@ Participant. `{"join_code": "K7Q2ZP9M"}` (case-insensitive). 200 with the update
 
 ### POST /api/teams/{team_id}/leave
 
-Participant. Leaves the caller's current team (the path id is not checked). A captain leaving disbands the team. Dropping below 3 members deactivates the team and frees its slot or queue position.
+Participant. Leaves the caller's current team (the path id is not checked). A captain leaving disbands the team. Dropping below 3 members deactivates the team and frees its slot or queue position; a freed slot releases the team's mentor assignments and promotes the first queued team.
 
 ### DELETE /api/teams/{team_id}
 
@@ -397,7 +400,7 @@ Captain of `team_id`. Replaces the team's ranking.
 }
 ```
 
-403 `Preference submission is closed` while `preferences_open` is off, before the body is read (a captain of another team still gets `Not your team` first); nothing is written. The save re-checks the flag inside its transaction under a row lock, counting a schedule that has come due, so a close that commits while the save is under way still refuses it. Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`). The team must be active and registered, since matching takes only registered teams; otherwise 400 `Only registered teams can rank mentors`.
+403 `Matching is confirmed, so preferences can no longer change.` once matching is confirmed, and otherwise 403 `Preference submission is closed` while `preferences_open` is off, both before the body is read (a captain of another team still gets `Not your team` first); nothing is written. The confirmation comes first because submissions close before the final run. The save re-checks both, the confirmation first, inside its transaction under a row lock, counting a schedule that has come due, so a close that commits while the save is under way still refuses it. Exactly 3 distinct active mentors with ranks 1, 2 and 3, otherwise 400. `mentor_id` and `rank` must be JSON integers (`Each preference needs a whole-number mentor_id and rank`). The team must be active and registered, since matching takes only registered teams; otherwise 400 `Only registered teams can rank mentors`.
 
 After the save commits, the event feed gets "submitted" with the teams' progress on a first ranking, or "updated" on a later one. It names the team, never the mentors or ranks.
 
@@ -423,7 +426,7 @@ Mentor. Replaces the mentor's ranking.
 }
 ```
 
-403 `Preference submission is closed` while `preferences_open` is off, before the body is read; nothing is written. Re-checked under a row lock inside the save, as for teams. Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`). A mentor deactivated after logging in gets 400 `Mentor not found or inactive`.
+403 `Matching is confirmed, so preferences can no longer change.` once matching is confirmed, otherwise 403 `Preference submission is closed` while `preferences_open` is off, before the body is read; nothing is written. Both re-checked under row locks inside the save, as for teams. Exactly 3 distinct teams that are active and registered, ranks 1 to 3, otherwise 400. `team_id` and `rank` must be JSON integers (`Each preference needs a whole-number team_id and rank`). A mentor deactivated after logging in gets 400 `Mentor not found or inactive`.
 
 After the save commits, the event feed gets "submitted" with the mentors' progress, or "updated". It names the mentor, never the teams or ranks.
 
@@ -433,11 +436,11 @@ Mentor. `preferences`: `[{rank, team_id, team_name}]` ordered by rank. Works whe
 
 ### GET /api/mentors/assigned-teams
 
-Mentor. `teams`: the teams assigned by the last matching run: `team_id, team_name, participant_count`. Empty until the admin confirms the run.
+Mentor. `teams`: the registered teams assigned by the last matching run or the admin's edits: `team_id, team_name, participant_count`. Empty until the admin confirms the run.
 
 ### GET /api/matching-status
 
-Public. `{"success": true, "confirmed": false}`.
+Public. `{"success": true, "confirmed": false}`. Read uncached; `/api/config` carries the same bit as `MATCHING_CONFIRMED`.
 
 ---
 
@@ -501,11 +504,12 @@ All routes in this section require the admin token.
   "queue_count": 2,
   "registered_teams": [{ "id": 3, "team_name": "...", "...": "..." }],
   "queued_teams": [],
-  "unregistered_teams": []
+  "unregistered_teams": [],
+  "pending_teams": []
 }
 ```
 
-`unregistered_teams` lists active teams that are neither registered nor queued.
+`unregistered_teams` lists active teams that are neither registered nor queued, and `pending_teams` the teams under 3 members.
 
 ### POST /api/admin/teams/{team_id}/register
 
@@ -513,7 +517,31 @@ Registers an active team if a slot is free, removing it from the queue. 400 if n
 
 ### POST /api/admin/teams/{team_id}/unregister
 
-Unregisters a team. Does not promote anyone from the queue.
+Unregisters a team and deletes its mentor assignments in the same transaction. Does not promote anyone from the queue. When the team had mentors, the event feed gets "Admin unregistered team _X_; its mentors were released."
+
+### POST /api/admin/teams/{team_id}/members
+
+Puts a teamless participant into the team. Works in every phase and skips the email verification gate.
+
+```json
+{ "email": "ana@example.com" }
+```
+
+200 `{"success": true, "message": "Member added", "member_count": 4}`. The email is matched lowercased. The participant's pending request to this team becomes `accepted` and their others `invalidated`. 404 for an unknown team; 400 `Email is required`, `This team has been disqualified`, `Team is full (max 6 members)`, `No active participant has that email` or `That participant is already in a team`. Before matching is confirmed, a pending team reaching 3 is activated and registered or queued as on a join; once it is confirmed, the team is activated and put at the end of the queue, never registered, so a later re-run doesn't leave it with neither a slot nor a queue place. Posted to the event feed with the team name and the new member count.
+
+### DELETE /api/admin/teams/{team_id}/members/{member_id}
+
+Takes a member out of the team; it is never disbanded. To remove the captain add `?new_captain_id=<id>` naming another member, who becomes captain in the same transaction (a query parameter, since the SPA's `DELETE` sends no body). 200 `{"success": true, "message": "Member removed", "member_count": 2}`. 404 for an unknown team; 400 `Member not found in this team`, `A team's last member can't be removed.` or `Pick another member of the team as the new captain`. Before matching is confirmed, dropping below 3 members unregisters the team (releasing its mentors, promoting the queue) and makes it `pending`; once it is confirmed, the team keeps its slot and stays `active`. Posted to the event feed with the team name and the new member count.
+
+### PUT /api/admin/teams/{team_id}/mentors
+
+Replaces a registered team's mentor assignments. Leaves the confirmation as it is, so a confirmed team sees the new list at once.
+
+```json
+{ "mentor_ids": [4, 9] }
+```
+
+`mentor_ids` is a list of distinct whole-number ids and may be empty (400 `mentor_ids must be a list of distinct mentor ids`). 404 for an unknown team, 400 `Only registered teams can be assigned mentors` or `Mentor <id> not found or inactive`. 200 `{"success": true, "changed": true, "mentor_count": 2, "warnings": []}`; `changed` is false when the list already matched. The limits are warned about, not enforced, counted over registered teams after the write: `Team X has 4 mentors (max 3)`, `Team X has 1 mentors (fewer than 2)` and `Mentor Y is assigned to 4 teams (max 3)` for each mentor in the list. A change is posted to the event feed with the team name and the mentor count, never who.
 
 ### GET /api/admin/preference-status
 
@@ -521,7 +549,16 @@ Unregisters a team. Does not promote anyone from the queue.
 {
   "success": true,
   "teams": [{ "id": 3, "team_name": "...", "submitted": true }],
-  "mentors": [{ "id": 4, "name": "...", "company_name": "...", "submitted": false }],
+  "mentors": [
+    {
+      "id": 4,
+      "name": "...",
+      "company_name": "...",
+      "submitted": false,
+      "picks_counting": 0,
+      "picks_saved": 3
+    }
+  ],
   "teams_total": 18,
   "teams_submitted": 15,
   "mentors_total": 20,
@@ -532,7 +569,7 @@ Unregisters a team. Does not promote anyone from the queue.
 
 ### POST /api/admin/run-matching
 
-Runs matching, replaces all assignments and resets confirmation. Always attempts to run; missing preferences produce warnings, not errors. It runs whether or not `preferences_open` is on. Mission Control's run dialog reads both values fresh: it warns while `preferences_open` is on, since rankings can still change after the run, and while the current results are confirmed, since the run hides them until the next confirm.
+Runs matching, replaces all assignments (the admin's hand edits included) and resets confirmation, which lifts the freeze on teams. Always attempts to run; missing preferences produce warnings, not errors. It runs whether or not `preferences_open` is on. The save writes only the pairs whose team is still active and registered, since the run reads its teams before the save's lock; `assignment_count` is the number written. Mission Control's run dialog reads both values fresh: it warns while `preferences_open` is on, since rankings can still change after the run, and while the current results are confirmed, since the run hides them and reopens team changes until the next confirm.
 
 ```json
 {
@@ -548,11 +585,11 @@ Runs matching, replaces all assignments and resets confirmation. Always attempts
 
 ### POST /api/admin/confirm-matching
 
-Marks the current results final; teams and mentors start seeing assignments. A later `run-matching` resets this. Confirming posts to the event feed only when the results were not already confirmed, so a repeat call posts nothing.
+Marks the current results final; teams and mentors start seeing assignments, and participant team changes and rankings are frozen (see Frozen teams). A later `run-matching` resets this. Confirming posts to the event feed only when the results were not already confirmed, so a repeat call posts nothing.
 
 ### GET /api/admin/matching-results
 
-`results`: `[{team_id, team_name, mentor_id, mentor_name, company_name, assigned_at}]`.
+`results`: `[{team_id, team_name, mentor_id, mentor_name, company_name, assigned_at}]`, for registered teams only.
 
 ### GET /api/admin/matching-export
 
@@ -570,7 +607,7 @@ Results grouped by team plus constraint checks.
 }
 ```
 
-`teams` lists only teams with at least one assignment, so a team that went back to pending after the run still shows there. `teams_without_mentors` lists, by name, the active registered teams with no active assignment: the same set a matching run works on, so no team is in both lists. `confirmed` is the confirmation flag, as `GET /api/matching-status` reports it. All of it is read in one transaction under the shared form of advisory lock 2, so it waits for a matching run being saved and no other is saved between the reads. A team change or a confirm can still land between them. `violations` flags any team or mentor with more than 3 assignments. Mission Control's EXPORT shows this response as plain text and downloads it as a Markdown file.
+`teams` lists only registered teams with at least one assignment (an unregister releases a team's mentors). `teams_without_mentors` lists, by name, the active registered teams with no active assignment: the same set a matching run works on. `confirmed` is the confirmation flag, as `GET /api/matching-status` reports it. All of it is read in one transaction under the shared form of advisory lock 2, so it waits for a matching run being saved or an admin mentor edit, and neither commits between the reads. A team change or a confirm can still land between them, so a team unregistered and registered again in between would show in both lists. `violations` flags any team or mentor with more than 3 assignments. Mission Control's EXPORT shows this response as plain text and downloads it as a Markdown file.
 
 ### GET /api/admin/teams/scores
 

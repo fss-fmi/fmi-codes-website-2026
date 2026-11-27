@@ -7,6 +7,8 @@ interface Flags {
   MENTORS_STAY_TUNED: boolean;
   RANKINGS_LIVE: boolean;
   PREFERENCES_OPEN: boolean;
+  /** The admin has confirmed matching: participant team changes and preferences are frozen. */
+  MATCHING_CONFIRMED: boolean;
   REQUIRE_EMAIL_VERIFICATION: boolean;
 }
 
@@ -21,6 +23,7 @@ const CLOSED: Flags = {
   MENTORS_STAY_TUNED: false,
   RANKINGS_LIVE: false,
   PREFERENCES_OPEN: false,
+  MATCHING_CONFIRMED: false,
   REQUIRE_EMAIL_VERIFICATION: false,
 };
 
@@ -42,6 +45,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     MENTORS_STAY_TUNED: flags.MENTORS_STAY_TUNED,
     RANKINGS_LIVE: flags.RANKINGS_LIVE,
     PREFERENCES_OPEN: flags.PREFERENCES_OPEN,
+    MATCHING_CONFIRMED: flags.MATCHING_CONFIRMED,
     REQUIRE_EMAIL_VERIFICATION: flags.REQUIRE_EMAIL_VERIFICATION,
     isLoading: isPending,
     isLoaded: data !== undefined,

@@ -8,6 +8,7 @@ import Clock from '@/components/admin/Clock';
 import api from '@/lib/api';
 import type { RegStatus, PrefStatus, Tab } from './panels/shared';
 import RegistrationPanel from './panels/RegistrationPanel';
+import TeamsPanel from './panels/TeamsPanel';
 import PreferencesPanel from './panels/PreferencesPanel';
 import MatchingPanel from './panels/MatchingPanel';
 import ScoresPanel from './panels/ScoresPanel';
@@ -40,6 +41,7 @@ function MatchingContent() {
       label: 'REGISTRATION',
       badge: regData ? `${regData.registered_count}/${regData.max_registered}` : undefined,
     },
+    { key: 'teams', label: 'TEAMS' },
     {
       key: 'preferences',
       label: 'PREFERENCES',
@@ -149,6 +151,7 @@ function MatchingContent() {
 
       {tab === 'site' && <SitePanel />}
       {tab === 'registration' && <RegistrationPanel />}
+      {tab === 'teams' && <TeamsPanel />}
       {tab === 'preferences' && <PreferencesPanel />}
       {tab === 'matching' && <MatchingPanel />}
       {tab === 'scores' && <ScoresPanel />}

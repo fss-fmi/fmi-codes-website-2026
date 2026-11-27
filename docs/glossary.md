@@ -6,7 +6,7 @@ Domain terms used across the code, the API and the UI. General web and framework
 
 ### Active (team)
 
-A team with at least 3 members (`ACTIVE_THRESHOLD`). Only active teams can be registered, queued, ranked by mentors or matched. Stored as `teams.status = 'active'`. See **Team status**.
+A team with at least 3 members (`ACTIVE_THRESHOLD`). Only active teams can be registered, queued, ranked by mentors or matched. Stored as `teams.status = 'active'`. After matching is **confirmed**, a team the admin takes below 3 members stays active (see **Freeze**). See **Team status**.
 
 ### Admin
 
@@ -24,11 +24,11 @@ One (team, mentor) pair produced by **Matching** and stored in `team_mentors`. T
 
 ### Captain
 
-The participant who created a team (`participants.is_captain`, `teams.captain_id`). Only the captain sees the join code, accepts or declines join requests, removes members, ranks mentors and disbands the team. If the captain leaves, the team is disbanded. Captaincy cannot be transferred.
+The participant who created a team (`participants.is_captain`, `teams.captain_id`). Only the captain sees the join code, accepts or declines join requests, removes members, ranks mentors and disbands the team. If the captain leaves, the team is disbanded. Participants can't transfer captaincy; the admin can, by removing the captain in Mission Control's TEAMS tab and picking another member, who takes over in the same step.
 
 ### Confirmed (matching)
 
-`matching_state.is_confirmed`. Set by the admin after reviewing a matching run; until then teams and mentors keep seeing their own preferences. Any new matching run resets it to unconfirmed.
+`matching_state.is_confirmed`. Set by the admin after reviewing a matching run; until then teams and mentors keep seeing their own preferences. While set, teams are under the **Freeze**. Any new matching run resets it to unconfirmed. `/api/config` exposes it as `MATCHING_CONFIRMED`.
 
 ### Course
 
@@ -38,7 +38,7 @@ A participant's study year. One of `Bachelor 1st Year` .. `Bachelor 4th Year`, `
 
 ### Disband
 
-Deleting a team. Members are released (they become teamless), its join requests, preferences and assignments are deleted with it and the team's registration slot or queue position is freed.
+Deleting a team. Members are released (they become teamless), its join requests, preferences and assignments are deleted with it and the team's registration slot or queue position is freed. Only the captain disbands, by DISBAND TEAM or by leaving, and not during the **Freeze**; the admin's member removals never disband a team.
 
 ## F
 
@@ -59,6 +59,10 @@ Five booleans. Four live in the `feature_flags` table and are switched or schedu
 | `REQUIRE_EMAIL_VERIFICATION` | Server config   | Unverified participants cannot create, join or apply to teams (see below) |
 
 A flag holds at most one **scheduled change** (`scheduled_value` at `scheduled_at`), applied by the first request after its time. Every change is posted to the environment's event feed in Slack.
+
+### Freeze
+
+What a **confirmed** matching does to teams. Participants can't create, join, apply to, leave or disband a team, captains can't remove members or accept applications, and nobody can change a ranking; declining and withdrawing an application still work. The pages say "Teams are locked while the event runs. For any changes, contact the organizers." Nothing moves a **Registration slot** by itself: a team below 3 keeps its slot and nobody is promoted, and a team the admin fills to 3 joins the end of the **Queue**. The admin changes members and mentors by hand in Mission Control's TEAMS tab. A new matching run lifts it until the next confirm ([ADR-019](adr/019-freeze-teams-on-confirmed-matching.md)).
 
 ## G
 
@@ -105,7 +109,7 @@ A registered team's ranking of exactly 3 distinct mentors, set by its captain, r
 
 ### Mission Control
 
-The admin console at `/admin/matching`, with SITE, REGISTRATION, PREFERENCES, MATCHING and SCORES tabs.
+The admin console at `/admin/matching`, with SITE, REGISTRATION, TEAMS, PREFERENCES, MATCHING and SCORES tabs.
 
 ## P
 
@@ -119,7 +123,7 @@ A team with fewer than 3 members. Not eligible for registration. Shown in the UI
 
 ### Promote (queue)
 
-Moving the first team in the **Queue** into a freed **Registration slot**. Happens automatically when a registered team drops below 3 members or is disbanded. Not to be confused with promoting a release to production.
+Moving the first team in the **Queue** that has its 3 members into a freed **Registration slot**. Happens automatically when a registered team drops below 3 members or is disbanded, until matching is confirmed (see **Freeze**). Not to be confused with promoting a release to production.
 
 ## Q
 
@@ -131,7 +135,7 @@ The waiting list for teams that became active after all 18 **registration slots*
 
 ### Registered (team)
 
-A team holding one of the 18 event slots (`teams.is_registered`). The first 18 teams to become active register automatically; the admin can also register or unregister manually. Only registered teams can be ranked by mentors, matched and scored.
+A team holding one of the 18 event slots (`teams.is_registered`). The first 18 teams to become active register automatically; the admin can also register or unregister manually. Only registered teams can be ranked by mentors, matched, assigned mentors and scored; losing the slot releases the team's mentors.
 
 ### Registration slot
 

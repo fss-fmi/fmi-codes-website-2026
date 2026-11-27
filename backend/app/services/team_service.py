@@ -14,6 +14,8 @@ import psycopg2
 from flask import current_app
 
 from app.database import execute_query, get_db_cursor
+from app.services import event_notifier, matching_events
+from app.services.matching_service import TEAM_NOT_FOUND, frozen_locked
 from app.services.redis_client import jittered_ttl, redis_del, redis_get, redis_set
 from app.utils.service_errors import ServiceFailureError
 
@@ -22,6 +24,9 @@ logger = logging.getLogger(__name__)
 MAX_TEAM_MEMBERS = 6
 MAX_REGISTERED_TEAMS = 18
 ACTIVE_THRESHOLD = 3  # members required to activate a team
+
+# Once matching is confirmed, participant team changes are refused with this text (403).
+TEAMS_LOCKED = "Teams are locked while the event runs. For any changes, contact the organizers."
 
 _REGISTERED_TEAMS_CACHE_KEY = "cache:teams:registered"
 
@@ -85,7 +90,8 @@ class TeamService:
                    COUNT(DISTINCT tm.mentor_id) as mentor_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
-            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
+            LEFT JOIN team_mentors tm
+                ON t.id = tm.team_id AND tm.is_active = TRUE AND t.is_registered
             WHERE t.team_name = %s
             GROUP BY t.id
         """
@@ -100,14 +106,15 @@ class TeamService:
 
     @staticmethod
     def get_all_teams(active_only=False, order_by="created_at"):
-        """Get all teams with participant and mentor counts"""
+        """Get all teams with participant and mentor counts (mentors of registered teams only)"""
         query = """
             SELECT t.*,
                    COUNT(DISTINCT p.id) as participant_count,
                    COUNT(DISTINCT tm.mentor_id) as mentor_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
-            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
+            LEFT JOIN team_mentors tm
+                ON t.id = tm.team_id AND tm.is_active = TRUE AND t.is_registered
         """
         if active_only:
             query += " WHERE t.status = 'active'"
@@ -176,16 +183,67 @@ class TeamService:
                 f"Team {team_id} registered (slot {registered_count + 1}/{MAX_REGISTERED_TEAMS})"
             )
         else:
-            cursor.execute(
-                "SELECT COALESCE(MAX(queue_position), 0) + 1 AS next_pos "
-                "FROM teams WHERE queue_position IS NOT NULL"
-            )
-            next_pos = cursor.fetchone()["next_pos"]
-            cursor.execute(
-                "UPDATE teams SET queue_position = %s WHERE id = %s",
-                (next_pos, team_id),
-            )
-            logger.info(f"Team {team_id} queued at position {next_pos}")
+            TeamService._queue(cursor, team_id)
+
+    @staticmethod
+    def _queue(cursor, team_id):
+        """Put the team at the end of the queue. Needs pg_advisory_xact_lock(1)."""
+        cursor.execute(
+            "SELECT COALESCE(MAX(queue_position), 0) + 1 AS next_pos "
+            "FROM teams WHERE queue_position IS NOT NULL"
+        )
+        next_pos = cursor.fetchone()["next_pos"]
+        cursor.execute(
+            "UPDATE teams SET queue_position = %s WHERE id = %s",
+            (next_pos, team_id),
+        )
+        logger.info(f"Team {team_id} queued at position {next_pos}")
+
+    @staticmethod
+    def _first_in_line(cursor):
+        """The first queued active team that has its 3 members, row-locked, or None.
+
+        One the admin took below 3 while matching was confirmed waits in the queue
+        until it has 3 again. Needs pg_advisory_xact_lock(1).
+        """
+        cursor.execute(
+            "SELECT id, queue_position FROM teams t "
+            "WHERE queue_position IS NOT NULL AND status = 'active' "
+            "AND (SELECT COUNT(*) FROM participants p"
+            " WHERE p.team_id = t.id AND p.status = 'active') >= %s "
+            "ORDER BY queue_position ASC LIMIT 1 FOR UPDATE",
+            (ACTIVE_THRESHOLD,),
+        )
+        return cursor.fetchone()
+
+    @staticmethod
+    def _promote(cursor, queued):
+        """Move a queued team (a _first_in_line row) into a slot. Needs lock 1."""
+        cursor.execute(
+            "UPDATE teams SET is_registered = TRUE, registered_at = NOW(), "
+            "queue_position = NULL WHERE id = %s",
+            (queued["id"],),
+        )
+        # Shift only positions above the promoted team's old slot
+        cursor.execute(
+            "UPDATE teams SET queue_position = queue_position - 1 WHERE queue_position > %s",
+            (queued["queue_position"],),
+        )
+        logger.info(f"Team {queued['id']} auto-promoted from queue to registered")
+
+    @staticmethod
+    def _register_if_first_in_line(cursor, team_id):
+        """A queued team back at 3 members takes a free slot if it is first in line.
+
+        The queue skips teams under 3, so a slot may have opened while this one waited
+        short. Needs pg_advisory_xact_lock(1).
+        """
+        cursor.execute("SELECT COUNT(*) AS cnt FROM teams WHERE is_registered = TRUE")
+        if cursor.fetchone()["cnt"] >= MAX_REGISTERED_TEAMS:
+            return
+        first = TeamService._first_in_line(cursor)
+        if first and first["id"] == team_id:
+            TeamService._promote(cursor, first)
 
     @staticmethod
     def _unregister_and_promote(cursor, team_id):
@@ -203,32 +261,15 @@ class TeamService:
             return
 
         if team["is_registered"]:
-            # Unregister
+            # Unregister; its mentors are released with the slot
             cursor.execute(
                 "UPDATE teams SET is_registered = FALSE, registered_at = NULL WHERE id = %s",
                 (team_id,),
             )
-            # Promote the first queued active team
-            cursor.execute(
-                "SELECT id, queue_position FROM teams "
-                "WHERE queue_position IS NOT NULL AND status = 'active' "
-                "ORDER BY queue_position ASC LIMIT 1 FOR UPDATE"
-            )
-            promoted = cursor.fetchone()
+            cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
+            promoted = TeamService._first_in_line(cursor)
             if promoted:
-                promoted_pos = promoted["queue_position"]
-                cursor.execute(
-                    "UPDATE teams SET is_registered = TRUE, registered_at = NOW(), "
-                    "queue_position = NULL WHERE id = %s",
-                    (promoted["id"],),
-                )
-                # Shift only positions above the promoted team's old slot
-                cursor.execute(
-                    "UPDATE teams SET queue_position = queue_position - 1 "
-                    "WHERE queue_position > %s",
-                    (promoted_pos,),
-                )
-                logger.info(f"Team {promoted['id']} auto-promoted from queue to registered")
+                TeamService._promote(cursor, promoted)
             logger.info(f"Team {team_id} unregistered")
 
         elif team["queue_position"] is not None:
@@ -262,6 +303,14 @@ class TeamService:
             (participant_id,),
         )
 
+    @staticmethod
+    def _announce(text_builder, *args):
+        """Post a committed admin change to the event feed. Never raises: it is saved."""
+        try:
+            event_notifier.notify(text_builder(*args))
+        except Exception:
+            logger.exception("Could not post the admin team change event")
+
     # ── Atomic mutating operations ─────────────────────────────────
 
     @staticmethod
@@ -280,6 +329,8 @@ class TeamService:
             with get_db_cursor() as cursor:
                 # Advisory lock serializes all registration-state mutations.
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                if frozen_locked(cursor):
+                    return False, TEAMS_LOCKED, None
 
                 # Name uniqueness (DB UNIQUE will also catch races)
                 cursor.execute("SELECT 1 FROM teams WHERE team_name = %s", (team_name,))
@@ -349,6 +400,8 @@ class TeamService:
             with get_db_cursor() as cursor:
                 # Advisory lock serializes all registration-state mutations.
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                if frozen_locked(cursor):
+                    return False, TEAMS_LOCKED, None
 
                 # Lock the team row and get current info
                 cursor.execute(
@@ -404,6 +457,8 @@ class TeamService:
                         (team["id"],),
                     )
                     TeamService._try_register_or_queue(cursor, team["id"])
+                elif new_count == ACTIVE_THRESHOLD and team["queue_position"] is not None:
+                    TeamService._register_if_first_in_line(cursor, team["id"])
 
         except Exception as e:
             logger.error(f"Error joining team: {e}")
@@ -427,6 +482,8 @@ class TeamService:
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                if frozen_locked(cursor):
+                    return False, TEAMS_LOCKED
 
                 # Lock participant row
                 cursor.execute(
@@ -479,6 +536,8 @@ class TeamService:
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                if frozen_locked(cursor):
+                    return False, TEAMS_LOCKED
 
                 # Lock team row
                 cursor.execute(
@@ -532,6 +591,8 @@ class TeamService:
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                if frozen_locked(cursor):
+                    return False, TEAMS_LOCKED
 
                 cursor.execute(
                     "SELECT * FROM teams WHERE id = %s FOR UPDATE",
@@ -576,6 +637,7 @@ class TeamService:
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                frozen_locked(cursor)  # lock order only: the admin isn't frozen
 
                 cursor.execute(
                     "SELECT * FROM teams WHERE id = %s FOR UPDATE",
@@ -620,11 +682,13 @@ class TeamService:
     def admin_unregister_team(team_id):
         """Admin manually unregisters a team. Does NOT auto-promote from queue.
 
-        Atomic with advisory lock.
+        Atomic with advisory lock. The team's mentors are released in the same
+        transaction, and the feed hears of it only when it had any.
         """
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                frozen_locked(cursor)  # lock order only: the admin isn't frozen
 
                 cursor.execute(
                     "SELECT * FROM teams WHERE id = %s FOR UPDATE",
@@ -640,13 +704,183 @@ class TeamService:
                     "UPDATE teams SET is_registered = FALSE, registered_at = NULL WHERE id = %s",
                     (team_id,),
                 )
-
-            logger.info(f"Admin unregistered team {team_id}")
-            return True, "Team unregistered successfully"
+                cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
+                released = cursor.rowcount > 0
 
         except Exception as e:
             logger.error(f"Error admin-unregistering team: {e}")
             raise ServiceFailureError("Could not unregister the team. Try again.") from e
+
+        logger.info(f"Admin unregistered team {team_id}")
+        if released:
+            TeamService._announce(matching_events.admin_unregistered_text, team["team_name"])
+        return True, "Team unregistered successfully"
+
+    # ── Admin member edits (the escape hatch once teams are frozen) ──
+
+    @staticmethod
+    @_invalidates_registered_teams
+    def admin_add_member(team_id, email):
+        """Admin puts a teamless participant into a team, found by email.
+
+        Skips the email verification gate. Before matching is confirmed the usual
+        rules apply (a pending team reaching 3 becomes active and is registered or
+        queued); once it is, the team becomes active and joins the end of the queue,
+        never a slot, so a later re-run that lifts the freeze doesn't strand it.
+        Returns (success, message, member_count).
+        """
+        email = email.strip().lower()
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                frozen = frozen_locked(cursor)
+
+                cursor.execute("SELECT * FROM teams WHERE id = %s FOR UPDATE", (team_id,))
+                team = cursor.fetchone()
+                if not team:
+                    return False, TEAM_NOT_FOUND, None
+                if team["status"] == "disqualified":
+                    return False, "This team has been disqualified", None
+
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM participants "
+                    "WHERE team_id = %s AND status = 'active'",
+                    (team_id,),
+                )
+                member_count = cursor.fetchone()["cnt"]
+                if member_count >= MAX_TEAM_MEMBERS:
+                    return False, f"Team is full (max {MAX_TEAM_MEMBERS} members)", None
+
+                cursor.execute(
+                    "SELECT id, team_id FROM participants "
+                    "WHERE email = %s AND status = 'active' FOR UPDATE",
+                    (email,),
+                )
+                participant = cursor.fetchone()
+                if not participant:
+                    return False, "No active participant has that email", None
+                if participant["team_id"]:
+                    return False, "That participant is already in a team", None
+
+                cursor.execute(
+                    "UPDATE participants SET team_id = %s WHERE id = %s",
+                    (team_id, participant["id"]),
+                )
+                cursor.execute(
+                    "UPDATE team_join_requests SET status = 'accepted' "
+                    "WHERE participant_id = %s AND team_id = %s AND status = 'pending'",
+                    (participant["id"], team_id),
+                )
+                TeamService._invalidate_pending_requests(cursor, participant["id"])
+
+                new_count = member_count + 1
+                if new_count >= ACTIVE_THRESHOLD and team["status"] == "pending":
+                    cursor.execute("UPDATE teams SET status = 'active' WHERE id = %s", (team_id,))
+                    if frozen:
+                        TeamService._queue(cursor, team_id)
+                    else:
+                        TeamService._try_register_or_queue(cursor, team_id)
+                elif (
+                    new_count == ACTIVE_THRESHOLD
+                    and team["queue_position"] is not None
+                    and not frozen
+                ):
+                    TeamService._register_if_first_in_line(cursor, team_id)
+
+        except Exception as e:
+            logger.error(f"Error admin-adding a member: {e}")
+            raise ServiceFailureError("Could not add the member. Try again.") from e
+
+        logger.info(f"Admin added participant {participant['id']} to team {team_id}")
+        TeamService._announce(matching_events.admin_member_added_text, team["team_name"], new_count)
+        return True, "Member added", new_count
+
+    @staticmethod
+    @_invalidates_registered_teams
+    def admin_remove_member(team_id, member_id, new_captain_id=None):
+        """Admin takes a member out of a team. Never disbands it.
+
+        Removing the captain needs another member as *new_captain_id*, who takes over
+        in the same transaction. Before matching is confirmed a team below 3 is
+        unregistered (the queue promotes) and goes back to pending; once it is,
+        nothing changes but the roster. Returns (success, message, member_count).
+        """
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                frozen = frozen_locked(cursor)
+
+                cursor.execute("SELECT * FROM teams WHERE id = %s FOR UPDATE", (team_id,))
+                team = cursor.fetchone()
+                if not team:
+                    return False, TEAM_NOT_FOUND, None
+
+                cursor.execute(
+                    "SELECT id, team_id, is_captain, status FROM participants"
+                    " WHERE id = %s FOR UPDATE",
+                    (member_id,),
+                )
+                member = cursor.fetchone()
+                if not member or member["team_id"] != team_id:
+                    return False, "Member not found in this team", None
+
+                # Counted like the 3-member threshold: an inactive row still pointing at
+                # the team doesn't keep it alive.
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM participants "
+                    "WHERE team_id = %s AND status = 'active'",
+                    (team_id,),
+                )
+                if member["status"] == "active" and cursor.fetchone()["cnt"] <= 1:
+                    return False, "A team's last member can't be removed.", None
+
+                if member["is_captain"]:
+                    successor = None
+                    if new_captain_id is not None and new_captain_id != member_id:
+                        cursor.execute(
+                            "SELECT id, team_id FROM participants "
+                            "WHERE id = %s AND status = 'active' FOR UPDATE",
+                            (new_captain_id,),
+                        )
+                        successor = cursor.fetchone()
+                    if not successor or successor["team_id"] != team_id:
+                        return False, "Pick another member of the team as the new captain", None
+                    cursor.execute(
+                        "UPDATE participants SET is_captain = TRUE WHERE id = %s",
+                        (new_captain_id,),
+                    )
+                    cursor.execute(
+                        "UPDATE teams SET captain_id = %s WHERE id = %s",
+                        (new_captain_id, team_id),
+                    )
+
+                cursor.execute(
+                    "UPDATE participants SET team_id = NULL, is_captain = FALSE WHERE id = %s",
+                    (member_id,),
+                )
+
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM participants "
+                    "WHERE team_id = %s AND status = 'active'",
+                    (team_id,),
+                )
+                remaining = cursor.fetchone()["cnt"]
+                if remaining < ACTIVE_THRESHOLD and not frozen:
+                    TeamService._unregister_and_promote(cursor, team_id)
+                    cursor.execute(
+                        "UPDATE teams SET status = 'pending' WHERE id = %s AND status = 'active'",
+                        (team_id,),
+                    )
+
+        except Exception as e:
+            logger.error(f"Error admin-removing a member: {e}")
+            raise ServiceFailureError("Could not remove the member. Try again.") from e
+
+        logger.info(f"Admin removed participant {member_id} from team {team_id}")
+        TeamService._announce(
+            matching_events.admin_member_removed_text, team["team_name"], remaining
+        )
+        return True, "Member removed", remaining
 
     @staticmethod
     def get_team_members(team_id):
@@ -698,6 +932,8 @@ class TeamService:
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                if frozen_locked(cursor):
+                    return False, TEAMS_LOCKED
 
                 # Lock participant — must be teamless
                 cursor.execute(
@@ -806,6 +1042,8 @@ class TeamService:
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                if frozen_locked(cursor):
+                    return False, TEAMS_LOCKED
 
                 # Lock the request row
                 cursor.execute(
@@ -852,7 +1090,7 @@ class TeamService:
 
                 # Re-check team capacity
                 cursor.execute(
-                    "SELECT participant_count, status FROM teams WHERE id = %s",
+                    "SELECT participant_count, status, queue_position FROM teams WHERE id = %s",
                     (team_id,),
                 )
                 team_info = cursor.fetchone()
@@ -881,6 +1119,8 @@ class TeamService:
                         (team_id,),
                     )
                     TeamService._try_register_or_queue(cursor, team_id)
+                elif new_count == ACTIVE_THRESHOLD and team_info["queue_position"] is not None:
+                    TeamService._register_if_first_in_line(cursor, team_id)
 
             logger.info(
                 f"Join request {request_id} accepted: participant {applicant_id} → team {team_id}"
@@ -893,10 +1133,11 @@ class TeamService:
 
     @staticmethod
     def decline_join_request(request_id, captain_id):
-        """Captain declines a join request. Atomic with advisory lock."""
+        """Captain declines a join request. Atomic with advisory lock. Open while frozen."""
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                frozen_locked(cursor)  # lock order only: a decline changes no team
 
                 cursor.execute(
                     "SELECT * FROM team_join_requests WHERE id = %s FOR UPDATE",
@@ -931,10 +1172,11 @@ class TeamService:
 
     @staticmethod
     def cancel_join_request(request_id, participant_id):
-        """Participant withdraws their own pending application."""
+        """Participant withdraws their own pending application. Open while frozen."""
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_xact_lock(1)")
+                frozen_locked(cursor)  # lock order only: a withdrawal changes no team
 
                 cursor.execute(
                     "SELECT * FROM team_join_requests WHERE id = %s FOR UPDATE",

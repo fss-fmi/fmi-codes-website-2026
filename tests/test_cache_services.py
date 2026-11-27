@@ -453,6 +453,9 @@ def test_registered_route_keeps_per_user_flags_out_of_cache(monkeypatch, client)
     )
     route_results = iter([{"team_id": None}, [{"team_id": 1}]])
     monkeypatch.setattr("app.routes.teams.execute_query", lambda *a, **k: next(route_results))
+    monkeypatch.setattr(
+        "app.services.feature_flag_service.get_matching_confirmed_cached", lambda: False
+    )
 
     body = client.get("/api/teams/registered").get_json()
     assert body["can_apply"] is True
@@ -489,6 +492,8 @@ def test_failed_mutation_leaves_registered_teams_cache(monkeypatch, app_ctx):
         "accept_join_request",
         "admin_register_team",
         "admin_unregister_team",
+        "admin_add_member",
+        "admin_remove_member",
     ],
 )
 def test_registration_mutations_invalidate_registered_teams(method):

@@ -37,9 +37,9 @@ src/
 
 - **API calls** go through `src/lib/api.ts` (`api.get/post/put/patch/delete`). It sends cookies, throws an `ApiError` (status, the server's `error` message and any `Retry-After`) on non-2xx and a `NetworkError` when no answer arrives, and fires a window `auth:unauthorized` event on 401 that logs the user out. Show a caught error with `errorMessage()` from `src/lib/errors.ts`.
 - **Server state** lives in TanStack Query. Defaults: 30 s stale time, no retries, no refetch on window focus.
-- **Auth** is an httpOnly cookie set by the backend; the SPA never touches the token. `AuthContext` hydrates the user from `GET /api/auth/me` on load.
+- **Auth** is an httpOnly cookie set by the backend; the SPA never touches the token. The signed-in user is one TanStack query, `['me']` (`useMe()` in `src/hooks/useMe.ts`), that `AuthContext` and the pages read; only a 401 or 404 there signs the user out. `RequireAuth` mounts it too, so opening a protected page refetches a stale user. After a change to the user's own team, await `refreshUser()` before navigating.
 - **Role-gated pages** wrap themselves in `<RequireAuth roles={[...]}>`. The routes in `App.tsx` are not guarded, so a new protected page must add its own wrapper.
-- **Feature flags** (`REGISTRATION_OPEN`, `PREFERENCES_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE`, `REQUIRE_EMAIL_VERIFICATION`) come from `useConfig()`. `ConfigContext` refetches `/api/config` every 30 s and on window focus, because the admin switches the first four live from Mission Control's SITE tab.
+- **Feature flags** (`REGISTRATION_OPEN`, `PREFERENCES_OPEN`, `MENTORS_STAY_TUNED`, `RANKINGS_LIVE`, `MATCHING_CONFIRMED`, `REQUIRE_EMAIL_VERIFICATION`) come from `useConfig()`. `ConfigContext` refetches `/api/config` every 30 s and on window focus, because the admin switches the first four live from Mission Control's SITE tab and confirms matching from its MATCHING tab. `MATCHING_CONFIRMED` freezes teams: hide every team change and show `TeamsLockedNotice` while it is true, and call `refetchConfigIfLocked` (`src/lib/teamsLock.ts`) on a refused team change so the page locks at once.
 - **Types** in `src/types/` are maintained by hand to match the backend. Update them with any API change.
 - Import from `src` with the `@/` alias.
 

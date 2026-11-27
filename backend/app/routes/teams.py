@@ -9,7 +9,7 @@ from app.database import execute_query
 from app.routes import teams_bp
 from app.services import feature_flag_service
 from app.services.email_service import send_join_request_notification
-from app.services.team_service import MAX_TEAM_MEMBERS, TeamService
+from app.services.team_service import MAX_TEAM_MEMBERS, TEAMS_LOCKED, TeamService
 from app.utils.auth_decorators import (
     captain_required,
     get_optional_user,
@@ -37,6 +37,12 @@ def _rankings_live():
         return False
 
 
+def _refused(message):
+    """A refused team change: 403 once matching has frozen teams, else 400."""
+    status = 403 if message == TEAMS_LOCKED else 400
+    return jsonify({"success": False, "error": message}), status
+
+
 def _hide_private_team_fields(team, sees_join_code):
     team.pop("password_hash", None)
     if not sees_join_code:
@@ -53,7 +59,8 @@ def get_registered_teams():
 
     If the caller provides a valid participant JWT and has no team,
     each team entry includes an `already_applied` flag and `can_apply` is True
-    in the response so the UI can show Apply buttons.
+    in the response so the UI can show Apply buttons. Once matching is confirmed
+    nobody can apply, so `can_apply` stays False.
     """
     teams_list = TeamService.get_registered_teams()
 
@@ -71,7 +78,7 @@ def get_registered_teams():
                 fetch_one=True,
             )
             if p and not p["team_id"]:
-                can_apply = True
+                can_apply = not feature_flag_service.get_matching_confirmed_cached()
     except Exception:
         # The list is public: a failed lookup only costs the caller the Apply view.
         pass
@@ -164,7 +171,7 @@ def create_team():
     if success:
         team = _hide_private_team_fields(team, sees_join_code=True)
         return jsonify({"success": True, "message": message, "team": team}), 201
-    return jsonify({"success": False, "error": message}), 400
+    return _refused(message)
 
 
 @teams_bp.route("/api/teams/join", methods=["POST"])
@@ -181,7 +188,7 @@ def join_team():
         if team:
             team = _hide_private_team_fields(team, sees_join_code=False)
         return jsonify({"success": True, "message": message, "team": team}), 200
-    return jsonify({"success": False, "error": message}), 400
+    return _refused(message)
 
 
 @teams_bp.route("/api/teams/<int:team_id>", methods=["GET"])
@@ -217,6 +224,7 @@ def get_team(team_id):
 
     # A matching run's assignments stay hidden until the admin, who reviews them, confirms it.
     # The flag is read in the same statement, so a run saved in between can't slip through.
+    # Only a registered team has mentors; rows an older unregister left behind never show.
     mentors = (
         execute_query(
             current_app,
@@ -225,6 +233,7 @@ def get_team(team_id):
                m.company_name, m.picture_url
         FROM team_mentors tm
         JOIN mentors m ON tm.mentor_id = m.id
+        JOIN teams t ON t.id = tm.team_id AND t.is_registered
         JOIN matching_state ms ON ms.id = 1
         WHERE tm.team_id = %s AND tm.is_active = TRUE AND (ms.is_confirmed OR %s)
         ORDER BY m.last_name, m.first_name, tm.mentor_id
@@ -252,7 +261,7 @@ def leave_team(team_id):
     success, message = TeamService.leave_team(g.current_user["user_id"])
     if success:
         return jsonify({"success": True, "message": message}), 200
-    return jsonify({"success": False, "error": message}), 400
+    return _refused(message)
 
 
 @teams_bp.route("/api/teams/<int:team_id>", methods=["DELETE"])
@@ -265,7 +274,7 @@ def disband_team(team_id):
     success, message = TeamService.disband_team(team_id)
     if success:
         return jsonify({"success": True, "message": message}), 200
-    return jsonify({"success": False, "error": message}), 400
+    return _refused(message)
 
 
 @teams_bp.route("/api/teams/<int:team_id>/members/<int:member_id>", methods=["DELETE"])
@@ -278,7 +287,7 @@ def remove_member(team_id, member_id):
     success, message = TeamService.remove_member(team_id, member_id, g.current_user["user_id"])
     if success:
         return jsonify({"success": True, "message": message}), 200
-    return jsonify({"success": False, "error": message}), 400
+    return _refused(message)
 
 
 # ── Browse / Join Request flow ─────────────────────────────────
@@ -308,7 +317,7 @@ def apply_to_team(team_id):
     participant_id = g.current_user["user_id"]
     success, message = TeamService.apply_to_team(participant_id, team_id)
     if not success:
-        return jsonify({"success": False, "error": message}), 400
+        return _refused(message)
 
     # Fire join-request notification email to the team captain in the background.
     # A failed email must never roll back a successful application.
@@ -365,7 +374,7 @@ def accept_request(request_id):
     success, message = TeamService.accept_join_request(request_id, g.current_user["user_id"])
     if success:
         return jsonify({"success": True, "message": message}), 200
-    return jsonify({"success": False, "error": message}), 400
+    return _refused(message)
 
 
 @teams_bp.route("/api/teams/requests/<int:request_id>/decline", methods=["POST"])

@@ -152,7 +152,15 @@ test('if the live check fails the last polled value decides', async () => {
   expect(await openRunDialog()).toMatch(WARNING);
 });
 
-const PUBLISHED = 'The current results are published; this run hides them until you confirm again.';
+const PUBLISHED =
+  'The current results are published; this run hides them and reopens team changes until you confirm again.';
+
+test('RUN MATCHING always says it replaces hand edits from the TEAMS tab', async () => {
+  Object.assign(flags, { polled: false, live: false });
+  expect(await openRunDialog()).toContain(
+    'Run the matching algorithm? This will overwrite any previous results, including mentor changes made in the TEAMS tab.',
+  );
+});
 
 test('RUN MATCHING says a run hides results that are published', async () => {
   Object.assign(flags, { polled: false, live: false });

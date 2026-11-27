@@ -123,6 +123,7 @@ _USER_ROW = {
 def call(app, client, monkeypatch):
     monkeypatch.setattr("app.database.execute_query", lambda *a, **k: _USER_ROW)
     monkeypatch.setattr(feature_flag_service, "is_enabled", lambda name: True)
+    monkeypatch.setattr(feature_flag_service, "get_matching_confirmed_cached", lambda: False)
 
     def send(route, body):
         method, path, role, _ = ROUTES[route]
