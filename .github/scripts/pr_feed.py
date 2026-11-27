@@ -16,6 +16,7 @@ one-liner, edited in place, no thread.
 
 import json
 import logging
+import math
 import os
 import re
 import sys
@@ -36,6 +37,8 @@ TAG_LINE_RE = re.compile(
 TITLE_PAIR_RE = re.compile(r"(\S+) -> (\S+)")
 CREATES_PARENT = {"opened", "ready_for_review", "reopened"}
 TRANSITIONS = {"ready_for_review", "converted_to_draft", "closed", "reopened"}
+# Issue events after which a PR is open again.
+OPENING_EVENTS = {"ready_for_review", "reopened"}
 STATUS_EMOJI = {"open": "🟢", "draft": "📝", "merged": "🟣", "closed": "🔴"}
 OPENING_KEY = "opening"
 COMMITS_SHOWN = 5
@@ -52,8 +55,11 @@ CLOCK_SKEW_SECONDS = 60
 # A relay scan posts no review older than this before its run, so the first
 # scan of a PR whose reviews were never posted (a fork's) doesn't flood its thread.
 REVIEW_WINDOW_SECONDS = 3600
-# 100 reviews a page; every reply in an inline thread is a review of its own.
-MAX_REVIEW_PAGES = 30
+# A relay scan waits for a missing parent only if the PR turned open this recently.
+PARENT_WAIT_SECONDS = 300
+# Pages of 100 read from the reviews and issue events lists. Every reply in an
+# inline thread is a review of its own, and reviews come oldest first.
+MAX_LIST_PAGES = 30
 
 
 class CommitListLagError(Exception):
@@ -163,13 +169,42 @@ def force_push_text(pr: dict, pusher: str, old: str, new: str) -> str:
     return f"⚠️ force-pushed by {escape(pusher)} · {link(compare, f'{old[:7]} → {new[:7]}')}"
 
 
-def review_text(review: dict, floor: float) -> str | None:
+def draft_spans(pr: dict, events: list[dict]) -> list[tuple[float, float]]:
+    """(start, end) of every stretch the PR spent as a draft, from its issue events.
+
+    A PR opened as a draft has no convert_to_draft event: its first draft event is
+    ready_for_review, and the draft ran from its creation. A draft still open has
+    no end.
+    """
+    spans, start, seen = [], None, False
+    drafts = [e for e in events if e.get("event") in ("convert_to_draft", "ready_for_review")]
+    for e in sorted(drafts, key=lambda e: e["created_at"]):
+        at = epoch(e["created_at"])
+        if e["event"] == "convert_to_draft":
+            start = at if start is None else start
+        else:
+            if start is None and not seen:
+                start = epoch(pr["created_at"])
+            if start is not None:
+                spans.append((start, at))
+            start = None
+        seen = True
+    if start is not None:
+        spans.append((start, math.inf))
+    return spans
+
+
+def review_text(review: dict, floor: float, drafts=()) -> str | None:
     """The thread line for a REST review submitted at or after *floor*, or None.
 
-    Says nothing about whether the reviewer may be posted; check that apart.
+    Reviews submitted inside one of the *drafts* spans are never posted. Says
+    nothing about whether the reviewer may be posted; check that apart.
     """
     user, submitted = review.get("user"), review.get("submitted_at")
-    if not user or not submitted or user.get("type") == "Bot" or epoch(submitted) < floor:
+    if not user or not submitted or user.get("type") == "Bot":
+        return None
+    at = epoch(submitted)
+    if at < floor or any(start <= at < end for start, end in drafts):
         return None
     # The REST API spells states in upper case, the webhook in lower case.
     state = (review.get("state") or "").lower()
@@ -510,50 +545,55 @@ class Feed:
         """
         if run.get("event") != "pull_request_review" or not self.github:
             return
-        since = epoch(run["created_at"]) - REVIEW_WINDOW_SECONDS
-        for pr in self._relay_prs(run, since):
-            self._post_reviews(pr, since)
+        created = epoch(run["created_at"])
+        for pr in self._relay_prs(run, created - REVIEW_WINDOW_SECONDS):
+            self._post_reviews(pr, created)
 
     def _relay_prs(self, run: dict, since: float) -> list[dict]:
         """The PRs the relay run can be for, re-read.
 
-        A head branch name can be reused, so the lookup can return closed PRs from
-        long ago. The one at the run's head commit is the PR; without one (pushed
-        since the review), every PR still open or updated inside the window.
+        Every PR at the run's head commit: one branch can be PR'd into two bases. A
+        head branch name can also be reused, so the lookup can return closed PRs from
+        long ago; without a PR at the head (pushed since the review), every PR still
+        open or updated inside the window.
         """
-        candidates = pr_candidates(self.github, self.repo, run, "all")
-        match = [p for p in candidates if (p.get("head") or {}).get("sha") == run["head_sha"]]
-        prs = [
-            self.github(f"/repos/{self.repo}/pulls/{p['number']}") for p in match[:1] or candidates
-        ]
-        if match:
-            return prs
-        return [p for p in prs if p["state"] == "open" or epoch(p["updated_at"]) >= since]
 
-    def _post_reviews(self, pr: dict, since: float) -> None:
+        def live(p: dict) -> bool:
+            return p["state"] == "open" or epoch(p["updated_at"]) >= since
+
+        def reread(p: dict) -> dict:
+            return self.github(f"/repos/{self.repo}/pulls/{p['number']}")
+
+        candidates = pr_candidates(self.github, self.repo, run, "all")
+        at_head = [p for p in candidates if (p.get("head") or {}).get("sha") == run["head_sha"]]
+        if at_head:
+            return [reread(p) for p in at_head]
+        # Entries from the list API already carry state and updated_at; the run's don't.
+        maybe = [p for p in candidates if "state" not in p or live(p)]
+        return [pr for pr in map(reread, maybe) if live(pr)]
+
+    def _post_reviews(self, pr: dict, run_created: float) -> None:
         if not self.can_push(pr["user"], pr):
             logger.info("#%s is by %s, who can't push here", pr["number"], pr["user"]["login"])
             return
         if is_flux_bump(pr, self.repo) or pr.get("draft"):
             return
-        parent = self.find(pr)
+        events = self.pr_list(f"/repos/{self.repo}/issues/{pr['number']}/events")
+        parent = self._wait_for_parent(pr, events, run_created)
         if not parent:
             return
         replies = self.slack.find_replies(
             self.channel, parent["ts"], REPLY_EVENT_TYPE, repo=self.repo, pr_number=pr["number"]
         )
         keys = {meta_payload(r).get("key") for r in replies}
-        # Reviews made before the parent or while the PR was a draft are never posted.
-        opened = [
-            float(r["ts"])
-            for r in replies
-            if str(meta_payload(r).get("key") or "").startswith("state:open:")
-        ]
-        floor = max(since, max([float(parent["ts"]), *opened]) - CLOCK_SKEW_SECONDS)
+        # Not the parent's ts: a parent waited for is posted after the review it waited for.
+        floor = run_created - REVIEW_WINDOW_SECONDS
+        # The PR isn't a draft now, so a span with no end means its events were cut off.
+        spans = [s for s in draft_spans(pr, events) if s[1] != math.inf]
         trusted: dict[str, bool] = {}
-        for review in self.pr_reviews(pr):
+        for review in self.pr_list(f"/repos/{self.repo}/pulls/{pr['number']}/reviews"):
             key = f"review:{review['id']}"
-            text = review_text(review, floor)
+            text = review_text(review, floor, spans)
             if not text or key in keys:
                 continue
             login = review["user"]["login"]
@@ -563,20 +603,36 @@ class Feed:
                 self._reply(parent, text, reply_metadata(self.repo, pr["number"], key))
                 keys.add(key)
 
-    def pr_reviews(self, pr: dict) -> list[dict]:
-        """The PR's reviews, oldest first."""
-        reviews = []
-        for page in range(1, MAX_REVIEW_PAGES + 1):
-            batch = self.github(
-                f"/repos/{self.repo}/pulls/{pr['number']}/reviews", per_page=100, page=page
-            )
-            reviews.extend(batch)
-            if len(batch) < 100:
-                return reviews
-        logger.warning(
-            "#%s has over %d reviews; the newest are not read", pr["number"], len(reviews)
+    def _wait_for_parent(self, pr: dict, events: list[dict], run_created: float):
+        """The PR's parent, or None.
+
+        A PR opened or made ready moments before the review may not have one yet: the
+        run that posts it is outside the relay's concurrency group. Only then, wait.
+        """
+        opened = max(
+            [epoch(pr["created_at"])]
+            + [epoch(e["created_at"]) for e in events if e.get("event") in OPENING_EVENTS]
         )
-        return reviews
+        wait = pr["state"] == "open" and opened >= run_created - PARENT_WAIT_SECONDS
+        for attempt in range(PARENT_POLLS):
+            parent = self.find(pr)
+            if parent or not wait:
+                return parent
+            if attempt < PARENT_POLLS - 1:
+                self.sleep(POLL_SECONDS)
+        logger.info("#%s has no parent; its reviews are not posted", pr["number"])
+        return None
+
+    def pr_list(self, path: str) -> list[dict]:
+        """Every page of a list endpoint, in the order GitHub returns it."""
+        items = []
+        for page in range(1, MAX_LIST_PAGES + 1):
+            batch = self.github(path, per_page=100, page=page)
+            items.extend(batch)
+            if len(batch) < 100:
+                return items
+        logger.warning("%s has over %d entries; the rest are not read", path, len(items))
+        return items
 
     def _handle_comment(self, event: dict, pr: dict) -> None:
         comment = event["comment"]

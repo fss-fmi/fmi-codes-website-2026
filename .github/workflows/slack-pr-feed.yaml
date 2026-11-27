@@ -32,14 +32,17 @@ on:
 # relay scans for one head branch. GitHub keeps only the newest pending run per
 # group and cancels the others; the script then lists their commits in the next
 # push reply, and the newest scan posts every review the cancelled ones would
-# have. Every other event gets a group of its own, so a burst of comments is never
-# cancelled.
+# have. The head repo and branch are joined by ':', which neither name can hold,
+# so two forks' branches never share a group. Every other event gets a group of
+# its own, so a burst of comments is never cancelled.
 concurrency:
-  group: slack-pr-feed-${{ github.event_name == 'workflow_run' && format('review-{0}-{1}', github.event.workflow_run.head_repository.full_name, github.event.workflow_run.head_branch) || github.event.action == 'synchronize' && format('push-{0}', github.event.pull_request.number) || github.run_id }}
+  group: slack-pr-feed-${{ github.event_name == 'workflow_run' && format('review-{0}:{1}', github.event.workflow_run.head_repository.full_name, github.event.workflow_run.head_branch) || github.event.action == 'synchronize' && format('push-{0}', github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: false
 
 permissions:
   contents: read
+  # A relay scan reads the PR's issue events to find when it was a draft.
+  issues: read
   pull-requests: read
 
 jobs:

@@ -2,6 +2,7 @@
 
 import io
 import json
+import math
 import re
 import sys
 import urllib.error
@@ -189,7 +190,7 @@ def github_stub(
     """The GitHub API surface Feed uses: everyone can push except *read_only* users.
 
     GET /pulls/{n} serves get.pr or a PR in get.listed, which GET /pulls?head= also
-    searches. get.reviews serves every PR's reviews.
+    searches. get.reviews and get.events serve every PR's reviews and issue events.
     """
     calls = []
 
@@ -206,10 +207,11 @@ def github_stub(
             size = params["per_page"]
             start = (params["page"] - 1) * size
             return list(commits)[: pr_feed.MAX_PR_COMMITS][start : start + size]
-        if path.endswith("/reviews"):
+        if path.endswith("/reviews") or path.endswith("/events"):
             size = params["per_page"]
             start = (params["page"] - 1) * size
-            return get.reviews[start : start + size]
+            items = get.reviews if path.endswith("/reviews") else get.events
+            return items[start : start + size]
         if path == f"/repos/{REPO}/pulls":
             return [
                 p
@@ -225,6 +227,7 @@ def github_stub(
     get.pr = pr
     get.reviews = list(reviews)
     get.listed = list(listed)
+    get.events = []
     return get
 
 
@@ -1368,6 +1371,8 @@ class TestReviewRelay:
         feed.handle("workflow_run", run)
         assert self.keys(slack, 7) == ["review:1"]
         assert self.keys(slack, 5) == []
+        # The list API said #5 is closed and stale, so it isn't even re-read.
+        assert f"/repos/{REPO}/pulls/5" not in feed.github.calls
 
         # A review on the merged PR: its head is the reviewed commit.
         run = relay_run(old, head_sha="oldsha", pull_requests=[], head_repository=self.FORK)
@@ -1443,31 +1448,107 @@ class TestReviewRelay:
         review(f, make_pr())
         assert self.keys(slack) == ["review:1"]
 
-    def test_draft_reviews_never_post_once_ready(self, slack):
-        api = github_stub(commits=[commit(1)], pr=pr_at(1))
-        f = pr_feed.Feed(slack, CHANNEL, REPO, github=api, sleep=lambda s: None)
-        slack.now = pr_feed.epoch("2026-11-03T00:10:00Z")
-        target(f, "opened", pr_at(1))
-        target(f, "converted_to_draft", pr_at(1, draft=True))
-        review(
-            f,
-            pr_at(1, draft=True),
-            rest_review("approved", review_id=1, submitted_at="2026-11-03T00:20:00Z"),
-            created_at="2026-11-03T00:20:05Z",
-        )
-        assert self.keys(slack) == []
+    @staticmethod
+    def event(kind, at):
+        return {"event": kind, "created_at": f"2026-11-03T{at}Z"}
 
-        slack.now = pr_feed.epoch("2026-11-03T00:30:00Z")
-        target(f, "ready_for_review", pr_at(1))
+    def test_draft_spans_come_from_the_issue_events(self):
+        at = pr_feed.epoch
+        pr = make_pr()
+        events = [
+            self.event("ready_for_review", "00:10:00"),
+            self.event("labeled", "00:15:00"),
+            self.event("convert_to_draft", "00:20:00"),
+            self.event("ready_for_review", "00:30:00"),
+            self.event("convert_to_draft", "00:40:00"),
+        ]
+        # Opened as a draft (ready first), back to draft once and a draft now.
+        assert pr_feed.draft_spans(pr, events) == [
+            (at(pr["created_at"]), at("2026-11-03T00:10:00Z")),
+            (at("2026-11-03T00:20:00Z"), at("2026-11-03T00:30:00Z")),
+            (at("2026-11-03T00:40:00Z"), math.inf),
+        ]
+        assert pr_feed.draft_spans(pr, events[2:4]) == [
+            (at("2026-11-03T00:20:00Z"), at("2026-11-03T00:30:00Z"))
+        ]
+        assert pr_feed.draft_spans(pr, []) == []
+
+    def test_only_reviews_made_in_a_draft_are_left_out(self, feed, slack):
+        target(feed, "opened", make_pr())
+        feed.github.events = [
+            self.event("convert_to_draft", "00:10:00"),
+            self.event("ready_for_review", "00:30:00"),
+        ]
+        # The thread has no "ready" reply yet: the draft span comes from GitHub alone.
         review(
-            f,
-            pr_at(1),
-            rest_review(
-                "approved", reviewer="dave", review_id=2, submitted_at="2026-11-03T00:40:00Z"
-            ),
-            created_at="2026-11-03T00:40:05Z",
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1, submitted_at="2026-11-03T00:05:00Z"),
+            rest_review("approved", review_id=2, submitted_at="2026-11-03T00:20:00Z"),
+            rest_review("approved", review_id=3, submitted_at="2026-11-03T00:40:00Z"),
+        )
+        assert self.keys(slack) == ["review:1", "review:3"]
+
+    def test_reviews_before_a_draft_first_turned_ready_never_post(self, feed, slack):
+        target(feed, "opened", make_pr())
+        feed.github.events = [self.event("ready_for_review", "00:30:00")]
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1, submitted_at="2026-11-03T00:10:00Z"),
+            rest_review("approved", review_id=2, submitted_at="2026-11-03T00:40:00Z"),
         )
         assert self.keys(slack) == ["review:2"]
+
+    def test_a_review_right_after_ready_waits_for_the_parent(self, slack):
+        sleeps = []
+        f = pr_feed.Feed(slack, CHANNEL, REPO, github=github_stub(), sleep=sleeps.append)
+        # Opened long before the run and never posted: nothing to wait for.
+        review(f, make_pr(), rest_review("approved", submitted_at="2026-11-03T00:58:00Z"))
+        assert sleeps == [] and slack.messages == []
+
+        def ready_run_finishes(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) == 2:
+                target(f, "ready_for_review", make_pr())
+
+        f.sleep = ready_run_finishes
+        f.github.events = [self.event("ready_for_review", "00:59:30")]
+        # The parent the scan waits for is posted after the review it is for.
+        slack.now = pr_feed.epoch("2026-11-03T01:00:50Z")
+        review(
+            f, make_pr(), rest_review("approved", review_id=2, submitted_at="2026-11-03T00:59:40Z")
+        )
+        assert sleeps == [pr_feed.POLL_SECONDS] * 2
+        assert float(slack.parents[0]["ts"]) > pr_feed.epoch("2026-11-03T00:59:40Z")
+        assert self.keys(slack) == ["review:2"]
+
+    def test_a_draft_span_cut_off_by_the_events_cap_is_ignored(self, feed, slack):
+        target(feed, "opened", make_pr())
+        # The PR is open, so the ready_for_review after this was past the last page.
+        feed.github.events = [self.event("convert_to_draft", "00:10:00")]
+        review(
+            feed,
+            make_pr(),
+            rest_review("approved", review_id=1, submitted_at="2026-11-03T00:05:00Z"),
+            rest_review("approved", review_id=2, submitted_at="2026-11-03T00:40:00Z"),
+        )
+        assert self.keys(slack) == ["review:1", "review:2"]
+
+    def test_every_pr_at_the_reviewed_commit_is_scanned(self, feed, slack):
+        target(feed, "opened", make_pr(number=7))
+        target(feed, "opened", make_pr(number=8))
+        feed.github.pr = make_pr(number=7)
+        feed.github.listed = [make_pr(number=8)]
+        feed.github.reviews.append(rest_review("approved"))
+        # The same branch PR'd into two bases: both entries are at the reviewed commit.
+        entries = [
+            {"number": n, "head": {"sha": "reviewedsha"}, "base": {"repo": {"id": REPO_ID}}}
+            for n in (7, 8)
+        ]
+        feed.handle("workflow_run", relay_run(make_pr(), pull_requests=entries))
+        assert self.keys(slack, 7) == ["review:1"]
+        assert self.keys(slack, 8) == ["review:1"]
 
     def test_reviews_older_than_the_window_are_left_out(self, feed, slack):
         target(feed, "opened", make_pr())

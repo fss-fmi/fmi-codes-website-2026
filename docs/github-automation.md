@@ -1,7 +1,7 @@
 # GitHub automation
 
 What runs on GitHub around a merge: the bot app that opens the automated PRs, the secrets only
-`main` can use, and the two workflows that post PRs and CI results to Slack. What happens in the
+`main` can use and the two workflows that post PRs and CI results to Slack. What happens in the
 cluster after a merge is posted by [Cluster alerts](runbook/alerts.md).
 
 ## GitHub bot app for automated PRs
@@ -151,14 +151,17 @@ nothing twice; a re-run of the run that posted the parent finishes a list that f
 workflow never checks out PR code (it runs on `pull_request_target`, `issue_comment` and
 `workflow_run`, which have secrets even for forks), and its `actions/checkout` is pinned to a
 commit SHA. GitHub always runs the default branch's copy of these workflows, so a change can
-only be tested after it merges. The relay is the one workflow whose copy comes from the PR.
+only be tested after it merges. Of the Slack workflows, only the relay's copy comes from the
+PR.
 
 Repo hardening: **Settings → Actions → Fork pull request workflows** requires
 approval for all outside contributors (`all_external_contributors`), so no fork PR's
 workflows run until someone with write access approves them. `SLACK_BOT_TOKEN` lives in the
 `main`-only `slack` environment and `.github/` changes need the code owner's review, per
-[Secrets only `main` can use](#secrets-only-main-can-use). Pinning every action by SHA is
-tracked in [#164](https://github.com/fss-fmi/fmi-codes-website-2026/issues/164).
+[Secrets only `main` can use](#secrets-only-main-can-use). The jobs that hold the Slack or
+Docker Hub token pin every action by commit SHA (`tests/test_workflow_secrets.py` checks it);
+pinning the rest is tracked in
+[#164](https://github.com/fss-fmi/fmi-codes-website-2026/issues/164).
 
 It skips quietly until it is configured. One-time setup, in the Slack app that already holds
 the migration and bug-report webhooks (a workspace admin may have to approve new scopes):
@@ -190,20 +193,26 @@ so `.github/workflows/pr-review-relay.yaml` (**PR review relay**) takes the revi
 instead: no permissions, no secrets, no checkout and one step that does nothing. When its run
 finishes, the feed starts on `workflow_run` from `main` and reads the PR's reviews from the
 API. It trusts the relay run only for which PR it points at: the run's PR list, filtered to
-this repo, or for a fork PR its head owner and branch. When a head branch name was reused,
-the PR at the reviewed commit wins, otherwise the open PRs and those updated in the last hour.
+this repo, or for a fork PR its head owner and branch. Every PR at the reviewed commit is
+scanned (one branch can be PR'd into two bases); when none is there (pushed since the review,
+or a reused head branch name), the open PRs and those updated in the last hour are.
 
 Each scan posts every review the thread lacks (keyed by review id, so a review the old
 `pull_request_review` path posted is never posted again), with the same checks as before: no
 bots, only reviewers who can push, approvals, change requests and "Comment" reviews with a
-summary, nothing on a draft or a Flux bump. It posts only reviews submitted at or after both
-the parent (or the newest "ready"/"reopened" reply, less a minute) and an hour before the
-relay run, so reviews made in a draft never post and the first scan of a fork PR doesn't post
-its whole history. Relay runs for one head branch queue in order; when GitHub cancels a
-pending one, the newest scan posts its reviews. A fork PR's relay run may first wait for the
-fork workflow approval in the repo hardening above, so its reviews can post late. The relay's
-file comes from the PR's merge ref, so a PR that edits it can only stop its own reviews from
-being posted.
+summary, nothing on a draft or a Flux bump. It leaves out reviews submitted more than an hour
+before the relay run, so the first scan of a fork PR doesn't post its whole history. It also
+leaves out reviews submitted while the PR was a draft, taken from the PR's `convert_to_draft`
+and `ready_for_review` issue events (a PR opened as a draft has only the second; reading them
+is why the workflow holds `issues: read`), so a review made while it was open still posts after
+a later draft round. A PR opened or made ready in the last 5 minutes may not have its parent
+yet, since that run is outside the relay's queue, so the scan waits up to a minute for it.
+
+Relay runs for one head repo and branch queue in order; when GitHub cancels a pending one, the
+newest scan posts its reviews. A fork PR's relay run may first wait for the fork workflow
+approval in the repo hardening above, so its reviews can post late. The relay's file comes
+from the PR's merge ref, so a PR that edits it can only stop its own reviews from being
+posted.
 
 ## Slack CI alerts
 
@@ -248,8 +257,8 @@ Docker, npm, age keys, JWTs, Slack and Discord webhook URLs), credentials in URL
 `Authorization` values, `password=` / `api_key:` style assignments, `*_PASSWORD=` / `*_TOKEN=`
 style variables, and whole private-key blocks all become `[redacted]`.
 
-Like the PR feed it never runs PR code, it only runs once it is on `main`, and its job reads
-the token from the same `slack` environment. It doesn't watch the review relay or the PR feed.
+Like the PR feed it never runs PR code and only runs once it is on `main`; its job reads the
+token from the same `slack` environment. It doesn't watch the review relay or the PR feed.
 Setup, on top of the [Slack PR feed](#slack-pr-feed) token:
 
 ```bash

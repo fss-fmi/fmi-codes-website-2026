@@ -23,6 +23,8 @@ SECRET_RE = re.compile(r"\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)")
 JOB_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 ENV_KEY_RE = re.compile(r"^      (\w+):\s*(.*?)\s*$")
 FLOW_PAIR_RE = re.compile(r"(\w+):\s*([^,}]+?)\s*(?=[,}])")
+USES_RE = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)")
+PINNED_RE = re.compile(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}")
 
 
 def read(path: Path) -> str:
@@ -149,14 +151,35 @@ class TestSecretsStayOnMain:
             assert unprotected_secrets(text) == ["leak: SLACK_BOT_TOKEN"]
         assert unprotected_secrets(flow) == []
 
+    def test_jobs_holding_a_token_pin_every_action(self):
+        unpinned, token_jobs = [], 0
+        for path in workflow_files():
+            for job_id, body in jobs(read(path)).items():
+                if environment(body).get("name") not in MAIN_ONLY_ENVS:
+                    continue
+                token_jobs += 1
+                for line in body:
+                    m = USES_RE.match(line)
+                    if m and not PINNED_RE.fullmatch(m.group(1)):
+                        unpinned.append(f"{path.name} {job_id}: {m.group(1)}")
+        assert token_jobs == 3
+        assert unpinned == []
+        assert not PINNED_RE.fullmatch("docker/login-action@v3")
+
 
 class TestReviewRelay:
     def test_relay_holds_nothing(self):
         text = read(RELAY)
-        assert re.search(r"^permissions:\s*\{\}\s*$", text, re.M)
+        # One permissions key, at the top and empty: a job-level block would widen it.
+        keys = re.compile(r"^[ \t]*permissions:.*$", re.M)
+        assert keys.findall(text) == ["permissions: {}"]
+        widened = text.replace(
+            "    runs-on", "    permissions:\n      contents: write\n    runs-on"
+        )
+        assert keys.findall(widened) != ["permissions: {}"]
         assert triggers(text) == ["pull_request_review"]
-        assert "secrets." not in text
-        assert "actions/checkout" not in text
+        for held in ("secrets.", "github.token", "GITHUB_TOKEN", "actions/checkout", "uses:"):
+            assert held not in text, held
 
     def test_the_feed_hears_reviews_only_through_the_relay(self):
         text = read(PR_FEED)
