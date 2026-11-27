@@ -16,10 +16,23 @@ export default function RegistrationPanel() {
     queryFn: () => api.get('/api/admin/teams/registration-status'),
   });
 
+  // A slot change moves the teams matching and the preference counts cover, and an
+  // unregister also releases the team's mentors.
+  function refresh() {
+    for (const queryKey of [
+      ['admin-reg-status'],
+      ['matching-results'],
+      ['admin-pref-status'],
+      ['team'],
+    ]) {
+      qc.invalidateQueries({ queryKey });
+    }
+  }
+
   async function handleRegister(teamId: number) {
     try {
       await api.post(`/api/admin/teams/${teamId}/register`, {});
-      qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
+      refresh();
       showToast({ kind: 'success', message: 'Team registered.' });
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });
@@ -29,7 +42,7 @@ export default function RegistrationPanel() {
   async function handleUnregister(teamId: number) {
     try {
       await api.post(`/api/admin/teams/${teamId}/unregister`, {});
-      qc.invalidateQueries({ queryKey: ['admin-reg-status'] });
+      refresh();
       showToast({ kind: 'success', message: 'Team unregistered.' });
     } catch (err: unknown) {
       showToast({ kind: 'danger', message: errorMessage(err) });

@@ -13,6 +13,8 @@ const config = vi.hoisted(() => ({
   isLoaded: true,
 }));
 const me = vi.hoisted(() => ({ teamId: 7 as number | null }));
+// What the server answers: it shows a team's mentors only once matching is confirmed.
+const server = vi.hoisted(() => ({ confirmed: false }));
 
 vi.mock('@/context/ConfigContext', () => ({ useConfig: () => config }));
 
@@ -55,7 +57,22 @@ const TEAM = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({
   default: {
     get: (url: string) => {
-      if (url === '/api/teams/7') return Promise.resolve({ team: TEAM });
+      if (url === '/api/teams/7')
+        return Promise.resolve({
+          team: {
+            ...TEAM,
+            mentors: server.confirmed
+              ? [
+                  {
+                    mentor_id: 4,
+                    mentor_name: 'Kalin Stoev',
+                    company_name: 'Acme',
+                    picture_url: null,
+                  },
+                ]
+              : [],
+          },
+        });
       if (url === '/api/teams/7/requests')
         return Promise.resolve({
           requests: [
@@ -76,21 +93,36 @@ vi.mock('@/lib/api', () => ({
 
 afterEach(() => {
   config.MATCHING_CONFIRMED = false;
+  server.confirmed = false;
   me.teamId = 7;
 });
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const tree = () => (
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <ToastProvider>
           <TeamPageContent />
         </ToastProvider>
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const view = render(tree());
+  return { rerender: () => view.rerender(tree()) };
 }
+
+test('a confirm seen by the config poll refetches the team, so its mentors show', async () => {
+  const page = renderPage();
+  expect(await screen.findByRole('button', { name: 'Accept Rada Stoeva' })).toBeInTheDocument();
+
+  server.confirmed = true;
+  config.MATCHING_CONFIRMED = true;
+  page.rerender();
+
+  expect(await screen.findByText('Kalin Stoev')).toBeInTheDocument();
+  expect(screen.queryByText(/haven't assigned mentors/)).toBeNull();
+});
 
 test('while frozen the captain gets the lock note and no REMOVE, DISBAND or ACCEPT', async () => {
   config.MATCHING_CONFIRMED = true;

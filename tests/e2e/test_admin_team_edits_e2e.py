@@ -264,6 +264,19 @@ class TestRemoveMember:
         assert rv.status_code == 400
         assert rv.get_json()["error"] == "A team's last member can't be removed."
 
+    def test_an_inactive_row_does_not_count_as_a_member(self, flask_app, seeds, db_conn):
+        team_id, _ = _team(flask_app, seeds, 1, "Fading", 2)
+        members = _detail(flask_app, team_id)["members"]
+        captain = next(m for m in members if m["is_captain"])
+        member = next(m for m in members if not m["is_captain"])
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE participants SET status = 'inactive' WHERE id = %s", (captain["id"],)
+            )
+        rv = _admin(flask_app, "DELETE", f"/api/admin/teams/{team_id}/members/{member['id']}")
+        assert rv.status_code == 400
+        assert rv.get_json()["error"] == "A team's last member can't be removed."
+
     def test_a_captain_goes_only_with_a_successor(self, flask_app, seeds, notices):
         team_id, old_captain = _team(flask_app, seeds, 1, "Hand Over", 3)
         members = _detail(flask_app, team_id)["members"]
@@ -342,7 +355,9 @@ class TestSlotsBeforeAndAfterConfirmation:
         team = _detail(flask_app, team_id)
         assert (team["status"], team["is_registered"]) == ("active", True)
 
-    def test_after_an_add_to_three_only_activates(self, flask_app, seeds):
+    def test_after_an_add_to_three_queues_and_never_registers(self, flask_app, seeds):
+        """Queued even with the slot free, so no slot moves while frozen and a re-run that
+        lifts the freeze doesn't leave the team with neither a slot nor a queue place."""
         team_id, _ = _team(flask_app, seeds, 1, "Third Wheel", 2)
         _participant(flask_app, seeds, 60)
         _confirm(flask_app)
@@ -354,8 +369,35 @@ class TestSlotsBeforeAndAfterConfirmation:
         assert (team["status"], team["is_registered"], team["queue_position"]) == (
             "active",
             False,
-            None,
+            1,
         )
+
+    def test_the_queue_never_promotes_a_team_taken_below_three(self, flask_app, seeds):
+        first, first_captain = _team(flask_app, seeds, 1, "First In", 3)
+        second, _ = _team(flask_app, seeds, 2, "Queued", 3)
+        _confirm(flask_app)
+        member = next(m for m in _detail(flask_app, second)["members"] if not m["is_captain"])
+        rv = _admin(flask_app, "DELETE", f"/api/admin/teams/{second}/members/{member['id']}")
+        assert rv.status_code == 200, rv.get_json()
+        assert _detail(flask_app, second)["queue_position"] == 1
+
+        # A re-run lifts the freeze, then the registered team drops below 3 on its own.
+        assert _admin(flask_app, "POST", "/api/admin/run-matching").status_code == 200
+        member = next(m for m in _detail(flask_app, first)["members"] if not m["is_captain"])
+        rv = _call(flask_app, "DELETE", f"/api/teams/{first}/members/{member['id']}", first_captain)
+        assert rv.status_code == 200, rv.get_json()
+
+        assert _detail(flask_app, first)["is_registered"] is False
+        team = _detail(flask_app, second)
+        assert (team["is_registered"], team["queue_position"]) == (False, 1)
+
+        # Back at 3 members, it is first in line and takes the slot that opened.
+        with flask_app.test_client() as c:
+            joiner = register_extra_and_token(c, seeds)
+        rv = _call(flask_app, "POST", "/api/teams/join", joiner, {"join_code": team["join_code"]})
+        assert rv.status_code == 200, rv.get_json()
+        team = _detail(flask_app, second)
+        assert (team["is_registered"], team["queue_position"]) == (True, None)
 
 
 class TestUnregisterReleasesMentors:
@@ -407,6 +449,23 @@ class TestUnregisterReleasesMentors:
 
         with flask_app.app_context():
             saved = matching_service.save_matching_results([(kept, m0), (dropped, m1)], [], 2)
-        assert saved == 1
+        assert saved == [(kept, m0)]
         assert _assigned(db_conn, kept) == [m0]
         assert _assigned(db_conn, dropped) == []
+
+    def test_the_registration_console_counts_no_mentors_of_an_unregistered_team(
+        self, flask_app, seeds, db_conn
+    ):
+        """Rows an unregister from before this release left behind count nowhere."""
+        team_id, _ = _team(flask_app, seeds, 1, "Left Over", 3)
+        assert (
+            _admin(flask_app, "POST", f"/api/admin/teams/{team_id}/unregister").status_code == 200
+        )
+        with db_conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO team_mentors (team_id, mentor_id, is_active) VALUES (%s, %s, TRUE)",
+                (team_id, seeds["mentor_ids"][0]),
+            )
+        status = _admin(flask_app, "GET", "/api/admin/teams/registration-status").get_json()
+        [team] = [t for t in status["unregistered_teams"] if t["id"] == team_id]
+        assert team["mentor_count"] == 0

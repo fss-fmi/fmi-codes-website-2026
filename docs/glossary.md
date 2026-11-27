@@ -62,7 +62,7 @@ A flag holds at most one **scheduled change** (`scheduled_value` at `scheduled_a
 
 ### Freeze
 
-What a **confirmed** matching does to teams. Participants can't create, join, apply to, leave or disband a team, captains can't remove members or accept applications, and nobody can change a ranking; declining and withdrawing an application still work. The pages say "Teams are locked while the event runs. For any changes, contact the organizers." Nothing moves a **Registration slot** by itself: a team below 3 keeps its slot and nobody is promoted. The admin changes members and mentors by hand in Mission Control's TEAMS tab. A new matching run lifts it until the next confirm ([ADR-019](adr/019-freeze-teams-on-confirmed-matching.md)).
+What a **confirmed** matching does to teams. Participants can't create, join, apply to, leave or disband a team, captains can't remove members or accept applications, and nobody can change a ranking; declining and withdrawing an application still work. The pages say "Teams are locked while the event runs. For any changes, contact the organizers." Nothing moves a **Registration slot** by itself: a team below 3 keeps its slot and nobody is promoted, and a team the admin fills to 3 joins the end of the **Queue**. The admin changes members and mentors by hand in Mission Control's TEAMS tab. A new matching run lifts it until the next confirm ([ADR-019](adr/019-freeze-teams-on-confirmed-matching.md)).
 
 ## G
 
@@ -123,7 +123,7 @@ A team with fewer than 3 members. Not eligible for registration. Shown in the UI
 
 ### Promote (queue)
 
-Moving the first team in the **Queue** into a freed **Registration slot**. Happens automatically when a registered team drops below 3 members or is disbanded, until matching is confirmed (see **Freeze**). Not to be confused with promoting a release to production.
+Moving the first team in the **Queue** that has its 3 members into a freed **Registration slot**. Happens automatically when a registered team drops below 3 members or is disbanded, until matching is confirmed (see **Freeze**). Not to be confused with promoting a release to production.
 
 ## Q
 

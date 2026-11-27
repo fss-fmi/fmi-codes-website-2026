@@ -1,9 +1,19 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { User } from '@/types/auth';
 
 export type MeData = { success: boolean; user: User } | null;
 
 export const ME_KEY = ['me'];
+
+let generation = 0;
+
+/**
+ * Login, logout and a 401 elsewhere call this before they write the user: a /api/auth/me
+ * answer requested before then describes the old session and must not overwrite theirs.
+ */
+export function startNewSession() {
+  generation += 1;
+}
 
 /**
  * Raw fetch, so an expected 401 here never fires api.ts's auth:unauthorized. Only a 401
@@ -23,5 +33,13 @@ export async function fetchMe(): Promise<MeData> {
  * team (removed them, accepted them, made them captain) shows the change.
  */
 export function useMe() {
-  return useQuery({ queryKey: ME_KEY, queryFn: fetchMe });
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ME_KEY,
+    queryFn: async () => {
+      const started = generation;
+      const me = await fetchMe();
+      return started === generation ? me : (queryClient.getQueryData<MeData>(ME_KEY) ?? null);
+    },
+  });
 }

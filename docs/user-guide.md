@@ -60,9 +60,9 @@ You can also apply from the public **TEAMS** page when you do not have a team ye
 - With fewer than 3 members your team shows **PENDING** and the message "Your team needs at least 3 members to be eligible for the hackathon."
 - The moment you reach 3 members the team becomes **ACTIVE**.
 - The first 18 active teams are **REGISTERED** for the event automatically. You will see "Your team is registered for the hackathon."
-- If all 18 slots are taken, your team joins the waiting queue and shows its position. You are registered automatically as soon as a slot opens.
+- If all 18 slots are taken, your team joins the waiting queue and shows its position. You are registered automatically as soon as a slot opens, as long as your team has 3 members and the organizers haven't confirmed the matching.
 - If a registered team drops below 3 members it loses its slot, so keep your roster at 3 or more.
-- An active team with neither a slot nor a queue place (the organizers took it out of the event, or it formed after they confirmed the matching) sees "Your team holds no slot in the event. For any questions, contact the organizers."
+- An active team with neither a slot nor a queue place (the organizers took it out of the event) sees "Your team holds no slot in the event. For any questions, contact the organizers."
 
 <!-- screenshot: team page with REGISTERED badge and members list -->
 
@@ -188,7 +188,7 @@ Changes one team by hand, in any phase. It is how you change teams once the matc
 - **MEMBERS** lists everyone with their email. **REMOVE** takes a member out after you confirm; a team is never disbanded this way and its last member stays. To remove the captain, first pick the **New captain** from the other members; they take over in the same step. Type a participant's email and click **ADD MEMBER** to put someone without a team in (up to 6), even if their email isn't verified yet.
 - **MENTORS** (registered teams only) lists the team's mentors. **REMOVE** one or pick another from **Add a mentor…**, where each mentor shows how many teams they already have, then click **SAVE MENTORS**. You may go past 3 mentors for a team or 3 teams for a mentor; the save then warns, and **EXPORT** lists it under violations.
 
-Before the matching is confirmed the usual rules apply: a team that drops below 3 loses its slot and the queue moves up, and one that reaches 3 is registered or queued. After it is confirmed nothing moves a slot: a team that drops below 3 keeps its slot, nobody is promoted, and a team that reaches 3 is only marked active. Use the Registration tab for slots. Each change is posted to the event feed with the team's name and the new count.
+Before the matching is confirmed the usual rules apply: a team that drops below 3 loses its slot and the queue moves up, and one that reaches 3 is registered or queued. After it is confirmed nothing moves a slot: a team that drops below 3 keeps its slot, nobody is promoted, and a team that reaches 3 joins the end of the queue without taking a free slot. A team in the queue with fewer than 3 members is skipped whenever a slot opens. Use the Registration tab for slots. Each change is posted to the event feed with the team's name and the new count.
 
 ### Preferences tab
 

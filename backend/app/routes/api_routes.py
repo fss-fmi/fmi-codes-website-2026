@@ -169,15 +169,16 @@ def run_matching():
         logger.error(f"Failed to save matching results: {e}")
         return jsonify({"success": False, "error": "Failed to save matching results"}), 500
 
+    # The pairs written, not the run's: a team that lost its slot meanwhile was skipped.
     results = {}
-    for team_id, mentor_id in assignments:
+    for team_id, mentor_id in saved:
         results.setdefault(team_id, []).append(mentor_id)
 
     return jsonify(
         {
             "success": True,
             "message": message,
-            "assignment_count": saved,
+            "assignment_count": len(saved),
             "assignments": results,
             "warnings": warnings,
         }

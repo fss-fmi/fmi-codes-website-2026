@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/layout/Navbar';
 import RequireAuth from '@/components/layout/RequireAuth';
@@ -304,6 +304,7 @@ function TeamDashboardView({
 
 export function TeamPageContent() {
   const { data: meData, isPending, refetch } = useMe();
+  const { MATCHING_CONFIRMED: frozen, isLoaded: configLoaded } = useConfig();
 
   const teamId = meData?.user?.team_id;
 
@@ -316,6 +317,18 @@ export function TeamPageContent() {
     queryFn: () => api.get(`/api/teams/${teamId}`),
     enabled: !!teamId,
   });
+
+  // The server shows a team's mentors only once matching is confirmed, so a payload
+  // fetched before a confirm (or a re-run) is stale the moment the polled flag flips.
+  // The first load already reads the server's state, so only a later flip refetches.
+  const seenFrozen = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!configLoaded) return;
+    if (seenFrozen.current !== null && seenFrozen.current !== frozen && teamId) {
+      void refetchTeam();
+    }
+    seenFrozen.current = frozen;
+  }, [configLoaded, frozen, teamId, refetchTeam]);
 
   function onRefresh() {
     refetch();

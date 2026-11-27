@@ -178,7 +178,15 @@ def set_mentor_team_preferences(mentor_id, preferences):
                 if not cursor.fetchone():
                     return False, f"Team {tid} not found or not eligible"
 
-            updated = _has_rows(cursor, "mentor_team_preferences", "mentor_id", mentor_id)
+            # As the submission count has it: picks of teams that lost their slot don't
+            # make this an update, so the feed posts the new progress.
+            cursor.execute(
+                "SELECT EXISTS(SELECT 1 FROM mentor_team_preferences mtp"
+                " JOIN teams t ON t.id = mtp.team_id"
+                " WHERE mtp.mentor_id = %s AND t.status = 'active' AND t.is_registered) AS found",
+                (mentor_id,),
+            )
+            updated = cursor.fetchone()["found"]
             cursor.execute("DELETE FROM mentor_team_preferences WHERE mentor_id = %s", (mentor_id,))
             for pref in preferences:
                 cursor.execute(

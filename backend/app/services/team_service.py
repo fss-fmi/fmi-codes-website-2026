@@ -90,7 +90,8 @@ class TeamService:
                    COUNT(DISTINCT tm.mentor_id) as mentor_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
-            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
+            LEFT JOIN team_mentors tm
+                ON t.id = tm.team_id AND tm.is_active = TRUE AND t.is_registered
             WHERE t.team_name = %s
             GROUP BY t.id
         """
@@ -105,14 +106,15 @@ class TeamService:
 
     @staticmethod
     def get_all_teams(active_only=False, order_by="created_at"):
-        """Get all teams with participant and mentor counts"""
+        """Get all teams with participant and mentor counts (mentors of registered teams only)"""
         query = """
             SELECT t.*,
                    COUNT(DISTINCT p.id) as participant_count,
                    COUNT(DISTINCT tm.mentor_id) as mentor_count
             FROM teams t
             LEFT JOIN participants p ON t.id = p.team_id AND p.status = 'active'
-            LEFT JOIN team_mentors tm ON t.id = tm.team_id AND tm.is_active = TRUE
+            LEFT JOIN team_mentors tm
+                ON t.id = tm.team_id AND tm.is_active = TRUE AND t.is_registered
         """
         if active_only:
             query += " WHERE t.status = 'active'"
@@ -181,16 +183,67 @@ class TeamService:
                 f"Team {team_id} registered (slot {registered_count + 1}/{MAX_REGISTERED_TEAMS})"
             )
         else:
-            cursor.execute(
-                "SELECT COALESCE(MAX(queue_position), 0) + 1 AS next_pos "
-                "FROM teams WHERE queue_position IS NOT NULL"
-            )
-            next_pos = cursor.fetchone()["next_pos"]
-            cursor.execute(
-                "UPDATE teams SET queue_position = %s WHERE id = %s",
-                (next_pos, team_id),
-            )
-            logger.info(f"Team {team_id} queued at position {next_pos}")
+            TeamService._queue(cursor, team_id)
+
+    @staticmethod
+    def _queue(cursor, team_id):
+        """Put the team at the end of the queue. Needs pg_advisory_xact_lock(1)."""
+        cursor.execute(
+            "SELECT COALESCE(MAX(queue_position), 0) + 1 AS next_pos "
+            "FROM teams WHERE queue_position IS NOT NULL"
+        )
+        next_pos = cursor.fetchone()["next_pos"]
+        cursor.execute(
+            "UPDATE teams SET queue_position = %s WHERE id = %s",
+            (next_pos, team_id),
+        )
+        logger.info(f"Team {team_id} queued at position {next_pos}")
+
+    @staticmethod
+    def _first_in_line(cursor):
+        """The first queued active team that has its 3 members, row-locked, or None.
+
+        One the admin took below 3 while matching was confirmed waits in the queue
+        until it has 3 again. Needs pg_advisory_xact_lock(1).
+        """
+        cursor.execute(
+            "SELECT id, queue_position FROM teams t "
+            "WHERE queue_position IS NOT NULL AND status = 'active' "
+            "AND (SELECT COUNT(*) FROM participants p"
+            " WHERE p.team_id = t.id AND p.status = 'active') >= %s "
+            "ORDER BY queue_position ASC LIMIT 1 FOR UPDATE",
+            (ACTIVE_THRESHOLD,),
+        )
+        return cursor.fetchone()
+
+    @staticmethod
+    def _promote(cursor, queued):
+        """Move a queued team (a _first_in_line row) into a slot. Needs lock 1."""
+        cursor.execute(
+            "UPDATE teams SET is_registered = TRUE, registered_at = NOW(), "
+            "queue_position = NULL WHERE id = %s",
+            (queued["id"],),
+        )
+        # Shift only positions above the promoted team's old slot
+        cursor.execute(
+            "UPDATE teams SET queue_position = queue_position - 1 WHERE queue_position > %s",
+            (queued["queue_position"],),
+        )
+        logger.info(f"Team {queued['id']} auto-promoted from queue to registered")
+
+    @staticmethod
+    def _register_if_first_in_line(cursor, team_id):
+        """A queued team back at 3 members takes a free slot if it is first in line.
+
+        The queue skips teams under 3, so a slot may have opened while this one waited
+        short. Needs pg_advisory_xact_lock(1).
+        """
+        cursor.execute("SELECT COUNT(*) AS cnt FROM teams WHERE is_registered = TRUE")
+        if cursor.fetchone()["cnt"] >= MAX_REGISTERED_TEAMS:
+            return
+        first = TeamService._first_in_line(cursor)
+        if first and first["id"] == team_id:
+            TeamService._promote(cursor, first)
 
     @staticmethod
     def _unregister_and_promote(cursor, team_id):
@@ -214,27 +267,9 @@ class TeamService:
                 (team_id,),
             )
             cursor.execute("DELETE FROM team_mentors WHERE team_id = %s", (team_id,))
-            # Promote the first queued active team
-            cursor.execute(
-                "SELECT id, queue_position FROM teams "
-                "WHERE queue_position IS NOT NULL AND status = 'active' "
-                "ORDER BY queue_position ASC LIMIT 1 FOR UPDATE"
-            )
-            promoted = cursor.fetchone()
+            promoted = TeamService._first_in_line(cursor)
             if promoted:
-                promoted_pos = promoted["queue_position"]
-                cursor.execute(
-                    "UPDATE teams SET is_registered = TRUE, registered_at = NOW(), "
-                    "queue_position = NULL WHERE id = %s",
-                    (promoted["id"],),
-                )
-                # Shift only positions above the promoted team's old slot
-                cursor.execute(
-                    "UPDATE teams SET queue_position = queue_position - 1 "
-                    "WHERE queue_position > %s",
-                    (promoted_pos,),
-                )
-                logger.info(f"Team {promoted['id']} auto-promoted from queue to registered")
+                TeamService._promote(cursor, promoted)
             logger.info(f"Team {team_id} unregistered")
 
         elif team["queue_position"] is not None:
@@ -422,6 +457,8 @@ class TeamService:
                         (team["id"],),
                     )
                     TeamService._try_register_or_queue(cursor, team["id"])
+                elif new_count == ACTIVE_THRESHOLD and team["queue_position"] is not None:
+                    TeamService._register_if_first_in_line(cursor, team["id"])
 
         except Exception as e:
             logger.error(f"Error joining team: {e}")
@@ -688,7 +725,8 @@ class TeamService:
 
         Skips the email verification gate. Before matching is confirmed the usual
         rules apply (a pending team reaching 3 becomes active and is registered or
-        queued); once it is, the team only becomes active, and no slot changes.
+        queued); once it is, the team becomes active and joins the end of the queue,
+        never a slot, so a later re-run that lifts the freeze doesn't strand it.
         Returns (success, message, member_count).
         """
         email = email.strip().lower()
@@ -738,8 +776,16 @@ class TeamService:
                 new_count = member_count + 1
                 if new_count >= ACTIVE_THRESHOLD and team["status"] == "pending":
                     cursor.execute("UPDATE teams SET status = 'active' WHERE id = %s", (team_id,))
-                    if not frozen:
+                    if frozen:
+                        TeamService._queue(cursor, team_id)
+                    else:
                         TeamService._try_register_or_queue(cursor, team_id)
+                elif (
+                    new_count == ACTIVE_THRESHOLD
+                    and team["queue_position"] is not None
+                    and not frozen
+                ):
+                    TeamService._register_if_first_in_line(cursor, team_id)
 
         except Exception as e:
             logger.error(f"Error admin-adding a member: {e}")
@@ -770,17 +816,22 @@ class TeamService:
                     return False, TEAM_NOT_FOUND, None
 
                 cursor.execute(
-                    "SELECT id, team_id, is_captain FROM participants WHERE id = %s FOR UPDATE",
+                    "SELECT id, team_id, is_captain, status FROM participants"
+                    " WHERE id = %s FOR UPDATE",
                     (member_id,),
                 )
                 member = cursor.fetchone()
                 if not member or member["team_id"] != team_id:
                     return False, "Member not found in this team", None
 
+                # Counted like the 3-member threshold: an inactive row still pointing at
+                # the team doesn't keep it alive.
                 cursor.execute(
-                    "SELECT COUNT(*) AS cnt FROM participants WHERE team_id = %s", (team_id,)
+                    "SELECT COUNT(*) AS cnt FROM participants "
+                    "WHERE team_id = %s AND status = 'active'",
+                    (team_id,),
                 )
-                if cursor.fetchone()["cnt"] <= 1:
+                if member["status"] == "active" and cursor.fetchone()["cnt"] <= 1:
                     return False, "A team's last member can't be removed.", None
 
                 if member["is_captain"]:
@@ -1039,7 +1090,7 @@ class TeamService:
 
                 # Re-check team capacity
                 cursor.execute(
-                    "SELECT participant_count, status FROM teams WHERE id = %s",
+                    "SELECT participant_count, status, queue_position FROM teams WHERE id = %s",
                     (team_id,),
                 )
                 team_info = cursor.fetchone()
@@ -1068,6 +1119,8 @@ class TeamService:
                         (team_id,),
                     )
                     TeamService._try_register_or_queue(cursor, team_id)
+                elif new_count == ACTIVE_THRESHOLD and team_info["queue_position"] is not None:
+                    TeamService._register_if_first_in_line(cursor, team_id)
 
             logger.info(
                 f"Join request {request_id} accepted: participant {applicant_id} → team {team_id}"

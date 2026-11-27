@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, type ReactNode } fro
 import { useQueryClient } from '@tanstack/react-query';
 import type { Role, User } from '@/types/auth';
 import api from '@/lib/api';
-import { ME_KEY, useMe, type MeData } from '@/hooks/useMe';
+import { ME_KEY, startNewSession, useMe, type MeData } from '@/hooks/useMe';
 
 interface AuthState {
   user: User | null;
@@ -29,7 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const user = data?.success && data.user ? data.user : null;
 
   const setMe = useCallback(
-    (me: MeData) => queryClient.setQueryData<MeData>(ME_KEY, me),
+    (me: MeData) => {
+      startNewSession();
+      queryClient.setQueryData<MeData>(ME_KEY, me);
+    },
     [queryClient],
   );
 

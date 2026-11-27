@@ -527,7 +527,7 @@ Puts a teamless participant into the team. Works in every phase and skips the em
 { "email": "ana@example.com" }
 ```
 
-200 `{"success": true, "message": "Member added", "member_count": 4}`. The email is matched lowercased. The participant's pending request to this team becomes `accepted` and their others `invalidated`. 404 for an unknown team; 400 `Email is required`, `This team has been disqualified`, `Team is full (max 6 members)`, `No active participant has that email` or `That participant is already in a team`. Before matching is confirmed, a pending team reaching 3 is activated and registered or queued as on a join; once it is confirmed, the team is only activated. Posted to the event feed with the team name and the new member count.
+200 `{"success": true, "message": "Member added", "member_count": 4}`. The email is matched lowercased. The participant's pending request to this team becomes `accepted` and their others `invalidated`. 404 for an unknown team; 400 `Email is required`, `This team has been disqualified`, `Team is full (max 6 members)`, `No active participant has that email` or `That participant is already in a team`. Before matching is confirmed, a pending team reaching 3 is activated and registered or queued as on a join; once it is confirmed, the team is activated and put at the end of the queue, never registered, so a later re-run doesn't leave it with neither a slot nor a queue place. Posted to the event feed with the team name and the new member count.
 
 ### DELETE /api/admin/teams/{team_id}/members/{member_id}
 

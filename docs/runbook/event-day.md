@@ -288,7 +288,10 @@ the organizers, so the changes below come to you, and you make them in Mission C
   organizers haven't assigned any yet).
 
 Don't run **MATCHING** again to fix one team: a run clears the confirmation, reopens team changes
-for everyone and replaces every hand edit until you confirm again.
+for everyone and replaces every hand edit until you confirm again. If you do re-run, check
+**REGISTRATION** first: a team you took below 3 members still holds its slot and would get
+mentors, so **UNREGISTER** it before the run, and a team you filled to 3 waits in **QUEUE**
+even next to a free slot (nothing fills one while matching is confirmed), so **REGISTER** it.
 
 ## Mail
 

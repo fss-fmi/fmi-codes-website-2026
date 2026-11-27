@@ -274,3 +274,34 @@ class TestPicksThatStillCount:
         row = mentor_row()
         assert (row["submitted"], row["picks_counting"], row["picks_saved"]) == (False, 0, 3)
         assert _status(flask_app)["mentors_submitted"] == 0
+
+    def test_ranking_again_after_every_pick_lost_its_slot_posts_submitted(
+        self, flask_app, seeds, notices
+    ):
+        """The feed's "updated" follows the same rule as the count, so the progress shows."""
+        teams = registered_teams(flask_app, seeds, [f"Team {n}" for n in range(1, 7)])
+        first, second = [t for t, _ in teams[:3]], [t for t, _ in teams[3:]]
+        token = mentor_token_for(flask_app, seeds["mentor_ids"][0])
+        with flask_app.test_client() as c:
+            rv = c.post(
+                "/api/mentors/team-preferences", json=_team_ranking(first), headers=bearer(token)
+            )
+            assert rv.status_code == 200, rv.get_json()
+        with flask_app.test_client() as adm:
+            for team_id in first:
+                rv = adm.post(
+                    f"/api/admin/teams/{team_id}/unregister", headers=bearer(admin_token(flask_app))
+                )
+                assert rv.status_code == 200, rv.get_json()
+        notices.clear()
+
+        with flask_app.test_client() as c:
+            rv = c.post(
+                "/api/mentors/team-preferences", json=_team_ranking(second), headers=bearer(token)
+            )
+            assert rv.status_code == 200, rv.get_json()
+        total = _status(flask_app)["mentors_total"]
+        assert notices == [
+            f"🗳️ Mentor *{MENTOR_NAMES[0]}* submitted their team ranking."
+            f" Mentors: 1 of {total} submitted."
+        ]

@@ -34,6 +34,15 @@ class FakeCursor:
     def fetchone(self):
         return self._last
 
+    def fetchall(self):
+        return self._last or []
+
+
+def _save_cursor(was_confirmed, written):
+    """A save's statements in order: lock 2, the state row, DELETE, INSERT ... RETURNING."""
+    rows = [{"team_id": t, "mentor_id": m} for t, m in written]
+    return FakeCursor([None, {"is_confirmed": was_confirmed}, None, rows])
+
 
 @pytest.fixture()
 def notices(monkeypatch):
@@ -353,11 +362,11 @@ def bumps(monkeypatch):
 
 @pytest.mark.parametrize("was_confirmed", [False, True])
 def test_saved_run_posts_counts_only(app_ctx, cursor_for, notices, bumps, was_confirmed):
-    cursor_for(matching_service, FakeCursor([None, {"is_confirmed": was_confirmed}], rowcount=9))
+    cursor_for(matching_service, _save_cursor(was_confirmed, ASSIGNMENTS))
     saved = matching_service.save_matching_results(
         ASSIGNMENTS, ["1 mentor(s) have not submitted"], 3
     )
-    assert saved == 9
+    assert saved == ASSIGNMENTS
     assert len(notices) == 1
     text = notices[0]
     assert "*9* assignments for *3* teams" in text
@@ -370,14 +379,16 @@ def test_saved_run_posts_counts_only(app_ctx, cursor_for, notices, bumps, was_co
 
 def test_save_writes_only_pairs_of_teams_still_registered(app_ctx, cursor_for, notices, bumps):
     """The run read its teams outside the lock: one that lost its slot since is skipped,
-    and the feed counts the rows written, not the pairs the run produced."""
-    cursor = FakeCursor([None, {"is_confirmed": False}], rowcount=6)
+    and the feed and the answer count the rows written, not the pairs the run produced."""
+    written = ASSIGNMENTS[3:]
+    cursor = _save_cursor(False, written)
     cursor_for(matching_service, cursor)
-    assert matching_service.save_matching_results(ASSIGNMENTS, [], 3) == 6
+    assert matching_service.save_matching_results(ASSIGNMENTS, [], 3) == written
     [(insert_sql, params)] = [(s, p) for s, p in cursor.executed if s.startswith("INSERT")]
     assert "JOIN teams t ON t.id = p.team_id AND t.status = 'active' AND t.is_registered" in (
         insert_sql
     )
+    assert insert_sql.endswith("RETURNING team_id, mentor_id")
     assert params == ([t for t, _ in ASSIGNMENTS], [m for _, m in ASSIGNMENTS])
     assert "*6* assignments for *3* teams" in notices[0]
 
@@ -400,7 +411,7 @@ def test_run_counts_teams_left_without_a_mentor(app_ctx, cursor_for, notices, mo
     assert len({t for t, _ in assignments}) == 3
     assert team_count == 4
 
-    cursor_for(matching_service, FakeCursor([None, {"is_confirmed": False}], rowcount=3))
+    cursor_for(matching_service, _save_cursor(False, assignments))
     matching_service.save_matching_results(assignments, warnings, team_count)
     assert "*3* assignments for *4* teams" in notices[0]
     assert "• 4 team(s) received fewer than 3 mentors" in notices[0]

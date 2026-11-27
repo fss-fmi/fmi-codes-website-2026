@@ -25,7 +25,7 @@ function answer(status: number, body: object = {}) {
 }
 
 function Probe() {
-  const { user, isLoading, refreshUser } = useAuth();
+  const { user, isLoading, login, refreshUser } = useAuth();
   return (
     <>
       <span data-testid="user">{isLoading ? 'loading' : (user?.email ?? 'nobody')}</span>
@@ -34,6 +34,12 @@ function Probe() {
         onClick={() => void refreshUser()}
       >
         refresh
+      </button>
+      <button
+        type="button"
+        onClick={() => login('participant', { role: 'participant', email: 'new@example.test' })}
+      >
+        login
       </button>
     </>
   );
@@ -89,12 +95,27 @@ test('a refresh shows a change someone else made to the user', async () => {
   });
 });
 
+test('a /me answer requested before a login does not undo it', async () => {
+  let answerLate: (res: Response) => void = () => {};
+  fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (answerLate = resolve)));
+  renderAuth();
+  fireEvent.click(screen.getByRole('button', { name: 'login' }));
+  await waitFor(() => expect(shown()).toBe('new@example.test'));
+
+  answerLate(new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } }));
+  // Give the late answer time to land and its observers time to be told.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(shown()).toBe('new@example.test');
+});
+
 test('a 401 anywhere else signs the user out', async () => {
   answer(200, ANA);
-  renderAuth();
+  const client = renderAuth();
   await waitFor(() => expect(shown()).toBe('ana@example.test'));
   act(() => {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'));
   });
-  expect(shown()).toBe('nobody');
+  expect(client.getQueryData(['me'])).toBeNull();
+  // The query cache tells its observers on the next tick.
+  await waitFor(() => expect(shown()).toBe('nobody'));
 });

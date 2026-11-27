@@ -319,7 +319,7 @@ def frozen_locked(cursor) -> bool:
 
 
 def save_matching_results(assignments, warnings, team_count):
-    """Clear existing team_mentors and write new assignments. Returns how many were written.
+    """Clear existing team_mentors and write new assignments. Returns the pairs written.
 
     Also resets the admin confirmation flag so teams/mentors continue seeing
     preferences until the admin explicitly re-confirms the new results. After
@@ -348,22 +348,23 @@ def save_matching_results(assignments, warnings, team_count):
                 SELECT p.team_id, p.mentor_id, TRUE
                 FROM unnest(%s::bigint[], %s::bigint[]) AS p(team_id, mentor_id)
                 JOIN teams t ON t.id = p.team_id AND t.status = 'active' AND t.is_registered
+                RETURNING team_id, mentor_id
                 """,
                 ([t for t, _ in assignments], [m for _, m in assignments]),
             )
-            saved = cursor.rowcount
+            saved = sorted((r["team_id"], r["mentor_id"]) for r in cursor.fetchall())
             # Reset confirmation — admin must re-confirm after every new run
             cursor.execute(
                 "UPDATE matching_state SET is_confirmed = FALSE, confirmed_at = NULL WHERE id = 1"
             )
-        logger.info(f"Saved {saved} of {len(assignments)} matching results")
+        logger.info(f"Saved {len(saved)} of {len(assignments)} matching results")
     except Exception as e:
         logger.error(f"Error saving matching results: {e}")
         raise
     cleared = bool(state and state["is_confirmed"])
     if cleared:
         feature_flag_service.invalidate_cache()
-    _announce_matching_run(saved, team_count, warnings, cleared)
+    _announce_matching_run(len(saved), team_count, warnings, cleared)
     return saved
 
 
